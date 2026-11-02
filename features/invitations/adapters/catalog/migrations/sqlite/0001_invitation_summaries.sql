@@ -44,3 +44,8 @@ CREATE TABLE invitation_tombstones (
 );
 
 CREATE INDEX invitation_tombstones_by_laid_at ON invitation_tombstones (laid_at);
+
+CREATE TABLE token_key (
+    only_one         INTEGER PRIMARY KEY CHECK (only_one = 1),
+    key              BLOB    NOT NULL
+);

@@ -78,4 +78,6 @@ pub trait SceneStore: Send + Sync {
         after: Option<SceneId>,
         at_most: usize,
     ) -> Result<Vec<SceneId>, StoreError>;
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError>;
 }

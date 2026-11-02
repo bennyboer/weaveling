@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
@@ -56,6 +56,26 @@ impl SceneRestyler for Broken {
         Err(ScenesError::Store(StoreError::Backend(
             "the store is down".into(),
         )))
+    }
+}
+
+struct Overtaken {
+    live: LiveScenes,
+    copy: Mutex<Option<(Wired, Message)>>,
+}
+
+#[async_trait]
+impl SceneRestyler for Overtaken {
+    async fn restyle(&self, scene: SceneId, style: QuotationMarks) -> Result<bool, ScenesError> {
+        let copy = self.copy.lock().expect("never poisoned").take();
+        if let Some((copy, asked)) = copy {
+            copy.restyle
+                .handle(&asked)
+                .await
+                .expect("the copy of the page restyles it whole");
+        }
+
+        self.live.restyle(scene, style).await
     }
 }
 
@@ -379,31 +399,6 @@ async fn the_latest_restyling_carries_on() {
 }
 
 #[tokio::test]
-async fn hearing_the_same_change_again_goes_through_the_book_again() {
-    let wired = a_workbench(4);
-    wired.holding(A_PROJECT, 1).await;
-    let asked = restyled(A_PROJECT, "curly", 5);
-    wired
-        .restyle
-        .handle(&asked)
-        .await
-        .expect("restyling succeeds");
-    let written_meanwhile = wired.holding(A_PROJECT, 1).await;
-
-    wired
-        .restyle
-        .handle(&asked)
-        .await
-        .expect("a redelivery is not a failure");
-
-    assert_eq!(
-        wired.saying(&written_meanwhile).await,
-        vec!["“Ja.”"],
-        "a change delivered again, after a crash half way, must still finish the book"
-    );
-}
-
-#[tokio::test]
 async fn a_continuation_nobody_remembers_beginning_carries_on() {
     let wired = a_workbench(1);
     let book = wired.holding(A_PROJECT, 2).await;
@@ -592,4 +587,127 @@ async fn a_book_without_scenes_is_finished_at_once() {
         .expect("restyling succeeds");
 
     assert_eq!(wired.progress().await, so_far(0, 0, true));
+}
+
+#[tokio::test]
+async fn a_change_heard_again_carries_on_where_it_got_and_counts_each_scene_once() {
+    let wired = a_workbench(1);
+    let book = wired.holding(A_PROJECT, 2).await;
+    let asked = restyled(A_PROJECT, "curly", 3);
+    wired
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("restyling succeeds");
+    let first = wired.carried_on();
+
+    wired
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("a redelivery is not a failure");
+
+    let again = wired.carried_on();
+    assert_eq!(
+        again.len(),
+        2,
+        "heard again, it carries on from where it got"
+    );
+    assert_eq!(
+        again[1].id, first[0].id,
+        "it carries on with the continuation it sent before, so a second chain cannot fork"
+    );
+    assert_eq!(wired.progress().await, so_far(2, 1, false));
+
+    wired.restyle_through(again[1].clone()).await;
+
+    assert_eq!(wired.saying(&book).await, vec!["“Ja.”"; 2]);
+    assert_eq!(wired.progress().await, so_far(2, 2, true));
+}
+
+#[tokio::test]
+async fn a_page_heard_twice_is_counted_once() {
+    let wired = a_workbench(1);
+    wired.holding(A_PROJECT, 3).await;
+    wired
+        .restyle
+        .handle(&restyled(A_PROJECT, "curly", 3))
+        .await
+        .expect("restyling succeeds");
+    let next = wired.carried_on()[0].clone();
+
+    for _ in 0..2 {
+        wired
+            .restyle
+            .handle(&next)
+            .await
+            .expect("a page heard again is not a failure");
+    }
+
+    assert_eq!(wired.progress().await, so_far(3, 2, false));
+    let carried = wired.carried_on();
+    assert_eq!(carried.len(), 3);
+    assert_eq!(
+        carried[1].id, carried[2].id,
+        "the page heard again answers with the same continuation"
+    );
+}
+
+#[tokio::test]
+async fn a_restyling_whose_page_keeps_failing_stays_unfinished_until_it_is_tried_again() {
+    let plain = a_workbench(4);
+    let book = plain.holding(A_PROJECT, 2).await;
+    let broken = restyling_with(
+        plain.scenes.clone(),
+        plain.tasks.clone(),
+        plain.live.clone(),
+        Arc::new(Broken),
+        4,
+    );
+    let asked = restyled(A_PROJECT, "curly", 3);
+
+    assert!(broken.restyle.handle(&asked).await.is_err());
+    assert_eq!(
+        plain.progress().await,
+        so_far(2, 0, false),
+        "a page that failed is not counted, so the bar shows the book unfinished"
+    );
+
+    plain
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("the dead letter tried again succeeds");
+
+    assert_eq!(plain.saying(&book).await, vec!["“Ja.”"; 2]);
+    assert_eq!(plain.progress().await, so_far(2, 2, true));
+}
+
+#[tokio::test]
+async fn a_page_overtaken_by_a_copy_of_itself_leaves_carrying_on_to_the_copy() {
+    let plain = a_workbench(1);
+    plain.holding(A_PROJECT, 2).await;
+    let asked = restyled(A_PROJECT, "curly", 3);
+    let wired = restyling_with(
+        plain.scenes.clone(),
+        plain.tasks.clone(),
+        plain.live.clone(),
+        Arc::new(Overtaken {
+            live: plain.live.clone(),
+            copy: Mutex::new(Some((plain, asked.clone()))),
+        }),
+        1,
+    );
+
+    wired
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("a page overtaken is no failure");
+
+    assert!(
+        wired.carried_on().is_empty(),
+        "the copy counted the page and carries on, so the one it overtook must not fork a second chain"
+    );
+    assert_eq!(wired.progress().await, so_far(2, 1, false));
 }

@@ -35,6 +35,12 @@ const BUMP: &str =
 
 const UNLINK_EVERYWHERE: &str = "DELETE FROM scene_ideas WHERE idea = ?1";
 
+const UNCOUNT: &str = "UPDATE scenes SET uncounted = 1 WHERE scene = ?1";
+
+const COUNTED: &str = "UPDATE scenes SET uncounted = 0 WHERE scene = ?1";
+
+const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT ?1";
+
 const LINKED_IDEAS: &str = "SELECT idea FROM scene_ideas WHERE scene = ?1 ORDER BY seq";
 
 const EXISTS: &str = "SELECT project FROM scenes WHERE scene = ?1";
@@ -346,6 +352,11 @@ impl SceneStore for SqliteSceneStore {
                 false => unreachable(failure),
             })?;
         bumped(transaction, id).await?;
+        sqlx::query(UNCOUNT)
+            .bind(id.to_string())
+            .execute(connection(transaction)?)
+            .await
+            .map_err(unreachable)?;
         let tail: i64 = sqlx::query_scalar(TAIL)
             .bind(id.to_string())
             .fetch_one(connection(transaction)?)
@@ -409,7 +420,14 @@ impl SceneStore for SqliteSceneStore {
             project,
             words,
         })
-        .await
+        .await?;
+        sqlx::query(COUNTED)
+            .bind(id.to_string())
+            .execute(connection(transaction)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn announce_opening(
@@ -522,6 +540,23 @@ impl SceneStore for SqliteSceneStore {
             .bind(project.to_string())
             .bind(after.map(|last| last.to_string()).unwrap_or_default())
             .bind(at_most as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|scene| {
+                scene
+                    .parse()
+                    .map_err(|why| StoreError::Backend(Box::new(why)))
+            })
+            .collect()
+    }
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        let found: Vec<String> = sqlx::query_scalar(UNCOUNTED)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

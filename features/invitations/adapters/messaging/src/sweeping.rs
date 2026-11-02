@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use invitations_core::{InvitationsCore, ProjectLink};
-use messaging::{Failure, Handler, Message, RoutingKey};
+use messaging::{Failure, Handler, Message, RoutingKey, WithoutInbox};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
@@ -41,6 +41,7 @@ impl Handler for WithdrawInvitationsOfDeletedProjectListener {
     const NAME: &'static str = "withdraw-invitations-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[SWEEP_PROJECT];
     const WHEN_REFUSED: &'static str = "The open invitations into a deleted project were not withdrawn, so their links may still be taken up.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let asked: SweepProjectDTO = message.payload_as()?;

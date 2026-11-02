@@ -29,23 +29,24 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
         .expect("an operator may invite")
         .id;
 
-    let links = wired.links_mailed_to(ADA);
+    let links = wired.links_mailed_to(ADA).await;
     assert_eq!(links.len(), 1);
     assert!(
         links[0].starts_with("https://weaveling.example.com/invitation#"),
         "{}",
         links[0]
     );
-    let token = wired.token_mailed_to(ADA);
+    let token = wired.token_mailed_to(ADA).await;
     assert!(
         matches!(
             told(&wired, &id).await.as_slice(),
-            [InvitationEvent::Issued { to, digest, until, scope, by_an_operator }]
+            [InvitationEvent::Issued { to, digest, until, scope, by_an_operator, origin }]
                 if to.as_str() == ADA
                     && *digest == token.digest()
                     && *until == wiring::at(1_700_000_000) + Duration::days(7)
                     && *scope == Scope::Instance
                     && *by_an_operator
+                    && origin == ORIGIN
         ),
         "the invitation keeps its link's token by its digest alone, and holds for seven days"
     );
@@ -66,9 +67,10 @@ async fn the_link_is_made_from_the_origin_however_it_ends() {
         .expect("an operator may invite");
 
     assert!(
-        wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/invitation#"),
+        wired.links_mailed_to(ADA).await[0]
+            .starts_with("https://weaveling.example.com/invitation#"),
         "{:?}",
-        wired.links_mailed_to(ADA)
+        wired.links_mailed_to(ADA).await
     );
 }
 
@@ -83,7 +85,7 @@ async fn only_an_operator_invites_or_withdraws() {
             .await,
         Err(InvitationsError::NotAnOperator)
     ));
-    assert!(wired.mailbox.sent_to(ADA).is_empty());
+    assert!(wired.sent_to(ADA).await.is_empty());
 
     let id = wired
         .invitations
@@ -130,7 +132,7 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
         Err(InvitationsError::Throttled { wait }) if wait == Duration::minutes(1)
     ));
     assert_eq!(
-        wired.mailbox.sent_to(ADA).len(),
+        wired.sent_to(ADA).await.len(),
         3,
         "or an operator's account taken over could fill a stranger's inbox"
     );

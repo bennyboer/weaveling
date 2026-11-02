@@ -19,8 +19,8 @@ pub use id::SceneId;
 pub use link::{IdeaLink, ProjectLink};
 pub use projection::FRAGMENT;
 pub use quotation_restyling_tasks::{
-    QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTaskError,
-    QuotationRestylingTasks,
+    Page, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingStanding,
+    QuotationRestylingTaskError, QuotationRestylingTasks,
 };
 pub use restyler::SceneRestyler;
 pub use scene::{Scene, SceneError};

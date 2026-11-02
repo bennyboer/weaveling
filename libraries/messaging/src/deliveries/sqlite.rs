@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 use tokio::sync::Notify;
 use uuid::Uuid;
 
-use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
+use crate::delivering::{CLAIM_FOR, Claim, DeadLetter, Deliveries, DeliveryError, Queued};
 use crate::listening::{ListenerName, Notifications};
 use crate::message::{Conversation, Message, MessageId};
 use crate::routing::RoutingKey;
@@ -20,11 +20,12 @@ const ENQUEUE: &str = "
     INSERT INTO deliveries
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, due_at)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+    ON CONFLICT (listener, message_id) DO NOTHING
 ";
 
 const CLAIM_DUE: &str = "
     UPDATE deliveries
-    SET claimed_until = ?2
+    SET claimed_until = ?2, claim = ?4
     WHERE delivery IN (
         SELECT delivery
         FROM deliveries
@@ -36,12 +37,13 @@ const CLAIM_DUE: &str = "
               occurred_at, attempts
 ";
 
-const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = ?1";
+const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = ?1 AND claim = ?2";
 
 const REFUSED: &str = "
     UPDATE deliveries
-    SET attempts = attempts + 1, due_at = ?2, claimed_until = NULL, last_refusal = ?3
-    WHERE delivery = ?1
+    SET attempts = attempts + 1, due_at = ?2, claimed_until = NULL, claim = NULL,
+        last_refusal = ?3
+    WHERE delivery = ?1 AND claim = ?4
 ";
 
 const BURY: &str = "
@@ -51,7 +53,7 @@ const BURY: &str = "
     SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
            attempts + 1, ?2, ?3
     FROM deliveries
-    WHERE delivery = ?1
+    WHERE delivery = ?1 AND claim = ?4
 ";
 
 const DEAD_LETTERS: &str = "
@@ -67,6 +69,7 @@ const REQUEUE: &str = "
     SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, ?2
     FROM dead_letters
     WHERE dead_letter = ?1
+    ON CONFLICT (listener, message_id) DO NOTHING
 ";
 
 const UNBURY: &str = "DELETE FROM dead_letters WHERE dead_letter = ?1";
@@ -165,6 +168,10 @@ fn written_uuid(id: &MessageId) -> String {
     id.as_uuid().hyphenated().to_string()
 }
 
+fn written_claim(claim: &Claim) -> String {
+    claim.as_uuid().hyphenated().to_string()
+}
+
 #[async_trait]
 impl Deliveries for SqliteDeliveries {
     async fn enqueue(
@@ -194,10 +201,12 @@ impl Deliveries for SqliteDeliveries {
         now: OffsetDateTime,
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError> {
+        let claim = Claim::drawn();
         let claimed = sqlx::query(CLAIM_DUE)
             .bind(text::written(now))
             .bind(text::written(now + CLAIM_FOR))
             .bind(at_most)
+            .bind(written_claim(&claim))
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -210,6 +219,7 @@ impl Deliveries for SqliteDeliveries {
 
                 Ok(Queued {
                     id,
+                    claim,
                     listener,
                     message,
                     attempts,
@@ -221,9 +231,10 @@ impl Deliveries for SqliteDeliveries {
         Ok(queued)
     }
 
-    async fn mark_as_handled(&self, delivery: i64) -> Result<(), DeliveryError> {
+    async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError> {
         sqlx::query(HANDLED)
-            .bind(delivery)
+            .bind(queued.id)
+            .bind(written_claim(&queued.claim))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -233,14 +244,15 @@ impl Deliveries for SqliteDeliveries {
 
     async fn mark_as_refused(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
         sqlx::query(REFUSED)
-            .bind(delivery)
+            .bind(queued.id)
             .bind(text::written(again_at))
             .bind(why)
+            .bind(written_claim(&queued.claim))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -250,21 +262,23 @@ impl Deliveries for SqliteDeliveries {
 
     async fn give_up(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(BURY)
-            .bind(delivery)
+            .bind(queued.id)
             .bind(why)
             .bind(text::written(at))
+            .bind(written_claim(&queued.claim))
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
         sqlx::query(HANDLED)
-            .bind(delivery)
+            .bind(queued.id)
+            .bind(written_claim(&queued.claim))
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;

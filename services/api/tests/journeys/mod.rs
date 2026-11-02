@@ -783,7 +783,8 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         .drop
         .as_ref()
         .expect("a journey signed in has a mail drop");
-    let token = crate::mail_drop::invitation_token_dropped_for(drop, "grace@example.com")
+    let token = crate::mail_drop::invitation_token_mailed_to(drop, "grace@example.com")
+        .await
         .expect("the link should have been mailed");
     journey.signed_in_as_another("grace@example.com").await;
 
@@ -1034,13 +1035,14 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
         }))
         .await
         .assert_status(StatusCode::CREATED);
-    let token = crate::mail_drop::invitation_token_dropped_for(
+    let token = crate::mail_drop::invitation_token_mailed_to(
         journey
             .drop
             .as_ref()
             .expect("a journey signed in has a mail drop"),
         "grace@example.com",
     )
+    .await
     .expect("the link should have been mailed");
     let signing_up = || async {
         server

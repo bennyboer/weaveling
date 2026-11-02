@@ -15,7 +15,8 @@ use scenes_contract::{
     SceneDTO, ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
-    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneStore, SceneTitle, ScenesCore,
+    Page, ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneStore, SceneTitle,
+    ScenesCore,
 };
 use scenes_rest::{PAGE, TellingRestylingTasks};
 use scenes_store::InMemorySceneStore;
@@ -476,7 +477,16 @@ async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes(
     let begun = told_progress(&mut followed.socket).await;
     followed
         .tasks
-        .progressed_committed(&project, 3, 5, true)
+        .progressed_committed(
+            &project,
+            3,
+            Page {
+                from: None,
+                to: None,
+                done: 5,
+            },
+            true,
+        )
         .await
         .expect("counting should succeed");
     let finished = told_progress(&mut followed.socket).await;
@@ -535,7 +545,16 @@ async fn how_far_a_book_is_restyled_can_be_asked() {
         .await
         .expect("beginning should succeed");
     tasks
-        .progressed_committed(&project, 3, 2, false)
+        .progressed_committed(
+            &project,
+            3,
+            Page {
+                from: None,
+                to: None,
+                done: 2,
+            },
+            false,
+        )
         .await
         .expect("counting should succeed");
 
@@ -571,7 +590,16 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
         .await
         .expect("beginning should succeed");
     tasks
-        .progressed_committed(&project, 3, 3, true)
+        .progressed_committed(
+            &project,
+            3,
+            Page {
+                from: None,
+                to: None,
+                done: 3,
+            },
+            true,
+        )
         .await
         .expect("counting should succeed");
 

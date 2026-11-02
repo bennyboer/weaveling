@@ -13,7 +13,7 @@ use crate::error::InvitationsError;
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, InvitationCommand, InvitationEvent, Outcome};
 use crate::scope::{Role, Scope};
-use crate::token::InvitationToken;
+use crate::token::{InvitationToken, TokenKey};
 
 const INVITING: &str = "inviting";
 const INVITING_RULE: Rule = Rule { free: 3 };
@@ -41,19 +41,21 @@ impl InvitationService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn issue(
         &self,
         transaction: &mut Transaction,
+        key: &TokenKey,
         to: &EmailAddress,
         origin: &str,
         scope: Scope,
         by_an_operator: bool,
         agent: &Agent,
-    ) -> Result<(InvitationSummary, Mail), InvitationsError> {
+    ) -> Result<InvitationSummary, InvitationsError> {
         let now = self.clock.now();
         let id = InvitationId::generate(now);
         let until = now + Invitation::LASTS;
-        let token = InvitationToken::drawn();
+        let token = InvitationToken::derived(key, &id);
         self.events
             .begin(
                 transaction,
@@ -64,11 +66,11 @@ impl InvitationService {
                     until,
                     scope: scope.clone(),
                     by_an_operator,
+                    origin: origin.trim().trim_end_matches('/').to_owned(),
                 },
                 agent,
             )
             .await?;
-        let mail = invitation_mail(to, origin, &scope, &token);
 
         let summary = InvitationSummary {
             id,
@@ -86,11 +88,28 @@ impl InvitationService {
             retire_after: until + InvitationSummary::EXPIRED_LISTED_FOR,
         };
 
-        Ok((summary, mail))
+        Ok(summary)
     }
 
-    pub async fn send(&self, mail: Mail) -> Result<(), InvitationsError> {
-        Ok(self.mailer.send(mail).await?)
+    pub async fn mail_issued(
+        &self,
+        key: &TokenKey,
+        invitation: &InvitationId,
+    ) -> Result<(), InvitationsError> {
+        let issued = self.latest(invitation).await?.state;
+        if issued.outcome() != Outcome::Open || issued.is_expired(self.clock.now()) {
+            return Ok(());
+        }
+
+        Ok(self
+            .mailer
+            .send(invitation_mail(
+                issued.to(),
+                issued.origin(),
+                issued.scope(),
+                &InvitationToken::derived(key, invitation),
+            ))
+            .await?)
     }
 
     pub async fn latest(
@@ -185,7 +204,6 @@ fn invitation_mail(
     scope: &Scope,
     token: &InvitationToken,
 ) -> Mail {
-    let origin = origin.trim().trim_end_matches('/');
     let (subject, invited) = match scope {
         Scope::Instance => (
             "You are invited to Weaveling".to_owned(),

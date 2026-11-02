@@ -18,8 +18,14 @@ struct Entry {
     published_at: Option<OffsetDateTime>,
 }
 
+#[derive(Default)]
+struct Entries {
+    held: Vec<Entry>,
+    last: i64,
+}
+
 pub struct InMemoryOutbox {
-    entries: Arc<Mutex<Vec<Entry>>>,
+    entries: Arc<Mutex<Entries>>,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     waiting: Arc<Notify>,
@@ -30,7 +36,7 @@ struct Waiting(Arc<Notify>);
 impl InMemoryOutbox {
     pub fn new(publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            entries: Arc::new(Mutex::new(Vec::new())),
+            entries: Arc::new(Mutex::new(Entries::default())),
             publisher,
             clock,
             waiting: Arc::new(Notify::new()),
@@ -49,17 +55,19 @@ impl InMemoryOutbox {
 
     pub fn waiting_to_be_published(&self) -> usize {
         self.held()
+            .held
             .iter()
             .filter(|entry| entry.published_at.is_none())
             .count()
     }
 
-    fn held(&self) -> MutexGuard<'_, Vec<Entry>> {
+    fn held(&self) -> MutexGuard<'_, Entries> {
         self.entries.lock().expect("outbox lock poisoned")
     }
 
     fn claim(&self, at_most: i64, now: OffsetDateTime) -> Vec<(i64, Message)> {
         self.held()
+            .held
             .iter_mut()
             .filter(|entry| entry.published_at.is_none())
             .filter(|entry| entry.claimed_until.is_none_or(|until| until < now))
@@ -73,17 +81,18 @@ impl InMemoryOutbox {
     }
 
     fn mark_published(&self, entry: i64, now: OffsetDateTime) {
-        if let Some(found) = self.held().iter_mut().find(|held| held.entry == entry) {
+        if let Some(found) = self.held().held.iter_mut().find(|held| held.entry == entry) {
             found.published_at = Some(now);
         }
     }
 }
 
-fn put(entries: &Mutex<Vec<Entry>>, waiting: &Notify, message: Message) {
+fn put(entries: &Mutex<Entries>, waiting: &Notify, message: Message) {
     let mut entries = entries.lock().expect("outbox lock poisoned");
-    let entry = entries.len() as i64 + 1;
+    entries.last += 1;
+    let entry = entries.last;
 
-    entries.push(Entry {
+    entries.held.push(Entry {
         entry,
         message,
         claimed_until: None,
@@ -139,7 +148,7 @@ impl Outbox for InMemoryOutbox {
         let mut entries = self.held();
         let mut gone = 0;
 
-        entries.retain(|entry| {
+        entries.held.retain(|entry| {
             let stale = entry
                 .published_at
                 .is_some_and(|published| published < before);
@@ -216,6 +225,7 @@ mod tests {
         async fn published(&self) -> Vec<bool> {
             self.0
                 .held()
+                .held
                 .iter()
                 .map(|entry| entry.published_at.is_some())
                 .collect()
@@ -224,6 +234,7 @@ mod tests {
         async fn all_published_at(&self, when: OffsetDateTime) {
             self.0
                 .held()
+                .held
                 .iter_mut()
                 .for_each(|entry| entry.published_at = Some(when));
         }

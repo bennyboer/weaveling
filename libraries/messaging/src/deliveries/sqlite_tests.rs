@@ -92,7 +92,7 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
 
     bench
         .store()
-        .give_up(claimed[0].id, "it refused five times", suite::at(1_001))
+        .give_up(&claimed[0], "it refused five times", suite::at(1_001))
         .await
         .expect("giving up should succeed");
 

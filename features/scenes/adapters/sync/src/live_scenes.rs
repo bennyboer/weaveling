@@ -365,6 +365,25 @@ impl LiveScenes {
         }
     }
 
+    pub async fn count_the_uncounted(&self, at_most: usize) -> Result<u64, ScenesError> {
+        let mut counted = 0;
+
+        for id in self.shared.scenes.uncounted(at_most).await? {
+            let present = match self.join(id).await {
+                Ok(present) => present,
+                Err(ScenesError::Store(StoreError::NotFound(_))) => continue,
+                Err(problem) => return Err(problem),
+            };
+            present.scene.uncounted.store(true, Ordering::Release);
+            present.scene.recount(&self.shared.scenes).await;
+            if !present.scene.uncounted.load(Ordering::Acquire) {
+                counted += 1;
+            }
+        }
+
+        Ok(counted)
+    }
+
     pub async fn settle(&self) {
         let live: Vec<Arc<LiveScene>> = self
             .shared

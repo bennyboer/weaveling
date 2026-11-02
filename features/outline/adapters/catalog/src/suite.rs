@@ -101,6 +101,18 @@ impl<C: OutlineCatalog> Committing<'_, C> {
 
         Ok(done)
     }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, project, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
 }
 
 impl<C> Deref for Committing<'_, C> {
@@ -815,6 +827,97 @@ pub async fn outline_tombstones_forgotten_in_a_transaction_that_is_dropped_still
     );
 }
 
+pub async fn a_project_has_no_tombstone_until_its_deletion_is_laid(
+    catalog: &Committing<'_, impl OutlineCatalog>,
+) {
+    let (deleted, kept) = (
+        ProjectLink::from("project_1"),
+        ProjectLink::from("project_2"),
+    );
+    let had_one_before = catalog
+        .has_project_tombstone(&deleted)
+        .await
+        .expect("asking should succeed");
+
+    catalog
+        .lay_project_tombstone(&deleted, at(5_000))
+        .await
+        .expect("laying a project's tombstone should succeed");
+
+    assert!(!had_one_before, "a project nobody deleted has no tombstone");
+    assert!(
+        catalog
+            .has_project_tombstone(&deleted)
+            .await
+            .expect("asking should succeed")
+    );
+    assert!(
+        !catalog
+            .has_project_tombstone(&kept)
+            .await
+            .expect("asking should succeed"),
+        "one project's deletion buries no other"
+    );
+}
+
+pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &Committing<'_, impl OutlineCatalog>,
+) {
+    let (older, newer, latest) = (
+        ProjectLink::from("project_1"),
+        ProjectLink::from("project_2"),
+        ProjectLink::from("project_3"),
+    );
+    for (project, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .lay_project_tombstone(project, at(laid))
+            .await
+            .expect("laying a project's tombstone should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    let mut standing = Vec::new();
+    for project in [&older, &newer, &latest] {
+        standing.push(
+            catalog
+                .has_project_tombstone(project)
+                .await
+                .expect("asking should succeed"),
+        );
+    }
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        standing,
+        vec![false, true, true],
+        "only the oldest tombstone is forgotten, and only one of those due"
+    );
+}
+
+pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_is_not_there(
+    catalog: &Committing<'_, impl OutlineCatalog>,
+) {
+    let project = ProjectLink::from("project_1");
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .lay_project_tombstone(&mut transaction, &project, at(5_000))
+        .await
+        .expect("laying a project's tombstone should succeed");
+    drop(transaction);
+
+    assert!(
+        !catalog
+            .has_project_tombstone(&project)
+            .await
+            .expect("asking should succeed"),
+        "a deletion heard in a hearing that did not commit was not heard"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -915,6 +1018,18 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_has_no_tombstone_until_its_deletion_is_laid
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            project_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_tombstone_laid_in_a_transaction_that_is_dropped_is_not_there
         );
     };
 }

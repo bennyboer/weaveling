@@ -91,6 +91,21 @@ const HELD_THOUGH_TOMBSTONED: &str = "
     ORDER BY held.attachment_id, held.attachment_type
 ";
 
+const LAY_PROJECT_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const HAS_PROJECT_TOMBSTONE: &str =
+    "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)";
+
+const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
+";
+
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
 }
@@ -281,7 +296,15 @@ impl OutlineCatalog for SqliteOutlineCatalog {
             .map_err(unreachable)?
             .rows_affected();
 
-        Ok(pieces + summaries)
+        let projects = sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(pieces + summaries + projects)
     }
 
     async fn held_though_tombstoned(
@@ -304,5 +327,29 @@ impl OutlineCatalog for SqliteOutlineCatalog {
                 rows::attachment_from(&attachment_type, &attachment_id)
             })
             .collect()
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(LAY_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .bind(clock::text::written(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 }

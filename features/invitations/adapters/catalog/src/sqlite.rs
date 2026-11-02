@@ -6,7 +6,7 @@ use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
-    Person, ProjectLink, ProjectName,
+    Person, ProjectLink, ProjectName, TokenKey, TokenKeys,
 };
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
@@ -142,6 +142,48 @@ pub struct SqliteInvitationCatalog {
 impl SqliteInvitationCatalog {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+}
+
+const DRAW_KEY: &str =
+    "INSERT INTO token_key (only_one, key) VALUES (1, ?1) ON CONFLICT (only_one) DO NOTHING";
+
+const KEPT_KEY: &str = "SELECT key FROM token_key";
+
+pub struct SqliteTokenKeys {
+    pool: SqlitePool,
+}
+
+impl SqliteTokenKeys {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl TokenKeys for SqliteTokenKeys {
+    async fn key(&self) -> Result<TokenKey, CatalogError> {
+        let kept: Option<Vec<u8>> = sqlx::query_scalar(KEPT_KEY)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+        let kept = match kept {
+            Some(kept) => kept,
+            None => {
+                sqlx::query(DRAW_KEY)
+                    .bind(TokenKey::drawn().as_bytes())
+                    .execute(&self.pool)
+                    .await
+                    .map_err(unreachable)?;
+                sqlx::query_scalar(KEPT_KEY)
+                    .fetch_one(&self.pool)
+                    .await
+                    .map_err(unreachable)?
+            }
+        };
+
+        TokenKey::kept(&kept)
+            .ok_or_else(|| CatalogError::Backend("the token key kept is not 32 bytes".into()))
     }
 }
 

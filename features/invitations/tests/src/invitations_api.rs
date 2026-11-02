@@ -66,7 +66,10 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
         ),
         "the answer is the invitation as the list will show it, so the page need not wait for the list"
     );
-    assert!(wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/invitation#"));
+    assert!(
+        wired.links_mailed_to(ADA).await[0]
+            .starts_with("https://weaveling.example.com/invitation#")
+    );
     let id: InvitationId = invited.id.parse().expect("the id told is an invitation's");
     let issued = wired
         .store
@@ -75,7 +78,7 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
         .expect("reading should succeed");
     assert!(matches!(
         &issued[0].event,
-        InvitationEvent::Issued { digest, .. } if *digest == wired.token_mailed_to(ADA).digest()
+        InvitationEvent::Issued { digest, .. } if *digest == wired.token_mailed_to(ADA).await.digest()
     ));
 }
 
@@ -89,7 +92,7 @@ async fn an_invitation_named_from_no_page_is_refused() {
         StatusCode::BAD_REQUEST,
         refused::ORIGIN_MISSING,
     );
-    assert!(wired.mailbox.sent_to(ADA).is_empty());
+    assert!(wired.sent_to(ADA).await.is_empty());
 }
 
 #[tokio::test]

@@ -4,29 +4,30 @@ The messaging **seam** — the port, the envelope and an in-process dispatcher. 
 
 A `Message` carries its own identity: a `MessageId`, the `Conversation` it belongs to, and what it was `caused_by`. Those exist from the first message rather than being added when a broker arrives, because an id minted late cannot recognise a redelivery of something sent early, and a conversation cannot be reconstructed after the fact.
 
-The boards take a discarded idea off every board with a `Handler`, and the dispatcher hands it what it listens to:
+The boards discard a deleted project's board with a `Handler`, and the dispatcher hands it what it listens to:
 
 ```rust
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ideas_contract::{DISCARDED, IdeaEventDTO};
-use messaging::{Failure, Handler, Message};
+use messaging::{Failure, Handler, Message, WithoutInbox};
+use projects_contract::{DELETED, ProjectEventDTO};
 
 #[async_trait]
-impl Handler for UnpinOnDiscardListener {
-    const NAME: &'static str = "unpin-discarded-idea";
-    const LISTENS_TO: &'static [&'static str] = &[DISCARDED];
-    const WHEN_REFUSED: &'static str = "A discarded idea could not be taken off a board.";
+impl Handler for DiscardBoardsOnProjectDeletedListener {
+    const NAME: &'static str = "discard-boards-of-deleted-project";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED];
+    const WHEN_REFUSED: &'static str = "The board of a deleted project was not cleared away.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
+        let deleted = eventpublishing::published_in::<ProjectEventDTO>(message)?;
 
-        Ok(self.boards.let_go_everywhere(&discarded.aggregate.id, message.occurred_at).await?)
+        Ok(self.boards.sweep(&deleted.aggregate.id).await?)
     }
 }
 
-dispatcher.listen(Arc::new(UnpinOnDiscardListener::new(boards)));
+dispatcher.listen(Arc::new(DiscardBoardsOnProjectDeletedListener::new(boards)));
 ```
 
 A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscription`, `idea.#`) and how a refusal should be treated:
@@ -34,11 +35,11 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 - **`Delivery::Kept`** — this message matters; a refusal goes to `DeadLetters` to be retried.
 - **`Delivery::Fleeting`** — this message is disposable; a refusal is logged and dropped.
 
-**A feature's listener is a `Handler`.** It states its name, the routing keys it listens to and its refusal as three constants, and does its work in `take_in`, which may fail with any error; the library makes a `Listener` of it, kept, and wraps a failure in a `NotHandled` naming the listener and the message. So a listener is only what it does. `Listener` itself stays for what a `Handler` cannot be: a fleeting listener, or one that wraps another.
+**A feature's listener without an inbox is a `Handler`.** It states its name, the routing keys it listens to and its refusal as constants, and does its work in `take_in`, which may fail with any error; the library makes a `Listener` of it and wraps a failure in a `NotHandled` naming the listener and the message. So a listener is only what it does. *It also says why it has no inbox, `WITHOUT_INBOX`, the user choosing the type system over convention 2026-11-02:* `WithoutInbox::Sweep`, a sweep spanning many transactions on purpose, its steps idempotent, delivered kept, or `WithoutInbox::Fleeting`, delivered fleeting. A kept listener that is neither is an [`inbox::KeptHandler`](../inbox/README.md), which only becomes a `Listener` through `inbox::Inboxed`, so a `Handler` that forgets its inbox does not compile. `Listener` itself stays for what a `Handler` cannot be: a fleeting broadcast, or one that wraps another, as `Inboxed` does; a hand-written `Listener` may go without an inbox as it likes, on purpose.
 
 `InProcessDispatcher` is the only transport today: publishing awaits every interested listener in turn. A broker is an adapter for when a second deployable exists — see [why the outbox comes first](../../ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
 
-**`InProcessDispatcher` is an exchange; `Deliveries` is the queues; `DeliveryConsumer` is the consumer.** `publish` writes one delivery row per interested listener and returns — it reports the transport and never the handling, because over a broker consumers have not run yet and may be on another machine. A `DeliveryConsumer` claims what is due and settles each delivery: handled deletes it, refused counts the attempt and pushes it out by a growing backoff, and the fifth refusal moves it to the dead letters with its root cause and the moment it was given up on. So **a retry reaches only the listener that refused**, exactly as a consumer acks its own queue.
+**`InProcessDispatcher` is an exchange; `Deliveries` is the queues; `DeliveryConsumer` is the consumer.** `publish` writes one delivery row per interested listener and returns — it reports the transport and never the handling, because over a broker consumers have not run yet and may be on another machine. A `DeliveryConsumer` claims what is due and settles each delivery: handled deletes it, refused counts the attempt and pushes it out by a growing backoff, and the fifth refusal moves it to the dead letters with its root cause and the moment it was given up on. So **a retry reaches only the listener that refused**, exactly as a consumer acks its own queue. **Only the holder of a claim settles it.** *Fixed 2026-11-02, from the transaction audit:* every `claim_due` draws a `Claim`, written on each delivery it claims and carried in `Queued`; `mark_as_handled`, `mark_as_refused` and `give_up` take the `Queued` and match its claim, so a consumer whose claim ran out while it worked, the delivery claimed again by another, acks, refuses and buries nothing, and a refusal clears no claim someone else still holds. The next attempt is due counted from the refusal, not from when the batch was claimed. Leases are still measured by the app's clock, not the database's; with one clock per instance and claims of thirty seconds, a skew between instances only shortens or lengthens a lease. **A delivery waits once.** `deliveries` is unique by listener and message id, and enqueueing or retrying a dead letter whose message already waits for that listener does nothing, so a message relayed twice, published again after a failure between publishing and marking, is handled once while it waits; once handled its row is gone, and a later duplicate is the [inbox](../inbox/README.md)'s to recognise.
 
 **A dead letter can be retried or acknowledged, never deleted.** Retrying moves it back into the deliveries, due at once with the whole attempt budget again, and wakes the consumer. Acknowledging marks it seen and keeps it: the listener has still not handled the message, and nothing can yet rebuild what a listener never saw, so throwing it away would make the gap permanent. Both ignore an id that is already gone, because a double click is not an error. A message older than **`RETRIABLE_FOR`**, 30 days, is not to be retried, `DeadLetter::may_be_tried_again(now)` says so, and the service refuses it as `too-late-to-try-again`: features forget their tombstones after as long, so what such a message is about may be gone for good. The service serves them as `/api/service/refusals`, with the shape in `messaging-contract`, so the author can act on what was refused.
 

@@ -141,6 +141,10 @@ impl SceneStore for Wavering {
 
         Ok(found)
     }
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        self.held.uncounted(at_most).await
+    }
 }
 
 struct Wired {

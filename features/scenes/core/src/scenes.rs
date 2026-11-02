@@ -8,8 +8,8 @@ use transacting::{Transaction, Transactions};
 
 use crate::service::SceneService;
 use crate::{
-    ProjectLink, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTasks, Scene,
-    SceneCatalog, SceneId, SceneRestyler, SceneStore, SceneSummary, SceneTitle, ScenesError,
+    Page, ProjectLink, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTasks,
+    Scene, SceneCatalog, SceneId, SceneRestyler, SceneStore, SceneSummary, SceneTitle, ScenesError,
     StoreError,
 };
 
@@ -169,6 +169,10 @@ impl ScenesCore {
         Ok(transaction.finish().await?)
     }
 
+    pub async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
+        self.service.uncounted(at_most).await
+    }
+
     pub async fn announce_word_count(&self, id: &str, words: usize) -> Result<(), ScenesError> {
         let mut transaction = self.transactions.begin().await?;
         self.service
@@ -225,8 +229,10 @@ impl ScenesCore {
         restyler: &dyn SceneRestyler,
     ) -> Result<Option<SceneId>, ScenesError> {
         let project = ProjectLink::from(restyling.project.as_str());
-        if !self.claimed(&project, restyling, at_most).await? {
-            return Ok(None);
+        match self.claimed(&project, restyling, at_most).await? {
+            Claimed::Page => {}
+            Claimed::Passed(carried_on_from) => return Ok(carried_on_from),
+            Claimed::Superseded => return Ok(None),
         }
         let batch = self
             .service
@@ -241,22 +247,31 @@ impl ScenesCore {
         }
 
         let finished = batch.len() < at_most;
+        let reached = batch
+            .last()
+            .map(ToString::to_string)
+            .or_else(|| restyling.after.clone());
         let mut transaction = self.transactions.begin().await?;
-        self.tasks
+        let counted = self
+            .tasks
             .progressed(
                 &mut transaction,
                 &project,
                 restyling.change,
-                in_count(batch.len()),
+                Page {
+                    from: restyling.after.as_deref(),
+                    to: reached.as_deref(),
+                    done: in_count(batch.len()),
+                },
                 finished,
             )
             .await?;
         transaction.finish().await?;
 
-        Ok(if finished {
-            None
-        } else {
+        Ok(if counted && !finished {
             batch.last().copied()
+        } else {
+            None
         })
     }
 
@@ -356,23 +371,29 @@ impl ScenesCore {
         project: &ProjectLink,
         restyling: &QuotationRestyling,
         at_most: usize,
-    ) -> Result<bool, ScenesError> {
+    ) -> Result<Claimed, ScenesError> {
         let total = match restyling.after {
-            Some(_) => None,
-            None => Some(self.scenes_in(&restyling.project, at_most).await?),
+            Some(_) => 0,
+            None => self.scenes_in(&restyling.project, at_most).await?,
         };
+        let after = restyling.after.as_deref();
 
         let mut transaction = self.transactions.begin().await?;
-        let claimed = match total {
-            Some(total) => {
-                self.tasks
-                    .begin(&mut transaction, project, restyling.change, total)
-                    .await?
-            }
-            None => {
-                self.tasks
-                    .claim(&mut transaction, project, restyling.change)
-                    .await?
+        let claimed = if self
+            .tasks
+            .begin(&mut transaction, project, restyling.change, total, after)
+            .await?
+        {
+            Claimed::Page
+        } else {
+            match self.tasks.standing(&mut transaction, project).await? {
+                Some(standing) if standing.change > restyling.change => Claimed::Superseded,
+                Some(standing) if standing.finished => Claimed::Passed(None),
+                Some(standing) if standing.cursor.as_deref() == after => Claimed::Page,
+                Some(standing) => {
+                    Claimed::Passed(standing.cursor.as_deref().map(str::parse).transpose()?)
+                }
+                None => Claimed::Page,
             }
         };
         transaction.finish().await?;
@@ -443,4 +464,10 @@ fn in_count(scenes: usize) -> u64 {
 
 fn not_there(scene: &Scene) -> ScenesError {
     StoreError::NotFound(scene.id()).into()
+}
+
+enum Claimed {
+    Page,
+    Passed(Option<SceneId>),
+    Superseded,
 }

@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError,
-    QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
+    CatalogError, Page, ProjectLink, QuotationRestylingProgress, QuotationRestylingStanding,
+    QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary,
+    SceneTitle,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
@@ -63,31 +64,29 @@ const IN_PROJECT_AFTER: &str = "
 ";
 
 const BEGIN: &str = "
-    INSERT INTO quotation_restyling_tasks (project, latest_change, total)
-    VALUES (?1, ?2, ?3)
+    INSERT INTO quotation_restyling_tasks (project, latest_change, total, cursor)
+    VALUES (?1, ?2, ?3, ?4)
     ON CONFLICT (project) DO UPDATE
-    SET latest_change = excluded.latest_change, total = excluded.total, done = 0, finished = 0
-    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
+    SET latest_change = excluded.latest_change, total = excluded.total, done = 0, finished = 0, cursor = excluded.cursor
+    WHERE quotation_restyling_tasks.latest_change < excluded.latest_change
+";
+
+const STANDING: &str = "
+    SELECT latest_change, cursor, finished
+    FROM quotation_restyling_tasks
+    WHERE project = ?1
 ";
 
 const PROGRESSED: &str = "
     UPDATE quotation_restyling_tasks
-    SET done = done + ?3, finished = ?4
-    WHERE project = ?1 AND latest_change = ?2
+    SET done = done + ?5, finished = ?6, cursor = ?4
+    WHERE project = ?1 AND latest_change = ?2 AND cursor IS ?3 AND finished = 0
 ";
 
 const PROGRESS: &str = "
     SELECT latest_change, total, done, finished
     FROM quotation_restyling_tasks
     WHERE project = ?1
-";
-
-const CLAIM: &str = "
-    INSERT INTO quotation_restyling_tasks (project, latest_change)
-    VALUES (?1, ?2)
-    ON CONFLICT (project) DO UPDATE
-    SET latest_change = excluded.latest_change
-    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
 ";
 
 pub fn migrations() -> Migrator {
@@ -288,11 +287,13 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError> {
         let written = sqlx::query(BEGIN)
             .bind(project.to_string())
             .bind(in_column(change))
             .bind(in_column(total))
+            .bind(cursor)
             .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
@@ -300,20 +301,25 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
         Ok(written.rows_affected() == 1)
     }
 
-    async fn claim(
+    async fn standing(
         &self,
         transaction: &mut Transaction,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError> {
-        let written = sqlx::query(CLAIM)
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError> {
+        let Some(row) = sqlx::query(STANDING)
             .bind(project.to_string())
-            .bind(in_column(change))
-            .execute(connection(transaction).map_err(untold)?)
+            .fetch_optional(connection(transaction).map_err(untold)?)
             .await
-            .map_err(untold)?;
+            .map_err(untold)?
+        else {
+            return Ok(None);
+        };
 
-        Ok(written.rows_affected() == 1)
+        Ok(Some(QuotationRestylingStanding {
+            change: counted(&row, "latest_change")?,
+            cursor: row.try_get("cursor").map_err(untold)?,
+            finished: row.try_get("finished").map_err(untold)?,
+        }))
     }
 
     async fn progressed(
@@ -321,19 +327,21 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
         transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
-        sqlx::query(PROGRESSED)
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let written = sqlx::query(PROGRESSED)
             .bind(project.to_string())
             .bind(in_column(change))
-            .bind(in_column(done))
+            .bind(page.from)
+            .bind(page.to)
+            .bind(in_column(page.done))
             .bind(finished)
             .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
 
-        Ok(())
+        Ok(written.rows_affected() == 1)
     }
 
     async fn progress(

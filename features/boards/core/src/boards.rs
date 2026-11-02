@@ -46,6 +46,9 @@ impl BoardsCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Read, &project, || BoardsError::ProjectNotThere)
             .await?;
+        if self.catalog.has_project_tombstone(&project).await? {
+            return Err(BoardsError::ProjectNotThere);
+        }
 
         let mut transaction = self.transactions.begin().await?;
         let id = self
@@ -53,6 +56,10 @@ impl BoardsCore {
             .claim(&mut transaction, &project, agent)
             .await?;
         transaction.finish().await?;
+        if self.catalog.has_project_tombstone(&project).await? {
+            self.discarded(&id).await?;
+            return Err(BoardsError::ProjectNotThere);
+        }
 
         Ok(Open {
             id,
@@ -215,12 +222,29 @@ impl BoardsCore {
             return Ok(());
         };
 
-        match self.as_the_system(&board, BoardCommand::Discard).await {
-            Ok(()) | Err(BoardsError::Events(ServiceError::Refused(BoardError::Discarded))) => {
-                Ok(())
-            }
+        self.discarded(&board).await
+    }
+
+    async fn discarded(&self, board: &BoardId) -> Result<(), BoardsError> {
+        match self.as_the_system(board, BoardCommand::Discard).await {
+            Ok(())
+            | Err(BoardsError::Events(ServiceError::Refused(BoardError::Discarded)))
+            | Err(BoardsError::Events(ServiceError::NotFound { .. })) => Ok(()),
             Err(refused) => Err(refused),
         }
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), BoardsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(

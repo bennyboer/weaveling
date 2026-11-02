@@ -29,6 +29,9 @@ mod inviting_into_a_project;
 mod listing_api;
 
 #[cfg(test)]
+mod mailing;
+
+#[cfg(test)]
 mod mine_api;
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ use crate::projects::model::ProjectId;
 
 const BOARDS: &str = "/api/boards";
 const SUBJECT: &str = "board";
+const OPENED_IN: &str = "project";
 
 pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     let payload = OpenBoardRequest {
@@ -19,7 +20,7 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     };
     let response = http::sent_with(Request::post(BOARDS), &payload).await?;
 
-    Ok(as_board(http::parsed(response, SUBJECT).await?))
+    Ok(as_board(http::parsed(response, OPENED_IN).await?))
 }
 
 pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board, ApiError> {

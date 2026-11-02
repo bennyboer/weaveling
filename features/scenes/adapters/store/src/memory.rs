@@ -19,6 +19,7 @@ struct StoredScene {
     ideas: Vec<IdeaLink>,
     version: u64,
     state: Vec<u8>,
+    uncounted: bool,
 }
 
 #[derive(Default)]
@@ -96,6 +97,7 @@ impl SceneStore for InMemorySceneStore {
                 ideas: scene.ideas().to_vec(),
                 version: 0,
                 state: scene.everything(),
+                uncounted: false,
             },
         );
         self.enqueue_change(
@@ -140,6 +142,7 @@ impl SceneStore for InMemorySceneStore {
                 ideas: stored.ideas,
                 version: stored.version + 1,
                 state: scene.everything(),
+                uncounted: true,
             },
         );
 
@@ -202,9 +205,12 @@ impl SceneStore for InMemorySceneStore {
     ) -> Result<(), StoreError> {
         self.undo_on_rollback(transaction)?;
         let project = self
-            .read()
-            .get(&id)
-            .map(|stored| stored.project.clone())
+            .write()
+            .get_mut(&id)
+            .map(|stored| {
+                stored.uncounted = false;
+                stored.project.clone()
+            })
             .ok_or(StoreError::NotFound(id))?;
         self.enqueue_change(
             transaction,
@@ -298,6 +304,19 @@ impl SceneStore for InMemorySceneStore {
             .filter(|(_, stored)| &stored.project == project)
             .map(|(id, _)| *id)
             .filter(|id| after.is_none_or(|last| id > &last))
+            .collect();
+        found.sort();
+        found.truncate(at_most);
+
+        Ok(found)
+    }
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        let mut found: Vec<SceneId> = self
+            .read()
+            .iter()
+            .filter(|(_, stored)| stored.uncounted)
+            .map(|(id, _)| *id)
             .collect();
         found.sort();
         found.truncate(at_most);

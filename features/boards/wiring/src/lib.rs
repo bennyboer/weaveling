@@ -7,7 +7,8 @@ use boards_contract::EVERY_BOARD;
 use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, LetGoOfDiscardedIdeaListener,
-    LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, UnpinOnDiscardListener,
+    LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, RememberDeletedProjectsListener,
+    UnpinOnDiscardListener,
 };
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -73,6 +74,15 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.transactions.clone(),
         ports.inbox.clone(),
     );
+    let remember_deleted_projects = Inboxed::new(
+        RememberDeletedProjectsListener::new(
+            boards.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -92,6 +102,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(unpin_discarded_ideas),
             Arc::new(let_go_everywhere),
             Arc::new(let_go_of_the_gone),
+            Arc::new(remember_deleted_projects),
             Arc::new(sweep),
         ])
         .doing_chores(vec![

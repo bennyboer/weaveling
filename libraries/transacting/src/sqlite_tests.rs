@@ -117,3 +117,42 @@ async fn a_transaction_begun_in_memory_has_no_sqlite_connection() {
         Err(Failure::BegunElsewhere)
     ));
 }
+
+#[tokio::test]
+async fn writers_waiting_their_turn_leave_the_pool_to_the_one_writing() {
+    let bench = OnSqlite::setup().await;
+    let writing = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let waiting: Vec<_> = (0..16)
+        .map(|_| {
+            let transactions = SqliteTransactions::new(bench.pool.clone());
+            tokio::spawn(async move {
+                transactions
+                    .begin()
+                    .await
+                    .expect("beginning should succeed")
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+            })
+        })
+        .collect();
+    tokio::time::sleep(A_MOMENT).await;
+    let read = tokio::time::timeout(A_MOMENT * 20, bench.written()).await;
+    writing.finish().await.expect("finishing should succeed");
+
+    assert!(
+        read.is_ok(),
+        "the one writing still finds a connection to read with, or it waits on those waiting on it"
+    );
+    for waiter in waiting {
+        tokio::time::timeout(A_MOMENT * 40, waiter)
+            .await
+            .expect("each waiting writer takes its turn")
+            .expect("a waiting writer should not panic");
+    }
+    bench.cleanup().await;
+}

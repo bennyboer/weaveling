@@ -33,6 +33,7 @@ console_error_panic_hook = "0.1.7"
 fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
 futures-util = "0.3.31"
+hmac = "0.13.0"
 gloo-net = { version = "0.7.0", features = ["json"] }
 leptos = "0.9.0-beta2"
 leptos_router = "0.9.0-beta2"

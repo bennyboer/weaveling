@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog,
-    SceneId, SceneTitle,
+    CatalogError, Page, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks,
+    SceneCatalog, SceneId, SceneTitle,
 };
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction, Transactions};
@@ -133,9 +133,9 @@ pub trait TasksCommitted {
         &self,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError>;
+    ) -> Result<bool, QuotationRestylingTaskError>;
 }
 
 #[async_trait]
@@ -147,7 +147,9 @@ impl<K: QuotationRestylingTasks + ?Sized> TasksCommitted for K {
         total: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
         let mut transaction = begun().await;
-        let begun = self.begin(&mut transaction, project, change, total).await?;
+        let begun = self
+            .begin(&mut transaction, project, change, total, None)
+            .await?;
         finished(transaction).await;
 
         Ok(begun)
@@ -157,14 +159,15 @@ impl<K: QuotationRestylingTasks + ?Sized> TasksCommitted for K {
         &self,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished_all: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
+    ) -> Result<bool, QuotationRestylingTaskError> {
         let mut transaction = begun().await;
-        self.progressed(&mut transaction, project, change, done, finished_all)
+        let counted = self
+            .progressed(&mut transaction, project, change, page, finished_all)
             .await?;
         finished(transaction).await;
 
-        Ok(())
+        Ok(counted)
     }
 }

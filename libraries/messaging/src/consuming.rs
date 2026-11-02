@@ -125,7 +125,7 @@ impl DeliveryConsumer {
 
             let refused = match listener.handle(&queued.message).await {
                 Ok(()) => {
-                    self.settled(self.deliveries.mark_as_handled(queued.id).await);
+                    self.settled(self.deliveries.mark_as_handled(&queued).await);
 
                     continue;
                 }
@@ -138,7 +138,7 @@ impl DeliveryConsumer {
                     error = %refused,
                     "a fleeting listener let a message go by"
                 );
-                self.settled(self.deliveries.mark_as_handled(queued.id).await);
+                self.settled(self.deliveries.mark_as_handled(&queued).await);
 
                 continue;
             }
@@ -155,7 +155,11 @@ impl DeliveryConsumer {
                     error = %why,
                     "a listener refused a message until the attempts ran out"
                 );
-                self.settled(self.deliveries.give_up(queued.id, &why, now).await);
+                self.settled(
+                    self.deliveries
+                        .give_up(&queued, &why, self.clock.now())
+                        .await,
+                );
             } else {
                 tracing::warn!(
                     listener = %queued.listener,
@@ -164,10 +168,10 @@ impl DeliveryConsumer {
                     error = %why,
                     "a listener refused a message, so it will be offered again"
                 );
-                let again_at = now + delivering::again_after(queued.attempts + 1);
+                let again_at = self.clock.now() + delivering::again_after(queued.attempts + 1);
                 self.settled(
                     self.deliveries
-                        .mark_as_refused(queued.id, &why, again_at)
+                        .mark_as_refused(&queued, &why, again_at)
                         .await,
                 );
             }

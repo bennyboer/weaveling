@@ -140,7 +140,7 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
         [InvitationEvent::Issued { scope, by_an_operator: false, .. }]
             if *scope == Scope::Project { project: ProjectLink::from(PROJECT), role: Role::Author }
     ));
-    let mailed = guarded.wired.mailbox.sent_to(BO);
+    let mailed = guarded.wired.sent_to(BO).await;
     assert_eq!(mailed.len(), 1);
     assert!(
         mailed[0].body.contains("as an author"),
@@ -148,7 +148,7 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
         mailed[0].body
     );
     assert!(
-        guarded.wired.links_mailed_to(BO)[0]
+        guarded.wired.links_mailed_to(BO).await[0]
             .starts_with("https://weaveling.example.com/invitation#")
     );
 }
@@ -212,7 +212,7 @@ async fn only_an_owner_invites_and_whoever_may_not_read_the_project_finds_it_not
             "not-found",
         );
     }
-    assert!(guarded.wired.mailbox.sent_to(BO).is_empty());
+    assert!(guarded.wired.sent_to(BO).await.is_empty());
 }
 
 #[tokio::test]

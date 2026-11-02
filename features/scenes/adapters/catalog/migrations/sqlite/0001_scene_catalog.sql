@@ -21,5 +21,6 @@ CREATE TABLE quotation_restyling_tasks (
     latest_change  INTEGER NOT NULL,
     total          INTEGER NOT NULL DEFAULT 0,
     done           INTEGER NOT NULL DEFAULT 0,
-    finished       INTEGER NOT NULL DEFAULT 0
+    finished       INTEGER NOT NULL DEFAULT 0,
+    cursor         TEXT
 );

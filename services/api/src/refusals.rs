@@ -104,26 +104,26 @@ impl Deliveries for TellingDeliveries {
         self.kept.claim_due(now, at_most).await
     }
 
-    async fn mark_as_handled(&self, delivery: i64) -> Result<(), DeliveryError> {
-        self.kept.mark_as_handled(delivery).await
+    async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError> {
+        self.kept.mark_as_handled(queued).await
     }
 
     async fn mark_as_refused(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
-        self.kept.mark_as_refused(delivery, why, again_at).await
+        self.kept.mark_as_refused(queued, why, again_at).await
     }
 
     async fn give_up(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
-        self.told(self.kept.give_up(delivery, why, at).await)
+        self.told(self.kept.give_up(queued, why, at).await)
     }
 
     async fn dead_letters(&self) -> Result<Vec<DeadLetter>, DeliveryError> {

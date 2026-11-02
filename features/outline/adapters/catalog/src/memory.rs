@@ -19,6 +19,7 @@ struct Attachments {
 
 #[derive(Debug, Default)]
 pub struct InMemoryOutlineCatalog {
+    projects_gone: Arc<RwLock<HashMap<ProjectLink, OffsetDateTime>>>,
     forgotten: Arc<RwLock<HashMap<OutlineId, OffsetDateTime>>>,
     listed: Arc<RwLock<Listed>>,
     attached: Arc<RwLock<Attachments>>,
@@ -75,6 +76,27 @@ impl InMemoryOutlineCatalog {
             *into_attached
                 .write()
                 .expect("outline catalog lock poisoned") = attached;
+        })
+        .map_err(unreachable)
+    }
+}
+
+impl InMemoryOutlineCatalog {
+    fn undo_projects_gone_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+    ) -> Result<(), CatalogError> {
+        let projects_gone = self
+            .projects_gone
+            .read()
+            .expect("outline catalog lock poisoned")
+            .clone();
+        let into_projects_gone = self.projects_gone.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_projects_gone
+                .write()
+                .expect("outline catalog lock poisoned") = projects_gone;
         })
         .map_err(unreachable)
     }
@@ -240,7 +262,30 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             u64::try_from(summaries_gone.len()).expect("a count of tombstones fits")
         };
 
-        Ok(pieces + summaries)
+        self.undo_projects_gone_on_rollback(transaction)?;
+        let projects = {
+            let mut projects_gone = self
+                .projects_gone
+                .write()
+                .expect("outline catalog lock poisoned");
+            let mut long_gone: Vec<(OffsetDateTime, ProjectLink)> = projects_gone
+                .iter()
+                .filter(|(_, laid)| **laid < before)
+                .map(|(project, laid)| (*laid, project.clone()))
+                .collect();
+            long_gone.sort_by(|(one_laid, one), (other_laid, other)| {
+                one_laid
+                    .cmp(other_laid)
+                    .then_with(|| one.as_str().cmp(other.as_str()))
+            });
+            long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+            for (_, project) in &long_gone {
+                projects_gone.remove(project);
+            }
+            u64::try_from(long_gone.len()).expect("a count of tombstones fits")
+        };
+
+        Ok(pieces + summaries + projects)
     }
 
     async fn held_though_tombstoned(
@@ -259,6 +304,30 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         found.sort_by(|one, other| one.as_str().cmp(other.as_str()));
 
         Ok(found)
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_projects_gone_on_rollback(transaction)?;
+        self.projects_gone
+            .write()
+            .expect("outline catalog lock poisoned")
+            .entry(project.clone())
+            .or_insert(at);
+
+        Ok(())
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        Ok(self
+            .projects_gone
+            .read()
+            .expect("outline catalog lock poisoned")
+            .contains_key(project))
     }
 }
 

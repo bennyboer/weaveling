@@ -235,6 +235,7 @@ mod tests {
                 until: at(5_000),
                 scope: Scope::Instance,
                 by_an_operator: true,
+                origin: "https://weaveling.example.com".to_owned(),
             },
             &EventMetadata {
                 agent: Agent::Account(AccountId::from("account_grace")),
@@ -351,6 +352,7 @@ mod tests {
                     until: at(5_000),
                     scope: Scope::Instance,
                     by_an_operator: true,
+                    origin: "https://weaveling.example.com".to_owned(),
                 },
                 &stamped(1, 1_000),
             )
@@ -393,6 +395,7 @@ mod tests {
                     until: at(500_000),
                     scope: Scope::Instance,
                     by_an_operator: true,
+                    origin: "https://weaveling.example.com".to_owned(),
                 },
                 &stamped(1, 1_000),
             )

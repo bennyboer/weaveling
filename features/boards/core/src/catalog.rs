@@ -61,6 +61,15 @@ pub trait BoardCatalog: Send + Sync {
     ) -> Result<u64, CatalogError>;
 
     async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError>;
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 }
 
 impl BoardSummary {

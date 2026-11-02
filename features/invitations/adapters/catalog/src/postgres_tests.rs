@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use invitations_core::{CatalogError, InvitationCatalog, InvitationId};
+use invitations_core::{CatalogError, InvitationCatalog, InvitationId, TokenKeys};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use transacting::{PostgresTransactions, Transactions};
@@ -134,5 +134,32 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
             .is_empty(),
         "a remember racing a forget must never bring the forgotten invitation back"
     );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
+    let bench = OnPostgres::setup().await;
+    let keys = Arc::new(postgres::PostgresTokenKeys::new(bench.pool.clone()));
+
+    let asked: Vec<_> = futures_util::future::join_all((0..8).map(|_| {
+        let keys = keys.clone();
+        async move { keys.key().await.expect("a key is at hand") }
+    }))
+    .await;
+
+    assert!(
+        asked.iter().all(|key| *key == asked[0]),
+        "every invitation issued and mailed is derived under the one key"
+    );
+    assert_eq!(
+        postgres::PostgresTokenKeys::new(bench.pool.clone())
+            .key()
+            .await
+            .expect("a key is at hand"),
+        asked[0],
+        "a restart finds the key it drew"
+    );
+
     bench.cleanup().await;
 }

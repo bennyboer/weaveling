@@ -19,21 +19,24 @@ use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
 use crate::scope::{ProjectLink, Role, Scope};
 use crate::service::InvitationService;
-use crate::token::InvitationToken;
+use crate::token::{InvitationToken, TokenKeys};
 
 #[derive(Clone)]
 pub struct InvitationsCore {
     service: InvitationService,
     transactions: Arc<dyn Transactions>,
+    keys: Arc<dyn TokenKeys>,
     catalog: Arc<dyn InvitationCatalog>,
     authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
 impl InvitationsCore {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: Arc<dyn EventStore<InvitationEvent>>,
         transactions: Arc<dyn Transactions>,
+        keys: Arc<dyn TokenKeys>,
         throttles: Arc<dyn Throttles>,
         catalog: Arc<dyn InvitationCatalog>,
         mailer: Arc<dyn Mailer>,
@@ -43,6 +46,7 @@ impl InvitationsCore {
         Self {
             service: InvitationService::new(store, throttles, mailer, clock.clone()),
             transactions,
+            keys,
             catalog,
             authorizer,
             clock,
@@ -71,16 +75,30 @@ impl InvitationsCore {
     ) -> Result<InvitationSummary, InvitationsError> {
         let to = EmailAddress::new(to)?;
         self.service.admitted(&to).await?;
+        let key = self.keys.key().await?;
 
         let mut transaction = self.transactions.begin().await?;
-        let (summary, mail) = self
+        let summary = self
             .service
-            .issue(&mut transaction, &to, origin, scope, by_an_operator, agent)
+            .issue(
+                &mut transaction,
+                &key,
+                &to,
+                origin,
+                scope,
+                by_an_operator,
+                agent,
+            )
             .await?;
         transaction.finish().await?;
-        self.service.send(mail).await?;
 
         Ok(summary)
+    }
+
+    pub async fn mail_issued(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
+        self.service
+            .mail_issued(&self.keys.key().await?, invitation)
+            .await
     }
 
     pub async fn invite_to_project(

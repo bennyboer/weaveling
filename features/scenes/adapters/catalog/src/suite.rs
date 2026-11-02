@@ -1,8 +1,9 @@
 use std::ops::Deref;
 
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError,
-    QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
+    CatalogError, Page, ProjectLink, QuotationRestylingProgress, QuotationRestylingStanding,
+    QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary,
+    SceneTitle,
 };
 use time::{Duration, OffsetDateTime};
 use transacting::{Transaction, Transactions};
@@ -133,43 +134,44 @@ impl<K: QuotationRestylingTasks> Committing<'_, K> {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError> {
         let mut transaction = self.begun().await;
         let begun = self
             .kept
-            .begin(&mut transaction, project, change, total)
+            .begin(&mut transaction, project, change, total, cursor)
             .await?;
         Self::finished(transaction).await;
 
         Ok(begun)
     }
 
-    async fn claim(
+    async fn standing(
         &self,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError> {
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError> {
         let mut transaction = self.begun().await;
-        let claimed = self.kept.claim(&mut transaction, project, change).await?;
+        let standing = self.kept.standing(&mut transaction, project).await?;
         Self::finished(transaction).await;
 
-        Ok(claimed)
+        Ok(standing)
     }
 
     async fn progressed(
         &self,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
+    ) -> Result<bool, QuotationRestylingTaskError> {
         let mut transaction = self.begun().await;
-        self.kept
-            .progressed(&mut transaction, project, change, done, finished)
+        let counted = self
+            .kept
+            .progressed(&mut transaction, project, change, page, finished)
             .await?;
         Self::finished(transaction).await;
 
-        Ok(())
+        Ok(counted)
     }
 }
 
@@ -450,84 +452,45 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
-async fn claimed(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-    project: &str,
-    change: u64,
-) -> bool {
-    tasks
-        .claim(&a_project(project), change)
-        .await
-        .expect("claiming should succeed")
-}
-
-pub async fn the_first_change_claims_the_book(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    assert!(claimed(tasks, "project_1", 3).await);
-}
-
-pub async fn a_newer_change_takes_the_book_from_an_older_one(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    claimed(tasks, "project_1", 3).await;
-
-    assert!(claimed(tasks, "project_1", 5).await);
-    assert!(
-        !claimed(tasks, "project_1", 3).await,
-        "the older change has lost the book for good"
-    );
-}
-
-pub async fn an_older_change_is_turned_away_and_leaves_the_newer_one_holding(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    claimed(tasks, "project_1", 5).await;
-
-    assert!(!claimed(tasks, "project_1", 3).await);
-    assert!(claimed(tasks, "project_1", 5).await);
-}
-
-pub async fn the_same_change_claims_the_book_again(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    claimed(tasks, "project_1", 5).await;
-
-    assert!(
-        claimed(tasks, "project_1", 5).await,
-        "every batch of one restyling claims the book anew"
-    );
-}
-
-pub async fn another_book_is_claimed_on_its_own(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    claimed(tasks, "project_1", 5).await;
-
-    assert!(claimed(tasks, "project_2", 3).await);
-}
-
 async fn begun(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
+    project: &str,
     change: u64,
     total: u64,
 ) -> bool {
     tasks
-        .begin(&a_project("project_1"), change, total)
+        .begin(&a_project(project), change, total, None)
         .await
         .expect("beginning should succeed")
+}
+
+async fn standing(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+    project: &str,
+) -> Option<QuotationRestylingStanding> {
+    tasks
+        .standing(&a_project(project))
+        .await
+        .expect("asking how a restyling stands should succeed")
 }
 
 async fn progressed(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
     change: u64,
+    from: Option<&str>,
+    to: Option<&str>,
     done: u64,
     finished: bool,
-) {
+) -> bool {
     tasks
-        .progressed(&a_project("project_1"), change, done, finished)
+        .progressed(
+            &a_project("project_1"),
+            change,
+            Page { from, to, done },
+            finished,
+        )
         .await
-        .expect("counting progress should succeed");
+        .expect("counting progress should succeed")
 }
 
 async fn progress(
@@ -553,42 +516,137 @@ fn so_far(
     })
 }
 
+fn standing_at(
+    change: u64,
+    cursor: Option<&str>,
+    finished: bool,
+) -> Option<QuotationRestylingStanding> {
+    Some(QuotationRestylingStanding {
+        change,
+        cursor: cursor.map(str::to_owned),
+        finished,
+    })
+}
+
+pub async fn the_first_change_begins_the_book(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    assert!(begun(tasks, "project_1", 3, 7).await);
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(3, None, false)
+    );
+}
+
+pub async fn a_newer_change_takes_the_book_from_an_older_one(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    begun(tasks, "project_1", 3, 7).await;
+
+    assert!(begun(tasks, "project_1", 5, 7).await);
+    assert!(
+        !begun(tasks, "project_1", 3, 7).await,
+        "the older change has lost the book for good"
+    );
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(5, None, false)
+    );
+}
+
+pub async fn the_same_change_begun_again_keeps_how_far_it_got(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    begun(tasks, "project_1", 5, 7).await;
+    progressed(tasks, 5, None, Some("scene_3"), 3, false).await;
+
+    assert!(
+        !begun(tasks, "project_1", 5, 7).await,
+        "a first message heard again must not start the count over"
+    );
+    assert_eq!(progress(tasks).await, so_far(5, 7, 3, false));
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(5, Some("scene_3"), false)
+    );
+}
+
+pub async fn another_book_is_begun_on_its_own(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    begun(tasks, "project_1", 5, 7).await;
+
+    assert!(begun(tasks, "project_2", 3, 1).await);
+}
+
 pub async fn a_book_never_restyled_has_no_progress(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
     assert_eq!(progress(tasks).await, None);
+    assert_eq!(standing(tasks, "project_1").await, None);
 }
 
-pub async fn a_restyling_counts_its_batches_until_it_is_finished(
+pub async fn a_restyling_counts_its_pages_until_it_is_finished(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
-    assert!(begun(tasks, 5, 7).await);
+    assert!(begun(tasks, "project_1", 5, 7).await);
 
-    progressed(tasks, 5, 4, false).await;
+    assert!(progressed(tasks, 5, None, Some("scene_4"), 4, false).await);
     assert_eq!(progress(tasks).await, so_far(5, 7, 4, false));
 
-    progressed(tasks, 5, 3, true).await;
+    assert!(progressed(tasks, 5, Some("scene_4"), Some("scene_7"), 3, true).await);
     assert_eq!(progress(tasks).await, so_far(5, 7, 7, true));
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(5, Some("scene_7"), true)
+    );
+}
+
+pub async fn a_page_counted_twice_is_counted_once(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    begun(tasks, "project_1", 5, 7).await;
+    progressed(tasks, 5, None, Some("scene_4"), 4, false).await;
+
+    assert!(
+        !progressed(tasks, 5, None, Some("scene_4"), 4, false).await,
+        "the page was counted when the cursor stood where it began"
+    );
+    assert_eq!(progress(tasks).await, so_far(5, 7, 4, false));
+}
+
+pub async fn a_finished_restyling_counts_no_more(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    begun(tasks, "project_1", 5, 1).await;
+    progressed(tasks, 5, None, None, 0, true).await;
+
+    assert!(!progressed(tasks, 5, None, None, 0, true).await);
+    assert_eq!(progress(tasks).await, so_far(5, 1, 0, true));
 }
 
 pub async fn a_newer_change_begins_counting_afresh(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
-    begun(tasks, 5, 7).await;
-    progressed(tasks, 5, 7, true).await;
+    begun(tasks, "project_1", 5, 7).await;
+    progressed(tasks, 5, None, Some("scene_7"), 7, true).await;
 
-    assert!(begun(tasks, 6, 2).await);
+    assert!(begun(tasks, "project_1", 6, 2).await);
 
     assert_eq!(progress(tasks).await, so_far(6, 2, 0, false));
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(6, None, false)
+    );
 }
 
 pub async fn an_older_change_neither_begins_nor_counts(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
-    begun(tasks, 5, 7).await;
+    begun(tasks, "project_1", 5, 7).await;
 
-    assert!(!begun(tasks, 3, 9).await);
-    progressed(tasks, 3, 2, true).await;
+    assert!(!begun(tasks, "project_1", 3, 9).await);
+    assert!(!progressed(tasks, 3, None, Some("scene_2"), 2, true).await);
 
     assert_eq!(
         progress(tasks).await,
@@ -597,23 +655,21 @@ pub async fn an_older_change_neither_begins_nor_counts(
     );
 }
 
-pub async fn a_batch_claiming_the_book_keeps_the_count(
+pub async fn a_continuation_nobody_began_counts_from_its_cursor(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
-    begun(tasks, 5, 7).await;
-    progressed(tasks, 5, 2, false).await;
-
-    claimed(tasks, "project_1", 5).await;
-
-    assert_eq!(progress(tasks).await, so_far(5, 7, 2, false));
-}
-
-pub async fn a_claim_nobody_began_counts_from_nothing(
-    tasks: &Committing<'_, impl QuotationRestylingTasks>,
-) {
-    claimed(tasks, "project_1", 5).await;
+    assert!(
+        tasks
+            .begin(&a_project("project_1"), 5, 0, Some("scene_3"))
+            .await
+            .expect("beginning should succeed")
+    );
 
     assert_eq!(progress(tasks).await, so_far(5, 0, 0, false));
+    assert_eq!(
+        standing(tasks, "project_1").await,
+        standing_at(5, Some("scene_3"), false)
+    );
 }
 
 pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
@@ -729,7 +785,7 @@ pub async fn a_claim_made_in_a_transaction_that_is_dropped_was_never_made(
     let mut transaction = tasks.begun().await;
     tasks
         .uncommitted()
-        .begin(&mut transaction, &a_project("project_1"), 5, 10)
+        .begin(&mut transaction, &a_project("project_1"), 5, 10, None)
         .await
         .expect("beginning should succeed");
 
@@ -817,23 +873,26 @@ macro_rules! conformance_tests {
             $workbench,
             tombstones_are_forgotten_oldest_first_and_at_most_so_many
         );
-        $crate::suite::restyling_case!($workbench, the_first_change_claims_the_book);
+        $crate::suite::restyling_case!($workbench, the_first_change_begins_the_book);
         $crate::suite::restyling_case!($workbench, a_newer_change_takes_the_book_from_an_older_one);
         $crate::suite::restyling_case!(
             $workbench,
-            an_older_change_is_turned_away_and_leaves_the_newer_one_holding
+            the_same_change_begun_again_keeps_how_far_it_got
         );
-        $crate::suite::restyling_case!($workbench, the_same_change_claims_the_book_again);
-        $crate::suite::restyling_case!($workbench, another_book_is_claimed_on_its_own);
+        $crate::suite::restyling_case!($workbench, another_book_is_begun_on_its_own);
         $crate::suite::restyling_case!($workbench, a_book_never_restyled_has_no_progress);
         $crate::suite::restyling_case!(
             $workbench,
-            a_restyling_counts_its_batches_until_it_is_finished
+            a_restyling_counts_its_pages_until_it_is_finished
         );
+        $crate::suite::restyling_case!($workbench, a_page_counted_twice_is_counted_once);
+        $crate::suite::restyling_case!($workbench, a_finished_restyling_counts_no_more);
         $crate::suite::restyling_case!($workbench, a_newer_change_begins_counting_afresh);
         $crate::suite::restyling_case!($workbench, an_older_change_neither_begins_nor_counts);
-        $crate::suite::restyling_case!($workbench, a_batch_claiming_the_book_keeps_the_count);
-        $crate::suite::restyling_case!($workbench, a_claim_nobody_began_counts_from_nothing);
+        $crate::suite::restyling_case!(
+            $workbench,
+            a_continuation_nobody_began_counts_from_its_cursor
+        );
     };
 }
 

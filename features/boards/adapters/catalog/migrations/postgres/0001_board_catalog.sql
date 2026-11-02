@@ -27,3 +27,10 @@ CREATE TABLE board_tombstones (
 );
 
 CREATE INDEX board_tombstones_by_laid_at ON board_tombstones (laid_at);
+
+CREATE TABLE project_tombstones (
+    project          TEXT COLLATE "C" PRIMARY KEY,
+    laid_at          TIMESTAMPTZ      NOT NULL
+);
+
+CREATE INDEX project_tombstones_by_laid_at ON project_tombstones (laid_at);

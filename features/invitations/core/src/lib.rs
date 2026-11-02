@@ -21,4 +21,4 @@ pub use invitation::{
 };
 pub use invitations::InvitationsCore;
 pub use scope::{ProjectLink, Role, Scope};
-pub use token::{InvitationToken, InvitationTokenDigest};
+pub use token::{InvitationToken, InvitationTokenDigest, TokenKey, TokenKeys};

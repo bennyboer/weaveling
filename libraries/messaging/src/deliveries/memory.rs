@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use async_trait::async_trait;
 use time::OffsetDateTime;
 
-use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
+use crate::delivering::{CLAIM_FOR, Claim, DeadLetter, Deliveries, DeliveryError, Queued};
 use crate::listening::{ListenerName, Notifications};
 use crate::message::Message;
 use tokio::sync::Notify;
@@ -15,6 +15,7 @@ struct QueuedDelivery {
     attempts: i32,
     due_at: OffsetDateTime,
     claimed_until: Option<OffsetDateTime>,
+    claim: Option<Claim>,
 }
 
 #[derive(Default)]
@@ -50,6 +51,35 @@ impl InMemoryDeliveries {
     }
 }
 
+impl Queues {
+    fn queue(&mut self, listener: ListenerName, message: Message, due_at: OffsetDateTime) {
+        if self
+            .deliveries
+            .iter()
+            .any(|queued| queued.listener == listener && queued.message.id == message.id)
+        {
+            return;
+        }
+        self.last_id += 1;
+
+        self.deliveries.push(QueuedDelivery {
+            id: self.last_id,
+            listener,
+            message,
+            attempts: 0,
+            due_at,
+            claimed_until: None,
+            claim: None,
+        });
+    }
+
+    fn held_by(&mut self, queued: &Queued) -> Option<usize> {
+        self.deliveries
+            .iter()
+            .position(|held| held.id == queued.id && held.claim == Some(queued.claim))
+    }
+}
+
 #[async_trait]
 impl Deliveries for InMemoryDeliveries {
     async fn enqueue(
@@ -57,19 +87,8 @@ impl Deliveries for InMemoryDeliveries {
         listener: &ListenerName,
         message: &Message,
     ) -> Result<(), DeliveryError> {
-        let mut queues = self.queues();
-        queues.last_id += 1;
-        let id = queues.last_id;
-
-        queues.deliveries.push(QueuedDelivery {
-            id,
-            listener: listener.clone(),
-            message: message.clone(),
-            attempts: 0,
-            due_at: message.occurred_at,
-            claimed_until: None,
-        });
-        drop(queues);
+        self.queues()
+            .queue(listener.clone(), message.clone(), message.occurred_at);
 
         self.waiting.notify_one();
 
@@ -81,6 +100,8 @@ impl Deliveries for InMemoryDeliveries {
         now: OffsetDateTime,
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError> {
+        let claim = Claim::drawn();
+
         Ok(self
             .queues()
             .deliveries
@@ -90,9 +111,11 @@ impl Deliveries for InMemoryDeliveries {
             .take(at_most.max(0) as usize)
             .map(|queued| {
                 queued.claimed_until = Some(now + CLAIM_FOR);
+                queued.claim = Some(claim);
 
                 Queued {
                     id: queued.id,
+                    claim,
                     listener: queued.listener.clone(),
                     message: queued.message.clone(),
                     attempts: queued.attempts,
@@ -101,29 +124,28 @@ impl Deliveries for InMemoryDeliveries {
             .collect())
     }
 
-    async fn mark_as_handled(&self, delivery: i64) -> Result<(), DeliveryError> {
-        self.queues()
-            .deliveries
-            .retain(|queued| queued.id != delivery);
+    async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError> {
+        let mut queues = self.queues();
+        if let Some(nth) = queues.held_by(queued) {
+            queues.deliveries.remove(nth);
+        }
 
         Ok(())
     }
 
     async fn mark_as_refused(
         &self,
-        delivery: i64,
+        queued: &Queued,
         _why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
-        if let Some(found) = self
-            .queues()
-            .deliveries
-            .iter_mut()
-            .find(|queued| queued.id == delivery)
-        {
+        let mut queues = self.queues();
+        if let Some(nth) = queues.held_by(queued) {
+            let found = &mut queues.deliveries[nth];
             found.attempts += 1;
             found.due_at = again_at;
             found.claimed_until = None;
+            found.claim = None;
         }
 
         Ok(())
@@ -131,17 +153,13 @@ impl Deliveries for InMemoryDeliveries {
 
     async fn give_up(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
         let mut queues = self.queues();
 
-        let Some(nth) = queues
-            .deliveries
-            .iter()
-            .position(|queued| queued.id == delivery)
-        else {
+        let Some(nth) = queues.held_by(queued) else {
             return Ok(());
         };
         let gone = queues.deliveries.remove(nth);
@@ -176,17 +194,7 @@ impl Deliveries for InMemoryDeliveries {
             return Ok(());
         };
         let revived = queues.dead_letters.remove(nth);
-        queues.last_id += 1;
-        let id = queues.last_id;
-
-        queues.deliveries.push(QueuedDelivery {
-            id,
-            listener: revived.listener,
-            message: revived.message,
-            attempts: 0,
-            due_at: at,
-            claimed_until: None,
-        });
+        queues.queue(revived.listener, revived.message, at);
         drop(queues);
 
         self.waiting.notify_one();

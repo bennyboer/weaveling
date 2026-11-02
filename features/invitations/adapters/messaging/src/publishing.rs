@@ -16,6 +16,7 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
             until,
             scope,
             by_an_operator,
+            ..
         } => InvitationEventDTO::Issued {
             to: to.to_string(),
             digest: digest.as_str().to_owned(),
@@ -101,6 +102,7 @@ mod tests {
             until: at(1_000) + Duration::days(7),
             scope: Scope::Instance,
             by_an_operator: true,
+            origin: "https://weaveling.example.com".to_owned(),
         }
     }
 
@@ -223,6 +225,7 @@ mod tests {
                         role,
                     },
                     by_an_operator: false,
+                    origin: "https://weaveling.example.com".to_owned(),
                 },
             ));
 
@@ -296,6 +299,7 @@ mod tests {
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: Scope::Instance,
                     by_an_operator: true,
+                    origin: "https://weaveling.example.com".to_owned(),
                     issued_by: None,
                     issued_at: at(1_000),
                     until: at(1_000) + Duration::days(7),

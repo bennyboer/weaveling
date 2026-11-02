@@ -16,6 +16,7 @@ use crate::scenes::model::SceneId;
 
 const OUTLINES: &str = "/api/outlines";
 const SUBJECT: &str = "outline";
+const OPENED_IN: &str = "project";
 
 pub async fn open(project: &ProjectId) -> Result<Outline, ApiError> {
     let payload = OpenOutlineRequest {
@@ -23,7 +24,7 @@ pub async fn open(project: &ProjectId) -> Result<Outline, ApiError> {
     };
     let response = http::sent_with(Request::post(OUTLINES), &payload).await?;
 
-    Ok(as_outline(http::parsed(response, SUBJECT).await?))
+    Ok(as_outline(http::parsed(response, OPENED_IN).await?))
 }
 
 pub async fn add(

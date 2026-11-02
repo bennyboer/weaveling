@@ -23,6 +23,7 @@ fn core_committing_with(
     InvitationsCore::new(
         store,
         Arc::new(transactions),
+        wired.keys.clone(),
         Arc::new(InMemoryThrottles::default()),
         wired.catalog.clone(),
         wired.mailbox.clone(),
@@ -41,7 +42,7 @@ async fn an_invitation_whose_issuing_cannot_be_kept_is_mailed_to_nobody() {
 
     assert!(refused.is_err());
     assert!(
-        wired.mailbox.sent_to("ada@example.com").is_empty(),
+        wired.sent_to("ada@example.com").await.is_empty(),
         "the mail goes out only once the invitation is kept"
     );
 }
@@ -105,7 +106,7 @@ async fn an_invitation_whose_commit_is_refused_is_mailed_to_nobody() {
 
     assert!(refused.is_err());
     assert!(
-        wired.mailbox.sent_to("ada@example.com").is_empty(),
+        wired.sent_to("ada@example.com").await.is_empty(),
         "the mail goes out only once the invitation is committed"
     );
 }

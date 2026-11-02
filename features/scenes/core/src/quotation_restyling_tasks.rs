@@ -21,12 +21,26 @@ pub struct QuotationRestyling {
     pub after: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuotationRestylingStanding {
+    pub change: u64,
+    pub cursor: Option<String>,
+    pub finished: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuotationRestylingProgress {
     pub change: u64,
     pub total: u64,
     pub done: u64,
     pub finished: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Page<'a> {
+    pub from: Option<&'a str>,
+    pub to: Option<&'a str>,
+    pub done: u64,
 }
 
 #[async_trait]
@@ -37,23 +51,23 @@ pub trait QuotationRestylingTasks: Send + Sync {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError>;
 
-    async fn claim(
+    async fn standing(
         &self,
         transaction: &mut Transaction,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError>;
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError>;
 
     async fn progressed(
         &self,
         transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError>;
+    ) -> Result<bool, QuotationRestylingTaskError>;
 
     async fn progress(
         &self,

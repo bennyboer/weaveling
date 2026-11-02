@@ -6,7 +6,7 @@ use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
+use crate::delivering::{CLAIM_FOR, Claim, DeadLetter, Deliveries, DeliveryError, Queued};
 use crate::listening::{ListenerName, Notifications};
 use crate::message::{Conversation, Message, MessageId};
 use crate::routing::RoutingKey;
@@ -17,6 +17,7 @@ const ENQUEUE: &str = "
     INSERT INTO deliveries
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, due_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+    ON CONFLICT (listener, message_id) DO NOTHING
 ";
 
 const CLAIM_DUE: &str = "
@@ -29,24 +30,25 @@ const CLAIM_DUE: &str = "
         FOR UPDATE SKIP LOCKED
     )
     UPDATE deliveries
-    SET claimed_until = $2
+    SET claimed_until = $2, claim = $4
     WHERE delivery IN (SELECT delivery FROM due)
     RETURNING delivery, listener, message_id, conversation, caused_by, routing_key, payload,
               occurred_at, attempts
 ";
 
-const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = $1";
+const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = $1 AND claim = $2";
 
 const REFUSED: &str = "
     UPDATE deliveries
-    SET attempts = attempts + 1, due_at = $2, claimed_until = NULL, last_refusal = $3
-    WHERE delivery = $1
+    SET attempts = attempts + 1, due_at = $2, claimed_until = NULL, claim = NULL,
+        last_refusal = $3
+    WHERE delivery = $1 AND claim = $4
 ";
 
 const GIVE_UP: &str = "
     WITH gone AS (
         DELETE FROM deliveries
-        WHERE delivery = $1
+        WHERE delivery = $1 AND claim = $4
         RETURNING listener, message_id, conversation, caused_by, routing_key, payload,
                   occurred_at, attempts
     )
@@ -76,6 +78,7 @@ const RETRY: &str = "
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, due_at)
     SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, $2
     FROM revived
+    ON CONFLICT (listener, message_id) DO NOTHING
 ";
 
 const ACKNOWLEDGE: &str = "
@@ -174,10 +177,12 @@ impl Deliveries for PostgresDeliveries {
         now: OffsetDateTime,
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError> {
+        let claim = Claim::drawn();
         let claimed = sqlx::query(CLAIM_DUE)
             .bind(now)
             .bind(now + CLAIM_FOR)
             .bind(at_most)
+            .bind(claim.as_uuid())
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -190,6 +195,7 @@ impl Deliveries for PostgresDeliveries {
 
                 Ok(Queued {
                     id,
+                    claim,
                     listener,
                     message,
                     attempts,
@@ -201,9 +207,10 @@ impl Deliveries for PostgresDeliveries {
         Ok(queued)
     }
 
-    async fn mark_as_handled(&self, delivery: i64) -> Result<(), DeliveryError> {
+    async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError> {
         sqlx::query(HANDLED)
-            .bind(delivery)
+            .bind(queued.id)
+            .bind(queued.claim.as_uuid())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -213,14 +220,15 @@ impl Deliveries for PostgresDeliveries {
 
     async fn mark_as_refused(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
         sqlx::query(REFUSED)
-            .bind(delivery)
+            .bind(queued.id)
             .bind(again_at)
             .bind(why)
+            .bind(queued.claim.as_uuid())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -230,14 +238,15 @@ impl Deliveries for PostgresDeliveries {
 
     async fn give_up(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
         sqlx::query(GIVE_UP)
-            .bind(delivery)
+            .bind(queued.id)
             .bind(why)
             .bind(at)
+            .bind(queued.claim.as_uuid())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;

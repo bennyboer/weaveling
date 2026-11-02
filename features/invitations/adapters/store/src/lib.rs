@@ -17,6 +17,8 @@ enum StoredInvitationEvent {
         scope: StoredScope,
         #[serde(default)]
         by_an_operator: bool,
+        #[serde(default)]
+        origin: String,
     },
     Accepted {
         #[serde(default)]
@@ -34,6 +36,8 @@ enum StoredInvitationEvent {
         scope: StoredScope,
         #[serde(default)]
         by_an_operator: bool,
+        #[serde(default)]
+        origin: String,
         issued_by: Option<String>,
         #[serde(with = "time::serde::rfc3339")]
         issued_at: OffsetDateTime,
@@ -189,12 +193,14 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 until,
                 scope,
                 by_an_operator,
+                origin,
             } => Self::Issued {
                 to: to.to_string(),
                 digest: digest.as_str().to_owned(),
                 until: *until,
                 scope: scope.into(),
                 by_an_operator: *by_an_operator,
+                origin: origin.clone(),
             },
             InvitationEvent::Accepted { scope } => Self::Accepted {
                 scope: scope.into(),
@@ -209,6 +215,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 digest,
                 scope,
                 by_an_operator,
+                origin,
                 issued_by,
                 issued_at,
                 until,
@@ -220,6 +227,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 digest: digest.as_str().to_owned(),
                 scope: scope.into(),
                 by_an_operator: *by_an_operator,
+                origin: origin.clone(),
                 issued_by: issued_by.as_ref().map(ToString::to_string),
                 issued_at: *issued_at,
                 until: *until,
@@ -249,12 +257,14 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 until,
                 scope,
                 by_an_operator,
+                origin,
             } => Self::Issued {
                 to: readable(&to)?,
                 digest: InvitationTokenDigest::kept(digest),
                 until,
                 scope: scope.into(),
                 by_an_operator,
+                origin,
             },
             StoredInvitationEvent::Accepted { scope } => Self::Accepted {
                 scope: scope.into(),
@@ -269,6 +279,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 digest,
                 scope,
                 by_an_operator,
+                origin,
                 issued_by,
                 issued_at,
                 until,
@@ -280,6 +291,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 digest: InvitationTokenDigest::kept(digest),
                 scope: scope.into(),
                 by_an_operator,
+                origin,
                 issued_by: issued_by.map(AccountId::from),
                 issued_at,
                 until,
@@ -331,6 +343,7 @@ mod tests {
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     scope: Scope::Instance,
                     by_an_operator: true,
+                    origin: "https://weaveling.example.com".to_owned(),
                 },
                 InvitationEvent::Issued {
                     to: ada(),
@@ -338,6 +351,7 @@ mod tests {
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     scope: a_project_s(Role::Reader),
                     by_an_operator: false,
+                    origin: "https://weaveling.example.com".to_owned(),
                 },
                 InvitationEvent::Accepted {
                     scope: Scope::Instance,
@@ -357,6 +371,7 @@ mod tests {
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: a_project_s(Role::Author),
                     by_an_operator: true,
+                    origin: "https://weaveling.example.com".to_owned(),
                     issued_by: Some(AccountId::from("account_grace")),
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
@@ -369,6 +384,7 @@ mod tests {
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: Scope::Instance,
                     by_an_operator: false,
+                    origin: "https://weaveling.example.com".to_owned(),
                     issued_by: None,
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
@@ -392,6 +408,7 @@ mod tests {
                 until: OffsetDateTime::UNIX_EPOCH,
                 scope: a_project_s(role),
                 by_an_operator: true,
+                origin: "https://weaveling.example.com".to_owned(),
             };
             assert_eq!(round_trip(issued.clone()), issued);
         }
@@ -406,6 +423,7 @@ mod tests {
                 until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                 scope: Scope::Instance,
                 by_an_operator: false,
+                origin: String::new(),
             })
         );
     }
@@ -435,6 +453,7 @@ mod tests {
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 scope: Scope::Instance,
                 by_an_operator: false,
+                origin: String::new(),
                 issued_by: None,
                 issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                 until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),

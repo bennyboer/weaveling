@@ -13,7 +13,7 @@ use outline_core::{OutlineCatalog, OutlineEvent, OutlinesCore};
 use outline_messaging::{
     CatalogueOutlinesListener, DetachEverywhereListener, DetachGoneAttachmentsListener,
     DetachOnDiscardListener, DetachOnSceneDeletedListener, DiscardOutlinesOnProjectDeletedListener,
-    IndexAttachmentsListener,
+    IndexAttachmentsListener, RememberDeletedProjectsListener,
 };
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
@@ -87,6 +87,15 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.transactions.clone(),
         ports.inbox.clone(),
     );
+    let remember_deleted_projects = Inboxed::new(
+        RememberDeletedProjectsListener::new(
+            outlines.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -107,6 +116,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(detach_deleted_scenes),
             Arc::new(detach_everywhere),
             Arc::new(detach_gone),
+            Arc::new(remember_deleted_projects),
             Arc::new(sweep),
         ])
         .doing_chores(vec![

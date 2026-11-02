@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clock::Clock;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaId, IdeasCore};
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey, WithoutInbox};
 use projects_contract::{DELETED, ProjectEventDTO};
 
 pub const AT_MOST: usize = 100;
@@ -81,6 +81,7 @@ impl Handler for DiscardOnProjectDeletedListener {
     const NAME: &'static str = "discard-ideas-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
     const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not cleared away.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         self.sweep(message).await

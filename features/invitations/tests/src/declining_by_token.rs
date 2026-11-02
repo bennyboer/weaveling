@@ -19,6 +19,7 @@ async fn invited(wired: &Wired) -> InvitationId {
         .expect("an operator may invite")
         .id;
     catalogued(wired, &id).await;
+    wired.mailed().await;
 
     id
 }
@@ -42,15 +43,15 @@ async fn happened(wired: &Wired, id: &InvitationId) -> Vec<(InvitationEvent, Age
         .collect()
 }
 
-fn the_token(wired: &Wired) -> String {
-    wired.token_mailed_to(ADA).as_str().to_owned()
+async fn the_token(wired: &Wired) -> String {
+    wired.token_mailed_to(ADA).await.as_str().to_owned()
 }
 
 #[tokio::test]
 async fn whoever_holds_the_link_turns_the_invitation_down_once_in_nobody_s_name() {
     let wired = wiring::wired();
     let id = invited(&wired).await;
-    let token = the_token(&wired);
+    let token = the_token(&wired).await;
 
     for _ in 0..2 {
         wired
@@ -79,12 +80,12 @@ async fn whoever_holds_the_link_turns_the_invitation_down_once_in_nobody_s_name(
 async fn a_link_nobody_was_given_or_one_taken_up_or_withdrawn_turns_nothing_down() {
     let wired = wiring::wired();
     let accepted = invited(&wired).await;
-    let accepted_link = the_token(&wired);
+    let accepted_link = the_token(&wired).await;
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::minutes(2));
     let withdrawn = invited(&wired).await;
-    let withdrawn_link = the_token(&wired);
+    let withdrawn_link = the_token(&wired).await;
     wired
         .invitations
         .taken_up(
@@ -133,10 +134,13 @@ async fn a_link_is_turned_down_to_its_last_moment_and_run_out_no_longer() {
 
     on_time
         .invitations
-        .decline_by_token(&the_token(&on_time))
+        .decline_by_token(&the_token(&on_time).await)
         .await
         .expect("a link still holds at its last moment");
-    let refused = late.invitations.decline_by_token(&the_token(&late)).await;
+    let refused = late
+        .invitations
+        .decline_by_token(&the_token(&late).await)
+        .await;
 
     assert_eq!(happened(&on_time, &in_time).await.len(), 2);
     assert!(
@@ -163,7 +167,7 @@ async fn anyone_turns_an_invitation_down_by_its_link_without_signing_in() {
         wired.invitations.clone(),
     ));
 
-    declines(&server, &the_token(&wired))
+    declines(&server, &the_token(&wired).await)
         .await
         .assert_status(StatusCode::NO_CONTENT);
     let nowhere = declines(&server, "a link nobody was given").await;
@@ -184,7 +188,7 @@ async fn a_link_run_out_is_refused_by_its_kind() {
         wired.invitations.clone(),
     ));
 
-    let refused = declines(&server, &the_token(&wired)).await;
+    let refused = declines(&server, &the_token(&wired).await).await;
 
     refused.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(refused.json::<Value>()["type"], refused::INVITATION_EXPIRED);

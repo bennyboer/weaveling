@@ -49,6 +49,9 @@ impl OutlinesCore {
             OutlinesError::ProjectNotThere
         })
         .await?;
+        if self.catalog.has_project_tombstone(&project).await? {
+            return Err(OutlinesError::ProjectNotThere);
+        }
 
         let mut transaction = self.transactions.begin().await?;
         let id = self
@@ -56,6 +59,10 @@ impl OutlinesCore {
             .claim(&mut transaction, &project, agent)
             .await?;
         transaction.finish().await?;
+        if self.catalog.has_project_tombstone(&project).await? {
+            self.discarded(&id).await?;
+            return Err(OutlinesError::ProjectNotThere);
+        }
 
         Ok(Open {
             id,
@@ -327,12 +334,29 @@ impl OutlinesCore {
             return Ok(());
         };
 
-        match self.as_the_system(&outline, OutlineCommand::Discard).await {
-            Ok(()) | Err(OutlinesError::Events(ServiceError::Refused(OutlineError::Discarded))) => {
-                Ok(())
-            }
+        self.discarded(&outline).await
+    }
+
+    async fn discarded(&self, outline: &OutlineId) -> Result<(), OutlinesError> {
+        match self.as_the_system(outline, OutlineCommand::Discard).await {
+            Ok(())
+            | Err(OutlinesError::Events(ServiceError::Refused(OutlineError::Discarded)))
+            | Err(OutlinesError::Events(ServiceError::NotFound { .. })) => Ok(()),
             Err(refused) => Err(refused),
         }
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), OutlinesError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(

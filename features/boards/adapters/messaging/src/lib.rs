@@ -49,4 +49,7 @@ impl KeptHandler for CatalogueBoardsListener {
     }
 }
 
-pub use sweeping::DiscardBoardsOnProjectDeletedListener;
+pub use sweeping::{
+    DiscardBoardsOnProjectDeletedListener, RememberDeletedProjectsListener, SWEEP_PROJECT,
+    SweepProjectDTO,
+};

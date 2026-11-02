@@ -1,13 +1,16 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use acting::Acting;
 use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
-use invitations_catalog::InMemoryInvitationCatalog;
+use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
+use invitations_contract::ISSUED;
 use invitations_core::{InvitationEvent, InvitationToken, InvitationsCore};
-use mailing::FakeMailbox;
+use invitations_messaging::MailIssuedInvitationListener;
+use mailing::{FakeMailbox, Mail};
 use messaging::{FakePublisher, Listener, Message};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
@@ -28,6 +31,11 @@ pub struct Wired {
     pub clock: Arc<FixedClock>,
     pub outbox: Arc<InMemoryOutbox>,
     pub published: Arc<FakePublisher>,
+    pub keys: Arc<InMemoryTokenKeys>,
+    pub events: Arc<InMemoryOutbox>,
+    pub told: Arc<FakePublisher>,
+    pub mailing: Inboxed<MailIssuedInvitationListener>,
+    handed: AtomicUsize,
 }
 
 pub fn wired() -> Wired {
@@ -36,28 +44,42 @@ pub fn wired() -> Wired {
 
 pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
-    let store = Arc::new(InMemoryEventStore::new());
+    let told = Arc::new(FakePublisher::default());
+    let events = Arc::new(InMemoryOutbox::new(told.clone(), clock.clone()));
+    let store = Arc::new(InMemoryEventStore::enqueuing_to(
+        events.clone(),
+        invitations_messaging::message_for,
+    ));
+    let keys = Arc::new(InMemoryTokenKeys::new());
     let mailbox = Arc::new(FakeMailbox::default());
     let catalog = Arc::new(InMemoryInvitationCatalog::new());
     let published = Arc::new(FakePublisher::default());
     let outbox = Arc::new(InMemoryOutbox::new(published.clone(), clock.clone()));
 
+    let invitations = InvitationsCore::new(
+        store.clone(),
+        Arc::new(InMemoryTransactions::new()),
+        keys.clone(),
+        Arc::new(InMemoryThrottles::default()),
+        catalog.clone(),
+        mailbox.clone(),
+        authorizer,
+        clock.clone(),
+    );
+
     Wired {
-        invitations: InvitationsCore::new(
-            store.clone(),
-            Arc::new(InMemoryTransactions::new()),
-            Arc::new(InMemoryThrottles::default()),
-            catalog.clone(),
-            mailbox.clone(),
-            authorizer,
-            clock.clone(),
-        ),
+        mailing: inboxed(MailIssuedInvitationListener::new(invitations.clone())),
+        invitations,
         store,
         catalog,
         mailbox,
         clock,
         outbox,
         published,
+        keys,
+        events,
+        told,
+        handed: AtomicUsize::new(0),
     }
 }
 
@@ -120,9 +142,31 @@ impl Wired {
         }
     }
 
-    pub fn links_mailed_to(&self, address: &str) -> Vec<String> {
-        self.mailbox
-            .sent_to(address)
+    pub async fn mailed(&self) {
+        self.events
+            .deliver(100)
+            .await
+            .expect("delivering should succeed");
+        let told = self.told.heard();
+        for issued in &told[self.handed.swap(told.len(), Ordering::AcqRel)..] {
+            if issued.routing.to_string() == ISSUED {
+                self.mailing
+                    .handle(issued)
+                    .await
+                    .expect("an issued invitation is mailed");
+            }
+        }
+    }
+
+    pub async fn sent_to(&self, address: &str) -> Vec<Mail> {
+        self.mailed().await;
+
+        self.mailbox.sent_to(address)
+    }
+
+    pub async fn links_mailed_to(&self, address: &str) -> Vec<String> {
+        self.sent_to(address)
+            .await
             .iter()
             .filter_map(|mail| {
                 mail.body
@@ -133,9 +177,10 @@ impl Wired {
             .collect()
     }
 
-    pub fn token_mailed_to(&self, address: &str) -> InvitationToken {
+    pub async fn token_mailed_to(&self, address: &str) -> InvitationToken {
         let link = self
             .links_mailed_to(address)
+            .await
             .pop()
             .expect("a link should have been mailed");
 

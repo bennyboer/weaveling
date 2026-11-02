@@ -7,7 +7,7 @@ use axum_test::TestServer;
 use clock::FixedClock;
 use email::EmailAddress;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
-use invitations_catalog::InMemoryInvitationCatalog;
+use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
 use invitations_core::{InvitationCatalog, InvitationId, InvitationsCore, Person, Role};
 use invitations_rest::{InvitationChanges, TellingInvitations};
 use live::Broadcaster;
@@ -32,6 +32,7 @@ fn told() -> Told {
         invitations: InvitationsCore::new(
             Arc::new(InMemoryEventStore::new()),
             Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryTokenKeys::new()),
             Arc::new(InMemoryThrottles::default()),
             Arc::new(TellingInvitations::around(
                 Arc::new(InMemoryInvitationCatalog::new()),

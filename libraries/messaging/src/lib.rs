@@ -18,14 +18,14 @@ pub mod sqlite;
 pub use consuming::DeliveryConsumer;
 pub use deliveries::InMemoryDeliveries;
 pub use delivering::{
-    ATTEMPTS, BACKOFF, CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued, RETRIABLE_FOR,
-    again_after,
+    ATTEMPTS, BACKOFF, CLAIM_FOR, Claim, DeadLetter, Deliveries, DeliveryError, Queued,
+    RETRIABLE_FOR, again_after,
 };
 pub use fake::FakePublisher;
 pub use in_process::InProcessDispatcher;
 pub use listening::{
     Delivery, Failure, Handler, InvalidListenerName, Listener, ListenerName, NotHandled,
-    Notifications, Publisher, Undelivered,
+    Notifications, Publisher, Undelivered, WithoutInbox,
 };
 pub use message::{Conversation, Message, MessageId, Misshapen, Unshaped};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};

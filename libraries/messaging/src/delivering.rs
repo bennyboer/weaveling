@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use uuid::Uuid;
 
 use crate::listening::{ListenerName, Notifications};
 use crate::message::Message;
@@ -23,9 +24,27 @@ pub enum DeliveryError {
     Unreadable { delivery: i64, why: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Claim(Uuid);
+
+impl Claim {
+    pub fn drawn() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    pub fn of(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Queued {
     pub id: i64,
+    pub claim: Claim,
     pub listener: ListenerName,
     pub message: Message,
     pub attempts: i32,
@@ -62,18 +81,18 @@ pub trait Deliveries: Send + Sync {
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError>;
 
-    async fn mark_as_handled(&self, delivery: i64) -> Result<(), DeliveryError>;
+    async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError>;
 
     async fn mark_as_refused(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError>;
 
     async fn give_up(
         &self,
-        delivery: i64,
+        queued: &Queued,
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError>;

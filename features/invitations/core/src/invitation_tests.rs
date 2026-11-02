@@ -39,6 +39,7 @@ fn an_issue(seconds: i64) -> InvitationEvent {
         until: at(seconds) + Invitation::LASTS,
         scope: Scope::Instance,
         by_an_operator: true,
+        origin: "https://weaveling.example.com".to_owned(),
     }
 }
 
@@ -61,6 +62,7 @@ fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
                 until: at(1_000) + Invitation::LASTS,
                 scope: Scope::Instance,
                 by_an_operator: true,
+                origin: "https://weaveling.example.com".to_owned(),
             },
             &an_operator()
         ),
@@ -82,6 +84,7 @@ fn an_invitation_holds_until_its_issue_says_however_late_it_was_told() {
         until: at(5_000),
         scope: Scope::Instance,
         by_an_operator: true,
+        origin: "https://weaveling.example.com".to_owned(),
     };
 
     let invitation =
@@ -197,6 +200,7 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
                 until: at(2_000),
                 scope: Scope::Instance,
                 by_an_operator: true,
+                origin: "https://weaveling.example.com".to_owned(),
             },
             &an_operator()
         ),
@@ -241,6 +245,7 @@ fn a_snapshot_keeps_its_scope_and_whether_an_operator_issued_it() {
             role: Role::Reader,
         },
         by_an_operator: false,
+        origin: "https://weaveling.example.com".to_owned(),
     };
     let invitation = Invitation::from_first(&into_a_project, &stamped(1, at(1_000)))
         .expect("issuing gives birth");
@@ -406,6 +411,7 @@ fn an_acceptance_tells_the_scope_it_was_into() {
             until: at(1_000) + Invitation::LASTS,
             scope: into_a_project.clone(),
             by_an_operator: false,
+            origin: "https://weaveling.example.com".to_owned(),
         },
         &stamped(1, at(1_000)),
     )
@@ -454,6 +460,7 @@ fn an_invitation_keeps_its_token_s_digest_and_through_a_snapshot() {
             until: at(1_000) + Invitation::LASTS,
             scope: Scope::Instance,
             by_an_operator: true,
+            origin: "https://weaveling.example.com".to_owned(),
         },
         &stamped(1, at(1_000)),
     )

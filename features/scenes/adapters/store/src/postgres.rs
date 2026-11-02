@@ -55,7 +55,7 @@ const WRITE_SNAPSHOT: &str = "
 
 const WRITE_UPDATE: &str = "
     WITH bumped AS (
-        UPDATE scenes SET version = version + 1 WHERE scene = $1
+        UPDATE scenes SET version = version + 1, uncounted = TRUE WHERE scene = $1
     )
     INSERT INTO scene_updates (scene, is_snapshot, bytes)
     VALUES ($1, FALSE, $2)
@@ -86,6 +86,10 @@ const HOLD: &str = "SELECT project FROM scenes WHERE scene = $1 FOR UPDATE";
 const FORGET_BEFORE: &str = "DELETE FROM scene_updates WHERE scene = $1 AND seq < $2";
 
 const FORGET: &str = "DELETE FROM scenes WHERE scene = $1 RETURNING project";
+
+const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1";
+
+const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT $1";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
@@ -412,7 +416,14 @@ impl SceneStore for PostgresSceneStore {
             project,
             words,
         })
-        .await
+        .await?;
+        sqlx::query(COUNTED)
+            .bind(id.to_string())
+            .execute(connection(transaction)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn announce_opening(
@@ -525,6 +536,23 @@ impl SceneStore for PostgresSceneStore {
             .bind(project.to_string())
             .bind(after.map(|last| last.to_string()).unwrap_or_default())
             .bind(at_most as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|scene| {
+                scene
+                    .parse()
+                    .map_err(|why| StoreError::Backend(Box::new(why)))
+            })
+            .collect()
+    }
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        let found: Vec<String> = sqlx::query_scalar(UNCOUNTED)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

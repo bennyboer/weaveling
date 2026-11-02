@@ -1,3 +1,4 @@
+mod counting;
 mod tombstones;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use scenes_sync::LiveScenes;
 use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Settling, Wired};
 
+use crate::counting::CountTheUncounted;
 use crate::tombstones::SceneTombstones;
 
 pub struct Ports {
@@ -89,8 +91,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(catalogue),
         Arc::new(restyle),
     ])
-    .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
+    .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live.clone()))])
     .doing_chores(vec![
+        Arc::new(CountTheUncounted::of(live)),
         Arc::new(ForgetOldTombstones::new(
             "forget-old-scene-tombstones",
             Arc::new(SceneTombstones::of(core)),
@@ -242,7 +245,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+    async fn the_feature_counts_what_is_left_uncounted_and_forgets_its_old_tombstones_and_hearings_as_chores()
+     {
         let context = a_context();
         let ports = SceneFeature::in_memory(&context);
         let wired = SceneFeature::wire(&ports, &context);
@@ -267,10 +271,11 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
-        let [tombstones, hearings] = wired.chores.as_slice() else {
-            panic!("the feature hands over two chores");
+        let [counting, tombstones, hearings] = wired.chores.as_slice() else {
+            panic!("the feature hands over three chores");
         };
 
+        assert_eq!(counting.named(), "count-scenes-left-uncounted");
         assert_eq!(tombstones.named(), "forget-old-scene-tombstones");
         assert_eq!(hearings.named(), "forget-old-scene-hearings");
         assert_eq!(

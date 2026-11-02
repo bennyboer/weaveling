@@ -10,7 +10,9 @@ CREATE TABLE deliveries (
     attempts        INTEGER     NOT NULL DEFAULT 0,
     due_at          TIMESTAMPTZ NOT NULL,
     claimed_until   TIMESTAMPTZ,
-    last_refusal    TEXT
+    claim           UUID,
+    last_refusal    TEXT,
+    UNIQUE (listener, message_id)
 );
 
 CREATE INDEX deliveries_due ON deliveries (due_at, delivery);

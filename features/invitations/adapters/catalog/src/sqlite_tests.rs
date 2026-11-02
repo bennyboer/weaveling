@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use invitations_core::{CatalogError, InvitationCatalog, InvitationId};
+use invitations_core::{CatalogError, InvitationCatalog, InvitationId, TokenKeys};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 use transacting::{SqliteTransactions, Transactions};
@@ -111,5 +111,52 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
             .is_empty(),
         "a remember racing a forget must never bring the forgotten invitation back"
     );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
+    let bench = OnSqlite::setup().await;
+    let keys = Arc::new(sqlite::SqliteTokenKeys::new(bench.pool.clone()));
+
+    let asked: Vec<_> = futures_util::future::join_all((0..8).map(|_| {
+        let keys = keys.clone();
+        async move { keys.key().await.expect("a key is at hand") }
+    }))
+    .await;
+
+    assert!(
+        asked.iter().all(|key| *key == asked[0]),
+        "every invitation issued and mailed is derived under the one key"
+    );
+    assert_eq!(
+        sqlite::SqliteTokenKeys::new(bench.pool.clone())
+            .key()
+            .await
+            .expect("a key is at hand"),
+        asked[0],
+        "a restart finds the key it drew"
+    );
+
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_key_once_drawn_is_read_while_another_writer_holds_the_file() {
+    let bench = OnSqlite::setup().await;
+    let keys = sqlite::SqliteTokenKeys::new(bench.pool.clone());
+    let drawn = keys.key().await.expect("a key is at hand");
+    let writing = SqliteTransactions::new(bench.pool.clone())
+        .begin()
+        .await
+        .expect("a writer begins");
+
+    let read = tokio::time::timeout(std::time::Duration::from_secs(2), keys.key())
+        .await
+        .expect("a hearing's own writer must not keep its mail from the key")
+        .expect("a key is at hand");
+
+    assert_eq!(read, drawn);
+    drop(writing);
     bench.cleanup().await;
 }

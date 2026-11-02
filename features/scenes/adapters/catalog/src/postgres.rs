@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError,
-    QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
+    CatalogError, Page, ProjectLink, QuotationRestylingProgress, QuotationRestylingStanding,
+    QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary,
+    SceneTitle,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
@@ -54,6 +55,8 @@ const SUMMARY_OF: &str = "
 
 const FORGET: &str = "DELETE FROM scene_catalog WHERE scene = $1";
 
+const HOLD_SCENE: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
+
 const IN_PROJECT_AFTER: &str = "
     SELECT scene, project, title, opening
     FROM scene_catalog
@@ -63,31 +66,29 @@ const IN_PROJECT_AFTER: &str = "
 ";
 
 const BEGIN: &str = "
-    INSERT INTO quotation_restyling_tasks (project, latest_change, total)
-    VALUES ($1, $2, $3)
+    INSERT INTO quotation_restyling_tasks (project, latest_change, total, cursor)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (project) DO UPDATE
-    SET latest_change = excluded.latest_change, total = excluded.total, done = 0, finished = FALSE
-    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
+    SET latest_change = excluded.latest_change, total = excluded.total, done = 0, finished = FALSE, cursor = excluded.cursor
+    WHERE quotation_restyling_tasks.latest_change < excluded.latest_change
+";
+
+const STANDING: &str = "
+    SELECT latest_change, cursor, finished
+    FROM quotation_restyling_tasks
+    WHERE project = $1
 ";
 
 const PROGRESSED: &str = "
     UPDATE quotation_restyling_tasks
-    SET done = done + $3, finished = $4
-    WHERE project = $1 AND latest_change = $2
+    SET done = done + $5, finished = $6, cursor = $4
+    WHERE project = $1 AND latest_change = $2 AND cursor IS NOT DISTINCT FROM $3 AND finished = FALSE
 ";
 
 const PROGRESS: &str = "
     SELECT latest_change, total, done, finished
     FROM quotation_restyling_tasks
     WHERE project = $1
-";
-
-const CLAIM: &str = "
-    INSERT INTO quotation_restyling_tasks (project, latest_change)
-    VALUES ($1, $2)
-    ON CONFLICT (project) DO UPDATE
-    SET latest_change = excluded.latest_change
-    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
 ";
 
 pub fn migrations() -> Migrator {
@@ -115,6 +116,16 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
     CatalogError::Backend(Box::new(failure))
 }
 
+async fn hold(transaction: &mut Transaction, id: SceneId) -> Result<(), CatalogError> {
+    sqlx::query(HOLD_SCENE)
+        .bind(id.to_string())
+        .execute(connection(transaction).map_err(unreachable)?)
+        .await
+        .map_err(unreachable)?;
+
+    Ok(())
+}
+
 fn summary_from(row: &sqlx::postgres::PgRow) -> Result<SceneSummary, CatalogError> {
     let scene: String = row.try_get("scene").map_err(unreachable)?;
     let project: String = row.try_get("project").map_err(unreachable)?;
@@ -137,6 +148,7 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
+        hold(transaction, id).await?;
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -155,6 +167,7 @@ impl SceneCatalog for PostgresSceneCatalog {
         title: &SceneTitle,
         version: u64,
     ) -> Result<(), CatalogError> {
+        hold(transaction, id).await?;
         sqlx::query(RETITLE)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -175,6 +188,7 @@ impl SceneCatalog for PostgresSceneCatalog {
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        hold(transaction, id).await?;
         sqlx::query(NOTE_OPENING)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -193,6 +207,7 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        hold(transaction, id).await?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(in_microseconds(at))
@@ -285,11 +300,13 @@ impl QuotationRestylingTasks for PostgresQuotationRestylingTasks {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError> {
         let written = sqlx::query(BEGIN)
             .bind(project.to_string())
             .bind(in_column(change))
             .bind(in_column(total))
+            .bind(cursor)
             .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
@@ -297,20 +314,25 @@ impl QuotationRestylingTasks for PostgresQuotationRestylingTasks {
         Ok(written.rows_affected() == 1)
     }
 
-    async fn claim(
+    async fn standing(
         &self,
         transaction: &mut Transaction,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError> {
-        let written = sqlx::query(CLAIM)
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError> {
+        let Some(row) = sqlx::query(STANDING)
             .bind(project.to_string())
-            .bind(in_column(change))
-            .execute(connection(transaction).map_err(untold)?)
+            .fetch_optional(connection(transaction).map_err(untold)?)
             .await
-            .map_err(untold)?;
+            .map_err(untold)?
+        else {
+            return Ok(None);
+        };
 
-        Ok(written.rows_affected() == 1)
+        Ok(Some(QuotationRestylingStanding {
+            change: counted(&row, "latest_change")?,
+            cursor: row.try_get("cursor").map_err(untold)?,
+            finished: row.try_get("finished").map_err(untold)?,
+        }))
     }
 
     async fn progressed(
@@ -318,19 +340,21 @@ impl QuotationRestylingTasks for PostgresQuotationRestylingTasks {
         transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
-        sqlx::query(PROGRESSED)
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let written = sqlx::query(PROGRESSED)
             .bind(project.to_string())
             .bind(in_column(change))
-            .bind(in_column(done))
+            .bind(page.from)
+            .bind(page.to)
+            .bind(in_column(page.done))
             .bind(finished)
             .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
 
-        Ok(())
+        Ok(written.rows_affected() == 1)
     }
 
     async fn progress(

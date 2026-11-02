@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
+use messaging::{Failure, Handler, Message, MessageId, Publisher, RoutingKey, WithoutInbox};
 use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
 use quotation::QuotationMarks;
 use scenes_contract::{MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{QuotationRestyling, SceneId, SceneRestyler, ScenesCore};
+use sha2::{Digest, Sha256};
+use uuid::Builder;
 
 use crate::AT_MOST;
 
@@ -56,19 +58,33 @@ impl RestyleOnQuotationChangedListener {
     }
 
     fn carry_on(&self, asked: &Message, task: &QuotationRestyling, after: SceneId) -> Message {
-        asked.answering(
-            RoutingKey::parse(MORE_QUOTATION_MARKS_TO_RESTYLE)
-                .expect("a declared routing key holds no wildcards"),
-            serde_json::to_value(MoreQuotationMarksToRestyleDTO {
-                project: task.project.clone(),
-                quotation: task.style.name().to_owned(),
-                change: task.change,
-                after: after.to_string(),
-            })
-            .expect("a continuation is plain data and cannot fail to serialize"),
-            self.clock.now(),
-        )
+        Message {
+            id: continuing(asked),
+            ..asked.answering(
+                RoutingKey::parse(MORE_QUOTATION_MARKS_TO_RESTYLE)
+                    .expect("a declared routing key holds no wildcards"),
+                serde_json::to_value(MoreQuotationMarksToRestyleDTO {
+                    project: task.project.clone(),
+                    quotation: task.style.name().to_owned(),
+                    change: task.change,
+                    after: after.to_string(),
+                })
+                .expect("a continuation is plain data and cannot fail to serialize"),
+                self.clock.now(),
+            )
+        }
     }
+}
+
+fn continuing(asked: &Message) -> MessageId {
+    let digest = Sha256::new()
+        .chain_update(b"carry-on-restyling:")
+        .chain_update(asked.id.as_uuid().as_bytes())
+        .finalize();
+    let mut bytes = [0; 16];
+    bytes.copy_from_slice(&digest[..16]);
+
+    MessageId::of(Builder::from_custom_bytes(bytes).into_uuid())
 }
 
 fn what_to_restyle(asked: &Message) -> Result<QuotationRestyling, Failure> {
@@ -103,6 +119,7 @@ impl Handler for RestyleOnQuotationChangedListener {
         &[QUOTATION_CHANGED, MORE_QUOTATION_MARKS_TO_RESTYLE];
     const WHEN_REFUSED: &'static str =
         "The quotation marks of a book were not all changed to its new style.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         self.restyle(message).await

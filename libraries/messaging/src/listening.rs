@@ -24,6 +24,12 @@ pub enum Delivery {
     Fleeting,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WithoutInbox {
+    Sweep,
+    Fleeting,
+}
+
 #[derive(Debug, Error)]
 #[error("{listener} could not take in {routing}")]
 pub struct NotHandled {
@@ -67,6 +73,7 @@ pub trait Handler: Send + Sync {
     const NAME: &'static str;
     const LISTENS_TO: &'static [&'static str];
     const WHEN_REFUSED: &'static str;
+    const WITHOUT_INBOX: WithoutInbox;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure>;
 }
@@ -89,6 +96,13 @@ impl<H: Handler> Listener for H {
 
     fn when_refused(&self) -> &'static str {
         H::WHEN_REFUSED
+    }
+
+    fn delivery(&self) -> Delivery {
+        match H::WITHOUT_INBOX {
+            WithoutInbox::Sweep => Delivery::Kept,
+            WithoutInbox::Fleeting => Delivery::Fleeting,
+        }
     }
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
@@ -208,10 +222,37 @@ mod tests {
         const NAME: &'static str = "refuse-everything";
         const LISTENS_TO: &'static [&'static str] = &["idea.#", "project.deleted"];
         const WHEN_REFUSED: &'static str = "Nothing was taken in.";
+        const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
         async fn take_in(&self, _message: &Message) -> Result<(), Failure> {
             Err(Box::new(Jammed))
         }
+    }
+
+    struct Glancing;
+
+    #[async_trait]
+    impl Handler for Glancing {
+        const NAME: &'static str = "glance-at-everything";
+        const LISTENS_TO: &'static [&'static str] = &["#"];
+        const WHEN_REFUSED: &'static str = "Nothing was glanced at.";
+        const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Fleeting;
+
+        async fn take_in(&self, _message: &Message) -> Result<(), Failure> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_sweep_is_kept_and_a_fleeting_handler_fleeting() {
+        let sweep: &dyn Listener = &Refusing;
+        let glance: &dyn Listener = &Glancing;
+
+        assert_eq!(
+            (sweep.delivery(), glance.delivery()),
+            (Delivery::Kept, Delivery::Fleeting),
+            "a handler without an inbox says why, and what it says is how it is delivered"
+        );
     }
 
     #[test]

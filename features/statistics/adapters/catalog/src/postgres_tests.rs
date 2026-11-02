@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sqlx::PgPool;
+use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
 use test_harness::PostgresFixture;
+use time::{Duration, OffsetDateTime};
 use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
@@ -9,6 +13,7 @@ use crate::suite::Workbench;
 
 struct OnPostgres {
     fixture: PostgresFixture,
+    pool: PgPool,
     transactions: PostgresTransactions,
     catalog: PostgresWordCountCatalog,
 }
@@ -28,7 +33,8 @@ impl Workbench for OnPostgres {
         Self {
             fixture,
             transactions: PostgresTransactions::new(pool.clone()),
-            catalog: PostgresWordCountCatalog::new(pool),
+            catalog: PostgresWordCountCatalog::new(pool.clone()),
+            pool,
         }
     }
 
@@ -46,3 +52,64 @@ impl Workbench for OnPostgres {
 }
 
 crate::suite::conformance_tests!(OnPostgres);
+
+fn at(seconds: i64) -> OffsetDateTime {
+    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_counted() {
+    let bench = OnPostgres::setup().await;
+    let catalog = Arc::new(PostgresWordCountCatalog::new(bench.pool.clone()));
+    let transactions = Arc::new(PostgresTransactions::new(bench.pool.clone()));
+    let project = ProjectLink::from("project_1");
+
+    for nth in 0..40 {
+        let scene = SceneLink::from(format!("scene_{nth}"));
+        let (keeping, forgetting) = (catalog.clone(), catalog.clone());
+        let (kept_in, forgotten_in) = (transactions.clone(), transactions.clone());
+        let (kept_scene, forgotten_scene, of) = (scene.clone(), scene, project.clone());
+        let (kept, forgotten) = tokio::join!(
+            tokio::spawn(async move {
+                let mut transaction = kept_in.begin().await.expect("beginning should succeed");
+                keeping
+                    .keep(&mut transaction, &kept_scene, &of, 42, at(1_000))
+                    .await?;
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+                Ok::<_, CatalogError>(())
+            }),
+            tokio::spawn(async move {
+                let mut transaction = forgotten_in
+                    .begin()
+                    .await
+                    .expect("beginning should succeed");
+                forgetting
+                    .forget_scene(&mut transaction, &forgotten_scene, at(5_000))
+                    .await?;
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+                Ok::<_, CatalogError>(())
+            }),
+        );
+        kept.expect("keeping should not panic")
+            .expect("keeping should succeed");
+        forgotten
+            .expect("forgetting should not panic")
+            .expect("forgetting should succeed");
+    }
+
+    assert!(
+        catalog
+            .in_project(&project)
+            .await
+            .expect("asking should succeed")
+            .is_empty(),
+        "a count racing its scene's deletion must never bring the scene back"
+    );
+    bench.cleanup().await;
+}

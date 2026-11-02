@@ -17,9 +17,9 @@ use scenes_contract::{
     ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
-    CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingProgress,
-    QuotationRestylingTaskError, QuotationRestylingTasks, Scene, SceneCatalog, SceneId,
-    SceneSummary, SceneTitle, ScenesCore, ScenesError, StoreError,
+    CatalogError, InvalidSceneTitle, Page, ProjectLink, QuotationRestylingProgress,
+    QuotationRestylingStanding, QuotationRestylingTaskError, QuotationRestylingTasks, Scene,
+    SceneCatalog, SceneId, SceneSummary, SceneTitle, ScenesCore, ScenesError, StoreError,
 };
 use serde::Deserialize;
 use serving::{NOT_FOUND, Problem};
@@ -264,8 +264,12 @@ impl QuotationRestylingTasks for TellingRestylingTasks {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError> {
-        let begun = self.kept.begin(transaction, project, change, total).await?;
+        let begun = self
+            .kept
+            .begin(transaction, project, change, total, cursor)
+            .await?;
         if begun {
             self.tell_after(transaction, project);
         }
@@ -273,13 +277,12 @@ impl QuotationRestylingTasks for TellingRestylingTasks {
         Ok(begun)
     }
 
-    async fn claim(
+    async fn standing(
         &self,
         transaction: &mut Transaction,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError> {
-        self.kept.claim(transaction, project, change).await
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError> {
+        self.kept.standing(transaction, project).await
     }
 
     async fn progressed(
@@ -287,15 +290,18 @@ impl QuotationRestylingTasks for TellingRestylingTasks {
         transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
-        self.kept
-            .progressed(transaction, project, change, done, finished)
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let counted = self
+            .kept
+            .progressed(transaction, project, change, page, finished)
             .await?;
-        self.tell_after(transaction, project);
+        if counted {
+            self.tell_after(transaction, project);
+        }
 
-        Ok(())
+        Ok(counted)
     }
 
     async fn progress(

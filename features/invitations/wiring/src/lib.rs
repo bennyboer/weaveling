@@ -6,12 +6,12 @@ use std::sync::Arc;
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
-use invitations_catalog::InMemoryInvitationCatalog;
-use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
+use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
+use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
-    RememberProjectNamesListener, RememberWhoSignedUpListener, WithdrawIfProjectGoneListener,
-    WithdrawInvitationsOfDeletedProjectListener,
+    MailIssuedInvitationListener, RememberProjectNamesListener, RememberWhoSignedUpListener,
+    WithdrawIfProjectGoneListener, WithdrawInvitationsOfDeletedProjectListener,
 };
 use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
@@ -27,6 +27,7 @@ use crate::tombstones::InvitationTombstones;
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
     pub transactions: Arc<dyn Transactions>,
+    pub keys: Arc<dyn TokenKeys>,
     pub throttles: Arc<dyn Throttles>,
     pub catalog: Arc<dyn InvitationCatalog>,
     pub inbox: Arc<dyn Inbox>,
@@ -38,6 +39,7 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
     InvitationsCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
+        ports.keys.clone(),
         ports.throttles.clone(),
         ports.catalog.clone(),
         ports.mailer.clone(),
@@ -85,6 +87,7 @@ impl Feature for InvitationFeature {
         Ports {
             events,
             transactions,
+            keys: Arc::new(InMemoryTokenKeys::new()),
             throttles: Arc::new(InMemoryThrottles::default()),
             catalog: Arc::new(InMemoryInvitationCatalog::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
@@ -109,6 +112,7 @@ impl Feature for InvitationFeature {
         Ok(Ports {
             events,
             transactions,
+            keys: Arc::new(invitations_catalog::PostgresTokenKeys::new(pool.clone())),
             throttles: Arc::new(throttling::PostgresThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
@@ -144,6 +148,7 @@ impl Feature for InvitationFeature {
         Ok(Ports {
             events,
             transactions,
+            keys: Arc::new(invitations_catalog::SqliteTokenKeys::new(pool.clone())),
             throttles: Arc::new(throttling::SqliteThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
@@ -172,6 +177,7 @@ impl Feature for InvitationFeature {
         let invitations = InvitationsCore::new(
             ports.events.clone(),
             ports.transactions.clone(),
+            ports.keys.clone(),
             ports.throttles.clone(),
             Arc::new(TellingInvitations::around(
                 ports.catalog.clone(),
@@ -189,6 +195,11 @@ impl Feature for InvitationFeature {
                 broadcaster,
             ))])
             .listening(vec![
+                Arc::new(Inboxed::new(
+                    MailIssuedInvitationListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
                 Arc::new(Inboxed::new(
                     AcceptTakenUpInvitationListener::new(invitations.clone()),
                     ports.transactions.clone(),
@@ -430,13 +441,14 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_hears_its_invitations_taken_up_declined_and_listed_who_signed_up_and_the_projects_names()
+    fn the_feature_mails_and_hears_its_invitations_taken_up_declined_and_listed_who_signed_up_and_the_projects_names()
      {
         let context = a_context();
 
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
 
         for named in [
+            "mail-issued-invitation",
             "accept-taken-up-invitation",
             "decline-invitation",
             "catalogue-invitation",

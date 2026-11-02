@@ -3,10 +3,12 @@ CREATE TABLE scenes (
     project     TEXT COLLATE "C" NOT NULL,
     title       TEXT             NOT NULL,
     version     BIGINT           NOT NULL DEFAULT 0,
+    uncounted   BOOLEAN          NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX scenes_by_project ON scenes (project, scene);
+CREATE INDEX scenes_uncounted ON scenes (scene) WHERE uncounted;
 
 CREATE TABLE scene_updates (
     seq         BIGSERIAL   PRIMARY KEY,

@@ -47,6 +47,7 @@ fn listing() -> Listing {
     let invitations = InvitationsCore::new(
         wired.store.clone(),
         Arc::new(InMemoryTransactions::new()),
+        wired.keys.clone(),
         Arc::new(InMemoryThrottles::default()),
         catalog.clone(),
         wired.mailbox.clone(),
@@ -261,7 +262,7 @@ async fn a_catalogued_invitation_is_found_by_the_digest_of_the_token_mailed_for_
 
     let found = wired
         .catalog
-        .with_digest(&wired.token_mailed_to(ADA).digest())
+        .with_digest(&wired.token_mailed_to(ADA).await.digest())
         .await
         .expect("finding should succeed");
 

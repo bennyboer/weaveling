@@ -125,7 +125,7 @@ impl Refused {
             .await
             .expect("claiming should succeed");
         self.deliveries
-            .give_up(claimed[0].id, "the projection had not landed", GIVEN_UP)
+            .give_up(&claimed[0], "the projection had not landed", GIVEN_UP)
             .await
             .expect("dead-lettering should succeed");
     }
@@ -334,7 +334,7 @@ async fn a_delivery_refused_but_offered_again_tells_nothing() {
 
     refused
         .deliveries
-        .mark_as_refused(claimed[0].id, "not yet", GIVEN_UP)
+        .mark_as_refused(&claimed[0], "not yet", GIVEN_UP)
         .await
         .expect("refusing should succeed");
 

@@ -141,6 +141,10 @@ impl SceneStore for FalteringStore {
     ) -> Result<Vec<SceneId>, StoreError> {
         self.held.in_project(project, after, at_most).await
     }
+
+    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        self.held.uncounted(at_most).await
+    }
 }
 
 struct Workbench {
@@ -531,4 +535,75 @@ async fn a_scene_s_opening_is_told_when_it_is_counted_and_only_when_it_changed()
         vec!["The loom stood silent in the grey light…".to_owned()],
         "counted twice, but the opening is told once, since it did not change"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    bench
+        .service
+        .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
+        .await
+        .expect("the prose is stored, and then the server stops before counting it");
+
+    let counted = bench
+        .live
+        .count_the_uncounted(10)
+        .await
+        .expect("counting should succeed");
+
+    assert_eq!(counted, 1);
+    assert_eq!(bench.last_announced(id), Some(4));
+    assert_eq!(
+        bench.openings_told(id),
+        vec!["The loom stood silent.".to_owned()]
+    );
+    assert!(
+        bench
+            .service
+            .uncounted(10)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    bench
+        .service
+        .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    bench.store.falter(true);
+
+    let counted = bench
+        .live
+        .count_the_uncounted(10)
+        .await
+        .expect("a count that fails is no failure of the round");
+    bench.store.falter(false);
+
+    assert_eq!(counted, 0);
+    assert_eq!(
+        bench
+            .service
+            .uncounted(10)
+            .await
+            .expect("asking should succeed"),
+        vec![id],
+        "the debt is kept with the prose, so the next round pays it"
+    );
+    assert_eq!(
+        bench
+            .live
+            .count_the_uncounted(10)
+            .await
+            .expect("counting should succeed"),
+        1
+    );
+    assert_eq!(bench.last_announced(id), Some(4));
 }

@@ -4253,6 +4253,7 @@ name = "weaveling-invitations-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "sqlx",
  "time",
  "tokio",
@@ -4276,8 +4277,9 @@ name = "weaveling-invitations-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "hmac",
  "rand_core 0.6.4",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "thiserror",
  "time",
  "weaveling-acting",
@@ -5108,7 +5110,9 @@ dependencies = [
  "async-trait",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "time",
+ "uuid",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",

@@ -236,6 +236,27 @@ pub async fn an_entry_published_longer_ago_than_we_keep_them_is_deleted<W: Workb
     bench.cleanup().await;
 }
 
+pub async fn an_entry_written_after_a_sweep_is_published_once<W: Workbench>() {
+    let bench = Bench::<W>::setup().await;
+    bench.waiting(2).await;
+    bench.deliver(10).await;
+    bench
+        .workbench
+        .all_published_at(at(2_000) - KEPT_FOR - Duration::days(1))
+        .await;
+    assert_eq!(bench.delete_published(at(2_000) - KEPT_FOR, 1).await, 1);
+
+    bench.waiting(1).await;
+
+    assert_eq!(bench.deliver(10).await, delivered(1, 0));
+    assert_eq!(
+        bench.deliver(10).await,
+        delivered(0, 0),
+        "an entry written once others were swept away is numbered anew, so marking it published marks it"
+    );
+    bench.cleanup().await;
+}
+
 pub async fn an_entry_published_recently_is_kept<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
     bench.waiting(1).await;
@@ -345,6 +366,7 @@ macro_rules! outbox_conformance_tests {
             the_relay_takes_no_more_than_it_was_asked_for,
             an_entry_published_longer_ago_than_we_keep_them_is_deleted,
             an_entry_published_recently_is_kept,
+            an_entry_written_after_a_sweep_is_published_once,
             an_entry_never_published_is_kept_however_old_it_is,
             deleting_takes_no_more_than_it_was_asked_for,
             messages_are_published_in_the_order_they_were_written,

@@ -14,4 +14,7 @@ pub use detaching::{
 };
 pub use publishing::message_for;
 
-pub use sweeping::DiscardOutlinesOnProjectDeletedListener;
+pub use sweeping::{
+    DiscardOutlinesOnProjectDeletedListener, RememberDeletedProjectsListener, SWEEP_PROJECT,
+    SweepProjectDTO,
+};

@@ -21,5 +21,6 @@ CREATE TABLE quotation_restyling_tasks (
     latest_change  BIGINT           NOT NULL,
     total          BIGINT           NOT NULL DEFAULT 0,
     done           BIGINT           NOT NULL DEFAULT 0,
-    finished       BOOLEAN          NOT NULL DEFAULT FALSE
+    finished       BOOLEAN          NOT NULL DEFAULT FALSE,
+    cursor         TEXT COLLATE "C"
 );

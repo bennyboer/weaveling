@@ -677,6 +677,56 @@ pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(
     );
 }
 
+async fn uncounted(store: &Committing<'_, impl SceneStore>) -> Vec<SceneId> {
+    store
+        .uncounted(10)
+        .await
+        .expect("asking what is uncounted should succeed")
+}
+
+pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    let (written, quiet) = (an_id(1_000), an_id(2_000));
+    an_empty_scene(store, written).await;
+    an_empty_scene(store, quiet).await;
+    assert!(
+        uncounted(store).await.is_empty(),
+        "a scene only made owes no count"
+    );
+
+    store
+        .apply(written, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    assert_eq!(
+        uncounted(store).await,
+        vec![written],
+        "the prose and the count it owes are kept together, so a crash cannot lose the debt"
+    );
+
+    store
+        .announce_word_count(written, 4)
+        .await
+        .expect("announcing should succeed");
+    assert!(uncounted(store).await.is_empty());
+}
+
+pub async fn a_write_rolled_back_owes_no_count(store: &Committing<'_, impl SceneStore>) {
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    let mut transaction = store.begun().await.expect("beginning should succeed");
+    store
+        .uncommitted()
+        .apply(&mut transaction, id, &a_paragraph("Never kept."))
+        .await
+        .expect("writing should succeed");
+    drop(transaction);
+
+    assert!(uncounted(store).await.is_empty());
+}
+
 fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(named)
 }
@@ -1221,6 +1271,11 @@ macro_rules! conformance_tests {
             what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_to_nobody
         );
         $crate::suite::conformance_case!($workbench, create_then_load_returns_the_prose);
+        $crate::suite::conformance_case!(
+            $workbench,
+            writing_leaves_a_scene_owing_its_count_until_the_count_is_told
+        );
+        $crate::suite::conformance_case!($workbench, a_write_rolled_back_owes_no_count);
         $crate::suite::conformance_case!($workbench, an_empty_scene_can_be_stored);
         $crate::suite::conformance_case!($workbench, load_missing_scene_is_not_found);
         $crate::suite::conformance_case!($workbench, create_rejects_a_duplicate_id);

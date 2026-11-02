@@ -48,6 +48,10 @@ impl SceneService {
         Ok(self.store.apply(transaction, id, update).await?)
     }
 
+    pub async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
+        Ok(self.store.uncounted(at_most).await?)
+    }
+
     pub async fn in_project(
         &self,
         project: &str,

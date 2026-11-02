@@ -1,25 +1,37 @@
 use std::fmt::{self, Debug, Formatter};
 
+use async_trait::async_trait;
+use hmac::{Hmac, KeyInit, Mac};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
+
+use crate::catalog::CatalogError;
+use crate::id::InvitationId;
 
 pub struct InvitationToken(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InvitationTokenDigest(String);
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct TokenKey([u8; TokenKey::BYTES]);
+
+#[async_trait]
+pub trait TokenKeys: Send + Sync {
+    async fn key(&self) -> Result<TokenKey, CatalogError>;
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 impl InvitationToken {
-    const BYTES: usize = 32;
+    pub fn derived(key: &TokenKey, invitation: &InvitationId) -> Self {
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&key.0).expect("an HMAC takes a key of any length");
+        mac.update(invitation.to_string().as_bytes());
 
-    pub fn drawn() -> Self {
-        let mut drawn = [0_u8; Self::BYTES];
-        OsRng.fill_bytes(&mut drawn);
-
-        Self(hex(&drawn))
+        Self(hex(mac.finalize().into_bytes().as_slice()))
     }
 
     pub fn presented(raw: &str) -> Self {
@@ -31,7 +43,7 @@ impl InvitationToken {
     }
 
     pub fn digest(&self) -> InvitationTokenDigest {
-        InvitationTokenDigest(hex(&Sha256::digest(self.0.as_bytes())))
+        InvitationTokenDigest(hex(Sha256::digest(self.0.as_bytes()).as_slice()))
     }
 }
 
@@ -51,13 +63,44 @@ impl InvitationTokenDigest {
     }
 }
 
+impl TokenKey {
+    pub const BYTES: usize = 32;
+
+    pub fn drawn() -> Self {
+        let mut drawn = [0_u8; Self::BYTES];
+        OsRng.fill_bytes(&mut drawn);
+
+        Self(drawn)
+    }
+
+    pub fn kept(bytes: &[u8]) -> Option<Self> {
+        Some(Self(bytes.try_into().ok()?))
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Debug for TokenKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("TokenKey(…)")
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use time::OffsetDateTime;
+
     use super::*;
 
+    fn an_invitation() -> InvitationId {
+        InvitationId::generate(OffsetDateTime::UNIX_EPOCH)
+    }
+
     #[test]
-    fn a_token_is_256_random_bits_written_in_hex() {
-        let token = InvitationToken::drawn();
+    fn a_token_is_256_bits_written_in_hex() {
+        let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
         assert_eq!(token.as_str().len(), 64);
         assert!(
@@ -66,22 +109,47 @@ mod tests {
                 .bytes()
                 .all(|digit| digit.is_ascii_hexdigit())
         );
-        assert_ne!(token.as_str(), InvitationToken::drawn().as_str());
+    }
+
+    #[test]
+    fn a_token_derived_twice_is_the_same_token() {
+        let (key, invitation) = (TokenKey::drawn(), an_invitation());
+
+        assert_eq!(
+            InvitationToken::derived(&key, &invitation).as_str(),
+            InvitationToken::derived(&key, &invitation).as_str(),
+            "a mail heard again after a crash carries the link the invitation was issued with"
+        );
+    }
+
+    #[test]
+    fn another_invitation_or_another_key_gives_another_token() {
+        let (key, invitation) = (TokenKey::drawn(), an_invitation());
+        let token = InvitationToken::derived(&key, &invitation);
+
+        assert_ne!(
+            InvitationToken::derived(&key, &an_invitation()).as_str(),
+            token.as_str()
+        );
+        assert_ne!(
+            InvitationToken::derived(&TokenKey::drawn(), &invitation).as_str(),
+            token.as_str(),
+            "a key drawn anew leaves every link not yet taken up leading nowhere"
+        );
     }
 
     #[test]
     fn only_a_digest_is_kept_the_same_each_time_and_never_the_token() {
-        let token = InvitationToken::drawn();
+        let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
         assert_eq!(token.digest(), token.digest());
         assert_ne!(token.digest().as_str(), token.as_str());
         assert_eq!(token.digest().as_str().len(), 64);
-        assert_ne!(token.digest(), InvitationToken::drawn().digest());
     }
 
     #[test]
     fn a_token_copied_from_a_mail_with_space_around_it_is_the_same_token() {
-        let token = InvitationToken::drawn();
+        let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
         assert_eq!(
             InvitationToken::presented(&format!(" {}\n", token.as_str())).digest(),
@@ -98,9 +166,13 @@ mod tests {
     }
 
     #[test]
-    fn a_token_is_never_written_out_by_debug() {
-        let token = InvitationToken::drawn();
+    fn a_key_is_32_bytes_and_neither_it_nor_a_token_is_written_out_by_debug() {
+        let key = TokenKey::drawn();
+        let token = InvitationToken::derived(&key, &an_invitation());
 
+        assert!(TokenKey::kept(&[0; 31]).is_none());
+        assert_eq!(TokenKey::kept(key.as_bytes()), Some(key.clone()));
         assert!(!format!("{token:?}").contains(token.as_str()));
+        assert!(!format!("{key:?}").contains(&hex(key.as_bytes())));
     }
 }

@@ -3,13 +3,20 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use scenes_core::{
-    ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError, QuotationRestylingTasks,
+    Page, ProjectLink, QuotationRestylingProgress, QuotationRestylingStanding,
+    QuotationRestylingTaskError, QuotationRestylingTasks,
 };
 use transacting::Transaction;
 
+#[derive(Debug, Clone)]
+struct Task {
+    progress: QuotationRestylingProgress,
+    cursor: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct InMemoryQuotationRestylingTasks {
-    latest: Arc<Mutex<HashMap<ProjectLink, QuotationRestylingProgress>>>,
+    latest: Arc<Mutex<HashMap<ProjectLink, Task>>>,
 }
 
 impl InMemoryQuotationRestylingTasks {
@@ -17,7 +24,7 @@ impl InMemoryQuotationRestylingTasks {
         Self::default()
     }
 
-    fn latest(&self) -> MutexGuard<'_, HashMap<ProjectLink, QuotationRestylingProgress>> {
+    fn latest(&self) -> MutexGuard<'_, HashMap<ProjectLink, Task>> {
         self.latest
             .lock()
             .expect("quotation restyling tasks lock poisoned")
@@ -38,15 +45,6 @@ impl InMemoryQuotationRestylingTasks {
     }
 }
 
-fn unbegun(change: u64) -> QuotationRestylingProgress {
-    QuotationRestylingProgress {
-        change,
-        total: 0,
-        done: 0,
-        finished: false,
-    }
-}
-
 #[async_trait]
 impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
     async fn begin(
@@ -55,36 +53,45 @@ impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
         project: &ProjectLink,
         change: u64,
         total: u64,
+        cursor: Option<&str>,
     ) -> Result<bool, QuotationRestylingTaskError> {
         self.undo_on_rollback(transaction)?;
         let mut latest = self.latest();
-        let known = latest.entry(project.clone()).or_insert(unbegun(change));
-        if known.change > change {
+        if latest
+            .get(project)
+            .is_some_and(|known| known.progress.change >= change)
+        {
             return Ok(false);
         }
-        *known = QuotationRestylingProgress {
-            total,
-            ..unbegun(change)
-        };
+        latest.insert(
+            project.clone(),
+            Task {
+                progress: QuotationRestylingProgress {
+                    change,
+                    total,
+                    done: 0,
+                    finished: false,
+                },
+                cursor: cursor.map(str::to_owned),
+            },
+        );
 
         Ok(true)
     }
 
-    async fn claim(
+    async fn standing(
         &self,
-        transaction: &mut Transaction,
+        _transaction: &mut Transaction,
         project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, QuotationRestylingTaskError> {
-        self.undo_on_rollback(transaction)?;
-        let mut latest = self.latest();
-        let known = latest.entry(project.clone()).or_insert(unbegun(change));
-        if known.change > change {
-            return Ok(false);
-        }
-        known.change = change;
-
-        Ok(true)
+    ) -> Result<Option<QuotationRestylingStanding>, QuotationRestylingTaskError> {
+        Ok(self
+            .latest()
+            .get(project)
+            .map(|known| QuotationRestylingStanding {
+                change: known.progress.change,
+                cursor: known.cursor.clone(),
+                finished: known.progress.finished,
+            }))
     }
 
     async fn progressed(
@@ -92,26 +99,29 @@ impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
         transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
-        done: u64,
+        page: Page<'_>,
         finished: bool,
-    ) -> Result<(), QuotationRestylingTaskError> {
+    ) -> Result<bool, QuotationRestylingTaskError> {
         self.undo_on_rollback(transaction)?;
-        if let Some(known) = self
-            .latest()
-            .get_mut(project)
-            .filter(|known| known.change == change)
-        {
-            known.done += done;
-            known.finished = finished;
-        }
+        let mut latest = self.latest();
+        let Some(known) = latest.get_mut(project).filter(|known| {
+            known.progress.change == change
+                && !known.progress.finished
+                && known.cursor.as_deref() == page.from
+        }) else {
+            return Ok(false);
+        };
+        known.progress.done += page.done;
+        known.progress.finished = finished;
+        known.cursor = page.to.map(str::to_owned);
 
-        Ok(())
+        Ok(true)
     }
 
     async fn progress(
         &self,
         project: &ProjectLink,
     ) -> Result<Option<QuotationRestylingProgress>, QuotationRestylingTaskError> {
-        Ok(self.latest().get(project).copied())
+        Ok(self.latest().get(project).map(|known| known.progress))
     }
 }

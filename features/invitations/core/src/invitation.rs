@@ -25,6 +25,7 @@ pub enum InvitationCommand {
         until: OffsetDateTime,
         scope: Scope,
         by_an_operator: bool,
+        origin: String,
     },
     Accept {
         at: OffsetDateTime,
@@ -44,6 +45,7 @@ pub enum InvitationEvent {
         until: OffsetDateTime,
         scope: Scope,
         by_an_operator: bool,
+        origin: String,
     },
     Accepted {
         scope: Scope,
@@ -58,6 +60,7 @@ pub enum InvitationEvent {
         digest: InvitationTokenDigest,
         scope: Scope,
         by_an_operator: bool,
+        origin: String,
         issued_by: Option<AccountId>,
         issued_at: OffsetDateTime,
         until: OffsetDateTime,
@@ -87,6 +90,7 @@ pub struct Invitation {
     digest: InvitationTokenDigest,
     scope: Scope,
     by_an_operator: bool,
+    origin: String,
     issued_by: Option<AccountId>,
     issued_at: OffsetDateTime,
     until: OffsetDateTime,
@@ -128,6 +132,10 @@ impl Invitation {
 
     pub fn is_by_an_operator(&self) -> bool {
         self.by_an_operator
+    }
+
+    pub fn origin(&self) -> &str {
+        &self.origin
     }
 
     pub fn issued_by(&self) -> Option<&AccountId> {
@@ -203,12 +211,14 @@ impl Aggregate for Invitation {
                 until,
                 scope,
                 by_an_operator,
+                origin,
             } => Ok(vec![InvitationEvent::Issued {
                 to,
                 digest,
                 until,
                 scope,
                 by_an_operator,
+                origin,
             }]),
             InvitationCommand::Accept { .. }
             | InvitationCommand::Withdraw
@@ -225,12 +235,13 @@ impl Aggregate for Invitation {
                 until,
                 scope,
                 by_an_operator,
-                ..
+                origin,
             } => Some(Self {
                 to: to.clone(),
                 digest: digest.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
+                origin: origin.clone(),
                 issued_by: match &metadata.agent {
                     Agent::Account(account) => Some(account.clone()),
                     _ => None,
@@ -246,6 +257,7 @@ impl Aggregate for Invitation {
                 digest,
                 scope,
                 by_an_operator,
+                origin,
                 issued_by,
                 issued_at,
                 until,
@@ -257,6 +269,7 @@ impl Aggregate for Invitation {
                 digest: digest.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
+                origin: origin.clone(),
                 issued_by: issued_by.clone(),
                 issued_at: *issued_at,
                 until: *until,
@@ -321,6 +334,7 @@ impl Aggregate for Invitation {
                 digest,
                 scope,
                 by_an_operator,
+                origin,
                 issued_by,
                 issued_at,
                 until,
@@ -332,6 +346,7 @@ impl Aggregate for Invitation {
                 self.digest = digest.clone();
                 self.scope = scope.clone();
                 self.by_an_operator = *by_an_operator;
+                self.origin = origin.clone();
                 self.issued_by = issued_by.clone();
                 self.issued_at = *issued_at;
                 self.until = *until;
@@ -348,6 +363,7 @@ impl Aggregate for Invitation {
             digest: self.digest.clone(),
             scope: self.scope.clone(),
             by_an_operator: self.by_an_operator,
+            origin: self.origin.clone(),
             issued_by: self.issued_by.clone(),
             issued_at: self.issued_at,
             until: self.until,

@@ -1,6 +1,7 @@
 mod accepting;
 mod cataloguing;
 mod declining;
+mod mailing;
 mod naming;
 mod publishing;
 mod remembering;
@@ -12,6 +13,7 @@ pub use cataloguing::{
     WithdrawIfProjectGoneListener,
 };
 pub use declining::DeclineInvitationListener;
+pub use mailing::MailIssuedInvitationListener;
 pub use naming::RememberProjectNamesListener;
 pub use publishing::message_for;
 pub use remembering::RememberWhoSignedUpListener;

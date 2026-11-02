@@ -1,7 +1,7 @@
 use time::{Duration, OffsetDateTime};
 
 use crate::delivering;
-use crate::delivering::{ATTEMPTS, DeadLetter, Deliveries};
+use crate::delivering::{ATTEMPTS, CLAIM_FOR, Claim, DeadLetter, Deliveries, Queued};
 use crate::listening::ListenerName;
 use crate::message::Message;
 use crate::routing::RoutingKey;
@@ -81,7 +81,7 @@ pub async fn a_handled_delivery_is_gone(deliveries: &impl Deliveries) {
         .expect("claiming should succeed");
 
     deliveries
-        .mark_as_handled(claimed[0].id)
+        .mark_as_handled(&claimed[0])
         .await
         .expect("acking should succeed");
 
@@ -120,7 +120,7 @@ pub async fn a_refused_delivery_waits_and_counts_the_attempt(deliveries: &impl D
         .expect("claiming should succeed");
 
     deliveries
-        .mark_as_refused(claimed[0].id, "the projection had not landed", at(1_010))
+        .mark_as_refused(&claimed[0], "the projection had not landed", at(1_010))
         .await
         .expect("nacking should succeed");
 
@@ -157,7 +157,7 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
         .expect("claiming should succeed");
 
     deliveries
-        .give_up(claimed[0].id, "it refused five times", at(1_001))
+        .give_up(&claimed[0], "it refused five times", at(1_001))
         .await
         .expect("dead-lettering should succeed");
 
@@ -187,7 +187,7 @@ async fn a_dead_letter(deliveries: &impl Deliveries, routing: &str) -> DeadLette
         .await
         .expect("claiming should succeed");
     deliveries
-        .give_up(claimed[0].id, "it refused five times", at(1_001))
+        .give_up(&claimed[0], "it refused five times", at(1_001))
         .await
         .expect("dead-lettering should succeed");
 
@@ -353,17 +353,27 @@ pub async fn retrying_one_dead_letter_leaves_the_others(deliveries: &impl Delive
     assert_eq!(deliveries.waiting().await.expect("counting"), 1);
 }
 
+fn never_claimed() -> Queued {
+    Queued {
+        id: 404,
+        claim: Claim::drawn(),
+        listener: a_listener("catalogue-idea"),
+        message: a_message("idea.captured"),
+        attempts: 0,
+    }
+}
+
 pub async fn handling_something_already_gone_is_harmless(deliveries: &impl Deliveries) {
     deliveries
-        .mark_as_handled(404)
+        .mark_as_handled(&never_claimed())
         .await
         .expect("acking an unknown delivery should not fail");
     deliveries
-        .mark_as_refused(404, "nothing", at(1_000))
+        .mark_as_refused(&never_claimed(), "nothing", at(1_000))
         .await
         .expect("nacking an unknown delivery should not fail");
     deliveries
-        .give_up(404, "nothing", at(1_000))
+        .give_up(&never_claimed(), "nothing", at(1_000))
         .await
         .expect("dead-lettering an unknown delivery should not fail");
     deliveries
@@ -417,6 +427,105 @@ pub async fn deliveries_are_claimed_in_the_order_they_were_enqueued(deliveries: 
     assert_eq!(
         claimed, enqueued,
         "a listener handed a detach before the attach it undoes would end up wrong for good"
+    );
+}
+
+pub async fn a_holder_whose_claim_ran_out_settles_nothing(deliveries: &impl Deliveries) {
+    deliveries
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
+        .await
+        .expect("enqueuing should succeed");
+    let stale = deliveries
+        .claim_due(at(1_000), 16)
+        .await
+        .expect("claiming should succeed");
+    let holding = deliveries
+        .claim_due(at(1_001) + CLAIM_FOR, 16)
+        .await
+        .expect("claiming again once the first claim ran out should succeed");
+
+    deliveries
+        .mark_as_refused(&stale[0], "the first holder gave up", at(1_000))
+        .await
+        .expect("a stale refusal is no failure");
+    deliveries
+        .give_up(&stale[0], "the first holder gave up", at(1_000))
+        .await
+        .expect("a stale giving up is no failure");
+    deliveries
+        .mark_as_handled(&stale[0])
+        .await
+        .expect("a stale ack is no failure");
+
+    assert_eq!(
+        (
+            deliveries.waiting().await.expect("counting"),
+            deliveries
+                .dead_letters()
+                .await
+                .expect("reading the dead letters should succeed")
+                .len(),
+            deliveries
+                .claim_due(at(1_002) + CLAIM_FOR, 16)
+                .await
+                .expect("claiming should succeed")
+                .len(),
+        ),
+        (1, 0, 0),
+        "whoever lost the claim neither acks, refuses nor buries what another now handles"
+    );
+    deliveries
+        .mark_as_handled(&holding[0])
+        .await
+        .expect("acking should succeed");
+    assert_eq!(
+        deliveries.waiting().await.expect("counting"),
+        0,
+        "the one holding the claim settles it"
+    );
+}
+
+pub async fn a_message_queued_twice_for_a_listener_is_one_delivery(deliveries: &impl Deliveries) {
+    let message = a_message("idea.captured");
+    for _ in 0..2 {
+        deliveries
+            .enqueue(&a_listener("catalogue-idea"), &message)
+            .await
+            .expect("enqueuing a duplicate is no failure");
+    }
+
+    assert_eq!(
+        deliveries
+            .claim_due(at(1_000), 16)
+            .await
+            .expect("claiming should succeed")
+            .len(),
+        1,
+        "a message relayed twice is handled once while it waits"
+    );
+}
+
+pub async fn a_dead_letter_retried_while_its_message_waits_again_stays_one_delivery(
+    deliveries: &impl Deliveries,
+) {
+    let dead = a_dead_letter(deliveries, "idea.captured").await;
+    deliveries
+        .enqueue(&dead.listener, &dead.message)
+        .await
+        .expect("enqueuing should succeed");
+
+    deliveries
+        .retry(dead.id, at(2_000))
+        .await
+        .expect("retrying should succeed");
+
+    assert_eq!(deliveries.waiting().await.expect("counting"), 1);
+    assert!(
+        deliveries
+            .dead_letters()
+            .await
+            .expect("reading the dead letters should succeed")
+            .is_empty()
     );
 }
 
@@ -475,6 +584,18 @@ macro_rules! conformance_tests {
         $crate::delivery_conformance_case!(
             $workbench,
             deliveries_are_claimed_in_the_order_they_were_enqueued
+        );
+        $crate::delivery_conformance_case!(
+            $workbench,
+            a_holder_whose_claim_ran_out_settles_nothing
+        );
+        $crate::delivery_conformance_case!(
+            $workbench,
+            a_message_queued_twice_for_a_listener_is_one_delivery
+        );
+        $crate::delivery_conformance_case!(
+            $workbench,
+            a_dead_letter_retried_while_its_message_waits_again_stays_one_delivery
         );
     };
 }

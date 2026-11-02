@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey, WithoutInbox};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{SceneId, ScenesCore};
@@ -81,6 +81,7 @@ impl Handler for DeleteOnProjectDeletedListener {
     const NAME: &'static str = "delete-scenes-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
     const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         self.sweep(message).await
