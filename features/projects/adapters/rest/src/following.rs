@@ -60,7 +60,7 @@ impl Topic for ProjectsTopic {
 
         Ok(
             Subscribed::hearing(self.broadcaster.hear(ProjectChanges::Listed)).sifted(Arc::new(
-                ReadableBy {
+                HeardOfBy {
                     agent: agent.clone(),
                     projects: self.projects.clone(),
                 },
@@ -86,18 +86,18 @@ impl Gate for ProjectsGate {
     }
 }
 
-struct ReadableBy {
+struct HeardOfBy {
     agent: Agent,
     projects: ProjectsCore,
 }
 
 #[async_trait]
-impl Sieve for ReadableBy {
+impl Sieve for HeardOfBy {
     async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>> {
         let Some(project) = frame.of.as_deref() else {
             return Ok(false);
         };
 
-        Ok(self.projects.may_follow(project, &self.agent).await?)
+        Ok(self.projects.may_hear_of(project, &self.agent).await?)
     }
 }

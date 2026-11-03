@@ -87,7 +87,7 @@ impl AwaitedInTheTrash {
 
         match serde_json::from_value::<ProjectEventDTO>(told.event.clone()).ok()? {
             ProjectEventDTO::Trashed { .. } => Some(Self::In(id)),
-            ProjectEventDTO::Restored => Some(Self::Out(id)),
+            ProjectEventDTO::Restored | ProjectEventDTO::Deleted => Some(Self::Out(id)),
             _ => None,
         }
     }
@@ -748,10 +748,18 @@ mod tests {
         }
 
         #[test]
-        fn nothing_but_trashing_and_restoring_is_awaited_in_the_trash() {
+        fn a_project_purged_is_awaited_out_of_the_trash() {
+            let purged = AwaitedInTheTrash::told(&told(4, json!({ "name": "DELETED" })))
+                .expect("a project purged leaves the trash, so the trash is asked again");
+
+            assert!(!purged.holds(&in_the_trash()));
+            assert!(purged.holds(&[]));
+        }
+
+        #[test]
+        fn nothing_but_trashing_restoring_and_purging_is_awaited_in_the_trash() {
             for event in [
                 json!({ "name": "RENAMED", "project_name": "The Weft" }),
-                json!({ "name": "DELETED" }),
                 json!({ "name": "ARCHIVED" }),
             ] {
                 assert_eq!(

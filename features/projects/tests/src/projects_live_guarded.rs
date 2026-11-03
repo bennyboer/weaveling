@@ -19,11 +19,19 @@ use crate::wiring::Wired;
 #[derive(Default)]
 struct Readers {
     readable: Mutex<BTreeSet<String>>,
+    restorable: Mutex<BTreeSet<String>>,
     down: Mutex<bool>,
     changes: AccessChanges,
 }
 
 impl Readers {
+    fn let_restore(&self, project: &str) {
+        self.restorable
+            .lock()
+            .expect("never poisoned")
+            .insert(project.to_owned());
+    }
+
     fn let_read(&self, project: &str) {
         self.readable
             .lock()
@@ -51,12 +59,19 @@ impl Authorizer for Readers {
             return Err(AuthorizerError::Unreachable("the list is down".into()));
         }
 
-        Ok(act != Act::Read
-            || self
+        Ok(match act {
+            Act::Read => self
                 .readable
                 .lock()
                 .expect("never poisoned")
-                .contains(project))
+                .contains(project),
+            Act::Restore => self
+                .restorable
+                .lock()
+                .expect("never poisoned")
+                .contains(project),
+            Act::Write | Act::Manage => true,
+        })
     }
 
     async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
@@ -158,6 +173,35 @@ async fn whoever_follows_the_projects_is_told_only_of_those_they_may_read() {
         frames,
         vec![json!([loom.id, 1]), json!([loom.id, 2])],
         "nothing of the Weft is told, which this follower may not read"
+    );
+}
+
+#[tokio::test]
+async fn whoever_may_restore_a_project_from_the_trash_is_told_of_it_though_they_may_not_read_it() {
+    let guarded = guarded();
+    let mut socket = following(&guarded.server, &[("mine", "true")]).await;
+    let loom = started(&guarded.server, "The Loom").await;
+    let weft = started(&guarded.server, "The Weft").await;
+    guarded.readers.let_restore(&loom.id);
+
+    for project in [&weft, &loom] {
+        guarded
+            .server
+            .delete(&format!("/projects/{}", project.id))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+    }
+    guarded.wired.settle().await;
+
+    let mut frames = Vec::new();
+    for _ in 0..2 {
+        let frame = told(&mut socket).await;
+        frames.push(json!([frame["of"], frame["event"]["name"]]));
+    }
+    assert_eq!(
+        frames,
+        vec![json!([loom.id, "STARTED"]), json!([loom.id, "TRASHED"])],
+        "a trashed project is read by nobody, yet its owners see their trash change, and nothing of the Weft"
     );
 }
 

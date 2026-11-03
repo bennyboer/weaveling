@@ -210,6 +210,11 @@ impl ProjectsCore {
         Ok(self.authorizer.may(agent, Act::Read, project).await?)
     }
 
+    pub async fn may_hear_of(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {
+        Ok(self.authorizer.may(agent, Act::Read, project).await?
+            || self.authorizer.may(agent, Act::Restore, project).await?)
+    }
+
     pub fn watch_access(&self, project: &str) -> AccessWatch {
         self.authorizer.watch_access(project)
     }
