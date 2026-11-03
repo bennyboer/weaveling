@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -10,13 +10,14 @@ use projects_contract::DELETED;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, StoreError,
+    IdeaLink, ProjectLink, Scene, SceneCatalog, SceneId, SceneStore, SceneTitle, ScenesCore,
+    ScenesError, StoreError,
 };
 use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
-use transacting::{InMemoryTransactions, Transaction};
+use transacting::{InMemoryTransactions, Transaction, Transactions};
 
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
@@ -46,11 +47,34 @@ struct Wavering {
     held: InMemorySceneStore,
     gone_meanwhile: Mutex<Option<SceneId>>,
     failing: AtomicBool,
+    buried_mid_create: Mutex<Option<Arc<InMemorySceneCatalog>>>,
+    created: AtomicUsize,
 }
 
 #[async_trait]
 impl SceneStore for Wavering {
     async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError> {
+        let burying = self
+            .buried_mid_create
+            .lock()
+            .expect("never poisoned")
+            .take();
+        if let Some(catalog) = burying {
+            let mut elsewhere = InMemoryTransactions::new()
+                .begin()
+                .await
+                .expect("an in-memory transaction begins");
+            catalog
+                .lay_project_tombstone(&mut elsewhere, scene.project(), at(1_000))
+                .await
+                .expect("laying a project's tombstone should succeed");
+            elsewhere
+                .finish()
+                .await
+                .expect("an in-memory transaction commits");
+        }
+
+        self.created.fetch_add(1, Ordering::AcqRel);
         self.held.create(transaction, scene).await
     }
 
@@ -151,6 +175,7 @@ struct Wired {
     sweep: DeleteOnProjectDeletedListener,
     scenes: ScenesCore,
     store: Arc<Wavering>,
+    catalog: Arc<InMemorySceneCatalog>,
     overheard: Arc<FakePublisher>,
 }
 
@@ -161,11 +186,14 @@ fn a_workbench(at_most: usize) -> Wired {
         held: InMemorySceneStore::new(),
         gone_meanwhile: Mutex::new(None),
         failing: AtomicBool::new(false),
+        buried_mid_create: Mutex::new(None),
+        created: AtomicUsize::new(0),
     });
+    let catalog = Arc::new(InMemorySceneCatalog::new());
     let scenes = ScenesCore::new(
         store.clone(),
         Arc::new(InMemoryTransactions::new()),
-        Arc::new(InMemorySceneCatalog::new()),
+        catalog.clone(),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(TheSystemAndAda),
         clock.clone(),
@@ -176,6 +204,7 @@ fn a_workbench(at_most: usize) -> Wired {
             .taking_at_most(at_most),
         scenes,
         store,
+        catalog,
         overheard,
     }
 }
@@ -397,6 +426,67 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
     }
 
     assert!(wired.still_there(A_PROJECT).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_project_takes_no_new_scene() {
+    let wired = a_workbench(4);
+
+    wired
+        .sweep
+        .handle(&deleted(A_PROJECT))
+        .await
+        .expect("sweeping succeeds");
+    let refused = wired.scenes.create(A_PROJECT, &ada()).await;
+
+    assert!(matches!(refused, Err(ScenesError::ProjectNotThere)));
+    assert_eq!(
+        wired.store.created.load(Ordering::Acquire),
+        0,
+        "a project known to be gone is not written to at all"
+    );
+    assert!(
+        wired.scenes.create(ANOTHER_PROJECT, &ada()).await.is_ok(),
+        "another project's tombstone keeps nothing out"
+    );
+}
+
+#[tokio::test]
+async fn a_continuation_of_the_sweep_lays_no_tombstone() {
+    let wired = a_workbench(4);
+
+    wired
+        .sweep
+        .handle(&Message::opening(
+            RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
+            json!({ "project": A_PROJECT, "after": SceneId::generate(at(500)).to_string() }),
+            at(1_000),
+        ))
+        .await
+        .expect("sweeping succeeds");
+
+    assert!(
+        wired.scenes.create(A_PROJECT, &ada()).await.is_ok(),
+        "only the deletion itself buries the project"
+    );
+}
+
+#[tokio::test]
+async fn a_scene_created_while_its_project_is_deleted_is_taken_back() {
+    let wired = a_workbench(4);
+    *wired
+        .store
+        .buried_mid_create
+        .lock()
+        .expect("never poisoned") = Some(wired.catalog.clone());
+
+    let refused = wired.scenes.create(A_PROJECT, &ada()).await;
+
+    assert!(matches!(refused, Err(ScenesError::ProjectNotThere)));
+    assert!(
+        wired.still_there(A_PROJECT).await.is_empty(),
+        "committed after the sweep may have read its last page, it is deleted by the create itself"
+    );
 }
 
 #[tokio::test]

@@ -201,6 +201,21 @@ impl SceneCatalog for TellingScenes {
     ) -> Result<Vec<SceneSummary>, CatalogError> {
         self.kept.in_project_after(project, after, at_most).await
     }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept
+            .lay_project_tombstone(transaction, project, at)
+            .await
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        self.kept.has_project_tombstone(project).await
+    }
 }
 
 pub fn router(scenes: ScenesCore) -> Router {

@@ -31,6 +31,7 @@ impl Kept {
 struct Scenes {
     kept: BTreeMap<SceneId, Kept>,
     tombstones: BTreeMap<SceneId, OffsetDateTime>,
+    project_tombstones: BTreeMap<ProjectLink, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -172,12 +173,24 @@ impl SceneCatalog for InMemorySceneCatalog {
             .collect();
         long_gone.sort();
         long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        let mut projects_long_gone: Vec<(OffsetDateTime, ProjectLink)> = scenes
+            .project_tombstones
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(project, laid)| (*laid, project.clone()))
+            .collect();
+        projects_long_gone.sort();
+        projects_long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
 
         for (_, scene) in &long_gone {
             scenes.tombstones.remove(scene);
         }
+        for (_, project) in &projects_long_gone {
+            scenes.project_tombstones.remove(project);
+        }
 
-        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
+        Ok(u64::try_from(long_gone.len() + projects_long_gone.len())
+            .expect("a count of tombstones fits"))
     }
 
     async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {
@@ -198,6 +211,25 @@ impl SceneCatalog for InMemorySceneCatalog {
             .take(at_most)
             .map(|(id, kept)| summarised(*id, kept))
             .collect())
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.write()
+            .project_tombstones
+            .entry(project.clone())
+            .or_insert(at);
+
+        Ok(())
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        Ok(self.read().project_tombstones.contains_key(project))
     }
 }
 

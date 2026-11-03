@@ -70,4 +70,13 @@ pub trait SceneCatalog: Send + Sync {
         after: Option<SceneId>,
         at_most: usize,
     ) -> Result<Vec<SceneSummary>, CatalogError>;
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 }

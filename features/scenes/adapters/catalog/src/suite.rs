@@ -126,6 +126,20 @@ impl<K: SceneCatalog> Committing<'_, K> {
 
         Ok(forgotten)
     }
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.begun().await;
+        self.kept
+            .lay_project_tombstone(&mut transaction, project, at)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
 }
 
 impl<K: QuotationRestylingTasks> Committing<'_, K> {
@@ -737,6 +751,57 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
+async fn buried(catalog: &Committing<'_, impl SceneCatalog>, project: &str, seconds: i64) {
+    catalog
+        .lay_project_tombstone(&a_project(project), at(seconds))
+        .await
+        .expect("laying a project's tombstone should succeed");
+}
+
+async fn has_tombstone(catalog: &Committing<'_, impl SceneCatalog>, project: &str) -> bool {
+    catalog
+        .has_project_tombstone(&a_project(project))
+        .await
+        .expect("asking for a project's tombstone should succeed")
+}
+
+pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
+    assert!(!has_tombstone(catalog, "project_1").await);
+
+    buried(catalog, "project_1", 1_000).await;
+    buried(catalog, "project_1", 5_000).await;
+
+    assert!(has_tombstone(catalog, "project_1").await);
+    assert!(!has_tombstone(catalog, "project_2").await);
+    assert_eq!(
+        forget_long_gone(catalog, 2_000, u64::MAX).await,
+        1,
+        "a deletion heard again is the same deletion"
+    );
+    assert!(!has_tombstone(catalog, "project_1").await);
+}
+
+pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
+    for (project, seconds) in [
+        ("project_newest", 1_002),
+        ("project_oldest", 1_000),
+        ("project_older", 1_001),
+    ] {
+        buried(catalog, project, seconds).await;
+    }
+
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
+
+    assert!(!has_tombstone(catalog, "project_oldest").await);
+    assert!(!has_tombstone(catalog, "project_older").await);
+    assert!(has_tombstone(catalog, "project_newest").await);
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
+}
+
 pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
@@ -765,9 +830,14 @@ pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
         .forget(&mut transaction, kept, at(3_000))
         .await
         .expect("forgetting should succeed");
+    uncommitted
+        .lay_project_tombstone(&mut transaction, &a_project("project_1"), at(3_000))
+        .await
+        .expect("laying a project's tombstone should succeed");
 
     drop(transaction);
 
+    assert!(!has_tombstone(catalog, "project_1").await);
     let listed = catalog
         .in_project_after(&a_project("project_1"), None, 10)
         .await
@@ -872,6 +942,14 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!(
             $workbench,
             tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            project_tombstones_are_forgotten_oldest_first_and_at_most_so_many
         );
         $crate::suite::restyling_case!($workbench, the_first_change_begins_the_book);
         $crate::suite::restyling_case!($workbench, a_newer_change_takes_the_book_from_an_older_one);

@@ -48,14 +48,23 @@ impl ScenesCore {
     }
 
     pub async fn create(&self, project: &str, agent: &Agent) -> Result<Scene, ScenesError> {
-        self.authorized(agent, Act::Write, &ProjectLink::from(project), || {
-            ScenesError::ProjectNotThere
-        })
-        .await?;
+        let link = ProjectLink::from(project);
+        self.authorized(agent, Act::Write, &link, || ScenesError::ProjectNotThere)
+            .await?;
+        if self.catalog.has_project_tombstone(&link).await? {
+            return Err(ScenesError::ProjectNotThere);
+        }
 
         let mut transaction = self.transactions.begin().await?;
         let scene = self.service.create(&mut transaction, project).await?;
         transaction.finish().await?;
+        if self.catalog.has_project_tombstone(&link).await? {
+            match self.delete(&scene.id().to_string(), &Agent::System).await {
+                Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
+                Err(refused) => return Err(refused),
+            }
+            return Err(ScenesError::ProjectNotThere);
+        }
 
         Ok(scene)
     }
@@ -346,6 +355,20 @@ impl ScenesCore {
         let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget(&mut transaction, scene.parse()?, at)
+            .await?;
+
+        Ok(transaction.finish().await?)
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), ScenesError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
             .await?;
 
         Ok(transaction.finish().await?)

@@ -49,6 +49,21 @@ const FORGET_OLD_TOMBSTONES: &str = "
     )
 ";
 
+const LAY_PROJECT_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const HAS_PROJECT_TOMBSTONE: &str =
+    "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)";
+
+const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, project
+        LIMIT $2
+    )
+";
+
 const SUMMARY_OF: &str = "
     SELECT scene, project, title, opening FROM scene_catalog WHERE scene = $1
 ";
@@ -225,13 +240,22 @@ impl SceneCatalog for PostgresSceneCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
+        let scenes = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(in_microseconds(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
-            .rows_affected())
+            .rows_affected();
+        let projects = sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
+            .bind(in_microseconds(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(scenes + projects)
     }
 
     async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {
@@ -261,6 +285,30 @@ impl SceneCatalog for PostgresSceneCatalog {
             .iter()
             .map(summary_from)
             .collect()
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(LAY_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .bind(in_microseconds(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 }
 

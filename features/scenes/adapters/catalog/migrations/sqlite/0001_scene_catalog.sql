@@ -16,6 +16,13 @@ CREATE TABLE scene_tombstones (
 
 CREATE INDEX scene_catalog_gone_by_laid_at ON scene_tombstones (laid_at);
 
+CREATE TABLE project_tombstones (
+    project  TEXT    PRIMARY KEY,
+    laid_at  INTEGER NOT NULL
+);
+
+CREATE INDEX project_tombstones_by_laid_at ON project_tombstones (laid_at);
+
 CREATE TABLE quotation_restyling_tasks (
     project        TEXT    PRIMARY KEY,
     latest_change  INTEGER NOT NULL,

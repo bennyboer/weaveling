@@ -32,6 +32,11 @@ impl DeleteOnProjectDeletedListener {
 
     async fn sweep(&self, asked: &Message) -> Result<(), Failure> {
         let (project, after) = what_to_sweep(asked)?;
+        if after.is_none() {
+            self.scenes
+                .lay_project_tombstone(None, &project, asked.occurred_at)
+                .await?;
+        }
         let batch = self
             .scenes
             .sweep(&project, after.as_deref(), self.at_most)
@@ -80,7 +85,7 @@ fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
 impl Handler for DeleteOnProjectDeletedListener {
     const NAME: &'static str = "delete-scenes-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
-    const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away.";
+    const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away, and new ones may still be made in it.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

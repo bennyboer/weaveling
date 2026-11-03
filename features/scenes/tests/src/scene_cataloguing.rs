@@ -132,6 +132,19 @@ impl SceneCatalog for OutOfReach {
     ) -> Result<Vec<SceneSummary>, CatalogError> {
         Err(out_of_reach())
     }
+
+    async fn lay_project_tombstone(
+        &self,
+        _transaction: &mut Transaction,
+        _project: &ProjectLink,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        Err(out_of_reach())
+    }
+
+    async fn has_project_tombstone(&self, _project: &ProjectLink) -> Result<bool, CatalogError> {
+        Err(out_of_reach())
+    }
 }
 
 impl Wired {
