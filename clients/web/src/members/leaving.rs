@@ -106,9 +106,9 @@ fn alone(
                     .class("danger")
                     .on(ev::click, move |_| {
                         close();
-                        people.delete_project(left.clone());
+                        people.trash_project(left.clone());
                     })
-                    .child(speech::said("members-delete-project")),
+                    .child(speech::said("members-trash-project")),
             )),
         ),
     )

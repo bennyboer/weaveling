@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::ideas::followed;
-use crate::ideas::model::{Idea, IdeaId};
+use crate::ideas::model::{Awaited, Idea, IdeaId};
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
@@ -18,7 +18,7 @@ pub struct SceneIdeas {
     linked: RwSignal<HashMap<SceneId, Vec<IdeaId>>>,
     asked: StoredValue<HashSet<SceneId>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
-    asking: Action<(), ()>,
+    asking: Action<Option<Awaited>, ()>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
     picking: RwSignal<bool>,
     problems: Problems,

@@ -38,7 +38,77 @@ pub struct DescribedProject {
     pub details: ProjectDetails,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrashedProject {
+    pub id: ProjectId,
+    pub name: String,
+    pub until: OffsetDateTime,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Awaited {
+    Listed { id: ProjectId, at_least: Version },
+    Unlisted(ProjectId),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AwaitedInTheTrash {
+    In(ProjectId),
+    Out(ProjectId),
+}
+
+impl Awaited {
+    pub fn told(told: &FrameDTO) -> Option<Self> {
+        let id = ProjectId::from(told.of.clone()?);
+        let event = serde_json::from_value::<ProjectEventDTO>(told.event.clone()).ok()?;
+
+        Some(match event {
+            ProjectEventDTO::Trashed { .. } | ProjectEventDTO::Deleted => Self::Unlisted(id),
+            _ => Self::Listed {
+                id,
+                at_least: Version::from(told.version),
+            },
+        })
+    }
+
+    pub fn holds(&self, listed: &[Project]) -> bool {
+        match self {
+            Self::Listed { id, at_least } => listed
+                .iter()
+                .any(|project| project.id == *id && project.version >= *at_least),
+            Self::Unlisted(id) => listed.iter().all(|project| project.id != *id),
+        }
+    }
+}
+
+impl AwaitedInTheTrash {
+    pub fn told(told: &FrameDTO) -> Option<Self> {
+        let id = ProjectId::from(told.of.clone()?);
+
+        match serde_json::from_value::<ProjectEventDTO>(told.event.clone()).ok()? {
+            ProjectEventDTO::Trashed { .. } => Some(Self::In(id)),
+            ProjectEventDTO::Restored => Some(Self::Out(id)),
+            _ => None,
+        }
+    }
+
+    pub fn holds(&self, trashed: &[TrashedProject]) -> bool {
+        match self {
+            Self::In(id) => trashed.iter().any(|project| project.id == *id),
+            Self::Out(id) => trashed.iter().all(|project| project.id != *id),
+        }
+    }
+}
+
 impl DescribedProject {
+    pub fn trashed_by(&self, told: &FrameDTO) -> bool {
+        told.version > self.version.0
+            && matches!(
+                serde_json::from_value::<ProjectEventDTO>(told.event.clone()),
+                Ok(ProjectEventDTO::Trashed { .. })
+            )
+    }
+
     pub fn taken_in(mut self, told: FrameDTO) -> Option<Self> {
         if told.version <= self.version.0 {
             return Some(self);
@@ -556,6 +626,139 @@ mod tests {
 
             for (case, told) in cases {
                 assert_eq!(described(1).taken_in(told), None, "{case}");
+            }
+        }
+
+        #[test]
+        fn a_trashing_told_after_what_is_held_says_the_open_project_went_to_the_trash() {
+            let trashing = |version| {
+                told(
+                    version,
+                    json!({ "name": "TRASHED", "until": "2026-12-02T10:00:00Z" }),
+                )
+            };
+
+            assert!(described(1).trashed_by(&trashing(2)));
+            assert!(
+                described(1).trashed_by(&trashing(4)),
+                "whatever came between, the project is in the trash now"
+            );
+            assert!(
+                !described(2).trashed_by(&trashing(2)),
+                "a trashing already held is old news"
+            );
+            assert!(!described(1).trashed_by(&told(2, json!({ "name": "DELETED" }))));
+            assert!(!described(1).trashed_by(&told(2, json!({ "name": "RESTORED" }))));
+        }
+    }
+
+    mod awaited_tests {
+        use serde_json::json;
+        use time::macros::datetime;
+
+        use super::*;
+
+        fn told(version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
+                of: Some("project_1".to_owned()),
+                version,
+                at: None,
+                event,
+            }
+        }
+
+        fn project_1() -> ProjectId {
+            ProjectId::from("project_1".to_owned())
+        }
+
+        fn listed(version: u64) -> Vec<Project> {
+            vec![Project {
+                id: project_1(),
+                version: Version::from(version),
+                name: "The Loom".to_owned(),
+                updated_at: datetime!(2026-11-03 10:00 UTC),
+            }]
+        }
+
+        fn in_the_trash() -> Vec<TrashedProject> {
+            vec![TrashedProject {
+                id: project_1(),
+                name: "The Loom".to_owned(),
+                until: datetime!(2026-12-03 10:00 UTC),
+            }]
+        }
+
+        #[test]
+        fn a_change_told_awaits_the_project_listed_at_least_at_its_version() {
+            let awaited = Awaited::told(&told(
+                3,
+                json!({ "name": "RENAMED", "project_name": "The Weft" }),
+            ))
+            .expect("a rename is awaited");
+
+            assert!(!awaited.holds(&[]), "a list without it is behind");
+            assert!(
+                !awaited.holds(&listed(2)),
+                "a list holding it older is behind"
+            );
+            assert!(awaited.holds(&listed(3)));
+            assert!(awaited.holds(&listed(4)));
+        }
+
+        #[test]
+        fn a_project_trashed_or_deleted_is_awaited_gone_from_the_list() {
+            for event in [
+                json!({ "name": "TRASHED", "until": "2026-12-03T10:00:00Z" }),
+                json!({ "name": "DELETED" }),
+            ] {
+                let awaited = Awaited::told(&told(3, event.clone())).expect("awaited");
+
+                assert!(!awaited.holds(&listed(2)), "{event}");
+                assert!(awaited.holds(&[]), "{event}");
+            }
+        }
+
+        #[test]
+        fn a_frame_that_names_nothing_awaits_nothing() {
+            let nameless = FrameDTO {
+                of: None,
+                version: 3,
+                at: None,
+                event: json!({ "name": "RENAMED", "project_name": "The Weft" }),
+            };
+
+            assert_eq!(Awaited::told(&nameless), None);
+            assert_eq!(Awaited::told(&told(3, json!({ "name": "ARCHIVED" }))), None);
+        }
+
+        #[test]
+        fn a_project_trashed_is_awaited_in_the_trash_and_one_restored_out_of_it() {
+            let trashed = AwaitedInTheTrash::told(&told(
+                2,
+                json!({ "name": "TRASHED", "until": "2026-12-03T10:00:00Z" }),
+            ))
+            .expect("a trashing is awaited in the trash");
+            let restored = AwaitedInTheTrash::told(&told(3, json!({ "name": "RESTORED" })))
+                .expect("a restoring is awaited out of it");
+
+            assert!(!trashed.holds(&[]));
+            assert!(trashed.holds(&in_the_trash()));
+            assert!(!restored.holds(&in_the_trash()));
+            assert!(restored.holds(&[]));
+        }
+
+        #[test]
+        fn nothing_but_trashing_and_restoring_is_awaited_in_the_trash() {
+            for event in [
+                json!({ "name": "RENAMED", "project_name": "The Weft" }),
+                json!({ "name": "DELETED" }),
+                json!({ "name": "ARCHIVED" }),
+            ] {
+                assert_eq!(
+                    AwaitedInTheTrash::told(&told(2, event.clone())),
+                    None,
+                    "{event}"
+                );
             }
         }
     }

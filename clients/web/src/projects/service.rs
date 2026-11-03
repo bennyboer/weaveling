@@ -1,13 +1,16 @@
 use gloo_net::http::Request;
 use projects_contract::{
-    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
+    RenameProjectRequest, TrashedProjectDTO,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http;
 use crate::http::ApiError;
-use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId, Version};
+use crate::projects::model::{
+    DescribedProject, Project, ProjectDetails, ProjectId, TrashedProject, Version,
+};
 use quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
@@ -73,10 +76,31 @@ pub async fn rename(id: &ProjectId, name: &str) -> Result<Project, ApiError> {
     as_project(http::parsed(response, SUBJECT).await?)
 }
 
-pub async fn delete(id: &ProjectId) -> Result<(), ApiError> {
+pub async fn trash(id: &ProjectId) -> Result<(), ApiError> {
     let response = http::sent(Request::delete(&format!("{PROJECTS}/{id}"))).await?;
 
     http::checked(response, SUBJECT).await.map(|_| ())
+}
+
+pub async fn in_the_trash() -> Result<Vec<TrashedProject>, ApiError> {
+    let response = http::sent(Request::get(&format!("{PROJECTS}/trash"))).await?;
+    let trashed: Vec<TrashedProjectDTO> = http::parsed(response, SUBJECT).await?;
+
+    trashed.into_iter().map(as_trashed).collect()
+}
+
+pub async fn restore(id: &ProjectId) -> Result<(), ApiError> {
+    let response = http::sent(Request::post(&format!("{PROJECTS}/{id}/restore"))).await?;
+
+    http::checked(response, SUBJECT).await.map(|_| ())
+}
+
+fn as_trashed(dto: TrashedProjectDTO) -> Result<TrashedProject, ApiError> {
+    Ok(TrashedProject {
+        id: ProjectId::from(dto.id),
+        name: dto.name,
+        until: OffsetDateTime::parse(&dto.until, &Rfc3339).map_err(|_| ApiError::Unexpected)?,
+    })
 }
 
 fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {

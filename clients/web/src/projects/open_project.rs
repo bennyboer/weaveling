@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 use leptos::task;
 
-use crate::http::ApiError;
+use crate::http::{ApiError, Refusal};
 use crate::live::Subscription;
 use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::service;
 use live_contract::FrameDTO;
+use projects_contract::refused::TRASHED;
 use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
@@ -64,11 +65,7 @@ impl OpenProject {
             }
             match found {
                 Ok(described) => self.described.set(Some(described)),
-                Err(failure) => {
-                    self.project.set(None);
-                    self.following.set_value(None);
-                    self.refused.set(Some(failure));
-                }
+                Err(failure) => self.let_go(failure),
             }
         });
     }
@@ -77,11 +74,24 @@ impl OpenProject {
         let Some(held) = self.described.get_untracked() else {
             return self.ask();
         };
+        if held.trashed_by(&told) {
+            return self.let_go(ApiError::Rejected(Refusal {
+                kind: Some(TRASHED.to_owned()),
+                detail: String::new(),
+                particulars: Vec::new(),
+            }));
+        }
         match held.clone().taken_in(told) {
             Some(next) if next == held => {}
             Some(next) => self.described.set(Some(next)),
             None => self.ask(),
         }
+    }
+
+    fn let_go(self, failure: ApiError) {
+        self.project.set(None);
+        self.following.set_value(None);
+        self.refused.set(Some(failure));
     }
 
     pub fn described(self) -> Option<DescribedProject> {

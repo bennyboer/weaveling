@@ -68,7 +68,7 @@ test.describe("a browser asking for German", () => {
     await expect(page.getByRole("link", { name: "Alle Projekte" })).toBeVisible();
   });
 
-  test("deleting a project asks in German, the name in German quotation marks", async ({
+  test("moving a project to the trash asks in German, the name in German quotation marks", async ({
     page,
   }) => {
     const title = await aNewProject(page, "Löschen", { boardNamed: "Pinnwand" });
@@ -79,11 +79,13 @@ test.describe("a browser asking for German", () => {
       .filter({ hasText: title })
       .getByRole("button", { name: "Weitere Aktionen" })
       .click();
-    await page.getByRole("menuitem", { name: "Löschen" }).click();
+    await page.getByRole("menuitem", { name: "In den Papierkorb" }).click();
 
-    const asked = page.getByRole("dialog", { name: "Dieses Projekt löschen?" });
+    const asked = page.getByRole("dialog", {
+      name: "Dieses Projekt in den Papierkorb verschieben?",
+    });
     await expect(asked).toContainText(
-      `„${title}“ ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.`,
+      `„${title}“ lässt sich 30 Tage lang aus dem Papierkorb wiederherstellen. Danach ist es für immer weg.`,
     );
     await asked.getByRole("button", { name: "Abbrechen" }).click();
     await expect(asked).toHaveCount(0);

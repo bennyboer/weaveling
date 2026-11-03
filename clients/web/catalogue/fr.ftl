@@ -20,6 +20,10 @@ workspace-heading = Vos projets
 workspace-tagline = Confiez-nous vos petites idées d’histoires, si fragiles, et nous vous aiderons à les tisser en une véritable épopée.
 loading = Chargement…
 workspace-empty = Pas encore de projet. Toute épopée commence par un petit désordre.
+workspace-trash-link = Corbeille, { $count } { $count ->
+        [one] projet
+       *[other] projets
+    }
 
 new-project-working-title = Un titre provisoire…
 new-project-create = Créer
@@ -29,14 +33,19 @@ new-project-setting-up = Préparation de votre projet…
 
 project-more-actions = Plus d’actions
 project-rename = Renommer
-project-delete = Supprimer
+project-trash = Mettre à la corbeille
 project-rename-save = Enregistrer
 project-rename-cancel = Annuler
 
-delete-project-dialog = Supprimer ce projet ?
-delete-project-fate = « { $name } » disparaîtra pour de bon. La suppression est irréversible.
-delete-project-cancel = Annuler
-delete-project-confirm = Supprimer
+trash-project-dialog = Mettre ce projet à la corbeille ?
+trash-project-fate = « { $name } » peut être restauré depuis la corbeille pendant 30 jours. Ensuite, il disparaît pour de bon.
+trash-project-cancel = Annuler
+trash-project-confirm = Mettre à la corbeille
+trash-heading = Corbeille
+trash-back = Retour à vos projets
+trash-empty = La corbeille est vide.
+trash-kept-until = Restaurable jusqu’au { $moment }
+trash-restore = Restaurer
 
 new-project-cancel = Annuler
 
@@ -597,11 +606,11 @@ members-invited = Invitations
 members-invite-as = En tant que
 members-only-owner = Seul·e propriétaire
 members-last-owner-heading = Vous êtes seul·e propriétaire
-members-last-owner-hint = Avant de partir, faites de quelqu’un d’autre un propriétaire. Sinon, personne ne pourrait plus inviter, changer les rôles ni supprimer ce projet.
+members-last-owner-hint = Avant de partir, faites de quelqu’un d’autre un propriétaire. Sinon, personne ne pourrait plus inviter, changer les rôles ni mettre ce projet à la corbeille.
 members-new-owner = Nouvelle personne propriétaire
 members-candidate = { $name } ({ $role })
 members-stay = Rester
 members-hand-over = Transmettre et quitter
 members-alone-heading = Personne d’autre n’en fait partie
-members-alone-hint = Ce projet n’a pas d’autres membres : le quitter le laisserait à personne. Supprimez-le plutôt, ou invitez quelqu’un et transmettez-le d’abord. La suppression est définitive.
-members-delete-project = Supprimer le projet
+members-alone-hint = Ce projet n’a pas d’autres membres : le quitter le laisserait à personne. Mettez-le plutôt à la corbeille, où il peut être restauré pendant 30 jours, ou invitez quelqu’un et transmettez-le d’abord.
+members-trash-project = Mettre le projet à la corbeille

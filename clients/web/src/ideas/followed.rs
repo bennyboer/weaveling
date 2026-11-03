@@ -1,8 +1,9 @@
 use leptos::prelude::*;
 
+use crate::asking;
 use crate::http::ApiError;
 use crate::ideas::model;
-use crate::ideas::model::Idea;
+use crate::ideas::model::{Awaited, Idea};
 use crate::ideas::service;
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
@@ -12,18 +13,27 @@ pub fn asking(
     project: &ProjectId,
     held: RwSignal<Option<Vec<Idea>>>,
     failed: impl Fn(ApiError) + Clone + 'static,
-) -> Action<(), ()> {
+) -> Action<Option<Awaited>, ()> {
     let project = project.clone();
     let latest = StoredValue::new(0_u64);
 
-    Action::new_local(move |()| {
+    Action::new_local(move |awaited: &Option<Awaited>| {
         let project = project.clone();
         let failed = failed.clone();
+        let awaited = awaited.clone();
         let asked = latest.get_value() + 1;
         latest.set_value(asked);
 
         async move {
-            let answer = service::list(&project).await;
+            let answer = asking::until_it_holds(
+                || service::list(&project),
+                |answer: &Result<Vec<Idea>, ApiError>| match (answer, &awaited) {
+                    (Ok(found), Some(awaited)) => awaited.holds(found),
+                    _ => true,
+                },
+                asking::paused,
+            )
+            .await;
             if latest.try_get_value() != Some(asked) {
                 return;
             }
@@ -38,7 +48,7 @@ pub fn asking(
 pub fn following(
     project: &ProjectId,
     held: RwSignal<Option<Vec<Idea>>>,
-    asking: Action<(), ()>,
+    asking: Action<Option<Awaited>, ()>,
 ) -> Subscription {
     Subscription::start(
         "ideas",
@@ -47,11 +57,12 @@ pub fn following(
             let Some(known) = held.try_get_untracked() else {
                 return;
             };
+            let awaited = Awaited::told(&told);
             match known.and_then(|known| model::taken_in(known, told)) {
                 Some(next) => _ = held.try_set(Some(next)),
-                None => _ = asking.dispatch(()),
+                None => _ = asking.dispatch(awaited),
             }
         },
-        move || _ = asking.dispatch(()),
+        move || _ = asking.dispatch(None),
     )
 }

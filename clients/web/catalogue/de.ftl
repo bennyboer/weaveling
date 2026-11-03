@@ -20,6 +20,10 @@ workspace-heading = Deine Projekte
 workspace-tagline = Bring uns deine winzigen, zerbrechlichen Ideen für Geschichten, und wir helfen dir, sie zu einem großen Epos zu verweben.
 loading = Wird geladen…
 workspace-empty = Noch keine Projekte. Jedes Epos beginnt als kleines Durcheinander.
+workspace-trash-link = Papierkorb, { $count } { $count ->
+        [one] Projekt
+       *[other] Projekte
+    }
 
 new-project-working-title = Ein Arbeitstitel…
 new-project-create = Anlegen
@@ -29,14 +33,19 @@ new-project-setting-up = Dein Projekt wird eingerichtet…
 
 project-more-actions = Weitere Aktionen
 project-rename = Umbenennen
-project-delete = Löschen
+project-trash = In den Papierkorb
 project-rename-save = Speichern
 project-rename-cancel = Abbrechen
 
-delete-project-dialog = Dieses Projekt löschen?
-delete-project-fate = „{ $name }“ ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.
-delete-project-cancel = Abbrechen
-delete-project-confirm = Löschen
+trash-project-dialog = Dieses Projekt in den Papierkorb verschieben?
+trash-project-fate = „{ $name }“ lässt sich 30 Tage lang aus dem Papierkorb wiederherstellen. Danach ist es für immer weg.
+trash-project-cancel = Abbrechen
+trash-project-confirm = In den Papierkorb
+trash-heading = Papierkorb
+trash-back = Zurück zu deinen Projekten
+trash-empty = Der Papierkorb ist leer.
+trash-kept-until = Wiederherstellbar bis { $moment }
+trash-restore = Wiederherstellen
 
 new-project-cancel = Abbrechen
 
@@ -597,11 +606,11 @@ members-invited = Eingeladen
 members-invite-as = Als
 members-only-owner = Einzige:r Eigentümer:in
 members-last-owner-heading = Du bist einzige:r Eigentümer:in
-members-last-owner-hint = Bevor du gehst, mach jemand anderen zur Eigentümer:in. Sonst könnte niemand mehr einladen, Rollen ändern oder dieses Projekt löschen.
+members-last-owner-hint = Bevor du gehst, mach jemand anderen zur Eigentümer:in. Sonst könnte niemand mehr einladen, Rollen ändern oder dieses Projekt in den Papierkorb verschieben.
 members-new-owner = Neue:r Eigentümer:in
 members-candidate = { $name } ({ $role })
 members-stay = Bleiben
 members-hand-over = Übergeben und verlassen
 members-alone-heading = Sonst ist niemand dabei
-members-alone-hint = Dieses Projekt hat keine anderen Mitglieder; verlässt du es, gehört es niemandem mehr. Lösch es stattdessen, oder lade jemanden ein und übergib es zuerst. Löschen lässt sich nicht rückgängig machen.
-members-delete-project = Projekt löschen
+members-alone-hint = Dieses Projekt hat keine anderen Mitglieder; verlässt du es, gehört es niemandem mehr. Verschieb es stattdessen in den Papierkorb, wo es sich 30 Tage lang wiederherstellen lässt, oder lade jemanden ein und übergib es zuerst.
+members-trash-project = Projekt in den Papierkorb verschieben

@@ -3,10 +3,14 @@ use std::time::Duration;
 use leptos::prelude::*;
 use leptos::task;
 
+use crate::asking;
 use crate::http::{ApiError, Refusal};
 use crate::live::Subscription;
 use crate::projects::model;
-use crate::projects::model::{Membership, Project, ProjectDetails, ProjectId};
+use crate::projects::model::{
+    Awaited, AwaitedInTheTrash, Membership, Project, ProjectDetails, ProjectId, TrashedProject,
+    Version,
+};
 use crate::projects::service;
 use live_contract::FrameDTO;
 
@@ -14,7 +18,8 @@ const NOT_YET_OPEN: &str = "project-not-yet-open";
 
 type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
 type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
-type DeleteAction = Action<ProjectId, Result<(), ApiError>>;
+type TrashAction = Action<ProjectId, Result<(), ApiError>>;
+type RestoreAction = Action<ProjectId, Result<(), ApiError>>;
 
 #[derive(Clone, Debug)]
 enum Opening {
@@ -31,7 +36,9 @@ pub struct Workspace {
     opening: RwSignal<Opening>,
     creating: CreateAction,
     renaming: RenameAction,
-    deleting: DeleteAction,
+    trashing: TrashAction,
+    trashed: RwSignal<Option<Vec<TrashedProject>>>,
+    restoring: RestoreAction,
 }
 
 impl Workspace {
@@ -41,12 +48,21 @@ impl Workspace {
         let opening = RwSignal::new(Opening::Idle);
 
         let latest = StoredValue::new(0_u64);
-        let listing = Action::new_local(move |_: &()| {
+        let listing = Action::new_local(move |awaited: &Option<Awaited>| {
             let asked = latest.get_value() + 1;
             latest.set_value(asked);
+            let awaited = awaited.clone();
 
             async move {
-                let answer = service::list().await;
+                let answer = asking::until_it_holds(
+                    service::list,
+                    |answer: &Result<Vec<Project>, ApiError>| match (answer, &awaited) {
+                        (Ok(listed), Some(awaited)) => awaited.holds(listed),
+                        _ => true,
+                    },
+                    asking::paused,
+                )
+                .await;
                 if latest.try_get_value() != Some(asked) {
                     return;
                 }
@@ -61,19 +77,50 @@ impl Workspace {
                 }
             }
         });
+        let trashed = RwSignal::new(None::<Vec<TrashedProject>>);
+        let latest_trash = StoredValue::new(0_u64);
+        let asking_the_trash = Action::new_local(move |awaited: &Option<AwaitedInTheTrash>| {
+            let asked = latest_trash.get_value() + 1;
+            latest_trash.set_value(asked);
+            let awaited = awaited.clone();
+
+            async move {
+                let answer = asking::until_it_holds(
+                    service::in_the_trash,
+                    |answer: &Result<Vec<TrashedProject>, ApiError>| match (answer, &awaited) {
+                        (Ok(trashed), Some(awaited)) => awaited.holds(trashed),
+                        _ => true,
+                    },
+                    asking::paused,
+                )
+                .await;
+                if latest_trash.try_get_value() != Some(asked) {
+                    return;
+                }
+                match answer {
+                    Ok(found) => _ = trashed.try_set(Some(found)),
+                    Err(failure) => _ = problem.try_set(Some(failure)),
+                }
+            }
+        });
+        asking_the_trash.dispatch(None);
         StoredValue::new_local(Subscription::start(
             "projects",
             &[("mine", "true")],
             move |told: FrameDTO| {
+                if let Some(awaited) = AwaitedInTheTrash::told(&told) {
+                    asking_the_trash.dispatch(Some(awaited));
+                }
                 let Some(held) = known.try_get_untracked() else {
                     return;
                 };
+                let awaited = Awaited::told(&told);
                 match held.and_then(|held| model::taken_in(held, told)) {
                     Some(next) => _ = known.try_set(Some(next)),
-                    None => _ = listing.dispatch(()),
+                    None => _ = listing.dispatch(awaited),
                 }
             },
-            move || _ = listing.dispatch(()),
+            move || _ = listing.dispatch(None),
         ));
         if with_accounts {
             let reconnected = StoredValue::new(false);
@@ -95,7 +142,7 @@ impl Workspace {
                 },
                 move || {
                     if reconnected.get_value() {
-                        listing.dispatch(());
+                        listing.dispatch(None);
                     }
                     reconnected.set_value(true);
                 },
@@ -131,12 +178,33 @@ impl Workspace {
                     remember_outcome(problem, outcome)
                 }
             }),
-            deleting: Action::new_local(move |id: &ProjectId| {
+            trashing: Action::new_local(move |id: &ProjectId| {
                 let id = id.clone();
                 async move {
-                    let outcome = service::delete(&id).await;
+                    let outcome = service::trash(&id).await;
                     if outcome.is_ok() {
                         keep(known, |held| held.retain(|project| project.id != id));
+                        asking_the_trash.dispatch(Some(AwaitedInTheTrash::In(id.clone())));
+                    }
+
+                    remember_outcome(problem, outcome)
+                }
+            }),
+            trashed,
+            restoring: Action::new_local(move |id: &ProjectId| {
+                let id = id.clone();
+                async move {
+                    let outcome = service::restore(&id).await;
+                    if outcome.is_ok() {
+                        _ = trashed.try_update(|held| {
+                            if let Some(held) = held {
+                                held.retain(|project| project.id != id);
+                            }
+                        });
+                        listing.dispatch(Some(Awaited::Listed {
+                            id: id.clone(),
+                            at_least: Version::from(0),
+                        }));
                     }
 
                     remember_outcome(problem, outcome)
@@ -201,12 +269,28 @@ impl Workspace {
         self.renaming.dispatch((id, name));
     }
 
-    pub fn deleting(self) -> Signal<bool> {
-        pending(self.deleting)
+    pub fn trashing(self) -> Signal<bool> {
+        pending(self.trashing)
     }
 
-    pub fn delete(self, id: ProjectId) {
-        self.deleting.dispatch(id);
+    pub fn trash(self, id: ProjectId) {
+        self.trashing.dispatch(id);
+    }
+
+    pub fn in_the_trash(self) -> Vec<TrashedProject> {
+        self.trashed.get().unwrap_or_default()
+    }
+
+    pub fn trash_asked(self) -> bool {
+        self.trashed.get().is_some()
+    }
+
+    pub fn restoring(self) -> Signal<bool> {
+        pending(self.restoring)
+    }
+
+    pub fn restore(self, id: ProjectId) {
+        self.restoring.dispatch(id);
     }
 }
 

@@ -20,6 +20,10 @@ workspace-heading = Seus projetos
 workspace-tagline = Traga para nós suas pequenas e frágeis ideias de histórias, e ajudaremos você a tecê-las até virarem uma grande epopeia.
 loading = Carregando…
 workspace-empty = Nenhum projeto ainda. Toda epopeia começa como uma pequena bagunça.
+workspace-trash-link = Lixeira, { $count } { $count ->
+        [one] projeto
+       *[other] projetos
+    }
 
 new-project-working-title = Um título provisório…
 new-project-create = Criar
@@ -29,14 +33,19 @@ new-project-setting-up = Preparando seu projeto…
 
 project-more-actions = Mais ações
 project-rename = Renomear
-project-delete = Excluir
+project-trash = Mover para a lixeira
 project-rename-save = Salvar
 project-rename-cancel = Cancelar
 
-delete-project-dialog = Excluir este projeto?
-delete-project-fate = “{ $name }” será apagado para sempre. A exclusão não pode ser desfeita.
-delete-project-cancel = Cancelar
-delete-project-confirm = Excluir
+trash-project-dialog = Mover este projeto para a lixeira?
+trash-project-fate = “{ $name }” pode ser restaurado da lixeira por 30 dias. Depois disso, será apagado para sempre.
+trash-project-cancel = Cancelar
+trash-project-confirm = Mover para a lixeira
+trash-heading = Lixeira
+trash-back = Voltar aos seus projetos
+trash-empty = A lixeira está vazia.
+trash-kept-until = Pode ser restaurado até { $moment }
+trash-restore = Restaurar
 
 new-project-cancel = Cancelar
 
@@ -597,11 +606,11 @@ members-invited = Convites
 members-invite-as = Como
 members-only-owner = Dono(a), a única pessoa
 members-last-owner-heading = Você é a única pessoa dona
-members-last-owner-hint = Antes de sair, torne outra pessoa dona. Senão ninguém poderia convidar, mudar os papéis ou excluir este projeto.
+members-last-owner-hint = Antes de sair, torne outra pessoa dona. Senão ninguém poderia convidar, mudar os papéis ou mover este projeto para a lixeira.
 members-new-owner = Nova pessoa dona
 members-candidate = { $name } ({ $role })
 members-stay = Ficar
 members-hand-over = Passar e sair
 members-alone-heading = Não há mais ninguém
-members-alone-hint = Este projeto não tem outros membros, então sair o deixaria sem ninguém. Exclua-o em vez disso, ou convide alguém e passe para essa pessoa primeiro. Excluir não pode ser desfeito.
-members-delete-project = Excluir o projeto
+members-alone-hint = Este projeto não tem outros membros, então sair o deixaria sem ninguém. Mova-o para a lixeira em vez disso, onde pode ser restaurado por 30 dias, ou convide alguém e passe para essa pessoa primeiro.
+members-trash-project = Mover o projeto para a lixeira

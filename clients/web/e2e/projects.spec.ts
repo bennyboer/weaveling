@@ -160,7 +160,7 @@ test("a project can be renamed", async ({ page }) => {
   await expect(rowFor(page, title)).toHaveCount(0);
 });
 
-test("deleting asks first, and cancelling keeps the project", async ({
+test("moving to the trash asks first, and cancelling keeps the project", async ({
   page,
 }) => {
   const title = aTitle();
@@ -169,27 +169,53 @@ test("deleting asks first, and cancelling keeps the project", async ({
   await rowFor(page, title)
     .getByRole("button", { name: "More actions" })
     .click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await expect(page.getByRole("dialog")).toContainText("cannot be undone");
+  await page.getByRole("menuitem", { name: "Move to trash" }).click();
+  await expect(page.getByRole("dialog", { name: "Move this project to the trash?" })).toContainText(
+    `“${title}” can be restored from the trash for 30 days. Then it is gone for good.`,
+  );
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await expect(rowFor(page, title)).toBeVisible();
 });
 
-test("confirming a delete removes the project", async ({ page }) => {
+test("confirming moves the project to the trash, from where it is restored", async ({
+  page,
+}) => {
   const title = aTitle();
   await aProjectCalled(page, title);
 
   await rowFor(page, title)
     .getByRole("button", { name: "More actions" })
     .click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("menuitem", { name: "Move to trash" }).click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Delete" })
+    .getByRole("button", { name: "Move to trash" })
     .click();
 
   await expect(rowFor(page, title)).toHaveCount(0);
+  const toTheTrash = page.getByRole("link", { name: /^Trash, \d+ projects?$/ });
+  await expect(
+    page
+      .locator(".workspace-heading")
+      .filter({ has: page.getByRole("heading", { name: "Your projects" }) })
+      .getByRole("link", { name: /^Trash, \d+ projects?$/ }),
+    "the way to the trash sits in the line of the heading",
+  ).toBeVisible();
+  await expect(toTheTrash).toHaveAttribute("title", /^Trash, \d+ projects?$/);
+  await toTheTrash.click();
+  await expect(page).toHaveURL(/\/trash$/);
+  const trashed = page
+    .getByRole("list", { name: "Trash" })
+    .getByRole("listitem")
+    .filter({ hasText: title });
+  await expect(trashed).toContainText("Can be restored until");
+
+  await trashed.getByRole("button", { name: "Restore" }).click();
+
+  await expect(trashed).toHaveCount(0);
+  await page.getByRole("link", { name: "Back to your projects" }).click();
+  await expect(rowFor(page, title)).toBeVisible();
 });
 
 test("a project's controls stay inside its row", async ({ page }) => {

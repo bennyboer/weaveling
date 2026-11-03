@@ -118,11 +118,11 @@ impl People {
         });
     }
 
-    pub(super) fn delete_project(self, then: impl Fn() + 'static) {
+    pub(super) fn trash_project(self, then: impl Fn() + 'static) {
         let project = ProjectId::from(self.project.get_value());
         self.refused.set(None);
         task::spawn_local(async move {
-            match projects::delete(&project).await {
+            match projects::trash(&project).await {
                 Ok(()) => then(),
                 Err(failed) => self.refused.set(Some(failed)),
             }

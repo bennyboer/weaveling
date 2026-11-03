@@ -20,6 +20,10 @@ workspace-heading = Tus proyectos
 workspace-tagline = Tráenos tus pequeñas y frágiles ideas para historias, y te ayudaremos a tejerlas hasta formar una gran epopeya.
 loading = Cargando…
 workspace-empty = Todavía no hay proyectos. Toda epopeya empieza siendo un pequeño desorden.
+workspace-trash-link = Papelera, { $count } { $count ->
+        [one] proyecto
+       *[other] proyectos
+    }
 
 new-project-working-title = Un título provisional…
 new-project-create = Crear
@@ -29,14 +33,19 @@ new-project-setting-up = Preparando tu proyecto…
 
 project-more-actions = Más acciones
 project-rename = Cambiar el nombre
-project-delete = Eliminar
+project-trash = Mover a la papelera
 project-rename-save = Guardar
 project-rename-cancel = Cancelar
 
-delete-project-dialog = ¿Eliminar este proyecto?
-delete-project-fate = «{ $name }» desaparecerá para siempre. Eliminarlo no se puede deshacer.
-delete-project-cancel = Cancelar
-delete-project-confirm = Eliminar
+trash-project-dialog = ¿Mover este proyecto a la papelera?
+trash-project-fate = «{ $name }» se puede restaurar desde la papelera durante 30 días. Después desaparecerá para siempre.
+trash-project-cancel = Cancelar
+trash-project-confirm = Mover a la papelera
+trash-heading = Papelera
+trash-back = Volver a tus proyectos
+trash-empty = La papelera está vacía.
+trash-kept-until = Se puede restaurar hasta el { $moment }
+trash-restore = Restaurar
 
 new-project-cancel = Cancelar
 
@@ -597,11 +606,11 @@ members-invited = Invitaciones
 members-invite-as = Como
 members-only-owner = Propietario/a, la única persona
 members-last-owner-heading = Eres la única persona propietaria
-members-last-owner-hint = Antes de salir, haz propietaria a otra persona. Si no, nadie podría invitar, cambiar los roles ni borrar este proyecto.
+members-last-owner-hint = Antes de salir, haz propietaria a otra persona. Si no, nadie podría invitar, cambiar los roles ni mover este proyecto a la papelera.
 members-new-owner = Nueva persona propietaria
 members-candidate = { $name } ({ $role })
 members-stay = Quedarme
 members-hand-over = Ceder y salir
 members-alone-heading = No hay nadie más
-members-alone-hint = Este proyecto no tiene otros miembros, así que al salir no quedaría nadie. Bórralo en su lugar, o invita a alguien y cédeselo primero. Borrar no se puede deshacer.
-members-delete-project = Borrar el proyecto
+members-alone-hint = Este proyecto no tiene otros miembros, así que al salir no quedaría nadie. Muévelo a la papelera en su lugar, donde se puede restaurar durante 30 días, o invita a alguien y cédeselo primero.
+members-trash-project = Mover el proyecto a la papelera

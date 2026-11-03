@@ -187,8 +187,8 @@ mod tests {
         args.set("name", "The loom");
 
         assert_eq!(
-            worded(Language::German, "delete-project-fate", Some(&args)),
-            "„The loom“ ist dann für immer weg. Löschen lässt sich nicht rückgängig machen."
+            worded(Language::German, "trash-project-fate", Some(&args)),
+            "„The loom“ lässt sich 30 Tage lang aus dem Papierkorb wiederherstellen. Danach ist es für immer weg."
         );
     }
 
@@ -225,6 +225,20 @@ mod tests {
             rewriting(1, 3),
             "Die Anführungszeichen werden neu gesetzt: 1 von 3 Szenen."
         );
+    }
+
+    #[test]
+    fn the_trash_is_named_with_how_many_projects_it_holds() {
+        let named = |language: Language, count: u32| {
+            let mut args = FluentArgs::new();
+            args.set("count", count);
+
+            worded(language, "workspace-trash-link", Some(&args))
+        };
+
+        assert_eq!(named(Language::English, 1), "Trash, 1 project");
+        assert_eq!(named(Language::English, 4), "Trash, 4 projects");
+        assert_eq!(named(Language::German, 4), "Papierkorb, 4 Projekte");
     }
 
     #[test]

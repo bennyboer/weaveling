@@ -5,6 +5,7 @@ mod members;
 mod missing;
 mod outline;
 mod project_page;
+mod trash;
 mod workspace;
 mod write;
 
@@ -23,6 +24,7 @@ use crate::app::ideas::IdeasPage;
 use crate::app::members::{MembersInvitedPage, MembersPage};
 use crate::app::missing::MissingPage;
 use crate::app::outline::OutlinePage;
+use crate::app::trash::{TrashPage, TrashPageProps};
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
@@ -78,6 +80,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
                 path=path!("/")
                 view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
             />
+            <Route path=path!("/trash") view=move || TrashPage(TrashPageProps { workspace }) />
             <Route path=path!("/invitation") view=InvitationPage />
             <Route path=path!("/setup") view=SetUpPage />
             <Route path=path!("/instance") view=InstancePage />

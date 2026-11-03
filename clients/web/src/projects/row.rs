@@ -154,9 +154,9 @@ fn RowMenu(
                             .role("menuitem")
                             .on(ev::click, move |_| {
                                 overlays.close_menu();
-                                overlays.ask_to_delete(row.get_value());
+                                overlays.ask_to_trash(row.get_value());
                             })
-                            .child(speech::said("project-delete")),
+                            .child(speech::said("project-trash")),
                     ))
                 })
             },

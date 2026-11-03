@@ -198,7 +198,7 @@ test("the only owner is shown as such, may stay, and leaves by handing the proje
   expect(asked.deleted).toEqual([ADA.account]);
 });
 
-test("the only member, leaving, is offered to delete the project instead", async ({ page }) => {
+test("the only member, leaving, is offered to move the project to the trash instead", async ({ page }) => {
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
   ]);
@@ -206,8 +206,8 @@ test("the only member, leaving, is offered to delete the project instead", async
 
   await page.getByRole("button", { name: "Leave" }).click();
   const dialog = page.getByRole("dialog", { name: "Nobody else is in it" });
-  await expect(dialog).toContainText("Deleting cannot be undone.");
-  await dialog.getByRole("button", { name: "Delete the project" }).click();
+  await expect(dialog).toContainText("where it can be restored for 30 days");
+  await dialog.getByRole("button", { name: "Move the project to the trash" }).click();
 
   await expect(page).toHaveURL(/\/$/);
   expect((await page.request.get(`${API}/projects/${project}`)).status()).toBe(404);

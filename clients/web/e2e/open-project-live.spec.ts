@@ -87,11 +87,11 @@ test("the book's language follows another author's change of the details", async
   expect(asks()).toBe(1);
 });
 
-test("an open project another author deletes says so, and is followed no longer", async ({
+test("an open project another author moves to the trash says so, and is followed no longer", async ({
   page,
 }) => {
   let closed = false;
-  const { project } = await anOpenProjectFollowedLive(page, "OpenDeleted");
+  const { project } = await anOpenProjectFollowedLive(page, "OpenTrashed");
   unsubscribedOn(page, "projects", { project }, () => {
     closed = true;
   });
@@ -100,11 +100,11 @@ test("an open project another author deletes says so, and is followed no longer"
   await anotherAuthor(page, "delete", `/projects/${project}`);
 
   await expect(page.getByRole("alert")).toContainText(
-    "That project no longer exists.",
+    "This project was moved to the trash meanwhile.",
   );
   await expect
     .poll(() => closed, {
-      message: "a project that is gone has nothing more to tell",
+      message: "a project in the trash has nothing more to tell",
     })
     .toBe(true);
 });

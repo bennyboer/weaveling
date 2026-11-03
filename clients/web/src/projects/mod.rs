@@ -1,4 +1,4 @@
-pub mod confirm_delete;
+pub mod confirm_trash;
 pub mod details_form;
 pub mod languages;
 pub mod model;

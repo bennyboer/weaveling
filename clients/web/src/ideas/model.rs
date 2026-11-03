@@ -39,6 +39,37 @@ impl Idea {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Awaited {
+    Held { id: IdeaId, at_least: u64 },
+    Gone(IdeaId),
+}
+
+impl Awaited {
+    pub fn told(told: &FrameDTO) -> Option<Self> {
+        let id = IdeaId::from(told.of.clone()?);
+
+        Some(
+            match serde_json::from_value::<IdeaEventDTO>(told.event.clone()).ok()? {
+                IdeaEventDTO::Discarded => Self::Gone(id),
+                _ => Self::Held {
+                    id,
+                    at_least: told.version,
+                },
+            },
+        )
+    }
+
+    pub fn holds(&self, held: &[Idea]) -> bool {
+        match self {
+            Self::Held { id, at_least } => held
+                .iter()
+                .any(|idea| idea.id == *id && idea.version >= *at_least),
+            Self::Gone(id) => held.iter().all(|idea| idea.id != *id),
+        }
+    }
+}
+
 pub fn hold(held: &mut Vec<Idea>, newer: Idea) {
     match held.iter_mut().find(|known| known.id == newer.id) {
         Some(known) if known.version < newer.version => *known = newer,
@@ -314,6 +345,64 @@ mod tests {
             for (case, told) in cases {
                 assert_eq!(taken_in(held(1, "The loom"), told), None, "{case}");
             }
+        }
+    }
+
+    mod awaited_tests {
+        use serde_json::json;
+
+        use super::*;
+
+        fn told(version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
+                of: Some("idea_1".to_owned()),
+                version,
+                at: None,
+                event,
+            }
+        }
+
+        fn held(version: u64) -> Vec<Idea> {
+            vec![Idea {
+                version,
+                ..an_idea("The loom")
+            }]
+        }
+
+        #[test]
+        fn a_change_told_awaits_the_idea_held_at_least_at_its_version() {
+            let awaited =
+                Awaited::told(&told(2, json!({ "name": "RETITLED", "title": "The weft" })))
+                    .expect("a retitle is awaited");
+
+            assert!(!awaited.holds(&[]));
+            assert!(
+                !awaited.holds(&held(1)),
+                "an answer read before the change is behind"
+            );
+            assert!(awaited.holds(&held(2)));
+        }
+
+        #[test]
+        fn a_discard_told_awaits_the_idea_gone() {
+            let awaited = Awaited::told(&told(2, json!({ "name": "DISCARDED" })))
+                .expect("a discard is awaited");
+
+            assert!(!awaited.holds(&held(1)));
+            assert!(awaited.holds(&[]));
+        }
+
+        #[test]
+        fn a_frame_that_names_nothing_awaits_nothing() {
+            let nameless = FrameDTO {
+                of: None,
+                version: 2,
+                at: None,
+                event: json!({ "name": "DISCARDED" }),
+            };
+
+            assert_eq!(Awaited::told(&nameless), None);
+            assert_eq!(Awaited::told(&told(2, json!({ "name": "ARCHIVED" }))), None);
         }
     }
 }

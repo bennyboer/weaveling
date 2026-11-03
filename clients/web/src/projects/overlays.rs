@@ -34,7 +34,7 @@ impl Overlays {
         self.confirming.read_only()
     }
 
-    pub fn ask_to_delete(self, project: Project) {
+    pub fn ask_to_trash(self, project: Project) {
         self.confirming.set(Some(project));
     }
 

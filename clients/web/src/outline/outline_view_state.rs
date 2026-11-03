@@ -360,7 +360,7 @@ impl OutlineViewState {
                 listing_scenes();
             }
             if unknown_idea {
-                listing_ideas.dispatch(());
+                listing_ideas.dispatch(None);
             }
         });
 

@@ -20,6 +20,10 @@ workspace-heading = Your projects
 workspace-tagline = Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.
 loading = Loading…
 workspace-empty = No projects yet. Every epic starts as a little mess.
+workspace-trash-link = Trash, { $count } { $count ->
+        [one] project
+       *[other] projects
+    }
 
 new-project-working-title = A working title…
 new-project-create = Create
@@ -29,14 +33,19 @@ new-project-setting-up = Setting up your project…
 
 project-more-actions = More actions
 project-rename = Rename
-project-delete = Delete
+project-trash = Move to trash
 project-rename-save = Save
 project-rename-cancel = Cancel
 
-delete-project-dialog = Delete this project?
-delete-project-fate = “{ $name }” will be gone for good. Deleting cannot be undone.
-delete-project-cancel = Cancel
-delete-project-confirm = Delete
+trash-project-dialog = Move this project to the trash?
+trash-project-fate = “{ $name }” can be restored from the trash for 30 days. Then it is gone for good.
+trash-project-cancel = Cancel
+trash-project-confirm = Move to trash
+trash-heading = Trash
+trash-back = Back to your projects
+trash-empty = Nothing is in the trash.
+trash-kept-until = Can be restored until { $moment }
+trash-restore = Restore
 
 new-project-cancel = Cancel
 
@@ -597,11 +606,11 @@ members-invited = Invited
 members-invite-as = As
 members-only-owner = Owner, the only one
 members-last-owner-heading = You are its only owner
-members-last-owner-hint = Before you leave, make someone else an owner. Otherwise nobody could invite, change roles or delete this project.
+members-last-owner-hint = Before you leave, make someone else an owner. Otherwise nobody could invite, change roles or move this project to the trash.
 members-new-owner = New owner
 members-candidate = { $name } ({ $role })
 members-stay = Stay
 members-hand-over = Hand over and leave
 members-alone-heading = Nobody else is in it
-members-alone-hint = This project has no other members, so leaving it would leave it to nobody. Delete it instead, or invite someone and hand it over first. Deleting cannot be undone.
-members-delete-project = Delete the project
+members-alone-hint = This project has no other members, so leaving it would leave it to nobody. Move it to the trash instead, where it can be restored for 30 days, or invite someone and hand it over first.
+members-trash-project = Move the project to the trash

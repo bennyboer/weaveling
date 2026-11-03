@@ -160,7 +160,7 @@ impl BoardViewState {
             });
             if unknown && listed_again_at.get_value() != Some(version) {
                 listed_again_at.set_value(Some(version));
-                listing.dispatch(());
+                listing.dispatch(None);
             }
         });
 
