@@ -28,6 +28,22 @@ impl TellingInvitations {
             teller: Arc::new(Teller::new(broadcaster)),
         }
     }
+
+    async fn tell_invited_into(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        let invited = self.kept.open_into(project).await?;
+        let (teller, of) = (self.teller.clone(), project.to_string());
+        transaction.after_commit(async move {
+            for to in invited {
+                teller.tell(InvitationChanges(to), &of, ());
+            }
+        });
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -123,7 +139,8 @@ impl InvitationCatalog for TellingInvitations {
         transaction: &mut Transaction,
         named: &ProjectName,
     ) -> Result<(), CatalogError> {
-        self.kept.remember_project_name(transaction, named).await
+        self.kept.remember_project_name(transaction, named).await?;
+        self.tell_invited_into(transaction, &named.project).await
     }
 
     async fn lay_project_tombstone(
@@ -161,7 +178,12 @@ impl InvitationCatalog for TellingInvitations {
     ) -> Result<(), CatalogError> {
         self.kept
             .remember_trash(transaction, project, version, in_the_trash)
-            .await
+            .await?;
+        self.tell_invited_into(transaction, project).await
+    }
+
+    async fn open_into(&self, project: &ProjectLink) -> Result<Vec<EmailAddress>, CatalogError> {
+        self.kept.open_into(project).await
     }
 
     async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {

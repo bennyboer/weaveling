@@ -865,6 +865,63 @@ pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_oth
     assert!(open_to(catalog, "nobody@example.com").await.is_empty());
 }
 
+async fn open_into(catalog: &Committing<'_, impl InvitationCatalog>, project: &str) -> Vec<String> {
+    catalog
+        .open_into(&ProjectLink::from(project))
+        .await
+        .expect("asking for a project's invitees should succeed")
+        .iter()
+        .map(|address| address.as_str().to_owned())
+        .collect()
+}
+
+pub async fn the_addresses_invited_into_a_project_and_not_yet_answered_are_told_once_each(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    let to = |address: &str, seconds: i64| InvitationSummary {
+        to: EmailAddress::new(address).expect("a plain address"),
+        ..into("project_a", Role::Author, issued(seconds))
+    };
+    remembered(catalog, &to("grace@example.com", 1_000)).await;
+    remembered(catalog, &to("grace@example.com", 2_000)).await;
+    remembered(catalog, &to("ada@example.com", 3_000)).await;
+    remembered(
+        catalog,
+        &InvitationSummary {
+            outcome: Outcome::Accepted,
+            ..to("hedy@example.com", 4_000)
+        },
+    )
+    .await;
+    remembered(
+        catalog,
+        &InvitationSummary {
+            outcome: declined(),
+            ..to("linus@example.com", 5_000)
+        },
+    )
+    .await;
+    remembered(
+        catalog,
+        &InvitationSummary {
+            to: EmailAddress::new("joan@example.com").expect("a plain address"),
+            ..into("project_b", Role::Reader, issued(6_000))
+        },
+    )
+    .await;
+    remembered(catalog, &a_summary(issued(7_000), "barbara@example.com")).await;
+
+    assert_eq!(
+        open_into(catalog, "project_a").await,
+        vec!["ada@example.com", "grace@example.com"]
+    );
+    assert_eq!(
+        open_into(catalog, "project_b").await,
+        vec!["joan@example.com"]
+    );
+    assert!(open_into(catalog, "project_c").await.is_empty());
+}
+
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
@@ -1064,6 +1121,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             the_open_invitations_to_an_address_are_told_newest_first_and_no_others
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_addresses_invited_into_a_project_and_not_yet_answered_are_told_once_each
         );
         $crate::catalog_conformance_case!(
             $workbench,

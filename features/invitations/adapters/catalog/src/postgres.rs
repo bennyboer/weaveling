@@ -61,6 +61,13 @@ const OPEN_TO: &str = "
     ORDER BY invitation DESC
 ";
 
+const OPEN_INTO: &str = "
+    SELECT DISTINCT email
+    FROM invitation_summaries
+    WHERE project = $1 AND outcome = 'open'
+    ORDER BY email
+";
+
 const WITH_DIGEST: &str = "
     SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest
     FROM invitation_summaries
@@ -314,6 +321,19 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .map_err(unreachable)?;
 
         found.iter().map(to_summary).collect()
+    }
+
+    async fn open_into(&self, project: &ProjectLink) -> Result<Vec<EmailAddress>, CatalogError> {
+        let found: Vec<String> = sqlx::query_scalar(OPEN_INTO)
+            .bind(project.as_str())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|email| EmailAddress::new(email).map_err(unreachable))
+            .collect()
     }
 
     async fn with_digest(

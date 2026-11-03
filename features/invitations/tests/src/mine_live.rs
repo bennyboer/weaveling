@@ -6,9 +6,11 @@ use axum::Extension;
 use axum_test::TestServer;
 use clock::FixedClock;
 use email::EmailAddress;
-use eventsourcing::{AccountId, Agent, InMemoryEventStore};
+use eventsourcing::{AccountId, Agent, InMemoryEventStore, Version};
 use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
-use invitations_core::{InvitationCatalog, InvitationId, InvitationsCore, Person, Role};
+use invitations_core::{
+    InvitationCatalog, InvitationId, InvitationsCore, Person, ProjectLink, ProjectName, Role,
+};
 use invitations_rest::{InvitationChanges, TellingInvitations};
 use live::Broadcaster;
 use live::testing::Subscriber;
@@ -117,6 +119,68 @@ async fn on_the_one_socket_an_account_s_own_invitations_are_told_as_on_their_own
         socket.frame().await["of"],
         hers.to_string(),
         "nothing of Hedy's reaches Ada"
+    );
+}
+
+#[tokio::test]
+async fn an_invitee_is_told_when_the_project_they_are_invited_into_is_renamed_trashed_or_restored()
+{
+    let told = told();
+    told.invitations
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from("account_ada"),
+                name: "Ada Lovelace".to_owned(),
+                email: EmailAddress::new("ada@example.com").expect("a plain address"),
+            },
+        )
+        .await
+        .expect("remembering should succeed");
+    let server = on_one_socket(&told, Agent::Account(AccountId::from("account_ada")));
+    let mut socket = subscribed(&server, &[("mine", "true")]).await;
+    invited_and_listed(&told, "ada@example.com").await;
+    socket.frame().await;
+    let loom = ProjectLink::from("project_loom");
+
+    told.invitations
+        .remember_project_name(
+            None,
+            &ProjectName {
+                project: loom.clone(),
+                version: Version::of(2),
+                name: "The Loom".to_owned(),
+            },
+        )
+        .await
+        .expect("remembering should succeed");
+    let renamed = socket.frame().await;
+    told.invitations
+        .remember_trash(None, &loom, Version::of(3), true)
+        .await
+        .expect("remembering should succeed");
+    let trashed = socket.frame().await;
+    told.invitations
+        .remember_trash(None, &loom, Version::of(4), false)
+        .await
+        .expect("remembering should succeed");
+    let restored = socket.frame().await;
+    told.invitations
+        .remember_trash(
+            None,
+            &ProjectLink::from("project_other"),
+            Version::of(2),
+            true,
+        )
+        .await
+        .expect("remembering should succeed");
+
+    for frame in [renamed, trashed, restored] {
+        assert_eq!(frame["of"], "project_loom");
+    }
+    assert!(
+        socket.silent().await,
+        "a project Ada is not invited into tells her nothing"
     );
 }
 

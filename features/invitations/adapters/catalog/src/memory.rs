@@ -157,6 +157,21 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .collect())
     }
 
+    async fn open_into(&self, project: &ProjectLink) -> Result<Vec<EmailAddress>, CatalogError> {
+        let mut addresses: Vec<EmailAddress> = self
+            .read()
+            .values()
+            .filter(|summary| {
+                summary.outcome == Outcome::Open && summary.scope.project() == Some(project)
+            })
+            .map(|summary| summary.to.clone())
+            .collect();
+        addresses.sort_by(|one, other| one.as_str().cmp(other.as_str()));
+        addresses.dedup();
+
+        Ok(addresses)
+    }
+
     async fn with_digest(
         &self,
         digest: &InvitationTokenDigest,

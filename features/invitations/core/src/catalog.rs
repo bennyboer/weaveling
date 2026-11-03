@@ -92,6 +92,8 @@ pub trait InvitationCatalog: Send + Sync {
 
     async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError>;
 
+    async fn open_into(&self, project: &ProjectLink) -> Result<Vec<EmailAddress>, CatalogError>;
+
     async fn with_digest(
         &self,
         digest: &InvitationTokenDigest,
