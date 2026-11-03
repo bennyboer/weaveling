@@ -202,13 +202,16 @@ impl SceneStore for InMemorySceneStore {
         transaction: &mut Transaction,
         id: SceneId,
         words: usize,
+        as_of: u64,
     ) -> Result<(), StoreError> {
         self.undo_on_rollback(transaction)?;
         let project = self
             .write()
             .get_mut(&id)
             .map(|stored| {
-                stored.uncounted = false;
+                if stored.version == as_of {
+                    stored.uncounted = false;
+                }
                 stored.project.clone()
             })
             .ok_or(StoreError::NotFound(id))?;
@@ -309,6 +312,13 @@ impl SceneStore for InMemorySceneStore {
         found.truncate(at_most);
 
         Ok(found)
+    }
+
+    async fn version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        self.read()
+            .get(&id)
+            .map(|stored| stored.version)
+            .ok_or(StoreError::NotFound(id))
     }
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {

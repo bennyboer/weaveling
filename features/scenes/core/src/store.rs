@@ -41,6 +41,7 @@ pub trait SceneStore: Send + Sync {
         transaction: &mut Transaction,
         id: SceneId,
         words: usize,
+        as_of: u64,
     ) -> Result<(), StoreError>;
 
     async fn announce_opening(
@@ -78,6 +79,8 @@ pub trait SceneStore: Send + Sync {
         after: Option<SceneId>,
         at_most: usize,
     ) -> Result<Vec<SceneId>, StoreError>;
+
+    async fn version_of(&self, id: SceneId) -> Result<u64, StoreError>;
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError>;
 }

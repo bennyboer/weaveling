@@ -13,7 +13,8 @@ use scenes_core::{
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message, Presence};
 use time::{Duration, OffsetDateTime};
-use transacting::{InMemoryTransactions, Transaction};
+use tokio::sync::Notify;
+use transacting::{Failure, InMemoryTransactions, Transaction, Transactions};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
@@ -23,6 +24,25 @@ struct FalteringStore {
     faltering: AtomicBool,
     announced: Mutex<Vec<(SceneId, usize)>>,
     openings: Mutex<Vec<(SceneId, String)>>,
+    edited_mid_count: Mutex<Option<Vec<u8>>>,
+    refusing_openings: AtomicBool,
+}
+
+struct StallingTransactions {
+    held: InMemoryTransactions,
+    stalled: Mutex<Option<Arc<Notify>>>,
+}
+
+#[async_trait]
+impl Transactions for StallingTransactions {
+    async fn begin(&self) -> Result<Transaction, Failure> {
+        let stall = self.stalled.lock().expect("never poisoned").take();
+        if let Some(stall) = stall {
+            stall.notified().await;
+        }
+
+        self.held.begin().await
+    }
 }
 
 impl FalteringStore {
@@ -68,13 +88,13 @@ impl SceneStore for FalteringStore {
         transaction: &mut Transaction,
         id: SceneId,
         words: usize,
+        as_of: u64,
     ) -> Result<(), StoreError> {
         if self.faltering.load(Ordering::SeqCst) {
             return Err(StoreError::Backend("the store is down".into()));
         }
-
         self.held
-            .announce_word_count(transaction, id, words)
+            .announce_word_count(transaction, id, words, as_of)
             .await?;
         self.announced
             .lock()
@@ -90,7 +110,7 @@ impl SceneStore for FalteringStore {
         id: SceneId,
         opening: &str,
     ) -> Result<(), StoreError> {
-        if self.faltering.load(Ordering::SeqCst) {
+        if self.faltering.load(Ordering::SeqCst) || self.refusing_openings.load(Ordering::SeqCst) {
             return Err(StoreError::Backend("the store is down".into()));
         }
 
@@ -142,6 +162,24 @@ impl SceneStore for FalteringStore {
         self.held.in_project(project, after, at_most).await
     }
 
+    async fn version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        let version = self.held.version_of(id).await?;
+        let edit = self.edited_mid_count.lock().expect("never poisoned").take();
+        if let Some(edit) = edit {
+            let mut elsewhere = InMemoryTransactions::new()
+                .begin()
+                .await
+                .expect("an in-memory transaction begins");
+            self.held.apply(&mut elsewhere, id, &edit).await?;
+            elsewhere
+                .finish()
+                .await
+                .expect("an in-memory transaction commits");
+        }
+
+        Ok(version)
+    }
+
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
         self.held.uncounted(at_most).await
     }
@@ -149,6 +187,7 @@ impl SceneStore for FalteringStore {
 
 struct Workbench {
     store: Arc<FalteringStore>,
+    transactions: Arc<StallingTransactions>,
     service: ScenesCore,
     live: LiveScenes,
 }
@@ -159,10 +198,16 @@ fn a_workbench() -> Workbench {
         faltering: AtomicBool::new(false),
         announced: Mutex::new(Vec::new()),
         openings: Mutex::new(Vec::new()),
+        edited_mid_count: Mutex::new(None),
+        refusing_openings: AtomicBool::new(false),
+    });
+    let transactions = Arc::new(StallingTransactions {
+        held: InMemoryTransactions::new(),
+        stalled: Mutex::new(None),
     });
     let service = ScenesCore::new(
         store.clone(),
-        Arc::new(InMemoryTransactions::new()),
+        transactions.clone(),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
@@ -173,6 +218,7 @@ fn a_workbench() -> Workbench {
 
     Workbench {
         store,
+        transactions,
         live: LiveScenes::new(service.clone()),
         service,
     }
@@ -606,4 +652,117 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
         1
     );
     assert_eq!(bench.last_announced(id), Some(4));
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    bench
+        .service
+        .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    *bench.store.edited_mid_count.lock().expect("never poisoned") =
+        Some(a_paragraph("Then it spoke."));
+
+    bench
+        .live
+        .count_the_uncounted(10)
+        .await
+        .expect("counting should succeed");
+
+    assert_eq!(bench.last_announced(id), Some(4));
+    assert_eq!(
+        bench
+            .service
+            .uncounted(10)
+            .await
+            .expect("asking should succeed"),
+        vec![id],
+        "the count read the words before the edit was stored, so it may not clear the edit's mark"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    bench
+        .service
+        .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    bench.store.refusing_openings.store(true, Ordering::SeqCst);
+
+    bench
+        .live
+        .count_the_uncounted(10)
+        .await
+        .expect("a count that fails is no failure of the round");
+    let owed = bench
+        .service
+        .uncounted(10)
+        .await
+        .expect("asking should succeed");
+    bench.store.refusing_openings.store(false, Ordering::SeqCst);
+    bench
+        .live
+        .count_the_uncounted(10)
+        .await
+        .expect("counting should succeed");
+
+    assert_eq!(
+        owed,
+        vec![id],
+        "the count and the opening land together, or the opening is lost once the mark is gone"
+    );
+    assert_eq!(
+        bench.openings_told(id),
+        vec!["The loom stood silent.".to_owned()]
+    );
+    assert!(
+        bench
+            .service
+            .uncounted(10)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    writes(&present, "The loom stood silent.").await;
+    let update = a_paragraph("Then it spoke.");
+    present
+        .receive(Message::JustHappened(update.clone()))
+        .expect("should write");
+    present.persist(&update).await.expect("should persist");
+    let stall = Arc::new(Notify::new());
+    *bench.transactions.stalled.lock().expect("never poisoned") = Some(stall.clone());
+
+    let older = tokio::spawn({
+        let live = bench.live.clone();
+        async move { live.settle().await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    writes(&present, "And the weavers listened.").await;
+    let newer = tokio::spawn({
+        let live = bench.live.clone();
+        async move { live.settle().await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    stall.notify_one();
+    older.await.expect("the older count ends");
+    newer.await.expect("the newer count ends");
+
+    assert_eq!(
+        bench.last_announced(id),
+        Some(11),
+        "one count at a time, so the newest words are the last told"
+    );
 }

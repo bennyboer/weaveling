@@ -182,20 +182,26 @@ impl ScenesCore {
         self.service.uncounted(at_most).await
     }
 
-    pub async fn announce_word_count(&self, id: &str, words: usize) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.service
-            .announce_word_count(&mut transaction, id, words)
-            .await?;
-
-        Ok(transaction.finish().await?)
+    pub async fn version_of(&self, id: &str) -> Result<u64, ScenesError> {
+        self.service.version_of(id).await
     }
 
-    pub async fn announce_opening(&self, id: &str, opening: &str) -> Result<(), ScenesError> {
+    pub async fn announce_count(
+        &self,
+        id: &str,
+        words: usize,
+        opening: Option<&str>,
+        as_of: u64,
+    ) -> Result<(), ScenesError> {
         let mut transaction = self.transactions.begin().await?;
         self.service
-            .announce_opening(&mut transaction, id, opening)
+            .announce_word_count(&mut transaction, id, words, as_of)
             .await?;
+        if let Some(opening) = opening {
+            self.service
+                .announce_opening(&mut transaction, id, opening)
+                .await?;
+        }
 
         Ok(transaction.finish().await?)
     }

@@ -83,13 +83,20 @@ impl SceneService {
         transaction: &mut Transaction,
         id: &str,
         words: usize,
+        as_of: u64,
     ) -> Result<(), ScenesError> {
         let id: SceneId = id.parse()?;
 
         Ok(self
             .store
-            .announce_word_count(transaction, id, words)
+            .announce_word_count(transaction, id, words, as_of)
             .await?)
+    }
+
+    pub async fn version_of(&self, id: &str) -> Result<u64, ScenesError> {
+        let id: SceneId = id.parse()?;
+
+        Ok(self.store.version_of(id).await?)
     }
 
     pub async fn announce_opening(

@@ -13,7 +13,7 @@ use scenes_core::{
     Access, Scene, SceneError, SceneId, SceneRestyler, ScenesCore, ScenesError, StoreError,
 };
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::sync::{Mutex as OneAtATime, broadcast};
 use tokio::time::Instant as Moment;
 use tracing::warn;
 
@@ -53,6 +53,7 @@ pub struct LiveScene {
     unsaved: AtomicBool,
     uncounted: AtomicBool,
     recount_waiting: AtomicBool,
+    counting: OneAtATime<()>,
     counted_at: Mutex<Option<Moment>>,
     opening_told: Mutex<Option<String>>,
 }
@@ -65,6 +66,7 @@ impl LiveScene {
             unsaved: AtomicBool::new(false),
             uncounted: AtomicBool::new(false),
             recount_waiting: AtomicBool::new(false),
+            counting: OneAtATime::new(()),
             counted_at: Mutex::new(None),
             opening_told: Mutex::new(None),
         }
@@ -80,6 +82,7 @@ impl LiveScene {
     }
 
     async fn recount(&self, scenes: &ScenesCore) {
+        let _counting = self.counting.lock().await;
         if !self.uncounted.swap(false, Ordering::AcqRel) {
             return;
         }
@@ -88,38 +91,40 @@ impl LiveScene {
             .lock()
             .expect("live scene count lock poisoned") = Some(Moment::now());
 
-        let id = self.id().to_string();
-        let counted = scenes.announce_word_count(&id, self.scene.words()).await;
-        let opened = self.tell_opening(scenes, &id).await;
-
-        for told in [counted, opened] {
-            match told {
-                Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
-                Err(problem) => {
-                    self.uncounted.store(true, Ordering::Release);
-                    warn!(scene = %self.id(), %problem, "what a scene holds could not be told");
-                }
+        match self.tell_what_it_holds(scenes).await {
+            Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
+            Err(problem) => {
+                self.uncounted.store(true, Ordering::Release);
+                warn!(scene = %self.id(), %problem, "what a scene holds could not be told");
             }
         }
     }
 
-    async fn tell_opening(&self, scenes: &ScenesCore, id: &str) -> Result<(), ScenesError> {
+    async fn tell_what_it_holds(&self, scenes: &ScenesCore) -> Result<(), ScenesError> {
+        let id = self.id().to_string();
+        let as_of = scenes.version_of(&id).await?;
         let opening = self.scene.opening();
-        let unchanged = self
+        let changed = self
             .opening_told
             .lock()
             .expect("live scene opening lock poisoned")
             .as_ref()
-            == Some(&opening);
+            != Some(&opening);
 
-        if unchanged {
-            return Ok(());
+        scenes
+            .announce_count(
+                &id,
+                self.scene.words(),
+                changed.then_some(opening.as_str()),
+                as_of,
+            )
+            .await?;
+        if changed {
+            *self
+                .opening_told
+                .lock()
+                .expect("live scene opening lock poisoned") = Some(opening);
         }
-        scenes.announce_opening(id, &opening).await?;
-        *self
-            .opening_told
-            .lock()
-            .expect("live scene opening lock poisoned") = Some(opening);
 
         Ok(())
     }

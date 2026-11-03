@@ -105,8 +105,11 @@ impl SceneStore for Wavering {
         transaction: &mut Transaction,
         id: SceneId,
         words: usize,
+        as_of: u64,
     ) -> Result<(), StoreError> {
-        self.held.announce_word_count(transaction, id, words).await
+        self.held
+            .announce_word_count(transaction, id, words, as_of)
+            .await
     }
 
     async fn announce_opening(
@@ -164,6 +167,10 @@ impl SceneStore for Wavering {
         }
 
         Ok(found)
+    }
+
+    async fn version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        self.held.version_of(id).await
     }
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {

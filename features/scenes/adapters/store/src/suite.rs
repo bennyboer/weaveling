@@ -91,9 +91,19 @@ impl<S: SceneStore> Committing<'_, S> {
     }
 
     pub async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        let as_of = self.store.version_of(id).await?;
+        self.announce_word_count_as_of(id, words, as_of).await
+    }
+
+    pub async fn announce_word_count_as_of(
+        &self,
+        id: SceneId,
+        words: usize,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
         let mut transaction = self.begun().await?;
         self.store
-            .announce_word_count(&mut transaction, id, words)
+            .announce_word_count(&mut transaction, id, words, as_of)
             .await?;
         transaction.finish().await.map_err(unreachable)
     }
@@ -712,6 +722,49 @@ pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
     assert!(uncounted(store).await.is_empty());
 }
 
+pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    let counted_as_of = store.version_of(id).await.expect("the scene has a version");
+    store
+        .apply(id, &a_paragraph("Then it spoke."))
+        .await
+        .expect("writing should succeed");
+
+    store
+        .announce_word_count_as_of(id, 4, counted_as_of)
+        .await
+        .expect("announcing should succeed");
+
+    assert_eq!(
+        uncounted(store).await,
+        vec![id],
+        "what was written after the words were read is not in the count, so it is still owed"
+    );
+    store
+        .announce_word_count(id, 7)
+        .await
+        .expect("announcing should succeed");
+    assert!(uncounted(store).await.is_empty());
+}
+
+pub async fn the_version_of_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    let missing = an_id(1_000);
+
+    let error = store
+        .version_of(missing)
+        .await
+        .expect_err("there is no version of what is not there");
+
+    assert!(matches!(&error, StoreError::NotFound(id) if *id == missing));
+}
+
 pub async fn a_write_rolled_back_owes_no_count(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
@@ -1275,6 +1328,11 @@ macro_rules! conformance_tests {
             $workbench,
             writing_leaves_a_scene_owing_its_count_until_the_count_is_told
         );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_count_as_of_an_older_version_leaves_the_newer_writing_owed
+        );
+        $crate::suite::conformance_case!($workbench, the_version_of_a_missing_scene_is_not_found);
         $crate::suite::conformance_case!($workbench, a_write_rolled_back_owes_no_count);
         $crate::suite::conformance_case!($workbench, an_empty_scene_can_be_stored);
         $crate::suite::conformance_case!($workbench, load_missing_scene_is_not_found);

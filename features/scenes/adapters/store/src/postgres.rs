@@ -87,7 +87,9 @@ const FORGET_BEFORE: &str = "DELETE FROM scene_updates WHERE scene = $1 AND seq 
 
 const FORGET: &str = "DELETE FROM scenes WHERE scene = $1 RETURNING project";
 
-const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1";
+const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1 AND version = $2";
+
+const VERSION_OF: &str = "SELECT version FROM scenes WHERE scene = $1";
 
 const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT $1";
 
@@ -410,6 +412,7 @@ impl SceneStore for PostgresSceneStore {
         transaction: &mut Transaction,
         id: SceneId,
         words: usize,
+        as_of: u64,
     ) -> Result<(), StoreError> {
         self.announce(transaction, id, |project| SceneChange::WordsCounted {
             scene: id,
@@ -419,6 +422,7 @@ impl SceneStore for PostgresSceneStore {
         .await?;
         sqlx::query(COUNTED)
             .bind(id.to_string())
+            .bind(i64::try_from(as_of).expect("a version fits a signed 64-bit column"))
             .execute(connection(transaction)?)
             .await
             .map_err(unreachable)?;
@@ -548,6 +552,18 @@ impl SceneStore for PostgresSceneStore {
                     .map_err(|why| StoreError::Backend(Box::new(why)))
             })
             .collect()
+    }
+
+    async fn version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        let version: Option<i64> = sqlx::query_scalar(VERSION_OF)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        version.ok_or(StoreError::NotFound(id)).and_then(|version| {
+            u64::try_from(version).map_err(|why| StoreError::Backend(Box::new(why)))
+        })
     }
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
