@@ -178,10 +178,10 @@ async fn buried_while(
         },
         async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            remembering
-                .finish()
-                .await
-                .expect("committing should succeed");
+            match remembering.finish().await {
+                Ok(()) | Err(transacting::Failure::LostRace) => {}
+                Err(failed) => panic!("committing should succeed or lose the race: {failed:?}"),
+            }
         }
     );
 
@@ -189,7 +189,7 @@ async fn buried_while(
 }
 
 #[tokio::test]
-async fn a_project_s_tombstone_waits_for_its_name_under_way() {
+async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name() {
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut naming = bench
@@ -225,7 +225,7 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
 }
 
 #[tokio::test]
-async fn a_project_s_tombstone_waits_for_its_trash_under_way() {
+async fn a_project_s_tombstone_laid_while_its_trash_is_under_way_leaves_no_trash() {
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut trashing = bench
