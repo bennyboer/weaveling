@@ -28,6 +28,13 @@ struct FalteringStore {
     openings: Mutex<Vec<(SceneId, String)>>,
     edited_mid_count: Mutex<Option<Vec<u8>>>,
     refusing_openings: AtomicBool,
+    held_read: Mutex<Option<HeldRead>>,
+}
+
+#[derive(Clone)]
+struct HeldRead {
+    read: Arc<Notify>,
+    let_through: Arc<Notify>,
 }
 
 struct StallingTransactions {
@@ -60,7 +67,14 @@ impl SceneStore for FalteringStore {
     }
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
-        self.held.load(id).await
+        let loaded = self.held.load(id).await;
+        let held = self.held_read.lock().expect("never poisoned").take();
+        if let Some(held) = held {
+            held.read.notify_one();
+            held.let_through.notified().await;
+        }
+
+        loaded
     }
 
     async fn apply(
@@ -202,6 +216,7 @@ fn a_workbench() -> Workbench {
         openings: Mutex::new(Vec::new()),
         edited_mid_count: Mutex::new(None),
         refusing_openings: AtomicBool::new(false),
+        held_read: Mutex::new(None),
     });
     let transactions = Arc::new(StallingTransactions {
         held: InMemoryTransactions::new(),
@@ -233,6 +248,16 @@ impl Workbench {
             .await
             .expect("should create")
             .id()
+    }
+
+    fn holding_the_next_read(&self) -> HeldRead {
+        let held = HeldRead {
+            read: Arc::new(Notify::new()),
+            let_through: Arc::new(Notify::new()),
+        };
+        *self.store.held_read.lock().expect("never poisoned") = Some(held.clone());
+
+        held
     }
 
     fn openings_told(&self, id: SceneId) -> Vec<String> {
@@ -390,6 +415,40 @@ async fn joining_after_a_scene_was_let_go_brings_back_what_was_stored() {
     assert!(!Arc::ptr_eq(&copy, afresh.scene()), "a fresh copy");
     // and: it holds the stored prose
     assert_eq!(afresh.text(), "The loom stood silent.");
+}
+
+#[tokio::test]
+async fn a_slow_join_outlived_by_a_copy_written_in_and_let_go_holds_what_was_written() {
+    // given: a scene
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    // and: a join whose read of it is slow
+    let held = bench.holding_the_next_read();
+    let live = bench.live.clone();
+    let slow = tokio::spawn(async move { live.join(id).await });
+    held.read.notified().await;
+
+    // when: meanwhile it is joined, written in and let go
+    let quick = bench.live.join(id).await.expect("should join");
+    quick
+        .persist(&a_paragraph("The loom stood silent."))
+        .await
+        .expect("should persist");
+    drop(quick);
+    bench.live.sweep(Instant::now()).await;
+    // and: the slow read comes back
+    held.let_through.notify_one();
+    let joined = slow
+        .await
+        .expect("the slow join finishes")
+        .expect("should join");
+
+    // then: the slow join holds what was written meanwhile
+    assert_eq!(
+        joined.text(),
+        "The loom stood silent.",
+        "a copy read before the edit would hide it from everyone writing in the scene until it is let go again"
+    );
 }
 
 #[tokio::test]

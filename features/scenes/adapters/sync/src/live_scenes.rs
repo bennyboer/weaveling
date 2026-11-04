@@ -312,6 +312,7 @@ impl Room {
 struct Shared {
     rooms: RwLock<Rooms>,
     peers: AtomicUsize,
+    rooms_let_go: AtomicUsize,
     scenes: ScenesCore,
     sweeping: AtomicBool,
 }
@@ -337,6 +338,7 @@ impl LiveScenes {
             shared: Arc::new(Shared {
                 rooms: RwLock::new(Rooms::new()),
                 peers: AtomicUsize::new(1),
+                rooms_let_go: AtomicUsize::new(0),
                 scenes,
                 sweeping: AtomicBool::new(false),
             }),
@@ -346,18 +348,20 @@ impl LiveScenes {
     pub async fn join(&self, id: SceneId) -> Result<Presence, ScenesError> {
         self.start_sweeping();
 
-        if let Some(entered) = self.enter(id, None) {
-            if entered.scene.gone.load(Ordering::Acquire) {
-                return Err(ScenesError::Store(StoreError::NotFound(id)));
+        loop {
+            if let Some(entered) = self.enter(id, None) {
+                if entered.scene.gone.load(Ordering::Acquire) {
+                    return Err(ScenesError::Store(StoreError::NotFound(id)));
+                }
+                return Ok(entered);
             }
-            return Ok(entered);
+
+            let let_go = self.shared.rooms_let_go.load(Ordering::Acquire);
+            let scene = self.shared.scenes.open(&id.to_string()).await?;
+            if let Some(entered) = self.enter(id, Some((scene, let_go))) {
+                return Ok(entered);
+            }
         }
-
-        let scene = self.shared.scenes.open(&id.to_string()).await?;
-
-        Ok(self
-            .enter(id, Some(scene))
-            .expect("a hydrated scene always finds or makes its room"))
     }
 
     pub fn next_peer(&self) -> PeerId {
@@ -438,15 +442,20 @@ impl LiveScenes {
         });
         if still_idle {
             rooms.remove(&scene.id());
+            self.shared.rooms_let_go.fetch_add(1, Ordering::AcqRel);
         }
     }
 
-    fn enter(&self, id: SceneId, hydrated: Option<Scene>) -> Option<Presence> {
+    fn enter(&self, id: SceneId, hydrated: Option<(Scene, usize)>) -> Option<Presence> {
         let mut rooms = self.shared.write();
+        let read_since_a_room_was_let_go = hydrated
+            .as_ref()
+            .is_some_and(|(_, let_go)| self.shared.rooms_let_go.load(Ordering::Acquire) != *let_go);
 
         let room = match (rooms.entry(id), hydrated) {
             (Entry::Occupied(found), _) => found.into_mut(),
-            (Entry::Vacant(vacant), Some(scene)) => vacant.insert(Room {
+            (Entry::Vacant(_), Some(_)) if read_since_a_room_was_let_go => return None,
+            (Entry::Vacant(vacant), Some((scene, _))) => vacant.insert(Room {
                 scene: Arc::new(LiveScene::open(scene)),
                 present: 0,
                 idle_since: None,
