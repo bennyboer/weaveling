@@ -1,5 +1,5 @@
 use outbox::Origin;
-use transacting::{LostRace, Transaction};
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
@@ -35,12 +35,6 @@ where
             return Ok(());
         }
 
-        crate::postgres::one_stream_at_a_time(transaction, aggregate, kind)
-            .await
-            .map_err(|failure| match failure.lost_race() {
-                true => StoreError::outdated(aggregate, kind, expected),
-                false => StoreError::backend(aggregate, kind, failure.to_string()),
-            })?;
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())

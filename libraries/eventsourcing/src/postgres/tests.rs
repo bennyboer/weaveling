@@ -274,7 +274,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn forgetting_a_stream_waits_for_an_append_under_way_and_takes_it_too() {
+async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
     let bench = OnPostgres::setup().await;
     let service: EventSourcingService<Sample> = EventSourcingService::new(
         Arc::new(PostgresEventStore::new(
@@ -334,7 +334,10 @@ async fn forgetting_a_stream_waits_for_an_append_under_way_and_takes_it_too() {
         },
         async {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            appending.finish().await.expect("finishing should succeed");
+            match appending.finish().await {
+                Ok(()) | Err(transacting::Failure::LostRace) => {}
+                Err(failed) => panic!("committing should succeed or lose the race: {failed:?}"),
+            }
         }
     );
 
@@ -409,7 +412,7 @@ async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
     assert_eq!(
         [crossing, crossed].iter().filter(|lost| **lost).count(),
         1,
-        "one of two appends waiting on each other is told it lost the race, so it is tried again, \
+        "one of two appends waiting on each other loses the race, its transaction knowing so it is tried again, \
          and the other goes on"
     );
     drop(first);
@@ -433,6 +436,7 @@ async fn lost_race(
     {
         Ok(_) => false,
         Err(ServiceError::Store(StoreError::Outdated { .. })) => true,
+        Err(_) if transaction.lost_race() => true,
         Err(failure) => {
             panic!("an append either lands or loses the race, never fails: {failure:?}")
         }
