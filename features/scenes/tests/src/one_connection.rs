@@ -242,3 +242,31 @@ async fn one_connection_carries_many_scenes_at_once() {
         "Second."
     );
 }
+
+#[tokio::test]
+async fn an_edit_into_a_scene_deleted_while_live_refuses_it_and_nobody_joins_it_again() {
+    let (service, live) = a_workbench();
+    let scene = a_scene(&service).await;
+    let (mut writing, mut heard) = a_connection(&live);
+    join(&mut writing, &scene).await;
+    everything(&mut heard).await;
+    service
+        .delete(&scene, &Agent::Local)
+        .await
+        .expect("deleting should succeed");
+
+    edit(&mut writing, &scene, "Too late.").await;
+    let told = everything(&mut heard).await;
+    let (mut joining, mut joined) = a_connection(&live);
+    join(&mut joining, &scene).await;
+
+    assert!(
+        told.contains(&Envelope::Refused(scene.clone())),
+        "an edit the store cannot take is not silently kept for an eviction that will drop it"
+    );
+    assert_eq!(
+        everything(&mut joined).await,
+        vec![Envelope::Refused(scene)],
+        "a room whose scene is gone lets nobody in"
+    );
+}

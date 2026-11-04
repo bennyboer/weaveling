@@ -51,6 +51,7 @@ pub struct LiveScene {
     scene: Scene,
     traffic: broadcast::Sender<Overheard>,
     unsaved: AtomicBool,
+    gone: AtomicBool,
     uncounted: AtomicBool,
     recount_waiting: AtomicBool,
     counting: OneAtATime<()>,
@@ -64,6 +65,7 @@ impl LiveScene {
             scene,
             traffic: broadcast::channel(BACKLOG).0,
             unsaved: AtomicBool::new(false),
+            gone: AtomicBool::new(false),
             uncounted: AtomicBool::new(false),
             recount_waiting: AtomicBool::new(false),
             counting: OneAtATime::new(()),
@@ -241,6 +243,9 @@ impl Presence {
             .await;
         match persisted {
             Ok(()) => self.count_soon().await,
+            Err(ScenesError::Store(StoreError::NotFound(_))) => {
+                self.scene.gone.store(true, Ordering::Release)
+            }
             Err(_) => self.scene.unsaved.store(true, Ordering::Release),
         }
 
@@ -342,6 +347,9 @@ impl LiveScenes {
         self.start_sweeping();
 
         if let Some(entered) = self.enter(id, None) {
+            if entered.scene.gone.load(Ordering::Acquire) {
+                return Err(ScenesError::Store(StoreError::NotFound(id)));
+            }
             return Ok(entered);
         }
 
