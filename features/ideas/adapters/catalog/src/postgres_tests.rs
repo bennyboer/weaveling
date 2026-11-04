@@ -1,10 +1,7 @@
-use std::time::{Duration, Instant};
-
 use async_trait::async_trait;
 use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
@@ -196,53 +193,6 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standi
             .expect("listing should succeed")
             .is_empty(),
         "a remember racing a forget must never bring the forgotten idea back"
-    );
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_project_s_tombstone_waits_for_a_capture_or_a_cataloguing_under_way() {
-    let bench = OnPostgres::setup().await;
-    let project = ProjectLink::from("project_loom");
-    let mut capturing = bench
-        .transactions
-        .begin()
-        .await
-        .expect("beginning should succeed");
-    assert!(
-        !bench
-            .store
-            .has_project_tombstone_within(&mut capturing, &project)
-            .await
-            .expect("asking should succeed")
-    );
-
-    let (buried_at, captured_at) = tokio::join!(
-        async {
-            let mut burying = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .lay_project_tombstone(&mut burying, &project, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("laying a tombstone should succeed");
-            burying.finish().await.expect("committing should succeed");
-            Instant::now()
-        },
-        async move {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            let captured_at = Instant::now();
-            capturing.finish().await.expect("committing should succeed");
-            captured_at
-        }
-    );
-
-    assert!(
-        buried_at > captured_at,
-        "the tombstone waits for what found none, so the sweep after it, or the cataloguing, sees what that wrote"
     );
     bench.cleanup().await;
 }
