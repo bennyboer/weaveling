@@ -119,14 +119,29 @@ impl LiveScene {
                 as_of,
             )
             .await?;
-        if changed {
-            *self
-                .opening_told
-                .lock()
-                .expect("live scene opening lock poisoned") = Some(opening);
-        }
+        *self
+            .opening_told
+            .lock()
+            .expect("live scene opening lock poisoned") = Some(opening);
 
         Ok(())
+    }
+
+    async fn store_unsaved(&self, scenes: &ScenesCore) -> Result<(), ScenesError> {
+        if !self.unsaved.swap(false, Ordering::AcqRel) {
+            return Ok(());
+        }
+
+        let stored = scenes
+            .apply(&self.id().to_string(), &self.scene.everything())
+            .await;
+        if let Err(problem) = &stored
+            && !matches!(problem, ScenesError::Store(StoreError::NotFound(_)))
+        {
+            self.unsaved.store(true, Ordering::Release);
+        }
+
+        stored
     }
 
     pub fn id(&self) -> SceneId {
@@ -207,10 +222,18 @@ impl Presence {
     }
 
     pub async fn persist(&self, update: &[u8]) -> Result<(), ScenesError> {
+        let whole = self
+            .scene
+            .unsaved
+            .swap(false, Ordering::AcqRel)
+            .then(|| self.scene.scene.everything());
         let persisted = self
             .shared
             .scenes
-            .apply(&self.scene.id().to_string(), update)
+            .apply(
+                &self.scene.id().to_string(),
+                whole.as_deref().unwrap_or(update),
+            )
             .await;
         match persisted {
             Ok(()) => self.count_soon().await,
@@ -351,19 +374,9 @@ impl LiveScenes {
     }
 
     async fn flushed(&self, scene: &LiveScene) -> bool {
-        if !scene.unsaved.swap(false, Ordering::AcqRel) {
-            return true;
-        }
-
-        match self
-            .shared
-            .scenes
-            .apply(&scene.id().to_string(), &scene.scene.everything())
-            .await
-        {
+        match scene.store_unsaved(&self.shared.scenes).await {
             Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => true,
             Err(problem) => {
-                scene.unsaved.store(true, Ordering::Release);
                 warn!(scene = %scene.id(), %problem, "a scene could not be flushed, so it stays live");
                 false
             }
@@ -463,6 +476,7 @@ impl SceneRestyler for LiveScenes {
     async fn restyle(&self, scene: SceneId, style: QuotationMarks) -> Result<bool, ScenesError> {
         let presence = self.join(scene).await?;
         let Some(update) = presence.restyled(style) else {
+            presence.store_unsaved(&self.shared.scenes).await?;
             return Ok(false);
         };
         presence.broadcast(Overheard {

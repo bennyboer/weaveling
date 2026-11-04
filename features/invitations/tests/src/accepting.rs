@@ -1,7 +1,9 @@
 use accounts_contract::{INVITATION_TAKEN_UP, SIGNED_UP_BY_INVITATION};
 use eventsourcing::{AggregateId, EventStore, Version};
 use inbox::Inboxed;
-use invitations_core::{InvitationEvent, InvitationId, KIND, ProjectLink, Role, Scope};
+use invitations_core::{
+    DeclineReason, InvitationEvent, InvitationId, KIND, ProjectLink, Role, Scope,
+};
 use invitations_messaging::AcceptTakenUpInvitationListener;
 use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
@@ -126,6 +128,29 @@ async fn a_taking_up_told_again_or_after_a_withdrawal_changes_nothing() {
     assert!(matches!(
         happened(&wired, &withdrawn).await.as_slice(),
         [_, InvitationEvent::Withdrawn]
+    ));
+}
+
+#[tokio::test]
+async fn a_taking_up_that_crossed_a_decline_by_link_changes_nothing() {
+    let wired = wiring::wired();
+    let id = invited(&wired).await;
+    wired
+        .invitations
+        .declined(None, &id, DeclineReason::TurnedDown)
+        .await
+        .expect("an open invitation is declined");
+
+    listener(&wired)
+        .handle(&taken_up(&id, wiring::at(1_700_000_100)))
+        .await
+        .expect(
+            "declining by link claims no ticket, so a taking up may cross it, and no retry would ever accept",
+        );
+
+    assert!(matches!(
+        happened(&wired, &id).await.as_slice(),
+        [_, InvitationEvent::Declined { .. }]
     ));
 }
 

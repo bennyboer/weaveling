@@ -515,7 +515,9 @@ fn operating(by: &Acting) -> Result<(), InvitationsError> {
 fn settled(outcome: Result<(), InvitationsError>) -> Result<(), InvitationsError> {
     match outcome {
         Err(InvitationsError::Events(ServiceError::Refused(
-            InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
+            InvitationError::AlreadyAccepted
+            | InvitationError::Withdrawn
+            | InvitationError::Declined,
         ))) => Ok(()),
         outcome => outcome,
     }

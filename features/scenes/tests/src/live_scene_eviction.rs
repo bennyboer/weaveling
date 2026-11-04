@@ -6,9 +6,11 @@ use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
+use quotation::QuotationMarks;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{
-    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, StoreError,
+    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneRestyler, SceneStore, SceneTitle,
+    ScenesCore, StoreError,
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message, Presence};
@@ -764,5 +766,68 @@ async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
         bench.last_announced(id),
         Some(11),
         "one count at a time, so the newest words are the last told"
+    );
+}
+
+#[tokio::test]
+async fn an_edit_stored_after_one_the_store_refused_stores_the_whole_scene() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    let refused = a_paragraph("The loom stood silent.");
+    present
+        .receive(Message::JustHappened(refused.clone()))
+        .expect("the live copy takes it");
+    bench.store.falter(true);
+    assert!(present.persist(&refused).await.is_err());
+    bench.store.falter(false);
+
+    writes(&present, "Then it spoke.").await;
+
+    let stored = bench.stored_text(id).await;
+    assert!(
+        stored.contains("The loom stood silent.") && stored.contains("Then it spoke."),
+        "the next edit stored carries the one refused before it, so a crash before eviction loses neither, \
+         but the store holds {stored:?}"
+    );
+    drop(present);
+    bench.store.falter(true);
+    bench.live.sweep(Instant::now()).await;
+    assert!(
+        !bench.live.is_live(id),
+        "stored whole, the scene owes the store nothing more, so it is let go even while the store is down"
+    );
+}
+
+#[tokio::test]
+async fn a_restyle_the_store_refused_is_stored_when_it_is_asked_for_again() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    bench
+        .service
+        .apply(&id.to_string(), &crate::live_scenes::a_dialogue())
+        .await
+        .expect("writing should succeed");
+    bench.store.falter(true);
+    assert!(
+        bench
+            .live
+            .restyle(id, QuotationMarks::LowHigh)
+            .await
+            .is_err(),
+        "a restyle that could not be stored is no restyle, so the page is tried again"
+    );
+    bench.store.falter(false);
+
+    bench
+        .live
+        .restyle(id, QuotationMarks::LowHigh)
+        .await
+        .expect("asked again, it should succeed");
+
+    assert_eq!(
+        bench.stored_text(id).await,
+        "„Komm her,“ sagte sie.",
+        "the live copy already holds the new style, so asking again stores it rather than passing it by"
     );
 }

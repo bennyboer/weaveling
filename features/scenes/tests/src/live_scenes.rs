@@ -236,7 +236,7 @@ async fn a_scene_rejoined_after_everyone_left_still_has_the_prose() {
     assert_eq!(joined.text(), "The loom stood silent.");
 }
 
-fn a_dialogue() -> Vec<u8> {
+pub(crate) fn a_dialogue() -> Vec<u8> {
     let doc = Doc::new();
     let fragment = doc.get_or_insert_xml_fragment(FRAGMENT);
     {
