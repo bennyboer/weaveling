@@ -20,33 +20,44 @@ macro_rules! retrying {
         let mut tried = 1;
         loop {
             let outcome = async {
-                let mut owned = transactions.begin().await?;
+                let mut owned = match transactions.begin().await {
+                    Ok(owned) => owned,
+                    Err(failure) => return Err((failure.into(), false)),
+                };
                 let worked = {
                     let $transaction = &mut owned;
                     async $work.await
                 };
-                let done = match worked {
-                    Ok(done) => done,
-                    Err(failure) => return Err(failure),
-                };
-                owned.finish().await?;
-                Ok(done)
+                match worked {
+                    Ok(done) => match owned.finish().await {
+                        Ok(()) => Ok(done),
+                        Err(failure) => {
+                            let lost = $crate::LostRace::lost_race(&failure);
+                            Err((failure.into(), lost))
+                        }
+                    },
+                    Err(failure) => {
+                        let lost = owned.lost_race();
+                        Err((failure, lost))
+                    }
+                }
             }
             .await;
             match outcome {
-                Err(failure) if $crate::retrying::again(&failure, tried, tries) => {
+                Ok(done) => break Ok(done),
+                Err((failure, lost)) if $crate::retrying::again(&failure, lost, tried, tries) => {
                     $crate::retrying::pause(tried).await;
                     tried += 1;
                 }
-                outcome => break outcome,
+                Err((failure, _)) => break Err(failure),
             }
         }
     }};
 }
 
 #[doc(hidden)]
-pub fn again(failure: &impl LostRace, tried: u8, tries: u8) -> bool {
-    failure.lost_race() && tried < tries
+pub fn again(failure: &impl LostRace, lost: bool, tried: u8, tries: u8) -> bool {
+    (lost || failure.lost_race()) && tried < tries
 }
 
 #[doc(hidden)]

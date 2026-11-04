@@ -11,7 +11,8 @@ use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use sqlx::migrate::Migrator;
-use sqlx::{PgConnection, PgPool, Row};
+use sqlx::{PgPool, Row};
+use transacting::postgres::Watched;
 use transacting::{PostgresTransactions, Transaction, Transactions};
 
 const REMEMBER: &str = "INSERT INTO scenes (scene, project, title) VALUES ($1, $2, $3)";
@@ -253,7 +254,7 @@ async fn bumped(
     ))
 }
 
-fn connection(transaction: &mut Transaction) -> Result<&mut PgConnection, StoreError> {
+fn connection(transaction: &mut Transaction) -> Result<&mut Watched, StoreError> {
     transacting::postgres::connection(transaction).map_err(unreachable)
 }
 

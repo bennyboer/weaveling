@@ -5455,6 +5455,7 @@ name = "weaveling-transacting"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "sqlx",
  "thiserror",
  "tokio",

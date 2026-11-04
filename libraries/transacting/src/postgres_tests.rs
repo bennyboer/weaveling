@@ -1,9 +1,11 @@
 use async_trait::async_trait;
-use sqlx::PgPool;
+use sqlx::{AssertSqlSafe, PgPool};
 use test_harness::PostgresFixture;
 
 use crate::suite::Workbench;
-use crate::{Failure, InMemoryTransactions, PostgresTransactions, Transaction, Transactions};
+use crate::{
+    Failure, InMemoryTransactions, LostRace, PostgresTransactions, Transaction, Transactions,
+};
 use crate::{memory, postgres};
 
 const LAY_DOWN: &str = "CREATE TABLE words (nth BIGSERIAL PRIMARY KEY, word TEXT NOT NULL)";
@@ -143,5 +145,127 @@ async fn one_at_a_time_holds_a_second_transaction_on_the_key_until_the_first_is_
         .await
         .expect("the second goes on once the first has committed")
         .expect("the second should not panic");
+    bench.cleanup().await;
+}
+
+#[derive(Debug, PartialEq)]
+struct Refused(String);
+
+impl LostRace for Refused {
+    fn lost_race(&self) -> bool {
+        false
+    }
+}
+
+impl From<Failure> for Refused {
+    fn from(failure: Failure) -> Self {
+        Refused(failure.to_string())
+    }
+}
+
+fn raising(code: &str) -> String {
+    format!("DO $$ BEGIN RAISE EXCEPTION 'raised' USING ERRCODE = '{code}'; END $$")
+}
+
+async fn tries_until_it_raises_no_more(
+    bench: &OnPostgres,
+    code: &str,
+) -> (Result<u8, Refused>, u8) {
+    let mut tried = 0;
+    let answered = crate::retrying!(bench.transactions(), |transaction| {
+        tried += 1;
+        if tried == 1 {
+            sqlx::raw_sql(AssertSqlSafe(raising(code)))
+                .execute(postgres::connection(transaction)?)
+                .await
+                .map_err(|failure| Refused(failure.to_string()))?;
+        }
+        Ok(tried)
+    });
+
+    (answered, tried)
+}
+
+#[tokio::test]
+async fn a_statement_that_lost_a_race_is_tried_again_however_its_failure_was_answered() {
+    let bench = OnPostgres::setup().await;
+
+    for code in ["40001", "40P01"] {
+        assert_eq!(
+            tries_until_it_raises_no_more(&bench, code).await,
+            (Ok(2), 2),
+            "the adapter's own error says nothing of a race, but the transaction knows {code} lost one"
+        );
+    }
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_statement_failing_otherwise_is_not_tried_again() {
+    let bench = OnPostgres::setup().await;
+
+    let (answered, tried) = tries_until_it_raises_no_more(&bench, "P0001").await;
+
+    assert!(answered.is_err());
+    assert_eq!(tried, 1);
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_commit_that_lost_a_race_is_tried_again() {
+    let bench = OnPostgres::setup().await;
+    sqlx::raw_sql(AssertSqlSafe(
+        "CREATE TABLE doomed (nth BIGINT);
+         CREATE FUNCTION doom() RETURNS trigger AS $doom$ BEGIN RAISE EXCEPTION 'doomed' USING ERRCODE = '40001'; END $doom$ LANGUAGE plpgsql;
+         CREATE CONSTRAINT TRIGGER doomed_at_commit AFTER INSERT ON doomed
+             DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION doom();"
+    ))
+    .execute(&bench.pool)
+    .await
+    .expect("the doomed table should lay down");
+    let mut tried = 0;
+
+    let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), |transaction| {
+        tried += 1;
+        if tried == 1 {
+            sqlx::query("INSERT INTO doomed (nth) VALUES (1)")
+                .execute(postgres::connection(transaction)?)
+                .await
+                .map_err(|failure| Refused(failure.to_string()))?;
+        }
+        Ok(tried)
+    });
+
+    assert_eq!(
+        (answered, tried),
+        (Ok(2), 2),
+        "the race is often lost only when committing, the statements all gone through"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_row_fetched_that_lost_a_race_is_tried_again() {
+    let bench = OnPostgres::setup().await;
+    sqlx::raw_sql(AssertSqlSafe(
+        "CREATE FUNCTION lose() RETURNS BIGINT AS $lose$ BEGIN RAISE EXCEPTION 'lost' USING ERRCODE = '40001'; END $lose$ LANGUAGE plpgsql;",
+    ))
+    .execute(&bench.pool)
+    .await
+    .expect("the losing function should lay down");
+    let mut tried = 0;
+
+    let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), |transaction| {
+        tried += 1;
+        if tried == 1 {
+            sqlx::query_scalar::<_, i64>("SELECT lose()")
+                .fetch_optional(postgres::connection(transaction)?)
+                .await
+                .map_err(|failure| Refused(failure.to_string()))?;
+        }
+        Ok(tried)
+    });
+
+    assert_eq!((answered, tried), (Ok(2), 2));
     bench.cleanup().await;
 }

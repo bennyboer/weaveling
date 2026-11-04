@@ -88,7 +88,7 @@ async fn after_five_lost_races_the_last_loss_is_the_answer() {
     let words = Words::default();
     let mut tried = 0;
 
-    let answered: Result<_, Refusal> =
+    let answered: Result<(), Refusal> =
         crate::retrying!(&InMemoryTransactions::new(), |transaction| {
             tried += 1;
             words.write(transaction, format!("try {tried}"));
@@ -104,7 +104,7 @@ async fn a_refusal_other_than_a_lost_race_is_answered_without_trying_again() {
     let words = Words::default();
     let mut tried = 0;
 
-    let answered: Result<_, Refusal> =
+    let answered: Result<(), Refusal> =
         crate::retrying!(&InMemoryTransactions::new(), |transaction| {
             tried += 1;
             words.write(transaction, "warp".to_owned());
