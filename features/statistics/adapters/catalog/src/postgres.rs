@@ -76,12 +76,6 @@ impl WordCountCatalog for PostgresWordCountCatalog {
         words: u64,
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError> {
-        transacting::postgres::one_at_a_time(
-            transaction,
-            &format!("word-count:{}", scene.as_str()),
-        )
-        .await
-        .map_err(unreachable)?;
         sqlx::query(KEEP)
             .bind(scene.as_str())
             .bind(project.as_str())
@@ -106,12 +100,6 @@ impl WordCountCatalog for PostgresWordCountCatalog {
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(
-            transaction,
-            &format!("word-count:{}", scene.as_str()),
-        )
-        .await
-        .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(scene.as_str())
             .bind(in_microseconds(at))
