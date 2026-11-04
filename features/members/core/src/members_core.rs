@@ -133,26 +133,28 @@ impl MembersCore {
         account: &str,
         role: Role,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        match self
-            .service
-            .carry_out(
-                &mut transaction,
-                &ProjectLink::from(project),
-                MembersCommand::Join {
-                    account: AccountId::from(account),
-                    role,
-                },
-                &Agent::System,
-            )
-            .await
-        {
-            Err(MembersCoreError::Events(ServiceError::Refused(
-                MembersError::AlreadyMember | MembersError::Disbanded,
-            ))) => {}
-            joined => joined?,
-        }
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            match self
+                .service
+                .carry_out(
+                    transaction,
+                    &ProjectLink::from(project),
+                    MembersCommand::Join {
+                        account: AccountId::from(account),
+                        role,
+                    },
+                    &Agent::System,
+                )
+                .await
+            {
+                Err(MembersCoreError::Events(ServiceError::Refused(
+                    MembersError::AlreadyMember | MembersError::Disbanded,
+                ))) => {}
+                joined => joined?,
+            }
+
+            Ok(())
+        })
     }
 
     pub async fn disband(
@@ -160,15 +162,13 @@ impl MembersCore {
         within: Option<&mut Transaction>,
         project: &str,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.service
-            .disband(
-                &mut transaction,
-                &ProjectLink::from(project),
-                &Agent::System,
-            )
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.service
+                .disband(transaction, &ProjectLink::from(project), &Agent::System)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn found(
@@ -177,16 +177,18 @@ impl MembersCore {
         project: &str,
         owner: &str,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.service
-            .found(
-                &mut transaction,
-                &ProjectLink::from(project),
-                AccountId::from(owner),
-                &Agent::System,
-            )
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.service
+                .found(
+                    transaction,
+                    &ProjectLink::from(project),
+                    AccountId::from(owner),
+                    &Agent::System,
+                )
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn remember_person(
@@ -194,11 +196,11 @@ impl MembersCore {
         within: Option<&mut Transaction>,
         person: &Person,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_person(&mut transaction, person)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.remember_person(transaction, person).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn catalogue(
@@ -208,17 +210,19 @@ impl MembersCore {
     ) -> Result<(), MembersCoreError> {
         let standing = self.service.latest(project).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember(
-                &mut transaction,
-                &ProjectMembers::of(project.clone(), standing.version, &standing.state),
-            )
-            .await?;
-        let authorizer = self.authorizer.clone();
-        let changed = project.as_str().to_owned();
-        transaction.after_commit(async move { authorizer.access_changed(&changed) });
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember(
+                    transaction,
+                    &ProjectMembers::of(project.clone(), standing.version, &standing.state),
+                )
+                .await?;
+            let authorizer = self.authorizer.clone();
+            let changed = project.as_str().to_owned();
+            transaction.after_commit(async move { authorizer.access_changed(&changed) });
+
+            Ok(())
+        })
     }
 
     pub async fn remember_trash(
@@ -228,14 +232,16 @@ impl MembersCore {
         version: Version,
         in_the_trash: bool,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_trash(&mut transaction, project, version, in_the_trash)
-            .await?;
-        let authorizer = self.authorizer.clone();
-        let changed = project.as_str().to_owned();
-        transaction.after_commit(async move { authorizer.access_changed(&changed) });
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+            let authorizer = self.authorizer.clone();
+            let changed = project.as_str().to_owned();
+            transaction.after_commit(async move { authorizer.access_changed(&changed) });
+
+            Ok(())
+        })
     }
 
     pub async fn forget_trash(
@@ -243,9 +249,11 @@ impl MembersCore {
         within: Option<&mut Transaction>,
         project: &ProjectLink,
     ) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog.forget_trash(&mut transaction, project).await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.forget_trash(transaction, project).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn memberships(&self, agent: &Agent) -> Result<Vec<Membership>, MembersCoreError> {
