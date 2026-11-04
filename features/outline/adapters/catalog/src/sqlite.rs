@@ -53,6 +53,14 @@ const LET_GO: &str = "
     WHERE outline = ?1 AND attachment_type = ?2 AND attachment_id = ?3
 ";
 
+const INDEXED_AS_OF: &str = "
+    INSERT INTO outline_index_versions (outline, version)
+    VALUES (?1, ?2)
+    ON CONFLICT (outline) DO UPDATE
+    SET version = excluded.version
+    WHERE outline_index_versions.version < excluded.version
+";
+
 const HOLD: &str = "
     INSERT INTO outline_attachments (outline, attachment_type, attachment_id)
     VALUES (?1, ?2, ?3)
@@ -194,8 +202,19 @@ impl OutlineCatalog for SqliteOutlineCatalog {
         &self,
         transaction: &mut Transaction,
         outline: OutlineId,
+        version: u64,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
+        let newer = sqlx::query(INDEXED_AS_OF)
+            .bind(outline.to_string())
+            .bind(i64::try_from(version).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        if newer.rows_affected() == 0 {
+            return Ok(());
+        }
+
         let before: HashSet<(String, String)> = sqlx::query(HELD)
             .bind(outline.to_string())
             .fetch_all(connection(transaction).map_err(unreachable)?)

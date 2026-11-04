@@ -41,6 +41,7 @@ pub trait OutlineCatalog: Send + Sync {
         &self,
         transaction: &mut Transaction,
         outline: OutlineId,
+        version: u64,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError>;
 

@@ -453,7 +453,7 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
         .expect("beginning should succeed");
     wired
         .catalog
-        .holds(&mut transaction, outline, &[an_idea("idea_1")])
+        .holds(&mut transaction, outline, u64::MAX, &[an_idea("idea_1")])
         .await
         .expect("holding should succeed");
     transaction

@@ -278,7 +278,12 @@ impl OutlinesCore {
 
         let mut transaction = self.transactions.join(within).await?;
         self.catalog
-            .holds(&mut transaction, *outline, &holding)
+            .holds(
+                &mut transaction,
+                *outline,
+                standing.version.count(),
+                &holding,
+            )
             .await?;
         Ok(transaction.finish().await?)
     }

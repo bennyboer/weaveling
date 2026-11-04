@@ -1,10 +1,13 @@
 use std::ops::Deref;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use outline_core::{
     Attachment, CatalogError, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
 };
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
+
+static INDEXED: AtomicU64 = AtomicU64::new(1);
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -70,7 +73,12 @@ impl<C: OutlineCatalog> Committing<'_, C> {
     ) -> Result<(), CatalogError> {
         let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
         self.catalog
-            .holds(&mut transaction, outline, attachments)
+            .holds(
+                &mut transaction,
+                outline,
+                INDEXED.fetch_add(1, Ordering::Relaxed),
+                attachments,
+            )
             .await?;
         transaction.finish().await.map_err(unreachable)
     }
@@ -234,6 +242,59 @@ pub async fn a_project_lists_its_outlines_in_a_settled_order(
             .collect::<Vec<_>>(),
         opened,
         "one outline ships, but find-or-start must not pick a different one each time"
+    );
+}
+
+async fn indexed_as_of(
+    catalog: &Committing<'_, impl OutlineCatalog>,
+    outline: OutlineId,
+    version: u64,
+    attachments: &[Attachment],
+) {
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .holds(&mut transaction, outline, version, attachments)
+        .await
+        .expect("indexing should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+}
+
+pub async fn an_older_index_heard_after_a_newer_one_changes_nothing(
+    catalog: &Committing<'_, impl OutlineCatalog>,
+) {
+    let outline = OutlineId::generate(at(1_000));
+    indexed_as_of(catalog, outline, 5, &[Attachment::scene("scene_5")]).await;
+
+    indexed_as_of(catalog, outline, 4, &[Attachment::scene("scene_4")]).await;
+    indexed_as_of(catalog, outline, 5, &[]).await;
+
+    assert_eq!(
+        catalog
+            .outlines_holding(&Attachment::scene("scene_5"))
+            .await
+            .expect("looking should succeed"),
+        vec![outline],
+        "what an older read held is not what the outline holds now"
+    );
+    assert!(
+        catalog
+            .outlines_holding(&Attachment::scene("scene_4"))
+            .await
+            .expect("looking should succeed")
+            .is_empty()
+    );
+    indexed_as_of(catalog, outline, 6, &[Attachment::scene("scene_6")]).await;
+    assert!(
+        catalog
+            .outlines_holding(&Attachment::scene("scene_5"))
+            .await
+            .expect("looking should succeed")
+            .is_empty(),
+        "a newer one replaces it"
     );
 }
 
@@ -760,7 +821,12 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     uncommitted
-        .holds(&mut transaction, kept.id, &[Attachment::scene("scene_2")])
+        .holds(
+            &mut transaction,
+            kept.id,
+            INDEXED.fetch_add(1, Ordering::Relaxed),
+            &[Attachment::scene("scene_2")],
+        )
         .await
         .expect("holding should succeed");
     uncommitted
@@ -938,6 +1004,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_index_heard_after_a_newer_one_changes_nothing
         );
         $crate::catalog_conformance_case!(
             $workbench,
