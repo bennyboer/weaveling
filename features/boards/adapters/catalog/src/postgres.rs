@@ -105,9 +105,6 @@ impl BoardCatalog for PostgresBoardCatalog {
         transaction: &mut Transaction,
         summary: &BoardSummary,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
@@ -124,9 +121,6 @@ impl BoardCatalog for PostgresBoardCatalog {
         board: &BoardId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &board.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)
             .bind(board.to_string())
             .bind(at)
@@ -282,9 +276,6 @@ impl BoardCatalog for PostgresBoardCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
@@ -308,9 +299,6 @@ impl BoardCatalog for PostgresBoardCatalog {
         transaction: &mut Transaction,
         project: &ProjectLink,
     ) -> Result<bool, CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .fetch_one(connection(transaction).map_err(unreachable)?)
