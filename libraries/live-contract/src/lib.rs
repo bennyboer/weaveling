@@ -37,9 +37,22 @@ pub enum AskedDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "told", rename_all = "kebab-case")]
 pub enum ToldDTO {
-    Frame { id: String, frame: FrameDTO },
-    Notice { id: String, notice: String },
-    Ended { id: String, why: String },
+    /// The subscription hears its channel from now on, so what is read after this misses nothing told later.
+    Following {
+        id: String,
+    },
+    Frame {
+        id: String,
+        frame: FrameDTO,
+    },
+    Notice {
+        id: String,
+        notice: String,
+    },
+    Ended {
+        id: String,
+        why: String,
+    },
 }
 
 /// Why a subscription ended, told under its id; the socket and its other subscriptions go on.

@@ -499,3 +499,38 @@ async fn a_socket_whose_session_ends_is_closed_as_such_and_its_subscriptions_wit
         "nobody is left hearing for it"
     );
 }
+
+#[tokio::test]
+async fn a_subscription_is_told_followed_before_anything_it_hears() {
+    let live = served();
+    let mut socket = opened(&live).await;
+
+    subscribe(&mut socket, "s1", "from-seven", "loom").await;
+
+    socket.following("s1").await;
+    assert_eq!(
+        serde_json::to_value(socket.told().await).expect("plain data")["frame"]["version"],
+        7
+    );
+}
+
+#[tokio::test]
+async fn a_change_told_while_the_gate_is_asked_reaches_the_follower() {
+    let live = served();
+    live.gate
+        .slow
+        .lock()
+        .expect("the gate is not poisoned")
+        .insert("loom".to_owned());
+    let mut socket = opened(&live).await;
+
+    subscribe(&mut socket, "s1", "gated", "loom").await;
+    live.broadcaster.tell("loom".to_owned(), frame("loom", 3));
+
+    socket.following("s1").await;
+    assert_eq!(
+        socket.told().await,
+        framed("s1", "loom", 3),
+        "the client reads once told it is followed, so a change before then must still be heard"
+    );
+}

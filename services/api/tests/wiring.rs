@@ -931,9 +931,10 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
         socket
             .send_json(&json!({ "do": "subscribe", "id": "bell", "topic": "invitations", "about": { "mine": "true" } }))
             .await;
-        known = tokio::time::timeout(Duration::from_millis(200), socket.receive_json::<Value>())
+        let told = tokio::time::timeout(Duration::from_millis(200), socket.receive_json::<Value>())
             .await
-            .is_err();
+            .expect("told whether it is followed");
+        known = told["told"] == "following";
         if known {
             break;
         }
@@ -945,7 +946,10 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
     socket
         .send_json(&json!({ "do": "subscribe", "id": "projects", "topic": "members", "about": { "mine": "true" } }))
         .await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let followed: Value = tokio::time::timeout(Duration::from_secs(1), socket.receive_json())
+        .await
+        .expect("told it is followed");
+    assert_eq!(followed, json!({ "told": "following", "id": "projects" }));
 
     let started: Value = server
         .post("/api/projects")
@@ -1268,6 +1272,10 @@ async fn on_a_server_an_account_follows_its_notifications_on_the_one_socket() {
         .send_json(&json!({ "do": "subscribe", "id": "bell", "topic": "notifications", "about": { "mine": "true" } }))
         .await;
 
+    let told: Value = tokio::time::timeout(Duration::from_secs(1), socket.receive_json())
+        .await
+        .expect("told whether it is followed");
+    assert_eq!(told, json!({ "told": "following", "id": "bell" }));
     assert!(
         tokio::time::timeout(Duration::from_millis(300), socket.receive_json::<Value>())
             .await

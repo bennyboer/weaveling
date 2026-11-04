@@ -104,8 +104,10 @@ impl<C: Channel + Display> Topic for GatedTopic<C> {
         let Some(channel) = (self.channel_of)(about) else {
             return Err(Refused::NotThere);
         };
-        let admission = admitted(self.gate.clone(), agent, &channel.to_string()).await?;
+        let about = channel.to_string();
+        let hearing = self.broadcaster.hear(channel);
+        let admission = admitted(self.gate.clone(), agent, &about).await?;
 
-        Ok(Subscribed::hearing(self.broadcaster.hear(channel)).while_admitted(admission))
+        Ok(Subscribed::hearing(hearing).while_admitted(admission))
     }
 }

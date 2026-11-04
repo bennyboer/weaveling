@@ -39,7 +39,6 @@ class LiveConnection {
         about: subscription.about,
       }),
     );
-    subscription.opened();
   }
 
   heard(data) {
@@ -53,7 +52,10 @@ class LiveConnection {
     if (!subscription) {
       return;
     }
-    if (told.told === "frame") {
+    if (told.told === "following") {
+      subscription.failures = 0;
+      subscription.opened();
+    } else if (told.told === "frame") {
       subscription.failures = 0;
       subscription.heard(JSON.stringify(told.frame));
     } else if (told.told === "ended") {

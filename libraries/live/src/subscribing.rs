@@ -253,6 +253,10 @@ async fn follow(id: &str, subscribed: Subscribed, sending: &mpsc::Sender<String>
         })
     };
 
+    let following = told(&ToldDTO::Following { id: id.to_owned() });
+    if sending.send(following).await.is_err() {
+        return ended::FAILED;
+    }
     if let Some(version) = standing {
         let standing = FrameDTO {
             of: None,

@@ -58,6 +58,8 @@ assert_eq!(ada.frame().await["version"], 1);
 
 **Each subscription follows on its own,** so one that falls behind, loses its access or cannot be sifted ends alone, `ToldDTO::Ended` saying why (`behind`, `access-lost`, `failed`, `not-there`, `unknown-topic`), and the socket and the others go on. Whatever a subscription hears is told as a `ToldDTO::Frame` under its id. **When the session ends** (`acting::SessionEnd`, put into the request by accounts' gate), the socket is closed with `SESSION_ENDED` (4401, in `live-contract`), and the client asks no more but signs out.
 
-**A feature's tests follow as the browser does,** with `testing::Subscriber` (the `testing` feature): `on` a server serving `live_socket`, `subscribe` under an id, then `frame`, `ended` (why), `told` (whatever came), `silent` or `nothing`, and `closed_as` for the code the socket was closed with.
+**Told once it is followed.** *Since 2026-11-04:* a subscription let in is told `following` under its id before anything else, once it hears its channel, and the client reads what it follows over REST only then, not on sending; a `GatedTopic` hears before it asks its gate, so a change while the gate is asked is told, not lost between the read and the hearing.
+
+**A feature's tests follow as the browser does,** with `testing::Subscriber` (the `testing` feature): `on` a server serving `live_socket`, `subscribe` under an id, then `following` (waits for it), `frame`, `ended` (why), `told` (whatever came but `following`), `silent` or `nothing`, and `closed_as` for the code the socket was closed with.
 
 A feature decides what its topics are and who may follow them; this only carries the frames.
