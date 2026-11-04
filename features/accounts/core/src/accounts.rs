@@ -96,14 +96,16 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         let standing = self.get(id).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember(
-                &mut transaction,
-                &AccountSummary::of(*id, standing.version, &standing.state),
-            )
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember(
+                    transaction,
+                    &AccountSummary::of(*id, standing.version, &standing.state),
+                )
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub(super) async fn commanded_in(

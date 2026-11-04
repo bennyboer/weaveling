@@ -71,11 +71,13 @@ impl AccountsCore {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
         let session = Session::begun(id, Stage::SignedIn, began);
-        let mut transaction = self.transactions.begin().await?;
-        self.sessions
-            .open(&mut transaction, &token.digest(), &session)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AccountsError>(
+                self.sessions
+                    .open(transaction, &token.digest(), &session)
+                    .await?,
+            )
+        })?;
 
         Ok((token, SignedIn { session, account }))
     }
@@ -136,10 +138,11 @@ impl AccountsCore {
     }
 
     async fn ended(&self, digest: &TokenDigest) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.sessions.end(&mut transaction, digest).await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.sessions.end(transaction, digest).await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub(super) fn check_sessions(&self) {

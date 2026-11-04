@@ -12,12 +12,13 @@ use crate::secrets::Dismissal;
 impl AccountsCore {
     pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
         let code = OperatorCode::drawn();
-        let mut transaction = self.transactions.begin().await?;
-        let kept = self
-            .operators
-            .keep_code(&mut transaction, &code.digest())
-            .await?;
-        transaction.finish().await?;
+        let kept = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AccountsError>(
+                self.operators
+                    .keep_code(transaction, &code.digest())
+                    .await?,
+            )
+        })?;
 
         Ok(kept.then_some(code))
     }
