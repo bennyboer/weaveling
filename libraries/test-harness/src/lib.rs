@@ -124,6 +124,9 @@ async fn execute(pool: &PgPool, statement: String) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+const SERIALIZABLE: &str =
+    "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+
 async fn connect(connections: u32) -> PgPool {
     PgPoolOptions::new()
         .max_connections(connections)
@@ -133,7 +136,7 @@ async fn connect(connections: u32) -> PgPool {
 }
 
 async fn connect_to(schema: &str) -> PgPool {
-    let search_path = format!(r#"SET search_path TO "{schema}""#);
+    let search_path = format!(r#"SET search_path TO "{schema}"; {SERIALIZABLE}"#);
 
     PgPoolOptions::new()
         .max_connections(HANDFUL)

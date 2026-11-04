@@ -293,3 +293,66 @@ async fn a_write_given_one_try_is_still_tried_again_when_its_transaction_lost_a_
     );
     bench.cleanup().await;
 }
+
+async fn the_first_word(bench: &OnPostgres, word: &str, both_read: &tokio::sync::Barrier) -> u8 {
+    let mut tried = 0;
+    let answered: Result<(), Refused> = crate::retrying!(bench.transactions(), |transaction| {
+        tried += 1;
+        let written: i64 = sqlx::query_scalar("SELECT count(*) FROM words")
+            .fetch_one(postgres::connection(transaction)?)
+            .await
+            .map_err(|failure| Refused(failure.to_string()))?;
+        if tried == 1 {
+            both_read.wait().await;
+        }
+        if written == 0 {
+            sqlx::query(WRITE)
+                .bind(word)
+                .execute(postgres::connection(transaction)?)
+                .await
+                .map_err(|failure| Refused(failure.to_string()))?;
+        }
+        Ok(())
+    });
+    answered.expect("the race lost is tried again until it is won");
+
+    tried
+}
+
+#[tokio::test]
+async fn two_writers_that_each_read_nothing_written_yet_cannot_both_write() {
+    let bench = OnPostgres::setup().await;
+    let both_read = tokio::sync::Barrier::new(2);
+
+    let (warp, weft) = tokio::join!(
+        the_first_word(&bench, "warp", &both_read),
+        the_first_word(&bench, "weft", &both_read)
+    );
+
+    assert_eq!(
+        bench.written().await.len(),
+        1,
+        "each read the table empty, so one of them must have lost and read it again"
+    );
+    assert_eq!(warp.max(weft), 2, "the one that lost tried once more");
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_transaction_on_a_feature_pool_is_serializable() {
+    let bench = OnPostgres::setup().await;
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+
+    let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
+        .fetch_one(postgres::connection(&mut transaction).expect("a PostgreSQL transaction"))
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(isolation, "serializable");
+    drop(transaction);
+    bench.cleanup().await;
+}
