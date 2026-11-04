@@ -1,10 +1,11 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::service as accounts;
 use crate::accounts::service::Answer;
+use crate::act::{Act, Here};
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::invitations::service;
 use crate::invitations::to_you::InvitationToYou;
@@ -17,23 +18,20 @@ use crate::speech::Speech;
 #[derive(Clone, Copy)]
 pub struct Invited {
     mine: RwSignal<Vec<InvitationToYou>>,
-    answering: RwSignal<bool>,
+    answering: Act<(InvitationToYou, Answer)>,
     refused: RwSignal<Option<ApiError>>,
-    note: QuietNote,
-    speech: Speech,
 }
 
 impl Invited {
     pub fn following() -> Self {
         let mine = RwSignal::new(Vec::<InvitationToYou>::new());
-        let latest = StoredValue::new(0_u64);
+        let asking = Asking::new();
         let listing = Action::new_local(move |_: &()| {
-            let asked = latest.get_value() + 1;
-            latest.set_value(asked);
+            let asked = asking.next();
 
             async move {
                 let answer = service::mine().await;
-                if latest.try_get_value() != Some(asked) {
+                if !asking.is_latest(asked) {
                     return;
                 }
                 if let Ok(listed) = answer {
@@ -49,12 +47,37 @@ impl Invited {
             move || _ = listing.dispatch(()),
         ));
 
+        let refused = RwSignal::new(None);
+        let (note, speech) = (expect_context::<QuietNote>(), expect_context::<Speech>());
+        let answering = Act::new(
+            move |(invitation, given): (InvitationToYou, Answer), _: Here| {
+                refused.set(None);
+
+                async move {
+                    match accounts::answer_invitation(&invitation.id, given).await {
+                        Ok(()) => {
+                            _ = mine
+                                .try_update(|held| held.retain(|kept| kept.id != invitation.id));
+                            let mut told = FluentArgs::new();
+                            told.set("project", project_named(&invitation, speech));
+                            note.tell(speech.say_with(
+                                match given {
+                                    Answer::Accept => "notice-invitation-joined",
+                                    Answer::Decline => "notice-invitation-declined",
+                                },
+                                &told,
+                            ));
+                        }
+                        Err(failed) => _ = refused.try_set(Some(failed)),
+                    }
+                }
+            },
+        );
+
         Self {
             mine,
-            answering: RwSignal::new(false),
-            refused: RwSignal::new(None),
-            note: expect_context::<QuietNote>(),
-            speech: expect_context::<Speech>(),
+            answering,
+            refused,
         }
     }
 
@@ -68,35 +91,6 @@ impl Invited {
 
     pub fn refused(self) -> Option<ApiError> {
         self.refused.get()
-    }
-
-    fn answer(self, invitation: InvitationToYou, given: Answer) {
-        if self.answering.get_untracked() {
-            return;
-        }
-        let (note, speech) = (self.note, self.speech);
-        self.answering.set(true);
-        self.refused.set(None);
-        task::spawn_local(async move {
-            match accounts::answer_invitation(&invitation.id, given).await {
-                Ok(()) => {
-                    _ = self
-                        .mine
-                        .try_update(|held| held.retain(|kept| kept.id != invitation.id));
-                    let mut told = FluentArgs::new();
-                    told.set("project", project_named(&invitation, speech));
-                    note.tell(speech.say_with(
-                        match given {
-                            Answer::Accept => "notice-invitation-joined",
-                            Answer::Decline => "notice-invitation-declined",
-                        },
-                        &told,
-                    ));
-                }
-                Err(failed) => _ = self.refused.try_set(Some(failed)),
-            }
-            _ = self.answering.try_set(false);
-        });
     }
 }
 
@@ -123,8 +117,9 @@ pub fn row(invited: Invited, invitation: InvitationToYou) -> impl IntoView {
             }
         }
     };
-    let accepting = invitation.clone();
-    let declining = invitation;
+    let accepting = (invitation.clone(), Answer::Accept);
+    let declining = (invitation, Answer::Decline);
+    let (accepted, declined) = (accepting.clone(), declining.clone());
 
     html::li().child((
         html::p().class("project").child(named),
@@ -133,16 +128,16 @@ pub fn row(invited: Invited, invitation: InvitationToYou) -> impl IntoView {
             html::button()
                 .r#type("button")
                 .class("primary")
-                .disabled(move || invited.answering.get())
+                .attr("aria-busy", move || invited.answering.busy_on(&accepted))
                 .on(ev::click, move |_| {
-                    invited.answer(accepting.clone(), Answer::Accept)
+                    invited.answering.start(accepting.clone())
                 })
                 .child(speech::said("notice-invitation-join")),
             html::button()
                 .r#type("button")
-                .disabled(move || invited.answering.get())
+                .attr("aria-busy", move || invited.answering.busy_on(&declined))
                 .on(ev::click, move |_| {
-                    invited.answer(declining.clone(), Answer::Decline)
+                    invited.answering.start(declining.clone())
                 })
                 .child(speech::said("notice-invitation-decline")),
         )),

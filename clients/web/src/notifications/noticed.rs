@@ -4,6 +4,7 @@ use leptos::task;
 use leptos::{IntoView, ev, html};
 use time::format_description::well_known::Rfc3339;
 
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::moment;
@@ -24,14 +25,13 @@ impl Noticed {
             open: RwSignal::new(Vec::new()),
             refused: RwSignal::new(None),
         };
-        let latest = StoredValue::new(0_u64);
+        let asking = Asking::new();
         let listing = Action::new_local(move |_: &()| {
-            let asked = latest.get_value() + 1;
-            latest.set_value(asked);
+            let asked = asking.next();
 
             async move {
                 let answer = service::open().await;
-                if latest.try_get_value() != Some(asked) {
+                if !asking.is_latest(asked) {
                     return;
                 }
                 if let Ok(listed) = answer {

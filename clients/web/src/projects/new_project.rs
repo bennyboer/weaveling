@@ -113,7 +113,8 @@ fn new_project_dialog(
                 html::button()
                     .r#type("button")
                     .class("primary")
-                    .disabled(move || draft.get().trim().is_empty() || creating.get())
+                    .disabled(move || draft.get().trim().is_empty() || setting_up.get())
+                    .attr("aria-busy", move || creating.get().then_some("true"))
                     .on(ev::click, move |_| create())
                     .child(speech::said("new-project-confirm")),
             )),

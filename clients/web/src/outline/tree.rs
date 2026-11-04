@@ -752,9 +752,11 @@ fn urging(urge: Urge, section: SectionId, state: OutlineViewState) -> impl IntoV
 fn writing(section: SectionId, state: OutlineViewState) -> impl IntoView {
     let labelled = section.clone();
     let titled = section.clone();
+    let busy = section.clone();
 
     html::button()
         .r#type("button")
+        .attr("aria-busy", move || state.writing_in(&busy))
         .attr("aria-label", move || {
             about_section("outline-write-in", &state.title_of(&labelled))
         })

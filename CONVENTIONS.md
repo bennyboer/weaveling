@@ -143,6 +143,13 @@ The ROADMAP says the same in its notes, but a note is not read where the code is
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
 - Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.
 
+## Client
+
+- Whatever a click or key starts once that asks the server, saving, inviting, signing in, writing in a section, is an **`Act`** (`clients/web/src/act.rs`): built once with its body, started with `act.start(about)`, which does nothing while it runs, so a double click or a held key never does it twice. No flag of one's own, no `if busy { return }`. A run of small changes meant to add up, a card nudged by a held arrow key, is queued instead, not dropped.
+- The button that starts it says so with `.attr("aria-busy", move || act.busy())`, or `busy_on(&about)` where one act serves a button per row; `disabled` stays for what may not be done at all. `aria-busy` is what draws the sweeping line, after 150 ms, so a quick answer never flickers.
+- What an act does once its answer comes that only makes sense on the page it was started from, going elsewhere above all, waits on `here.still()`.
+- Asking again for something that changes, a list, the open project, one's roles, is an **`Asking`** (`clients/web/src/asking.rs`): `asking.next()` before the request, and its answer is taken in only if `asking.is_latest(asked)`, so an answer read before a change and arriving after it never stands over what came later. An `Act` keeps a second press from starting; an `Asking` lets every asking start and keeps the newest answer.
+
 ## HTTP
 
 - A feature owns `/api/{its noun}`, plural: `/api/ideas`, `/api/boards`. Whatever the service serves about itself — its health, the messages it refused — lives under `/api/service/`, so no feature may be called `service`. A path says whose endpoint it is.

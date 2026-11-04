@@ -1,10 +1,10 @@
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::NavigateOptions;
 use leptos_router::components::{A, Redirect};
 
 use crate::accounts::{CurrentSession, SignInState, service};
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::problem;
 use crate::route;
@@ -43,23 +43,18 @@ pub fn replacing() -> NavigateOptions {
 fn becoming(session: CurrentSession) -> impl IntoView {
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let become_one = move || {
-        if asking.get_untracked() {
-            return;
-        }
-        asking.set(true);
+    let becoming = Act::new(move |(), _: Here| {
         refused.set(None);
         let typed = code.get_untracked();
-        task::spawn_local(async move {
+
+        async move {
             match service::become_operator(&typed).await {
                 Ok(()) => session.became_operator(),
                 Err(failed) => refused.set(Some(failed)),
             }
-            asking.set(false);
-        });
-    };
+        }
+    });
 
     (
         html::h1().child(speech::said("operator-become-heading")),
@@ -69,7 +64,7 @@ fn becoming(session: CurrentSession) -> impl IntoView {
         html::form()
             .on(ev::submit, move |event| {
                 event.prevent_default();
-                become_one();
+                becoming.start(());
             })
             .child((
                 html::label().class("field").child((
@@ -86,7 +81,7 @@ fn becoming(session: CurrentSession) -> impl IntoView {
                 html::button()
                     .r#type("submit")
                     .class("primary")
-                    .disabled(move || asking.get())
+                    .attr("aria-busy", move || becoming.busy())
                     .child(speech::said("operator-become-confirm")),
             )),
     )

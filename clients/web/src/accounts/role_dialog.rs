@@ -1,10 +1,10 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
 use crate::accounts::service;
+use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -24,7 +24,6 @@ pub fn role_dialog(
     close: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
     let dismissing = account.operator;
     let (title_key, hint_key, confirm_key) = match (dismissing, yourself) {
         (false, _) => (
@@ -47,14 +46,11 @@ pub fn role_dialog(
     let title = Signal::derive(move || naming(title_key, &name));
     let id = account.id;
 
-    let change = move || {
-        if asking.get_untracked() {
-            return;
-        }
-        asking.set(true);
+    let changing = Act::new(move |(), _: Here| {
         refused.set(None);
         let (id, changed) = (id.clone(), changed.clone());
-        task::spawn_local(async move {
+
+        async move {
             let answer = if dismissing {
                 service::dismiss_operator(&id).await
             } else {
@@ -67,9 +63,8 @@ pub fn role_dialog(
                 }
                 Err(failed) => refused.set(Some(failed)),
             }
-            asking.set(false);
-        });
-    };
+        }
+    });
 
     dialog::modal(
         title,
@@ -88,8 +83,8 @@ pub fn role_dialog(
                 html::button()
                     .r#type("button")
                     .class(if dismissing { "danger" } else { "primary" })
-                    .disabled(move || asking.get())
-                    .on(ev::click, move |_| change())
+                    .attr("aria-busy", move || changing.busy())
+                    .on(ev::click, move |_| changing.start(()))
                     .child(speech::said(confirm_key)),
             )),
         ),

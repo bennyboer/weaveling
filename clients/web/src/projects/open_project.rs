@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task;
 
+use crate::asking::Asking;
 use crate::http::{ApiError, Refusal};
 use crate::live::Subscription;
 use crate::projects::model::{DescribedProject, ProjectId};
@@ -15,7 +16,7 @@ pub struct OpenProject {
     described: RwSignal<Option<DescribedProject>>,
     refused: RwSignal<Option<ApiError>>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
-    latest: StoredValue<u64>,
+    asking: Asking,
 }
 
 impl OpenProject {
@@ -25,7 +26,7 @@ impl OpenProject {
             described: RwSignal::new(None),
             refused: RwSignal::new(None),
             following: StoredValue::new_local(None),
-            latest: StoredValue::new(0),
+            asking: Asking::new(),
         }
     }
 
@@ -51,8 +52,7 @@ impl OpenProject {
         let Some(project) = self.project.get_untracked() else {
             return;
         };
-        let asked = self.latest.get_value() + 1;
-        self.latest.set_value(asked);
+        let asked = self.asking.next();
 
         task::spawn_local(async move {
             let found = service::details(&project).await;
@@ -60,7 +60,7 @@ impl OpenProject {
                 .project
                 .with_untracked(|held| held.as_ref() == Some(&project));
 
-            if !still_open || self.latest.get_value() != asked {
+            if !still_open || !self.asking.is_latest(asked) {
                 return;
             }
             match found {

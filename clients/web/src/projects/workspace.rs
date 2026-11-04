@@ -3,7 +3,9 @@ use std::time::Duration;
 use leptos::prelude::*;
 use leptos::task;
 
+use crate::act::{Act, Here};
 use crate::asking;
+use crate::asking::Asking;
 use crate::http::{ApiError, Refusal};
 use crate::live::Subscription;
 use crate::projects::model;
@@ -15,11 +17,6 @@ use crate::projects::service;
 use live_contract::FrameDTO;
 
 const NOT_YET_OPEN: &str = "project-not-yet-open";
-
-type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
-type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
-type TrashAction = Action<ProjectId, Result<(), ApiError>>;
-type RestoreAction = Action<ProjectId, Result<(), ApiError>>;
 
 #[derive(Clone, Debug)]
 enum Opening {
@@ -34,11 +31,12 @@ pub struct Workspace {
     known: RwSignal<Option<Vec<Project>>>,
     problem: RwSignal<Option<ApiError>>,
     opening: RwSignal<Opening>,
-    creating: CreateAction,
-    renaming: RenameAction,
-    trashing: TrashAction,
+    creating: Act<(String, ProjectDetails)>,
+    creation_refused: RwSignal<Option<ApiError>>,
+    renaming: Act<(ProjectId, String)>,
+    trashing: Act<ProjectId>,
     trashed: RwSignal<Option<Vec<TrashedProject>>>,
-    restoring: RestoreAction,
+    restoring: Act<ProjectId>,
 }
 
 impl Workspace {
@@ -47,10 +45,9 @@ impl Workspace {
         let problem = RwSignal::new(None);
         let opening = RwSignal::new(Opening::Idle);
 
-        let latest = StoredValue::new(0_u64);
+        let asking_the_list = Asking::new();
         let listing = Action::new_local(move |awaited: &Option<Awaited>| {
-            let asked = latest.get_value() + 1;
-            latest.set_value(asked);
+            let asked = asking_the_list.next();
             let awaited = awaited.clone();
 
             async move {
@@ -63,7 +60,7 @@ impl Workspace {
                     asking::paused,
                 )
                 .await;
-                if latest.try_get_value() != Some(asked) {
+                if !asking_the_list.is_latest(asked) {
                     return;
                 }
                 match answer {
@@ -78,10 +75,9 @@ impl Workspace {
             }
         });
         let trashed = RwSignal::new(None::<Vec<TrashedProject>>);
-        let latest_trash = StoredValue::new(0_u64);
+        let trash_asking = Asking::new();
         let asking_the_trash = Action::new_local(move |awaited: &Option<AwaitedInTheTrash>| {
-            let asked = latest_trash.get_value() + 1;
-            latest_trash.set_value(asked);
+            let asked = trash_asking.next();
             let awaited = awaited.clone();
 
             async move {
@@ -94,7 +90,7 @@ impl Workspace {
                     asking::paused,
                 )
                 .await;
-                if latest_trash.try_get_value() != Some(asked) {
+                if !trash_asking.is_latest(asked) {
                     return;
                 }
                 match answer {
@@ -149,12 +145,13 @@ impl Workspace {
             ));
         }
 
+        let creation_refused = RwSignal::new(None);
+
         Self {
             known,
             problem,
             opening,
-            creating: Action::new_local(move |(name, details): &(String, ProjectDetails)| {
-                let (name, details) = (name.clone(), details.clone());
+            creating: Act::new(move |(name, details): (String, ProjectDetails), _: Here| {
                 opening.set(Opening::Idle);
                 async move {
                     let outcome = service::create(&name, &details).await;
@@ -164,51 +161,43 @@ impl Workspace {
                         open_once_it_answers(opening, created.clone(), Duration::ZERO);
                     }
 
-                    outcome
+                    _ = creation_refused.try_set(outcome.err());
                 }
             }),
-            renaming: Action::new_local(move |(id, name): &(ProjectId, String)| {
-                let (id, name) = (id.clone(), name.clone());
-                async move {
-                    let outcome = service::rename(&id, &name).await;
-                    if let Ok(renamed) = &outcome {
-                        keep(known, |held| put(held, renamed.clone()));
-                    }
-
-                    remember_outcome(problem, outcome)
+            creation_refused,
+            renaming: Act::new(move |(id, name): (ProjectId, String), _: Here| async move {
+                let outcome = service::rename(&id, &name).await;
+                if let Ok(renamed) = &outcome {
+                    keep(known, |held| put(held, renamed.clone()));
                 }
+
+                remember_outcome(problem, outcome);
             }),
-            trashing: Action::new_local(move |id: &ProjectId| {
-                let id = id.clone();
-                async move {
-                    let outcome = service::trash(&id).await;
-                    if outcome.is_ok() {
-                        keep(known, |held| held.retain(|project| project.id != id));
-                        asking_the_trash.dispatch(Some(AwaitedInTheTrash::In(id.clone())));
-                    }
-
-                    remember_outcome(problem, outcome)
+            trashing: Act::new(move |id: ProjectId, _: Here| async move {
+                let outcome = service::trash(&id).await;
+                if outcome.is_ok() {
+                    keep(known, |held| held.retain(|project| project.id != id));
+                    asking_the_trash.dispatch(Some(AwaitedInTheTrash::In(id.clone())));
                 }
+
+                remember_outcome(problem, outcome);
             }),
             trashed,
-            restoring: Action::new_local(move |id: &ProjectId| {
-                let id = id.clone();
-                async move {
-                    let outcome = service::restore(&id).await;
-                    if outcome.is_ok() {
-                        _ = trashed.try_update(|held| {
-                            if let Some(held) = held {
-                                held.retain(|project| project.id != id);
-                            }
-                        });
-                        listing.dispatch(Some(Awaited::Listed {
-                            id: id.clone(),
-                            at_least: Version::from(0),
-                        }));
-                    }
-
-                    remember_outcome(problem, outcome)
+            restoring: Act::new(move |id: ProjectId, _: Here| async move {
+                let outcome = service::restore(&id).await;
+                if outcome.is_ok() {
+                    _ = trashed.try_update(|held| {
+                        if let Some(held) = held {
+                            held.retain(|project| project.id != id);
+                        }
+                    });
+                    listing.dispatch(Some(Awaited::Listed {
+                        id: id.clone(),
+                        at_least: Version::from(0),
+                    }));
                 }
+
+                remember_outcome(problem, outcome);
             }),
         }
     }
@@ -228,9 +217,7 @@ impl Workspace {
     pub fn creating(self) -> Signal<bool> {
         let (creating, opening) = (self.creating, self.opening);
 
-        Signal::derive(move || {
-            creating.pending().get() || matches!(opening.get(), Opening::SettingUp)
-        })
+        Signal::derive(move || creating.running() || matches!(opening.get(), Opening::SettingUp))
     }
 
     pub fn setting_up(self) -> Signal<bool> {
@@ -249,32 +236,32 @@ impl Workspace {
     }
 
     pub fn refused_creation(self) -> Signal<Option<ApiError>> {
-        let (creating, opening) = (self.creating, self.opening);
+        let (refused, opening) = (self.creation_refused, self.opening);
 
         Signal::derive(move || match opening.get() {
             Opening::Unopened(failure) => Some(failure),
-            _ => creating.value().get().and_then(Result::err),
+            _ => refused.get(),
         })
     }
 
     pub fn create(self, name: String, details: ProjectDetails) {
-        self.creating.dispatch((name, details));
+        self.creating.start((name, details));
     }
 
-    pub fn renaming(self) -> Signal<bool> {
-        pending(self.renaming)
+    pub fn renaming(self) -> Option<&'static str> {
+        self.renaming.busy()
     }
 
     pub fn rename(self, id: ProjectId, name: String) {
-        self.renaming.dispatch((id, name));
+        self.renaming.start((id, name));
     }
 
-    pub fn trashing(self) -> Signal<bool> {
-        pending(self.trashing)
+    pub fn trashing(self) -> Option<&'static str> {
+        self.trashing.busy()
     }
 
     pub fn trash(self, id: ProjectId) {
-        self.trashing.dispatch(id);
+        self.trashing.start(id);
     }
 
     pub fn in_the_trash(self) -> Vec<TrashedProject> {
@@ -285,12 +272,12 @@ impl Workspace {
         self.trashed.get().is_some()
     }
 
-    pub fn restoring(self) -> Signal<bool> {
-        pending(self.restoring)
+    pub fn restoring(self, id: &ProjectId) -> Option<&'static str> {
+        self.restoring.busy_on(id)
     }
 
     pub fn restore(self, id: ProjectId) {
-        self.restoring.dispatch(id);
+        self.restoring.start(id);
     }
 }
 
@@ -338,14 +325,6 @@ fn take_in_joined(known: RwSignal<Option<Vec<Project>>>, project: ProjectId, wai
     });
 }
 
-fn pending<I, O>(action: Action<I, O>) -> Signal<bool>
-where
-    I: 'static,
-    O: 'static,
-{
-    Signal::derive(move || action.pending().get())
-}
-
 fn keep(known: RwSignal<Option<Vec<Project>>>, change: impl FnOnce(&mut Vec<Project>)) {
     known.update(|held| change(held.get_or_insert_with(Vec::new)));
 }
@@ -359,14 +338,6 @@ fn put(held: &mut Vec<Project>, project: Project) {
     held.sort_by(|one, other| other.id.cmp(&one.id));
 }
 
-fn remember_outcome<T>(
-    problem: RwSignal<Option<ApiError>>,
-    outcome: Result<T, ApiError>,
-) -> Result<T, ApiError> {
-    match &outcome {
-        Ok(_) => problem.set(None),
-        Err(failure) => problem.set(Some(failure.clone())),
-    }
-
-    outcome
+fn remember_outcome<T>(problem: RwSignal<Option<ApiError>>, outcome: Result<T, ApiError>) {
+    problem.set(outcome.err());
 }

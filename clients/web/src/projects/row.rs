@@ -81,9 +81,8 @@ pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) ->
                     .class("actions")
                     .child((
                         html::button()
-                            .disabled(move || {
-                                draft.get().trim().is_empty() || workspace.renaming().get()
-                            })
+                            .disabled(move || draft.get().trim().is_empty())
+                            .attr("aria-busy", move || workspace.renaming())
                             .on(ev::click, move |_| commit.run(()))
                             .child(speech::said("project-rename-save")),
                         html::button()

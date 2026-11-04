@@ -1,12 +1,12 @@
 use accounts_contract::refused;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, component, ev, html};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SigningUp, service};
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::invitations::service as invitations;
 use crate::problem;
@@ -25,6 +25,18 @@ enum Form {
     EnterCode,
     AskReset,
     Reset,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InvitationAnswer {
+    Accept,
+    Decline,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CodeAsk {
+    Confirm,
+    SendAgain,
 }
 
 #[derive(Clone, Copy)]
@@ -92,29 +104,30 @@ fn sign_in_form(page: Page) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let password = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
     let navigate = hooks::use_navigate();
-    let sign_in = move || {
+    let signing_in = Act::new(move |(), here: Here| {
         let (given, typed, operating) = (
             page.email.get_untracked(),
             password.get_untracked(),
             page.operator_code.get_untracked(),
         );
         let navigate = navigate.clone();
-        asked(asking, refused, async move {
+        asked(refused, async move {
             let mut account = service::sign_in(&given, &typed).await?;
             if let Some(code) = operating
                 && service::become_operator(&code).await.is_ok()
             {
                 account.operator = true;
-                navigate(route::INSTANCE_ACCOUNTS, NavigateOptions::default());
+                if here.still() {
+                    navigate(route::INSTANCE_ACCOUNTS, NavigateOptions::default());
+                }
             }
             session.signed_in(account);
 
             Ok(())
-        });
-    };
+        })
+    });
     let not_verified = move || {
         matches!(refused.get(), Some(ApiError::Rejected(refusal))
             if refusal.kind.as_deref() == Some(refused::NOT_VERIFIED))
@@ -124,7 +137,7 @@ fn sign_in_form(page: Page) -> impl IntoView {
         html::h1().child(speech::said("sign-in-heading")),
         notice(page),
         form(
-            sign_in,
+            move || signing_in.start(()),
             (
                 field(
                     speech::said("sign-in-email"),
@@ -146,7 +159,7 @@ fn sign_in_form(page: Page) -> impl IntoView {
                         })
                     })
                 },
-                submitting(speech::said("sign-in-confirm"), asking),
+                submitting(speech::said("sign-in-confirm"), signing_in, ()),
             ),
         ),
         turning(speech::said("reset-instead"), move || {
@@ -173,25 +186,24 @@ fn sign_up_form(page: Page) -> impl IntoView {
     let name = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let sign_up = move || {
+    let signing_up = Act::new(move |(), _: Here| {
         let (email, named, typed) = (
             page.email.get_untracked(),
             name.get_untracked(),
             password.get_untracked(),
         );
-        asked(asking, refused, async move {
+        asked(refused, async move {
             service::sign_up(&email, &named, &typed, None)
                 .await
                 .map(|()| page.turn_to(Form::EnterCode, None))
-        });
-    };
+        })
+    });
 
     (
         html::h1().child(speech::said("sign-up-heading")),
         form(
-            sign_up,
+            move || signing_up.start(()),
             (
                 field(speech::said("sign-up-name"), "text", "name", name),
                 field(speech::said("sign-in-email"), "email", "email", page.email),
@@ -205,7 +217,7 @@ fn sign_up_form(page: Page) -> impl IntoView {
                     .class("hint")
                     .child(speech::said("sign-up-password-hint")),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("sign-up-confirm"), asking),
+                submitting(speech::said("sign-up-confirm"), signing_up, ()),
             ),
         ),
         turning(speech::said("sign-in-instead"), move || {
@@ -219,30 +231,29 @@ fn set_up_form(page: Page) -> impl IntoView {
     let password = RwSignal::new(String::new());
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let set_up = move || {
+    let setting_up = Act::new(move |(), _: Here| {
         let (email, named, typed, logged) = (
             page.email.get_untracked(),
             name.get_untracked(),
             password.get_untracked(),
             code.get_untracked(),
         );
-        asked(asking, refused, async move {
+        asked(refused, async move {
             service::sign_up(&email, &named, &typed, Some(&logged))
                 .await
                 .map(|()| {
                     page.operator_code.set(Some(logged));
                     page.turn_to(Form::EnterCode, None);
                 })
-        });
-    };
+        })
+    });
 
     (
         html::h1().child(speech::said("set-up-heading")),
         html::p().class("hint").child(speech::said("set-up-hint")),
         form(
-            set_up,
+            move || setting_up.start(()),
             (
                 field(speech::said("set-up-code"), "text", "off", code),
                 field(speech::said("sign-up-name"), "text", "name", name),
@@ -257,7 +268,7 @@ fn set_up_form(page: Page) -> impl IntoView {
                     .class("hint")
                     .child(speech::said("sign-up-password-hint")),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("sign-up-confirm"), asking),
+                submitting(speech::said("sign-up-confirm"), setting_up, ()),
             ),
         ),
         turning(speech::said("sign-in-instead"), move || {
@@ -272,30 +283,36 @@ fn accept_form(page: Page) -> impl IntoView {
     let name = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let accept = move || {
+    let answering = Act::new(move |answer: InvitationAnswer, here: Here| {
         let (token, named, typed) = (
             page.invitation.get_untracked().unwrap_or_default(),
             name.get_untracked(),
             password.get_untracked(),
         );
         let navigate = navigate.clone();
-        asked(asking, refused, async move {
-            service::sign_up_by_invitation(&token, &named, &typed)
-                .await
-                .map(|account| {
-                    navigate(
-                        route::WORKSPACE,
-                        NavigateOptions {
-                            replace: true,
-                            ..Default::default()
-                        },
-                    );
-                    session.signed_in(account);
-                })
-        });
-    };
+        asked(refused, async move {
+            match answer {
+                InvitationAnswer::Accept => service::sign_up_by_invitation(&token, &named, &typed)
+                    .await
+                    .map(|account| {
+                        if here.still() {
+                            navigate(
+                                route::WORKSPACE,
+                                NavigateOptions {
+                                    replace: true,
+                                    ..Default::default()
+                                },
+                            );
+                        }
+                        session.signed_in(account);
+                    }),
+                InvitationAnswer::Decline => invitations::decline_by_token(&token)
+                    .await
+                    .map(|()| page.turn_to(Form::Declined, None)),
+            }
+        })
+    });
 
     (
         html::h1().child(speech::said("invitation-accept-heading")),
@@ -303,7 +320,7 @@ fn accept_form(page: Page) -> impl IntoView {
             .class("hint")
             .child(speech::said("invitation-accept-hint")),
         form(
-            accept,
+            move || answering.start(InvitationAnswer::Accept),
             (
                 field(speech::said("sign-up-name"), "text", "name", name),
                 field(
@@ -316,17 +333,18 @@ fn accept_form(page: Page) -> impl IntoView {
                     .class("hint")
                     .child(speech::said("sign-up-password-hint")),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("sign-up-confirm"), asking),
+                submitting(
+                    speech::said("sign-up-confirm"),
+                    answering,
+                    InvitationAnswer::Accept,
+                ),
             ),
         ),
-        turning(speech::said("invitation-decline-instead"), move || {
-            let token = page.invitation.get_untracked().unwrap_or_default();
-            asked(asking, refused, async move {
-                invitations::decline_by_token(&token)
-                    .await
-                    .map(|()| page.turn_to(Form::Declined, None))
-            });
-        }),
+        turning_asking(
+            speech::said("invitation-decline-instead"),
+            answering,
+            InvitationAnswer::Decline,
+        ),
         turning(speech::said("sign-in-instead"), move || {
             page.turn_to(Form::SignIn, None)
         }),
@@ -348,31 +366,29 @@ fn declined_form(page: Page) -> impl IntoView {
 fn code_form(page: Page) -> impl IntoView {
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let verify = move || {
+    let verifying = Act::new(move |ask: CodeAsk, _: Here| {
         let (email, typed) = (page.email.get_untracked(), code.get_untracked());
-        asked(asking, refused, async move {
-            let verified = service::verify(&email, &typed).await;
-            if verified.is_err() {
-                code.set(String::new());
+        asked(refused, async move {
+            match ask {
+                CodeAsk::Confirm => {
+                    let verified = service::verify(&email, &typed).await;
+                    if verified.is_err() {
+                        code.set(String::new());
+                    }
+                    verified.map(|()| page.turn_to(Form::SignIn, Some("code-confirmed")))
+                }
+                CodeAsk::SendAgain => service::send_code_again(&email).await.map(|()| {
+                    code.set(String::new());
+                    page.notice.set(Some("code-sent-again"));
+                }),
             }
-            verified.map(|()| page.turn_to(Form::SignIn, Some("code-confirmed")))
-        });
-    };
-    let send_again = move || {
-        let email = page.email.get_untracked();
-        asked(asking, refused, async move {
-            service::send_code_again(&email).await.map(|()| {
-                code.set(String::new());
-                page.notice.set(Some("code-sent-again"));
-            })
-        });
-    };
+        })
+    });
 
     Effect::new(move |_| {
         if is_whole(&code.get()) {
-            verify();
+            verifying.start(CodeAsk::Confirm);
         }
     });
 
@@ -381,14 +397,14 @@ fn code_form(page: Page) -> impl IntoView {
         sent_to(page),
         notice(page),
         form(
-            verify,
+            move || verifying.start(CodeAsk::Confirm),
             (
                 code_boxes(code),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("code-confirm"), asking),
+                submitting(speech::said("code-confirm"), verifying, CodeAsk::Confirm),
             ),
         ),
-        turning(speech::said("code-again"), send_again),
+        turning_asking(speech::said("code-again"), verifying, CodeAsk::SendAgain),
         turning(speech::said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
@@ -397,21 +413,20 @@ fn code_form(page: Page) -> impl IntoView {
 
 fn ask_reset_form(page: Page) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let ask = move || {
+    let asking = Act::new(move |(), _: Here| {
         let email = page.email.get_untracked();
-        asked(asking, refused, async move {
+        asked(refused, async move {
             service::ask_to_reset_password(&email)
                 .await
                 .map(|()| page.turn_to(Form::Reset, None))
-        });
-    };
+        })
+    });
 
     (
         html::h1().child(speech::said("reset-heading")),
         form(
-            ask,
+            move || asking.start(()),
             (
                 field(
                     speech::said("sign-in-email"),
@@ -420,7 +435,7 @@ fn ask_reset_form(page: Page) -> impl IntoView {
                     page.email,
                 ),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("reset-ask"), asking),
+                submitting(speech::said("reset-ask"), asking, ()),
             ),
         ),
         turning(speech::said("back-to-sign-in"), move || {
@@ -433,38 +448,36 @@ fn reset_form(page: Page) -> impl IntoView {
     let code = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
 
-    let reset = move || {
+    let resetting = Act::new(move |ask: CodeAsk, _: Here| {
         let (email, typed, chosen) = (
             page.email.get_untracked(),
             code.get_untracked(),
             password.get_untracked(),
         );
-        asked(asking, refused, async move {
-            let reset = service::reset_password(&email, &typed, &chosen).await;
-            if refused_the_code(&reset) {
-                code.set(String::new());
+        asked(refused, async move {
+            match ask {
+                CodeAsk::Confirm => {
+                    let reset = service::reset_password(&email, &typed, &chosen).await;
+                    if refused_the_code(&reset) {
+                        code.set(String::new());
+                    }
+                    reset.map(|()| page.turn_to(Form::SignIn, Some("reset-done")))
+                }
+                CodeAsk::SendAgain => service::ask_to_reset_password(&email).await.map(|()| {
+                    code.set(String::new());
+                    page.notice.set(Some("code-sent-again"));
+                }),
             }
-            reset.map(|()| page.turn_to(Form::SignIn, Some("reset-done")))
-        });
-    };
-    let send_again = move || {
-        let email = page.email.get_untracked();
-        asked(asking, refused, async move {
-            service::ask_to_reset_password(&email).await.map(|()| {
-                code.set(String::new());
-                page.notice.set(Some("code-sent-again"));
-            })
-        });
-    };
+        })
+    });
 
     (
         html::h1().child(speech::said("reset-heading")),
         sent_to(page),
         notice(page),
         form(
-            reset,
+            move || resetting.start(CodeAsk::Confirm),
             (
                 code_boxes(code),
                 field(
@@ -477,10 +490,10 @@ fn reset_form(page: Page) -> impl IntoView {
                     .class("hint")
                     .child(speech::said("sign-up-password-hint")),
                 move || refused.get().map(problem::problem),
-                submitting(speech::said("reset-confirm"), asking),
+                submitting(speech::said("reset-confirm"), resetting, CodeAsk::Confirm),
             ),
         ),
-        turning(speech::said("code-again"), send_again),
+        turning_asking(speech::said("code-again"), resetting, CodeAsk::SendAgain),
         turning(speech::said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
@@ -549,22 +562,16 @@ fn is_whole(code: &str) -> bool {
 }
 
 fn asked(
-    asking: RwSignal<bool>,
     refused: RwSignal<Option<ApiError>>,
     answer: impl Future<Output = Result<(), ApiError>> + 'static,
-) {
-    if asking.get_untracked() {
-        return;
-    }
-    asking.set(true);
+) -> impl Future<Output = ()> + 'static {
     refused.set(None);
 
-    task::spawn_local(async move {
+    async move {
         if let Err(failed) = answer.await {
             refused.set(Some(failed));
         }
-        asking.set(false);
-    });
+    }
 }
 
 fn form(submit: impl Fn() + 'static, fields: impl IntoView + 'static) -> impl IntoView {
@@ -587,14 +594,30 @@ fn notice(page: Page) -> impl IntoView {
     }
 }
 
-fn submitting(
+fn submitting<T: Clone + PartialEq + Send + Sync + 'static>(
     label: impl Fn() -> String + Send + Sync + 'static,
-    asking: RwSignal<bool>,
+    act: Act<T>,
+    about: T,
 ) -> impl IntoView {
     html::button()
         .r#type("submit")
         .class("primary")
-        .disabled(move || asking.get())
+        .attr("aria-busy", move || act.busy_on(&about))
+        .child(label)
+}
+
+fn turning_asking<T: Clone + PartialEq + Send + Sync + 'static>(
+    label: impl Fn() -> String + Send + Sync + 'static,
+    act: Act<T>,
+    about: T,
+) -> impl IntoView {
+    let pressed = about.clone();
+
+    html::button()
+        .r#type("button")
+        .class("turning")
+        .attr("aria-busy", move || act.busy_on(&pressed))
+        .on(ev::click, move |_| act.start(about.clone()))
         .child(label)
 }
 

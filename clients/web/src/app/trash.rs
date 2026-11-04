@@ -74,7 +74,9 @@ fn trashed_row(project: TrashedProject, workspace: Workspace) -> impl IntoView {
         html::span().class("stamp").child(until),
         html::div().class("actions").child(
             html::button()
-                .disabled(move || workspace.restoring().get())
+                .attr("aria-busy", move || {
+                    id.with_value(|id| workspace.restoring(id))
+                })
                 .on(ev::click, move |_| workspace.restore(id.get_value()))
                 .child(speech::said("trash-restore")),
         ),

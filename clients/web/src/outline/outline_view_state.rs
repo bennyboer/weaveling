@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::hooks;
 
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::ideas::followed;
 use crate::ideas::model::Idea;
@@ -30,7 +31,7 @@ pub struct OutlineViewState {
     removing: Action<SectionId, ()>,
     attaching: Action<(Attachment, SectionId), ()>,
     detaching: Action<Attachment, ()>,
-    writing: Action<SectionId, ()>,
+    writing: Act<SectionId>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -269,11 +270,11 @@ impl OutlineViewState {
 
         let writing = {
             let id = project.clone();
+            let opening = hooks::use_navigate();
 
-            Action::new_local(move |to: &SectionId| {
+            Act::new(move |to: SectionId, here: Here| {
                 let id = id.clone();
-                let to = to.clone();
-                let opening = hooks::use_navigate();
+                let opening = opening.clone();
 
                 async move {
                     let started = match scene_service::create(&id).await {
@@ -292,7 +293,7 @@ impl OutlineViewState {
                     let held = placed.is_ok();
 
                     settled(placed);
-                    if held {
+                    if held && here.still() {
                         opening(
                             &route::writing_at(&id.to_string(), &started.id),
                             Default::default(),
@@ -555,7 +556,11 @@ impl OutlineViewState {
     }
 
     pub fn write_in(&self, section: SectionId) {
-        self.writing.dispatch(section);
+        self.writing.start(section);
+    }
+
+    pub fn writing_in(&self, section: &SectionId) -> Option<&'static str> {
+        self.writing.busy_on(section)
     }
 }
 

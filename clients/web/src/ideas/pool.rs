@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::ideas::followed;
 use crate::ideas::model;
@@ -36,9 +37,11 @@ pub fn Pool(project: String) -> impl IntoView {
     let capturing = {
         let project = project.clone();
 
-        Action::new_local(move |saying: &String| {
+        Act::new(move |(), _: Here| {
             let project = project.clone();
-            let saying = saying.clone();
+            let field = title.get().expect("the title field should be mounted");
+            let saying = field.value();
+            field.set_value("");
 
             async move {
                 match service::capture(&project, &saying).await {
@@ -56,12 +59,6 @@ pub fn Pool(project: String) -> impl IntoView {
         })
     };
 
-    let capture = move || {
-        let field = title.get().expect("the title field should be mounted");
-        capturing.dispatch(field.value());
-        field.set_value("");
-    };
-
     let ideas = move || held.get().unwrap_or_default();
 
     html::section().class("pool").child((
@@ -72,7 +69,7 @@ pub fn Pool(project: String) -> impl IntoView {
                     .class("capture")
                     .on(ev::submit, move |event| {
                         event.prevent_default();
-                        capture();
+                        capturing.start(());
                     })
                     .child((
                         html::input()
@@ -82,7 +79,7 @@ pub fn Pool(project: String) -> impl IntoView {
                             .node_ref(title),
                         html::button()
                             .r#type("submit")
-                            .disabled(capturing.pending())
+                            .attr("aria-busy", move || capturing.busy())
                             .child(speech::said("ideas-capture")),
                     ))
             })

@@ -1,11 +1,11 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, ev, html};
 use time::OffsetDateTime;
 
 use crate::accounts::listed::{ListedAccount, OperatorLock};
 use crate::accounts::service;
+use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -32,19 +32,15 @@ pub fn lock_dialog(
 ) -> impl IntoView {
     let reason = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let asking = RwSignal::new(false);
     let name = account.name.clone();
     let title = Signal::derive(move || naming("instance-lock-dialog", &name));
     let id = account.id;
 
-    let lock = move || {
-        if asking.get_untracked() {
-            return;
-        }
-        asking.set(true);
+    let locking = Act::new(move |(), _: Here| {
         refused.set(None);
         let (id, typed, locked) = (id.clone(), reason.get_untracked(), locked.clone());
-        task::spawn_local(async move {
+
+        async move {
             match service::lock_account(&id, &typed).await {
                 Ok(()) => {
                     locked(OperatorLock {
@@ -55,9 +51,8 @@ pub fn lock_dialog(
                 }
                 Err(failed) => refused.set(Some(failed)),
             }
-            asking.set(false);
-        });
-    };
+        }
+    });
 
     dialog::modal(
         title,
@@ -70,7 +65,7 @@ pub fn lock_dialog(
             html::form()
                 .on(ev::submit, move |event| {
                     event.prevent_default();
-                    lock();
+                    locking.start(());
                 })
                 .child((
                     html::label().class("field").child((
@@ -91,7 +86,7 @@ pub fn lock_dialog(
                         html::button()
                             .r#type("submit")
                             .class("danger")
-                            .disabled(move || asking.get())
+                            .attr("aria-busy", move || locking.busy())
                             .child(speech::said("instance-lock-confirm")),
                     )),
                 )),

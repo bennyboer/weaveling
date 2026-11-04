@@ -2,7 +2,7 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
-use crate::invitations::invited::Invited;
+use crate::invitations::invited::{Invited, Inviting};
 use crate::invitations::listed::{DeclineReason, ListedInvitation, Scope, Status};
 use crate::invitations::service::InvitedInto;
 use crate::members::listed::Role;
@@ -63,31 +63,14 @@ pub fn invited_list(invited: Invited) -> impl IntoView {
 }
 
 fn inviting(invited: Invited) -> impl IntoView {
-    let email = RwSignal::new(String::new());
-    let role = RwSignal::new(Role::Author);
-    let into = invited.into.get_value();
-    let into_a_project = match &into {
-        InvitedInto::Instance => None,
-        InvitedInto::Project(project) => Some(project.clone()),
-    };
-    let scope = {
-        let into_a_project = into_a_project.clone();
-        move || match &into_a_project {
-            None => Scope::Instance,
-            Some(project) => Scope::Project {
-                project: project.clone(),
-                role: role.get_untracked(),
-            },
-        }
-    };
+    let (email, role) = (invited.email, invited.role);
+    let into_a_project = matches!(invited.into.get_value(), InvitedInto::Project(_));
 
     html::form()
         .class("invite")
         .on(ev::submit, move |event| {
             event.prevent_default();
-            invited.invite(email.get_untracked(), scope(), move || {
-                email.set(String::new())
-            });
+            invited.inviting.start(Inviting::Typed);
         })
         .child((
             html::label().class("field").child((
@@ -101,7 +84,7 @@ fn inviting(invited: Invited) -> impl IntoView {
                         email.set(event_target_value(&event))
                     }),
             )),
-            into_a_project.map(|_| {
+            into_a_project.then(|| {
                 html::label().class("field as").child((
                     html::span().child(speech::said("members-invite-as")),
                     html::select()
@@ -126,7 +109,9 @@ fn inviting(invited: Invited) -> impl IntoView {
             html::button()
                 .r#type("submit")
                 .class("primary")
-                .disabled(move || invited.inviting.get())
+                .attr("aria-busy", move || {
+                    invited.inviting.busy_on(&Inviting::Typed)
+                })
                 .child(speech::said("instance-invite-confirm")),
         ))
 }
@@ -139,8 +124,7 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
     let until = moment::human_time(invitation.until);
     let withdrawable = invitation.status == Status::Open;
     let id = invitation.id.clone();
-    let again = (invitation.status == Status::Expired)
-        .then(|| (invitation.email.clone(), invitation.scope.clone()));
+    let again = (invitation.status == Status::Expired).then(|| Inviting::Again(id.clone()));
     let (mark, told) = match invitation.status {
         Status::Open => (
             "mark",
@@ -177,13 +161,13 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
             },
         )),
         html::div().class("actions").child((
-            again.map(|(email, scope)| {
+            again.map(|again| {
+                let pressed = again.clone();
+
                 html::button()
                     .r#type("button")
-                    .disabled(move || invited.inviting.get())
-                    .on(ev::click, move |_| {
-                        invited.invite(email.clone(), scope.clone(), || {})
-                    })
+                    .attr("aria-busy", move || invited.inviting.busy_on(&pressed))
+                    .on(ev::click, move |_| invited.inviting.start(again.clone()))
                     .child(speech::said("instance-invitation-invite-again"))
             }),
             withdrawable.then(|| {

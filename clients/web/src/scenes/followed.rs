@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task;
 use scenes_contract::SceneSummaryDTO;
 
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
@@ -16,19 +17,18 @@ pub fn follow(
     failed: impl Fn(ApiError) + Copy + 'static,
 ) -> (Subscription, impl Fn() + Clone + 'static) {
     let meanwhile = StoredValue::new(None::<Vec<SceneSummary>>);
-    let latest = StoredValue::new(0_u64);
+    let asking = Asking::new();
     let asking = {
         let project = project.clone();
 
         move || {
             let project = project.clone();
-            let asked = latest.get_value() + 1;
-            latest.set_value(asked);
+            let asked = asking.next();
             meanwhile.set_value(Some(Vec::new()));
 
             task::spawn_local(async move {
                 let answer = service::in_project(&project).await;
-                if latest.try_get_value() != Some(asked) {
+                if !asking.is_latest(asked) {
                     return;
                 }
                 match answer {

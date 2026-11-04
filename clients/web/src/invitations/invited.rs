@@ -1,10 +1,12 @@
 use leptos::prelude::*;
 use leptos::task;
 
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::invitations::listed::{ListedInvitation, Scope};
 use crate::invitations::service;
 use crate::invitations::service::InvitedInto;
+use crate::members::listed::Role;
 
 #[derive(Clone, Copy)]
 pub struct Invited {
@@ -14,8 +16,16 @@ pub struct Invited {
     pub(super) loading: RwSignal<bool>,
     pub(super) loaded: RwSignal<bool>,
     pub(super) refused: RwSignal<Option<ApiError>>,
-    pub(super) inviting: RwSignal<bool>,
+    pub(super) email: RwSignal<String>,
+    pub(super) role: RwSignal<Role>,
+    pub(super) inviting: Act<Inviting>,
     pub(super) invite_refused: RwSignal<Option<ApiError>>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(super) enum Inviting {
+    Typed,
+    Again(String),
 }
 
 impl Invited {
@@ -27,15 +37,53 @@ impl Invited {
     }
 
     pub fn unasked(into: InvitedInto) -> Self {
+        let into = StoredValue::new(into);
+        let invitations = RwSignal::new(Vec::<ListedInvitation>::new());
+        let email = RwSignal::new(String::new());
+        let role = RwSignal::new(Role::Author);
+        let invite_refused = RwSignal::new(None);
+        let inviting = Act::new(move |inviting: Inviting, _: Here| {
+            invite_refused.set(None);
+            let asked = match &inviting {
+                Inviting::Typed => Some((
+                    email.get_untracked(),
+                    into.with_value(|into| scope_of(into, role.get_untracked())),
+                )),
+                Inviting::Again(id) => invitations.with_untracked(|listed| {
+                    listed
+                        .iter()
+                        .find(|invitation| &invitation.id == id)
+                        .map(|invitation| (invitation.email.clone(), invitation.scope.clone()))
+                }),
+            };
+
+            async move {
+                let Some((invited, scope)) = asked else {
+                    return;
+                };
+                match service::invite(&invited, &scope).await {
+                    Ok(invitation) => {
+                        invitations.update(|listed| listed.insert(0, invitation));
+                        if inviting == Inviting::Typed {
+                            email.set(String::new());
+                        }
+                    }
+                    Err(failed) => invite_refused.set(Some(failed)),
+                }
+            }
+        });
+
         Self {
-            into: StoredValue::new(into),
-            invitations: RwSignal::new(Vec::new()),
+            into,
+            invitations,
             next: RwSignal::new(None),
             loading: RwSignal::new(false),
             loaded: RwSignal::new(false),
             refused: RwSignal::new(None),
-            inviting: RwSignal::new(false),
-            invite_refused: RwSignal::new(None),
+            email,
+            role,
+            inviting,
+            invite_refused,
         }
     }
 
@@ -59,25 +107,6 @@ impl Invited {
         });
     }
 
-    pub(super) fn invite(self, email: String, scope: Scope, done: impl Fn() + 'static) {
-        if self.inviting.get_untracked() {
-            return;
-        }
-        self.inviting.set(true);
-        self.invite_refused.set(None);
-        task::spawn_local(async move {
-            match service::invite(&email, &scope).await {
-                Ok(invitation) => {
-                    self.invitations
-                        .update(|listed| listed.insert(0, invitation));
-                    done();
-                }
-                Err(failed) => self.invite_refused.set(Some(failed)),
-            }
-            self.inviting.set(false);
-        });
-    }
-
     pub(super) fn withdraw(self, id: String) {
         self.refused.set(None);
         task::spawn_local(async move {
@@ -88,5 +117,15 @@ impl Invited {
                 Err(failed) => self.refused.set(Some(failed)),
             }
         });
+    }
+}
+
+fn scope_of(into: &InvitedInto, role: Role) -> Scope {
+    match into {
+        InvitedInto::Instance => Scope::Instance,
+        InvitedInto::Project(project) => Scope::Project {
+            project: project.clone(),
+            role,
+        },
     }
 }

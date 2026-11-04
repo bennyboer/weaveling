@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
 use crate::asking;
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::ideas::model;
 use crate::ideas::model::{Awaited, Idea};
@@ -15,14 +16,13 @@ pub fn asking(
     failed: impl Fn(ApiError) + Clone + 'static,
 ) -> Action<Option<Awaited>, ()> {
     let project = project.clone();
-    let latest = StoredValue::new(0_u64);
+    let asking = Asking::new();
 
     Action::new_local(move |awaited: &Option<Awaited>| {
         let project = project.clone();
         let failed = failed.clone();
         let awaited = awaited.clone();
-        let asked = latest.get_value() + 1;
-        latest.set_value(asked);
+        let asked = asking.next();
 
         async move {
             let answer = asking::until_it_holds(
@@ -34,7 +34,7 @@ pub fn asking(
                 asking::paused,
             )
             .await;
-            if latest.try_get_value() != Some(asked) {
+            if !asking.is_latest(asked) {
                 return;
             }
             match answer {

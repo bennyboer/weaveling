@@ -362,6 +362,85 @@ test("writing in a section opens the new scene", async ({ page }) => {
   await expect(page).toHaveURL(/\/write$/);
 });
 
+test("writing in a section twice in a hurry makes one scene", async ({ page }) => {
+  // given: an outline with two sections
+  await aNewProject(page, "WritingTwice");
+  await openTheOutline(page);
+  await addSections(page, ["Chapter 1", "Chapter 2"]);
+  await page.keyboard.press("Escape");
+  // and: placing slow to answer
+  await page.route("**/api/outlines/*/attachments", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+  // and: every scene made counted
+  let made = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/scenes") {
+      made += 1;
+    }
+  });
+  const writeIn = page.getByRole("button", { name: "Write in Chapter 1" });
+
+  // when: the section is written in twice in a hurry
+  await writeIn.dblclick();
+
+  // then: one scene was made, open to write in
+  await expect(page).toHaveURL(/\/write$/);
+  expect(made, "a second click while the first is on its way must not make a second scene").toBe(1);
+});
+
+test("a section being written in shows it on its way, and no other section does", async ({ page }) => {
+  // given: an outline with two sections
+  await aNewProject(page, "WritingShown");
+  await openTheOutline(page);
+  await addSections(page, ["Chapter 1", "Chapter 2"]);
+  await page.keyboard.press("Escape");
+  // and: placing slow to answer
+  await page.route("**/api/outlines/*/attachments", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+  const writeIn = page.getByRole("button", { name: "Write in Chapter 1" });
+
+  // when: the first is written in
+  await writeIn.click();
+
+  // then: its button shows it on its way
+  await expect(writeIn).toHaveAttribute("aria-busy", "true");
+  // and: the other's does not
+  await expect(page.getByRole("button", { name: "Write in Chapter 2" })).not.toHaveAttribute("aria-busy");
+});
+
+test("a section written in and left before the answer comes leaves the author where they went", async ({ page }) => {
+  // given: an outline with a section
+  await aNewProject(page, "WritingLeft");
+  await openTheOutline(page);
+  await addSections(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  // and: placing slow to answer
+  let placed = () => {};
+  const answered = new Promise<void>((resolve) => {
+    placed = resolve;
+  });
+  await page.route("**/api/outlines/*/attachments", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+    placed();
+  });
+
+  // when: the section is written in
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  // and: the author goes to the board before the answer comes
+  await page.getByRole("navigation", { name: "Views" }).getByRole("link", { name: "Board" }).click();
+  await expect(page).toHaveURL(/\/board$/);
+  await answered;
+  await page.waitForTimeout(300);
+
+  // then: the author stays on the board
+  await expect(page, "taking them back to write after they chose to leave would undo their choice").toHaveURL(/\/board$/);
+});
+
 test("a scene written in a section is held there", async ({ page }) => {
   // given: a section written in
   await aNewProject(page, "Holding");

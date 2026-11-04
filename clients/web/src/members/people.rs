@@ -5,6 +5,7 @@ use leptos::{IntoView, ev, html};
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState};
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::members::leaving;
@@ -24,7 +25,7 @@ pub struct People {
     refused: RwSignal<Option<ApiError>>,
     pub(super) leaving: RwSignal<bool>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
-    latest: StoredValue<u64>,
+    asking: Asking,
 }
 
 impl People {
@@ -36,7 +37,7 @@ impl People {
             refused: RwSignal::new(None),
             leaving: RwSignal::new(false),
             following: StoredValue::new_local(None),
-            latest: StoredValue::new(0),
+            asking: Asking::new(),
         };
         people.following.set_value(Some(Subscription::start(
             "members",
@@ -75,23 +76,12 @@ impl People {
             })
     }
 
-    fn asking(self) -> u64 {
-        let asked = self.latest.get_value() + 1;
-        self.latest.set_value(asked);
-
-        asked
-    }
-
-    fn still_latest(self, asked: u64) -> bool {
-        self.latest.try_get_value() == Some(asked)
-    }
-
     fn load(self) {
         let project = self.project.get_value();
-        let asked = self.asking();
+        let asked = self.asking.next();
         task::spawn_local(async move {
             let found = service::members_of(&project).await;
-            if !self.still_latest(asked) {
+            if !self.asking.is_latest(asked) {
                 return;
             }
             match found {
@@ -104,11 +94,11 @@ impl People {
     fn change_role(self, account: String, to: Role) {
         let project = self.project.get_value();
         self.refused.set(None);
-        let asked = self.asking();
+        let asked = self.asking.next();
         task::spawn_local(async move {
             let changed = service::change_role(&project, &account, to).await;
             match changed {
-                Ok(_) if !self.still_latest(asked) => {}
+                Ok(_) if !self.asking.is_latest(asked) => {}
                 Ok(changed) => self.members.set(changed),
                 Err(failed) => {
                     self.refused.set(Some(failed));

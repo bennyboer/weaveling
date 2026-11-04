@@ -7,6 +7,7 @@ use live_contract::FrameDTO;
 use members_contract::MembersEventDTO;
 
 use crate::accounts::{CurrentSession, SignInState};
+use crate::asking::Asking;
 use crate::live::Subscription;
 use crate::members::listed::Role;
 use crate::members::service;
@@ -19,7 +20,7 @@ pub struct Roles {
     signed_in: Memo<bool>,
     held: RwSignal<Option<BTreeMap<String, Role>>>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
-    latest: StoredValue<u64>,
+    asking: Asking,
 }
 
 impl Roles {
@@ -29,13 +30,13 @@ impl Roles {
             signed_in: Memo::new(move |_| matches!(session.state(), SignInState::SignedIn(_))),
             held: RwSignal::new(None),
             following: StoredValue::new_local(None),
-            latest: StoredValue::new(0),
+            asking: Asking::new(),
         };
         let note = expect_context::<QuietNote>();
         let speech = expect_context::<Speech>();
 
         Effect::new(move |_| {
-            roles.latest.update_value(|latest| *latest += 1);
+            roles.asking.next();
             roles.held.set(None);
             roles.following.set_value(roles.signed_in.get().then(|| {
                 Subscription::start(
@@ -54,11 +55,10 @@ impl Roles {
     }
 
     fn ask(self) {
-        let asked = self.latest.get_value() + 1;
-        self.latest.set_value(asked);
+        let asked = self.asking.next();
         task::spawn_local(async move {
             let found = service::mine().await;
-            if self.latest.try_get_value() != Some(asked) {
+            if !self.asking.is_latest(asked) {
                 return;
             }
             if let Ok(held) = found {

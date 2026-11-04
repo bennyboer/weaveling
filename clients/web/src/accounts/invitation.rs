@@ -1,11 +1,11 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::components::A;
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState, service};
+use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::problem;
 use crate::quiet_note::QuietNote;
@@ -26,7 +26,6 @@ pub fn InvitationPage() -> impl IntoView {
         .trim_start_matches('#')
         .to_owned();
     let refused = RwSignal::new(None::<ApiError>);
-    let answering = RwSignal::new(false);
     let signed_in_as = move || {
         let mut told = FluentArgs::new();
         if let SignInState::SignedIn(account) = session.state() {
@@ -35,32 +34,34 @@ pub fn InvitationPage() -> impl IntoView {
 
         speech::say_with("invitation-signed-in", &told)
     };
-    let answer = move |token: String, accepting: bool| {
-        if answering.get_untracked() {
-            return;
-        }
-        answering.set(true);
-        refused.set(None);
-        let navigate = navigate.clone();
-        task::spawn_local(async move {
-            let answered = if accepting {
-                service::take_up_invitation(&token).await
-            } else {
-                service::decline_invitation(&token).await
-            };
-            match answered {
-                Ok(()) => {
-                    note.tell(speech.say(if accepting {
-                        "invitation-accepted"
-                    } else {
-                        "invitation-declined"
-                    }));
-                    navigate(route::WORKSPACE, Default::default());
+    let answering = {
+        let token = token.clone();
+
+        Act::new(move |accepting: bool, here: Here| {
+            refused.set(None);
+            let (token, navigate) = (token.clone(), navigate.clone());
+
+            async move {
+                let answered = if accepting {
+                    service::take_up_invitation(&token).await
+                } else {
+                    service::decline_invitation(&token).await
+                };
+                match answered {
+                    Ok(()) => {
+                        note.tell(speech.say(if accepting {
+                            "invitation-accepted"
+                        } else {
+                            "invitation-declined"
+                        }));
+                        if here.still() {
+                            navigate(route::WORKSPACE, Default::default());
+                        }
+                    }
+                    Err(failed) => refused.set(Some(failed)),
                 }
-                Err(failed) => refused.set(Some(failed)),
             }
-            answering.set(false);
-        });
+        })
     };
 
     (
@@ -70,19 +71,17 @@ pub fn InvitationPage() -> impl IntoView {
             html::p().class("hint").child(signed_in_as),
             move || refused.get().map(problem::problem),
             (!token.is_empty()).then(|| {
-                let declining = token.clone();
-                let accept = answer.clone();
                 html::div().class("answers").child((
                     html::button()
                         .r#type("button")
                         .class("primary")
-                        .disabled(move || answering.get())
-                        .on(ev::click, move |_| accept(token.clone(), true))
+                        .attr("aria-busy", move || answering.busy_on(&true))
+                        .on(ev::click, move |_| answering.start(true))
                         .child(speech::said("invitation-accept")),
                     html::button()
                         .r#type("button")
-                        .disabled(move || answering.get())
-                        .on(ev::click, move |_| answer(declining.clone(), false))
+                        .attr("aria-busy", move || answering.busy_on(&false))
+                        .on(ev::click, move |_| answering.start(false))
                         .child(speech::said("invitation-decline")),
                 ))
             }),

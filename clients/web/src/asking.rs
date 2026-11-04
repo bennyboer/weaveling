@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use leptos::prelude::set_timeout;
+use leptos::prelude::*;
 
 pub const PAUSES: [Duration; 4] = [
     Duration::from_millis(100),
@@ -74,6 +74,27 @@ impl Future for Pause {
         }
 
         Poll::Pending
+    }
+}
+
+/// Asking again for something that changes, where the newest asking is the one whose answer counts: each asking takes the next number, and an answer is taken in only while no newer asking was made, so one read before a change and answered after it never stands over what came later. Acting once on a press is an `Act` instead.
+#[derive(Clone, Copy)]
+pub struct Asking(StoredValue<u64>);
+
+impl Asking {
+    pub fn new() -> Self {
+        Self(StoredValue::new(0))
+    }
+
+    pub fn next(self) -> u64 {
+        let asked = self.0.get_value() + 1;
+        self.0.set_value(asked);
+
+        asked
+    }
+
+    pub fn is_latest(self, asked: u64) -> bool {
+        self.0.try_get_value() == Some(asked)
     }
 }
 

@@ -6,6 +6,7 @@ use leptos::{IntoView, ev};
 use quotation::QuotationMarks;
 use scenes_contract::QuotationRestylingDTO;
 
+use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::icons;
@@ -74,7 +75,6 @@ fn changing_dialog(
     let speech = expect_context::<Speech>();
     let draft = DetailsDraft::of(RwSignal::new(known.name.clone()), &known.details);
     let field: NodeRef<Input> = NodeRef::new();
-    let saving = RwSignal::new(false);
     let refused = RwSignal::new(None::<ApiError>);
     let stage = RwSignal::new(Stage::Editing);
     let restyled = RwSignal::new(Restyled::Waiting);
@@ -82,22 +82,14 @@ fn changing_dialog(
     let project = StoredValue::new(project);
     let known = StoredValue::new(known);
 
-    let save = move |confirmed: bool| {
+    let saving = Act::new(move |(), _: Here| {
         let name = draft.title.get_untracked();
-        if name.trim().is_empty() || saving.get_untracked() {
-            return;
-        }
         let details = draft.details();
         let project = project.get_value();
         let before = known.get_value();
         let (from, to) = (before.details.quotation_marks(), details.quotation_marks());
-        if from != to && !confirmed {
-            stage.set(Stage::Confirming { from, to });
-            return;
-        }
-        saving.set(true);
 
-        task::spawn_local(async move {
+        async move {
             let renamed = match name.trim() == before.name {
                 true => Ok(before.version),
                 false => service::rename(&project, name.trim())
@@ -123,11 +115,23 @@ fn changing_dialog(
                 }
                 Err(failure) => {
                     refused.set(Some(failure));
-                    saving.set(false);
                     stage.set(Stage::Editing);
                 }
             }
-        });
+        }
+    });
+
+    let save = move |confirmed: bool| {
+        if draft.title.get_untracked().trim().is_empty() {
+            return;
+        }
+        let from = known.with_value(|before| before.details.quotation_marks());
+        let to = draft.details().quotation_marks();
+        if from != to && !confirmed {
+            stage.set(Stage::Confirming { from, to });
+            return;
+        }
+        saving.start(());
     };
 
     dialog::modal(
@@ -156,9 +160,8 @@ fn changing_dialog(
                             html::button()
                                 .r#type("button")
                                 .class("primary")
-                                .disabled(move || {
-                                    draft.title.get().trim().is_empty() || saving.get()
-                                })
+                                .disabled(move || draft.title.get().trim().is_empty())
+                                .attr("aria-busy", move || saving.busy())
                                 .on(ev::click, move |_| save(false))
                                 .child(speech::said("project-details-save"))
                         })
@@ -182,7 +185,7 @@ fn changing_dialog(
                     html::button()
                         .r#type("button")
                         .class("primary")
-                        .disabled(move || saving.get())
+                        .attr("aria-busy", move || saving.busy())
                         .on(ev::click, move |_| save(true))
                         .child(speech::said("project-details-change-the-marks")),
                 )),
@@ -253,17 +256,16 @@ fn follow(
         &[("project", project.to_string().as_str())],
         move |told: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<QuotationRestylingDTO>(told.event) {
-                _ = restyled.try_set(crate::scenes::restyling::standing(
-                    Some(found.into()),
-                    saved_against,
-                ));
+                let found = crate::scenes::restyling::standing(Some(found.into()), saved_against);
+                _ = restyled.try_update(|held| *held = held.advanced_to(found));
             }
         },
         move || {
             let project = asked.clone();
             task::spawn_local(async move {
                 if let Ok(found) = scenes::quotation_restyling(&project).await {
-                    _ = restyled.try_set(crate::scenes::restyling::standing(found, saved_against));
+                    let found = crate::scenes::restyling::standing(found, saved_against);
+                    _ = restyled.try_update(|held| *held = held.advanced_to(found));
                 }
             });
         },
