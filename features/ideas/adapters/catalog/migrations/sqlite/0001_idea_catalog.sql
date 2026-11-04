@@ -13,3 +13,10 @@ CREATE TABLE idea_tombstones (
 );
 
 CREATE INDEX idea_tombstones_by_laid_at ON idea_tombstones (laid_at);
+
+CREATE TABLE project_tombstones (
+    project          TEXT PRIMARY KEY,
+    laid_at          TEXT NOT NULL
+);
+
+CREATE INDEX project_tombstones_by_laid_at ON project_tombstones (laid_at);

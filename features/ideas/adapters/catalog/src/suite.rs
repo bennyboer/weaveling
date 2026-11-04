@@ -72,6 +72,33 @@ impl<C: IdeaCatalog> Committing<'_, C> {
 
         Ok(done)
     }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn has_project_tombstone(&self, project: &str) -> bool {
+        let mut transaction = self.begun().await;
+        let buried = self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, &ProjectLink::from(project))
+            .await
+            .expect("asking should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+
+        buried
+    }
 }
 
 impl<C> Deref for Committing<'_, C> {
@@ -453,6 +480,72 @@ pub async fn an_idea_forgotten_in_a_transaction_that_is_dropped_is_still_there_a
     );
 }
 
+pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
+    catalog: &Committing<'_, impl IdeaCatalog>,
+) {
+    assert!(!catalog.has_project_tombstone("project_1").await);
+
+    for seconds in [1_000, 5_000] {
+        catalog
+            .lay_project_tombstone("project_1", at(seconds))
+            .await
+            .expect("laying a tombstone should succeed");
+    }
+
+    assert!(catalog.has_project_tombstone("project_1").await);
+    assert!(!catalog.has_project_tombstone("project_2").await);
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(at(2_000), u64::MAX)
+            .await
+            .expect("forgetting should succeed"),
+        1,
+        "a deletion heard again is the same deletion"
+    );
+    assert!(!catalog.has_project_tombstone("project_1").await);
+}
+
+pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &Committing<'_, impl IdeaCatalog>,
+) {
+    for (project, seconds) in [
+        ("project_newest", 1_002),
+        ("project_oldest", 1_000),
+        ("project_older", 1_001),
+    ] {
+        catalog
+            .lay_project_tombstone(project, at(seconds))
+            .await
+            .expect("laying a tombstone should succeed");
+    }
+
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(at(9_000), 2)
+            .await
+            .expect("forgetting should succeed"),
+        2
+    );
+    assert!(!catalog.has_project_tombstone("project_oldest").await);
+    assert!(!catalog.has_project_tombstone("project_older").await);
+    assert!(catalog.has_project_tombstone("project_newest").await);
+}
+
+pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_was_never_laid(
+    catalog: &Committing<'_, impl IdeaCatalog>,
+) {
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .lay_project_tombstone(&mut transaction, &ProjectLink::from("project_1"), at(1_000))
+        .await
+        .expect("laying a tombstone should succeed");
+
+    drop(transaction);
+
+    assert!(!catalog.has_project_tombstone("project_1").await);
+}
+
 pub async fn idea_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
@@ -505,6 +598,18 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             idea_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            project_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_tombstone_laid_in_a_transaction_that_is_dropped_was_never_laid
         );
         $crate::catalog_conformance_case!(
             $workbench,

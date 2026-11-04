@@ -33,6 +33,21 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
     )
 ";
 
+const LAY_PROJECT_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const HAS_PROJECT_TOMBSTONE: &str =
+    "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)";
+
+const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
+";
+
 const IN_PROJECT_AFTER: &str = "
     SELECT idea, version, project, title
     FROM idea_summaries
@@ -126,13 +141,50 @@ impl IdeaCatalog for SqliteIdeaCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
+        let ideas = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
-            .rows_affected())
+            .rows_affected();
+        let projects = sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(ideas + projects)
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(LAY_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .bind(clock::text::written(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)
     }
 
     async fn in_project_after(

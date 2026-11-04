@@ -54,6 +54,19 @@ pub trait IdeaCatalog: Send + Sync {
         after: Option<IdeaId>,
         at_most: usize,
     ) -> Result<Vec<IdeaSummary>, CatalogError>;
+
+    async fn lay_project_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError>;
 }
 
 impl IdeaSummary {

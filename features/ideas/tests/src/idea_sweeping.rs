@@ -7,7 +7,7 @@ use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use ideas_core::{IdeaCatalog, IdeaId, IdeasCore, ProjectLink};
+use ideas_core::{IdeaCatalog, IdeaId, IdeasCore, IdeasError, ProjectLink};
 use ideas_messaging::{AT_MOST, DiscardOnProjectDeletedListener};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -137,10 +137,19 @@ impl Wired {
             .await
             .expect("listing should succeed")
         {
-            self.ideas
-                .catalogue(None, &summary.id)
+            let discarded = self
+                .ideas
+                .read(&summary.id.to_string(), &Agent::System)
                 .await
-                .expect("cataloguing should succeed");
+                .expect("a listed idea can be read")
+                .state
+                .is_discarded();
+            if discarded {
+                self.ideas
+                    .catalogue(None, &summary.id)
+                    .await
+                    .expect("cataloguing should succeed");
+            }
         }
     }
 }
@@ -320,5 +329,85 @@ async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep(
             .expect("listing should succeed")
             .is_empty(),
         "every batch after the first is asked for by the sweep itself"
+    );
+}
+
+#[tokio::test]
+async fn a_deleted_project_takes_no_new_idea() {
+    let wired = a_workbench(4);
+
+    wired
+        .sweep
+        .handle(&deleted())
+        .await
+        .expect("sweeping succeeds");
+    let refused = wired
+        .ideas
+        .capture(A_PROJECT, "Too late", &Agent::System)
+        .await;
+
+    assert!(matches!(refused, Err(IdeasError::ProjectNotThere)));
+}
+
+#[tokio::test]
+async fn an_idea_catalogued_only_after_its_project_was_swept_is_discarded_then() {
+    let wired = a_workbench(4);
+    let late = wired
+        .ideas
+        .capture(A_PROJECT, "Not yet listed", &Agent::System)
+        .await
+        .expect("capturing should succeed")
+        .0;
+    wired
+        .sweep
+        .handle(&deleted())
+        .await
+        .expect("sweeping succeeds");
+
+    wired
+        .ideas
+        .catalogue(None, &late)
+        .await
+        .expect("cataloguing should succeed");
+    wired
+        .ideas
+        .catalogue(None, &late)
+        .await
+        .expect("cataloguing the discard should succeed");
+
+    assert!(
+        wired
+            .ideas
+            .read(&late.to_string(), &Agent::System)
+            .await
+            .expect("the idea is still there to read")
+            .state
+            .is_discarded(),
+        "the sweep reads the catalog, which had not heard of the idea yet, so cataloguing it discards it"
+    );
+    assert_eq!(wired.still_listed().await, 0);
+}
+
+#[tokio::test]
+async fn a_continuation_of_the_sweep_lays_no_tombstone() {
+    let wired = a_workbench(4);
+
+    wired
+        .sweep
+        .handle(&Message::opening(
+            RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
+            json!({ "project": A_PROJECT, "after": IdeaId::generate(at(500)).to_string() }),
+            at(1_000),
+        ))
+        .await
+        .expect("sweeping succeeds");
+
+    assert!(
+        wired
+            .ideas
+            .capture(A_PROJECT, "Still welcome", &Agent::System)
+            .await
+            .is_ok(),
+        "only the deletion itself buries the project"
     );
 }
