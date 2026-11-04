@@ -1,16 +1,11 @@
-use std::future;
-
 use axum::extract::State;
-use axum::extract::ws::{CloseFrame, Message as Frame, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
-use ending::{Closing, SessionEnd, Staying};
+use ending::Ends;
 use eventsourcing::Agent;
-use futures_util::stream::SplitSink;
-use futures_util::{SinkExt, StreamExt};
-use live_contract::SESSION_ENDED;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::mpsc;
 
 use crate::connection::Connection;
 use crate::live_scenes::LiveScenes;
@@ -25,71 +20,29 @@ async fn attach(
     upgrade: WebSocketUpgrade,
     State(live): State<LiveScenes>,
     Extension(agent): Extension<Agent>,
-    session: Option<Extension<SessionEnd>>,
-    closing: Option<Extension<Closing>>,
+    ends: Ends,
 ) -> Response {
-    let session = session.map_or_else(SessionEnd::never, |Extension(session)| session);
-    let closing = closing.map(|Extension(closing)| closing);
-    let staying = closing.as_ref().map(Closing::stay);
-    upgrade.on_upgrade(move |socket| stay(socket, live, agent, session, (closing, staying)))
+    upgrade.on_upgrade(move |socket| stay(socket, live, agent, ends))
 }
 
-async fn server_closed(closing: Option<Closing>) {
-    match closing {
-        Some(closing) => closing.closed().await,
-        None => future::pending().await,
-    }
-}
-
-async fn write_out(
-    mut sink: SplitSink<WebSocket, Frame>,
-    mut outgoing: UnboundedReceiver<Vec<u8>>,
-    session: SessionEnd,
-) {
-    let session_ended = session.reached();
-    tokio::pin!(session_ended);
+async fn stay(mut socket: WebSocket, live: LiveScenes, agent: Agent, ends: Ends) {
+    let (to_client, mut outgoing) = mpsc::unbounded_channel();
+    let mut connection = Connection::new(live, agent, to_client);
+    let ended = ends.reached();
+    tokio::pin!(ended);
 
     loop {
         tokio::select! {
-            () = &mut session_ended => {
-                _ = sink
-                    .send(Frame::Close(Some(CloseFrame {
-                        code: SESSION_ENDED,
-                        reason: "session-ended".into(),
-                    })))
-                    .await;
+            end = &mut ended => {
+                _ = socket.send(Frame::Close(Some(end.frame()))).await;
                 break;
             }
-            frame = outgoing.recv() => {
-                let Some(frame) = frame else {
-                    break;
-                };
-                if sink.send(Frame::Binary(frame.into())).await.is_err() {
+            Some(frame) = outgoing.recv() => {
+                if socket.send(Frame::Binary(frame.into())).await.is_err() {
                     break;
                 }
             }
-        }
-    }
-}
-
-async fn stay(
-    socket: WebSocket,
-    live: LiveScenes,
-    agent: Agent,
-    session: SessionEnd,
-    (closing, _staying): (Option<Closing>, Option<Staying>),
-) {
-    let (sink, mut stream) = socket.split();
-    let (to_client, outgoing) = mpsc::unbounded_channel();
-    let writing = tokio::spawn(write_out(sink, outgoing, session));
-    let mut connection = Connection::new(live, agent, to_client);
-    let server_closing = server_closed(closing);
-    tokio::pin!(server_closing);
-
-    loop {
-        tokio::select! {
-            () = &mut server_closing => break,
-            heard = stream.next() => match heard {
+            heard = socket.recv() => match heard {
                 Some(Ok(Frame::Binary(bytes))) => connection.hear(&bytes).await,
                 Some(Ok(_)) => {}
                 Some(Err(_)) | None => break,
@@ -97,7 +50,4 @@ async fn stay(
             scene = connection.access_changed() => connection.ask_again(scene).await,
         }
     }
-
-    drop(connection);
-    writing.abort();
 }

@@ -9,7 +9,7 @@ use axum_test::{TestServer, WsMessage};
 use clock::FixedClock;
 use ending::{Ending, SessionEnd};
 use eventsourcing::{AccountId, Agent};
-use live_contract::SESSION_ENDED;
+use live_contract::{SERVER_CLOSING, SESSION_ENDED};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
@@ -479,9 +479,9 @@ async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_
     let server = TestServer::builder().http_transport().build(
         scenes_sync::router(guarded.live.clone())
             .layer(Extension(account("account_bo")))
-            .layer(Extension(shutdown.closing())),
+            .layer(Extension(shutdown.clone())),
     );
-    let _socket = server
+    let mut socket = server
         .get_websocket("/scenes/sync")
         .await
         .into_websocket()
@@ -491,6 +491,10 @@ async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_
     shutdown.close();
 
     assert!(open.is_err(), "an open socket is waited for");
+    assert!(matches!(
+        tokio::time::timeout(Wait::from_secs(1), socket.receive_message()).await,
+        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SERVER_CLOSING
+    ));
     assert!(
         tokio::time::timeout(Wait::from_secs(1), shutdown.drained())
             .await

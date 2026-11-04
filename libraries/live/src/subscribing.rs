@@ -4,14 +4,12 @@ use std::future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::{Extension, Router, routing};
-use ending::{Closing, SessionEnd, Staying};
+use ending::Ends;
 use eventsourcing::Agent;
-use live_contract::{
-    ACCESS_CHANGED, AskedDTO, FrameDTO, SERVER_CLOSING, SESSION_ENDED, ToldDTO, ended,
-};
+use live_contract::{ACCESS_CHANGED, AskedDTO, FrameDTO, ToldDTO, ended};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -113,22 +111,17 @@ impl Topics {
     }
 }
 
-/// Serves `/live`, the one socket a client subscribes to every topic over; it closes as `SESSION_ENDED` when the request's `SessionEnd` is reached, and as `SERVER_CLOSING` when the server's `Closing` is.
+/// Serves `/live`, the one socket a client subscribes to every topic over; it closes as its request's `Ends` tell it.
 pub fn live_socket(topics: Topics) -> Router {
     Router::new().route(
         "/live",
         routing::get(
             move |upgrade: WebSocketUpgrade,
                   Extension(agent): Extension<Agent>,
-                  session: Option<Extension<SessionEnd>>,
-                  closing: Option<Extension<Closing>>| async move {
+                  ends: Ends| async move {
                 let topics = topics.clone();
-                let session = session.map_or_else(SessionEnd::never, |Extension(session)| session);
-                let closing = closing.map(|Extension(closing)| closing);
-                let staying = closing.as_ref().map(Closing::stay);
-                let answer: Response = upgrade.on_upgrade(move |socket| {
-                    serve(socket, agent, topics, session, (closing, staying))
-                });
+                let answer: Response =
+                    upgrade.on_upgrade(move |socket| serve(socket, agent, topics, ends));
                 answer
             },
         ),
@@ -148,45 +141,16 @@ fn ended_as(id: &str, why: &str) -> String {
 
 type Following = HashMap<String, JoinHandle<()>>;
 
-async fn server_closed(closing: Option<Closing>) {
-    match closing {
-        Some(closing) => closing.closed().await,
-        None => future::pending().await,
-    }
-}
-
-async fn serve(
-    mut socket: WebSocket,
-    agent: Agent,
-    topics: Topics,
-    session: SessionEnd,
-    (closing, _staying): (Option<Closing>, Option<Staying>),
-) {
+async fn serve(mut socket: WebSocket, agent: Agent, topics: Topics, ends: Ends) {
     let (sending, mut to_send) = mpsc::channel::<String>(WAITING_TO_BE_SENT);
     let mut following = Following::new();
-    let session_ended = session.reached();
-    tokio::pin!(session_ended);
-    let server_closing = server_closed(closing);
-    tokio::pin!(server_closing);
+    let ended = ends.reached();
+    tokio::pin!(ended);
 
     loop {
         tokio::select! {
-            () = &mut server_closing => {
-                _ = socket
-                    .send(Message::Close(Some(CloseFrame {
-                        code: SERVER_CLOSING,
-                        reason: "server-closing".into(),
-                    })))
-                    .await;
-                break;
-            }
-            () = &mut session_ended => {
-                _ = socket
-                    .send(Message::Close(Some(CloseFrame {
-                        code: SESSION_ENDED,
-                        reason: "session-ended".into(),
-                    })))
-                    .await;
+            end = &mut ended => {
+                _ = socket.send(Message::Close(Some(end.frame()))).await;
                 break;
             }
             Some(said) = to_send.recv() => {

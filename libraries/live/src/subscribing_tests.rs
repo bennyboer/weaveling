@@ -542,7 +542,7 @@ async fn a_socket_is_closed_when_the_server_closes_and_is_waited_for_until_it_ha
     let server = TestServer::builder().http_transport().build(
         live_socket(Topics::of(vec![Arc::new(Open(broadcaster.clone()))]))
             .layer(Extension(Agent::Local))
-            .layer(Extension(shutdown.closing())),
+            .layer(Extension(shutdown.clone())),
     );
     let mut socket = Subscriber::on(&server).await;
     subscribe(&mut socket, "a", "open", "board").await;

@@ -71,8 +71,8 @@ async fn main() {
         .init();
 
     let (routes, relays, settling, chores) = serving().await;
-    let shutdown = Arc::new(Shutdown::new());
-    let routes = routes.layer(Extension(shutdown.closing()));
+    let shutdown = Shutdown::new();
+    let routes = routes.layer(Extension(shutdown.clone()));
 
     let listener = TcpListener::bind("127.0.0.1:3000")
         .await

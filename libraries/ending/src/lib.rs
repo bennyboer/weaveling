@@ -1,11 +1,13 @@
-mod closing;
+mod ends;
+mod shutdown;
 
 use std::future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
-pub use closing::{Closing, Shutdown, Staying};
+pub use ends::{End, Ends};
+pub use shutdown::Shutdown;
 
 #[async_trait]
 pub trait Ending: Send + Sync {
