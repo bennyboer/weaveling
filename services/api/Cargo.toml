@@ -9,7 +9,7 @@ axum = { workspace = true, features = ["ws"] }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 time = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
 tower-http = { workspace = true, features = ["trace", "fs"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -18,6 +18,7 @@ tracing-subscriber = { workspace = true }
 ### LIBRARIES ###
 #################
 
+acting = { version = "0.1.0", path = "../../libraries/acting", package = "weaveling-acting" }
 authorizing = { version = "0.1.0", path = "../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }

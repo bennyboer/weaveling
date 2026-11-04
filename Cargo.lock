@@ -3731,6 +3731,7 @@ name = "weaveling-acting"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "tokio",
  "weaveling-eventsourcing",
 ]
 
@@ -5264,6 +5265,7 @@ dependencies = [
  "weaveling-accounts-core",
  "weaveling-accounts-rest",
  "weaveling-accounts-wiring",
+ "weaveling-acting",
  "weaveling-appearances-wiring",
  "weaveling-authorizing",
  "weaveling-boards-wiring",

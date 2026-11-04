@@ -471,3 +471,30 @@ async fn the_socket_is_closed_as_such_when_its_session_ends() {
         Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SESSION_ENDED
     ));
 }
+
+#[tokio::test]
+async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_until_it_has() {
+    let guarded = guarded().await;
+    let shutdown = acting::Shutdown::new();
+    let server = TestServer::builder().http_transport().build(
+        scenes_sync::router(guarded.live.clone())
+            .layer(Extension(account("account_bo")))
+            .layer(Extension(shutdown.closing())),
+    );
+    let _socket = server
+        .get_websocket("/scenes/sync")
+        .await
+        .into_websocket()
+        .await;
+    let open = tokio::time::timeout(Wait::from_millis(50), shutdown.drained()).await;
+
+    shutdown.close();
+
+    assert!(open.is_err(), "an open socket is waited for");
+    assert!(
+        tokio::time::timeout(Wait::from_secs(1), shutdown.drained())
+            .await
+            .is_ok(),
+        "told the server is closing, it takes no more edits and lets the scenes be settled"
+    );
+}

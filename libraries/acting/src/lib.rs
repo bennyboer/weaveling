@@ -1,8 +1,12 @@
+mod closing;
+
 use std::future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use eventsourcing::Agent;
+
+pub use closing::{Closing, Shutdown, Staying};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Acting {

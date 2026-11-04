@@ -9,6 +9,9 @@ pub const ACCESS_CHANGED: &str = "access-changed";
 /// The code a socket is closed with when its session ends; the client then asks no more and signs out.
 pub const SESSION_ENDED: u16 = 4401;
 
+/// The code a socket is closed with when the server is stopping; the client opens it again once it is back.
+pub const SERVER_CLOSING: u16 = 1001;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FrameDTO {
     #[serde(default, skip_serializing_if = "Option::is_none")]

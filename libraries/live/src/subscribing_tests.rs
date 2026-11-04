@@ -9,7 +9,7 @@ use authorizing::{AccessChanges, AccessWatch};
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
-use live_contract::{ACCESS_CHANGED, FrameDTO, SESSION_ENDED, ToldDTO, ended};
+use live_contract::{ACCESS_CHANGED, FrameDTO, SERVER_CLOSING, SESSION_ENDED, ToldDTO, ended};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
@@ -532,5 +532,36 @@ async fn a_change_told_while_the_gate_is_asked_reaches_the_follower() {
         socket.told().await,
         framed("s1", "loom", 3),
         "the client reads once told it is followed, so a change before then must still be heard"
+    );
+}
+
+#[tokio::test]
+async fn a_socket_is_closed_when_the_server_closes_and_is_waited_for_until_it_has() {
+    let broadcaster = Broadcaster::new();
+    let shutdown = acting::Shutdown::new();
+    let server = TestServer::builder().http_transport().build(
+        live_socket(Topics::of(vec![Arc::new(Open(broadcaster.clone()))]))
+            .layer(Extension(Agent::Local))
+            .layer(Extension(shutdown.closing())),
+    );
+    let mut socket = Subscriber::on(&server).await;
+    subscribe(&mut socket, "a", "open", "board").await;
+    let open = tokio::time::timeout(Duration::from_millis(50), shutdown.drained()).await;
+
+    shutdown.close();
+
+    assert!(open.is_err(), "an open socket is waited for");
+    assert_eq!(socket.closed_as().await, Some(SERVER_CLOSING));
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), shutdown.drained())
+            .await
+            .is_ok(),
+        "once closed, nothing is left to wait for"
+    );
+    settled().await;
+    assert_eq!(
+        broadcaster.listener_count(),
+        0,
+        "nobody is left hearing for it"
     );
 }
