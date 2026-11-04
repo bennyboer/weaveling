@@ -92,7 +92,7 @@ impl Connection {
             self.live.next_peer(),
             self.to_client.clone(),
             wrapping,
-            &present,
+            present.scene(),
         );
         peer.deliver(&present.greet(), &present);
         self.joined.insert(
