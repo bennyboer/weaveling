@@ -1,3 +1,4 @@
+use std::future;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -10,11 +11,17 @@ use crate::message::Message;
 pub struct FakePublisher {
     heard: Mutex<Vec<Message>>,
     refusing: AtomicBool,
+    holding: AtomicBool,
 }
 
 impl FakePublisher {
     pub fn refusing(&self, refusing: bool) {
         self.refusing.store(refusing, Ordering::SeqCst);
+    }
+
+    /// Never answers a publish while holding, as a broker that hangs or a relay that dies mid-publish.
+    pub fn holding(&self, holding: bool) {
+        self.holding.store(holding, Ordering::SeqCst);
     }
 
     pub fn heard(&self) -> Vec<Message> {
@@ -28,6 +35,9 @@ impl FakePublisher {
 #[async_trait]
 impl Publisher for FakePublisher {
     async fn publish(&self, message: Message) -> Result<(), Undelivered> {
+        if self.holding.load(Ordering::SeqCst) {
+            future::pending::<()>().await;
+        }
         if self.refusing.load(Ordering::SeqCst) {
             return Err(Undelivered::because(message.routing, Refused));
         }

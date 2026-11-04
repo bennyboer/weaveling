@@ -80,6 +80,14 @@ impl InMemoryOutbox {
             .collect()
     }
 
+    fn release(&self, entries: &[i64]) {
+        for held in self.held().held.iter_mut() {
+            if entries.contains(&held.entry) {
+                held.claimed_until = None;
+            }
+        }
+    }
+
     fn mark_published(&self, entry: i64, now: OffsetDateTime) {
         if let Some(found) = self.held().held.iter_mut().find(|held| held.entry == entry) {
             found.published_at = Some(now);
@@ -124,7 +132,7 @@ impl Outbox for InMemoryOutbox {
             refused: 0,
         };
 
-        for (entry, message) in claimed {
+        for (at, (entry, message)) in claimed.iter().cloned().enumerate() {
             match self.publisher.publish(message).await {
                 Ok(()) => {
                     self.mark_published(entry, self.clock.now());
@@ -133,6 +141,9 @@ impl Outbox for InMemoryOutbox {
                 Err(undelivered) => {
                     tracing::warn!(entry, error = %undelivered, "an outbox entry could not be published");
                     delivered.refused += 1;
+                    let left: Vec<i64> = claimed[at..].iter().map(|(entry, _)| *entry).collect();
+                    self.release(&left);
+                    break;
                 }
             }
         }

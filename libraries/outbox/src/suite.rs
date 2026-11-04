@@ -81,6 +81,18 @@ impl<W: Workbench> Bench<W> {
             .expect("delivering should succeed")
     }
 
+    pub async fn dying_while_delivering(&self, at_most: i64) {
+        self.publisher.holding(true);
+        let died = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            self.workbench.outbox().deliver(at_most),
+        )
+        .await;
+        self.publisher.holding(false);
+
+        assert!(died.is_err(), "a relay held mid-publish never finishes");
+    }
+
     pub async fn delete_published(&self, before: OffsetDateTime, at_most: i64) -> u64 {
         self.workbench
             .outbox()
@@ -203,13 +215,10 @@ pub async fn a_retried_message_keeps_the_id_it_was_written_with<W: Workbench>() 
 }
 
 pub async fn a_claimed_message_is_left_alone_until_the_claim_runs_out<W: Workbench>() {
-    // given: a message the broker refused, claimed by the relay that tried
+    // given: a message claimed by a relay that died while publishing it
     let bench = Bench::<W>::setup().await;
     bench.waiting(1).await;
-    bench.publisher.refusing(true);
-    bench.deliver(10).await;
-    // and: a broker that takes it now
-    bench.publisher.refusing(false);
+    bench.dying_while_delivering(10).await;
 
     // then: it is left alone while the claim holds
     assert_eq!(
@@ -360,6 +369,37 @@ pub async fn messages_are_published_in_the_order_they_were_written<W: Workbench>
     bench.cleanup().await;
 }
 
+pub async fn a_refused_message_holds_back_those_written_after_it<W: Workbench>() {
+    // given: two messages waiting
+    let bench = Bench::<W>::setup().await;
+    let mut written = bench.waiting(2).await;
+    // and: a broker refusing them
+    bench.publisher.refusing(true);
+
+    // when: the relay runs
+    let tried = bench.deliver(10).await;
+
+    // then: it stops at the first
+    assert_eq!(
+        tried,
+        delivered(0, 1),
+        "publishing the second past the first would let it overtake"
+    );
+
+    // when: another is written and the broker takes them all
+    written.extend(bench.waiting(1).await);
+    bench.publisher.refusing(false);
+    bench.deliver(10).await;
+
+    // then: they are published in the order they were written
+    assert_eq!(
+        bench.ids_heard(),
+        written,
+        "an entry left claimed after a refusal would go out after those written behind it"
+    );
+    bench.cleanup().await;
+}
+
 pub async fn a_message_enqueued_beside_a_write_is_relayed_whole_once_that_write_commits<
     W: Workbench,
 >() {
@@ -418,6 +458,7 @@ macro_rules! outbox_conformance_tests {
             an_entry_never_published_is_kept_however_old_it_is,
             deleting_takes_no_more_than_it_was_asked_for,
             messages_are_published_in_the_order_they_were_written,
+            a_refused_message_holds_back_those_written_after_it,
             a_message_enqueued_beside_a_write_is_relayed_whole_once_that_write_commits,
             a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it,
         );

@@ -31,6 +31,9 @@ const CLAIM: &str = "
 
 const MARK_PUBLISHED: &str = "UPDATE outbox SET published_at = $2 WHERE entry = $1";
 
+const RELEASE: &str =
+    "UPDATE outbox SET claimed_until = NULL WHERE entry = ANY($1) AND published_at IS NULL";
+
 const DELETE_PUBLISHED: &str = "
     DELETE FROM outbox
     WHERE entry IN (
@@ -69,6 +72,17 @@ impl PostgresOutbox {
 
         Ok(())
     }
+
+    async fn release(&self, entries: &[i64]) {
+        let released = transacting::postgres::retried(|| {
+            sqlx::query(RELEASE).bind(entries).execute(&self.pool)
+        })
+        .await;
+
+        if let Err(failure) = released {
+            tracing::warn!(error = %failure, "claims left after a refusal run out in their own time");
+        }
+    }
 }
 
 #[async_trait]
@@ -102,7 +116,7 @@ impl Outbox for PostgresOutbox {
             refused: 0,
         };
 
-        for (entry, message) in waiting {
+        for (at, (entry, message)) in waiting.iter().cloned().enumerate() {
             match self.publisher.publish(message).await {
                 Ok(()) => {
                     self.mark_published(entry).await?;
@@ -111,6 +125,9 @@ impl Outbox for PostgresOutbox {
                 Err(undelivered) => {
                     tracing::warn!(entry, error = %undelivered, "an outbox entry could not be published");
                     delivered.refused += 1;
+                    let left: Vec<i64> = waiting[at..].iter().map(|(entry, _)| *entry).collect();
+                    self.release(&left).await;
+                    break;
                 }
             }
         }
