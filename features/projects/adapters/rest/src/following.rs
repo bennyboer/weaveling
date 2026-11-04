@@ -78,7 +78,7 @@ impl Gate for ProjectsGate {
         agent: &Agent,
         project: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(self.0.may_follow(project, agent).await?)
+        Ok(self.0.may_hear_of(project, agent).await?)
     }
 
     async fn watch(&self, project: &str) -> AccessWatch {

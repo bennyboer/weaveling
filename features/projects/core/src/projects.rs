@@ -203,10 +203,6 @@ impl ProjectsCore {
         })
     }
 
-    pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {
-        Ok(self.authorizer.may(agent, Act::Read, project).await?)
-    }
-
     pub async fn may_hear_of(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {
         Ok(self.authorizer.may(agent, Act::Read, project).await?
             || self.authorizer.may(agent, Act::Restore, project).await?)

@@ -9,6 +9,7 @@ use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
 use live::testing::Subscriber;
+use live_contract::{ACCESS_CHANGED, ToldDTO};
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -269,4 +270,36 @@ async fn whoever_may_no_longer_read_the_project_they_follow_is_closed_out() {
     guarded.readers.stop_reading(&loom.id);
 
     assert_eq!(socket.ended().await, "access-lost");
+}
+
+#[tokio::test]
+async fn whoever_may_restore_the_project_they_follow_hears_it_trashed_though_reading_ended_first() {
+    let guarded = guarded();
+    let loom = started(&guarded.server, "The Loom").await;
+    guarded.readers.let_read(&loom.id);
+    guarded.readers.let_restore(&loom.id);
+    guarded.wired.settle().await;
+    let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
+
+    guarded.readers.stop_reading(&loom.id);
+    assert_eq!(
+        socket.told().await,
+        ToldDTO::Notice {
+            id: "projects".to_owned(),
+            notice: ACCESS_CHANGED.to_owned(),
+        }
+    );
+    guarded
+        .server
+        .delete(&format!("/projects/{}", loom.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    guarded.wired.settle().await;
+
+    let frame = told(&mut socket).await;
+    assert_eq!(
+        json!([frame["of"], frame["event"]["name"]]),
+        json!([loom.id, "TRASHED"]),
+        "its members hear of the trash apart from the project, so an owner's reading may end before the trash is told"
+    );
 }
