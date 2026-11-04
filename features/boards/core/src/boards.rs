@@ -46,19 +46,16 @@ impl BoardsCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Read, &project, || BoardsError::ProjectNotThere)
             .await?;
-        let mut transaction = self.transactions.begin().await?;
-        if self
-            .catalog
-            .has_project_tombstone_within(&mut transaction, &project)
-            .await?
-        {
-            return Err(BoardsError::ProjectNotThere);
-        }
-        let id = self
-            .service
-            .claim(&mut transaction, &project, agent)
-            .await?;
-        transaction.finish().await?;
+        let id = transacting::retrying!(&*self.transactions, |transaction| {
+            if self
+                .catalog
+                .has_project_tombstone_within(transaction, &project)
+                .await?
+            {
+                return Err(BoardsError::ProjectNotThere);
+            }
+            self.service.claim(transaction, &project, agent).await
+        })?;
 
         Ok(Open {
             id,
@@ -135,18 +132,19 @@ impl BoardsCore {
     ) -> Result<(), BoardsError> {
         let standing = self.service.latest(board).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        if standing.state.is_discarded() {
-            self.catalog
-                .forget(&mut transaction, board, self.clock.now())
-                .await?;
-        } else {
-            self.catalog
-                .remember(&mut transaction, &BoardSummary::of(*board, &standing.state))
-                .await?;
-        }
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if standing.state.is_discarded() {
+                self.catalog
+                    .forget(transaction, board, self.clock.now())
+                    .await?;
+            } else {
+                self.catalog
+                    .remember(transaction, &BoardSummary::of(*board, &standing.state))
+                    .await?;
+            }
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn index_pins(
@@ -161,11 +159,11 @@ impl BoardsCore {
             pinned(&standing.state)
         };
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .holds(&mut transaction, *board, &holding)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.holds(transaction, *board, &holding).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn lay_tombstone(
@@ -174,11 +172,13 @@ impl BoardsCore {
         idea: &str,
         at: OffsetDateTime,
     ) -> Result<(), BoardsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_tombstone(&mut transaction, &IdeaLink::from(idea), at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_tombstone(transaction, &IdeaLink::from(idea), at)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn let_go_everywhere(
@@ -188,11 +188,13 @@ impl BoardsCore {
     ) -> Result<(), BoardsError> {
         let gone = IdeaLink::from(idea);
 
-        let mut transaction = self.transactions.join(within).await?;
-        for board in self.catalog.boards_holding(&gone).await? {
-            self.let_go(&mut transaction, board, &gone).await?;
-        }
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            for board in self.catalog.boards_holding(&gone).await? {
+                self.let_go(transaction, board, &gone).await?;
+            }
+
+            Ok(())
+        })
     }
 
     pub async fn let_go_of_the_gone(
@@ -211,9 +213,11 @@ impl BoardsCore {
             return Ok(());
         };
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.let_go(&mut transaction, *board, &gone).await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.let_go(transaction, *board, &gone).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), BoardsError> {
@@ -239,11 +243,13 @@ impl BoardsCore {
         project: &str,
         at: OffsetDateTime,
     ) -> Result<(), BoardsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, &ProjectLink::from(project), at)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -251,14 +257,14 @@ impl BoardsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, BoardsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
     }
 
     async fn let_go(
