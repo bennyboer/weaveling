@@ -101,7 +101,7 @@ async fn an_issue_heard_twice_is_mailed_once() {
 async fn a_mail_that_could_not_be_sent_is_refused_and_sent_when_the_issue_is_offered_again() {
     let wired = wiring::wired();
     let down_once = Arc::new(DownOnce::default());
-    let mailing = wiring::inboxed(MailIssuedInvitationListener::new(InvitationsCore::new(
+    let mailing = wiring::inboxed_effect(MailIssuedInvitationListener::new(InvitationsCore::new(
         wired.store.clone(),
         Arc::new(InMemoryTransactions::new()),
         wired.keys.clone(),

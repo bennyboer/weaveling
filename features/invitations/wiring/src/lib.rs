@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed, InboxedEffect};
 use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys};
 use invitations_messaging::{
@@ -195,7 +195,7 @@ impl Feature for InvitationFeature {
                 broadcaster,
             ))])
             .listening(vec![
-                Arc::new(Inboxed::new(
+                Arc::new(InboxedEffect::new(
                     MailIssuedInvitationListener::new(invitations.clone()),
                     ports.transactions.clone(),
                     ports.inbox.clone(),

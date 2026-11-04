@@ -74,6 +74,22 @@ impl<W: Workbench> Bench<W> {
         before
     }
 
+    pub async fn was_heard(&self, listener: &str, message: MessageId) -> bool {
+        let mut transaction = self.begun().await;
+        let heard = self
+            .workbench
+            .inbox()
+            .was_heard(&mut transaction, &a_listener(listener), message)
+            .await
+            .expect("asking should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+
+        heard
+    }
+
     pub async fn heard_at(&self, seconds: i64, listener: &str, message: MessageId) {
         self.clock.set(at(seconds));
         assert!(
@@ -101,6 +117,27 @@ impl<W: Workbench> Bench<W> {
     pub async fn cleanup(self) {
         self.workbench.cleanup().await;
     }
+}
+
+pub async fn asking_whether_a_message_was_heard_hears_nothing<W: Workbench>() {
+    let bench = Bench::<W>::setup().await;
+    let message = a_message(1);
+
+    let before = bench.was_heard("mail-issued-invitation", message).await;
+    let still = bench.was_heard("mail-issued-invitation", message).await;
+    bench.heard_at(5, "mail-issued-invitation", message).await;
+
+    assert_eq!(
+        (before, still),
+        (false, false),
+        "asking is only asking, and leaves the message to be heard"
+    );
+    assert!(bench.was_heard("mail-issued-invitation", message).await);
+    assert!(
+        !bench.was_heard("another-listener", message).await,
+        "each listener for itself"
+    );
+    bench.cleanup().await;
 }
 
 pub async fn a_message_was_heard_before_from_its_second_hearing_on<W: Workbench>() {
@@ -296,6 +333,7 @@ macro_rules! conformance_tests {
             what_was_heard_at_the_moment_itself_is_kept,
             a_dropped_forgetting_keeps_what_was_heard,
             two_handlers_hearing_one_message_at_once_hear_it_once,
+            asking_whether_a_message_was_heard_hears_nothing,
         );
     };
     ($workbench:ty: $($case:ident),+ $(,)?) => {

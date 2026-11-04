@@ -5,7 +5,7 @@ use acting::Acting;
 use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
-use inbox::{InMemoryInbox, Inboxed, KeptHandler};
+use inbox::{EffectHandler, InMemoryInbox, Inboxed, InboxedEffect, KeptHandler};
 use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
 use invitations_contract::ISSUED;
 use invitations_core::{InvitationEvent, InvitationToken, InvitationsCore};
@@ -34,7 +34,7 @@ pub struct Wired {
     pub keys: Arc<InMemoryTokenKeys>,
     pub events: Arc<InMemoryOutbox>,
     pub told: Arc<FakePublisher>,
-    pub mailing: Inboxed<MailIssuedInvitationListener>,
+    pub mailing: InboxedEffect<MailIssuedInvitationListener>,
     handed: AtomicUsize,
 }
 
@@ -68,7 +68,7 @@ pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
     );
 
     Wired {
-        mailing: inboxed(MailIssuedInvitationListener::new(invitations.clone())),
+        mailing: inboxed_effect(MailIssuedInvitationListener::new(invitations.clone())),
         invitations,
         store,
         catalog,
@@ -91,6 +91,16 @@ pub fn inboxed_in<H: KeptHandler>(handler: H, hearings: InMemoryTransactions) ->
     Inboxed::new(
         handler,
         Arc::new(hearings),
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(at(
+            1_700_000_000,
+        ))))),
+    )
+}
+
+pub fn inboxed_effect<H: EffectHandler>(handler: H) -> InboxedEffect<H> {
+    InboxedEffect::new(
+        handler,
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(at(
             1_700_000_000,
         ))))),

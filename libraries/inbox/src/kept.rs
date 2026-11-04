@@ -19,6 +19,15 @@ pub trait KeptHandler: Send + Sync {
     ) -> Result<(), Failure>;
 }
 
+#[async_trait]
+pub trait EffectHandler: Send + Sync {
+    const NAME: &'static str;
+    const LISTENS_TO: &'static [&'static str];
+    const WHEN_REFUSED: &'static str;
+
+    async fn take_in(&self, message: &Message) -> Result<(), Failure>;
+}
+
 pub struct Inboxed<H> {
     pub(crate) handler: H,
     transactions: Arc<dyn Transactions>,
@@ -51,6 +60,75 @@ impl<H: KeptHandler> Inboxed<H> {
 
 #[async_trait]
 impl<H: KeptHandler> Listener for Inboxed<H> {
+    fn named(&self) -> ListenerName {
+        ListenerName::parse(H::NAME).expect("a handler's name is written at compile time")
+    }
+
+    fn listens_to(&self) -> Vec<Subscription> {
+        H::LISTENS_TO
+            .iter()
+            .map(|pattern| {
+                Subscription::parse(pattern)
+                    .expect("a handler's patterns are written at compile time")
+            })
+            .collect()
+    }
+
+    fn when_refused(&self) -> &'static str {
+        H::WHEN_REFUSED
+    }
+
+    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
+        let listener = self.named();
+
+        self.hear(&listener, message)
+            .await
+            .map_err(|because| NotHandled {
+                listener,
+                routing: message.routing.clone(),
+                because,
+            })
+    }
+}
+
+pub struct InboxedEffect<H> {
+    pub(crate) handler: H,
+    transactions: Arc<dyn Transactions>,
+    inbox: Arc<dyn Inbox>,
+}
+
+impl<H: EffectHandler> InboxedEffect<H> {
+    pub fn new(handler: H, transactions: Arc<dyn Transactions>, inbox: Arc<dyn Inbox>) -> Self {
+        Self {
+            handler,
+            transactions,
+            inbox,
+        }
+    }
+
+    async fn hear(&self, listener: &ListenerName, message: &Message) -> Result<(), Failure> {
+        let mut asking = self.transactions.begin().await?;
+        let heard = self
+            .inbox
+            .was_heard(&mut asking, listener, message.id)
+            .await?;
+        asking.finish().await?;
+        if heard {
+            return Ok(());
+        }
+        self.handler.take_in(message).await?;
+
+        let mut noting = self.transactions.begin().await?;
+        self.inbox
+            .heard_before(&mut noting, listener, message.id)
+            .await?;
+
+        Ok(noting.finish().await?)
+    }
+}
+
+#[async_trait]
+impl<H: EffectHandler> Listener for InboxedEffect<H> {
     fn named(&self) -> ListenerName {
         ListenerName::parse(H::NAME).expect("a handler's name is written at compile time")
     }
