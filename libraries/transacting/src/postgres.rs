@@ -12,8 +12,6 @@ use sqlx::{Describe, Either, Execute, Executor, PgPool, Postgres, SqlStr};
 
 use crate::{Failure, Transaction, Transactions, Unit};
 
-const ONE_AT_A_TIME: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 /// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which `Watched` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
 pub const SERIALIZABLE: &str =
     "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
@@ -138,19 +136,6 @@ impl<'c> Executor<'c> for &'c mut Watched {
 
 pub fn connection(transaction: &mut Transaction) -> Result<&mut Watched, Failure> {
     Ok(&mut transaction.backend::<PostgresUnit>()?.0)
-}
-
-/// Lets one transaction at a time past this point for `key`, until it commits or rolls back.
-///
-/// Two writes that each read before they write, as an upsert that checks for a tombstone and the forgetting that lays one, can both read before either commits under PostgreSQL's READ COMMITTED, and each miss the other. Taking the same key first, the second waits for the first and then reads what it committed. SQLite's one writer and the memory's one lock do this already, so only PostgreSQL adapters ask. The key is shared by the whole database, so it names what it holds, as `appearance:idea:idea_1` or an id that says its kind.
-pub async fn one_at_a_time(transaction: &mut Transaction, key: &str) -> Result<(), Failure> {
-    sqlx::query(ONE_AT_A_TIME)
-        .bind(key)
-        .execute(connection(transaction)?)
-        .await
-        .map_err(failed)?;
-
-    Ok(())
 }
 
 /// Runs a statement on the pool, outside any `Transaction`, again after it lost a race, as `retrying!` runs a transaction: a statement on its own is a transaction of its own, serializable as every other, and may lose one just the same.
