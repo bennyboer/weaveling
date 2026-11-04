@@ -1,7 +1,7 @@
 use authorizing::AuthorizerError;
 use ids::InvalidId;
 use thiserror::Error;
-use transacting::Failure;
+use transacting::{Failure, LostRace};
 
 use crate::{CatalogError, InvalidSceneTitle, QuotationRestylingTaskError, StoreError};
 
@@ -25,4 +25,10 @@ pub enum ScenesError {
     NotAnAuthor,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
+}
+
+impl LostRace for ScenesError {
+    fn lost_race(&self) -> bool {
+        matches!(self, ScenesError::Transaction(failure) if failure.lost_race())
+    }
 }

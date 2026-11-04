@@ -55,9 +55,9 @@ impl ScenesCore {
             return Err(ScenesError::ProjectNotThere);
         }
 
-        let mut transaction = self.transactions.begin().await?;
-        let scene = self.service.create(&mut transaction, project).await?;
-        transaction.finish().await?;
+        let scene = transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.create(transaction, project).await
+        })?;
         if self.catalog.has_project_tombstone(&link).await? {
             match self.delete(&scene.id().to_string(), &Agent::System).await {
                 Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
@@ -85,9 +85,9 @@ impl ScenesCore {
     ) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        let mut transaction = self.transactions.begin().await?;
-        self.service.retitle(&mut transaction, id, title).await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.retitle(transaction, id, title).await
+        })?;
 
         self.service.open(id).await
     }
@@ -95,9 +95,9 @@ impl ScenesCore {
     pub async fn link(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        let mut transaction = self.transactions.begin().await?;
-        self.service.link(&mut transaction, id, idea).await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.link(transaction, id, idea).await
+        })?;
 
         self.service.open(id).await
     }
@@ -105,9 +105,9 @@ impl ScenesCore {
     pub async fn unlink(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        let mut transaction = self.transactions.begin().await?;
-        self.service.unlink(&mut transaction, id, idea).await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.unlink(transaction, id, idea).await
+        })?;
 
         self.service.open(id).await
     }
@@ -115,10 +115,11 @@ impl ScenesCore {
     pub async fn delete(&self, id: &str, agent: &Agent) -> Result<(), ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        let mut transaction = self.transactions.begin().await?;
-        self.service.delete(&mut transaction, id).await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.delete(transaction, id).await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn list(
@@ -172,10 +173,11 @@ impl ScenesCore {
     }
 
     pub async fn apply(&self, id: &str, update: &[u8]) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.service.apply(&mut transaction, id, update).await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.apply(transaction, id, update).await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
@@ -193,17 +195,18 @@ impl ScenesCore {
         opening: Option<&str>,
         as_of: u64,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.service
-            .announce_word_count(&mut transaction, id, words, as_of)
-            .await?;
-        if let Some(opening) = opening {
+        transacting::retrying!(&*self.transactions, |transaction| {
             self.service
-                .announce_opening(&mut transaction, id, opening)
+                .announce_word_count(transaction, id, words, as_of)
                 .await?;
-        }
+            if let Some(opening) = opening {
+                self.service
+                    .announce_opening(transaction, id, opening)
+                    .await?;
+            }
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn sweep(
@@ -229,12 +232,11 @@ impl ScenesCore {
         within: Option<&mut Transaction>,
         idea: &str,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.service
-            .unlink_everywhere(&mut transaction, idea)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.service.unlink_everywhere(transaction, idea).await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn restyle(
@@ -266,22 +268,23 @@ impl ScenesCore {
             .last()
             .map(ToString::to_string)
             .or_else(|| restyling.after.clone());
-        let mut transaction = self.transactions.begin().await?;
-        let counted = self
-            .tasks
-            .progressed(
-                &mut transaction,
-                &project,
-                restyling.change,
-                Page {
-                    from: restyling.after.as_deref(),
-                    to: reached.as_deref(),
-                    done: in_count(batch.len()),
-                },
-                finished,
+        let counted = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, ScenesError>(
+                self.tasks
+                    .progressed(
+                        transaction,
+                        &project,
+                        restyling.change,
+                        Page {
+                            from: restyling.after.as_deref(),
+                            to: reached.as_deref(),
+                            done: in_count(batch.len()),
+                        },
+                        finished,
+                    )
+                    .await?,
             )
-            .await?;
-        transaction.finish().await?;
+        })?;
 
         Ok(if counted && !finished {
             batch.last().copied()
@@ -296,16 +299,13 @@ impl ScenesCore {
         scene: &str,
         project: &str,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember(
-                &mut transaction,
-                scene.parse()?,
-                &ProjectLink::from(project),
-            )
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember(transaction, scene.parse()?, &ProjectLink::from(project))
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn catalogue_retitled(
@@ -316,18 +316,19 @@ impl ScenesCore {
         title: &str,
         version: u64,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .retitle(
-                &mut transaction,
-                scene.parse()?,
-                &ProjectLink::from(project),
-                &SceneTitle::new(title)?,
-                version,
-            )
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .retitle(
+                    transaction,
+                    scene.parse()?,
+                    &ProjectLink::from(project),
+                    &SceneTitle::new(title)?,
+                    version,
+                )
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn catalogue_opening(
@@ -338,18 +339,19 @@ impl ScenesCore {
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .note_opening(
-                &mut transaction,
-                scene.parse()?,
-                &ProjectLink::from(project),
-                opening,
-                at,
-            )
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .note_opening(
+                    transaction,
+                    scene.parse()?,
+                    &ProjectLink::from(project),
+                    opening,
+                    at,
+                )
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn catalogue_deleted(
@@ -358,12 +360,11 @@ impl ScenesCore {
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .forget(&mut transaction, scene.parse()?, at)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.forget(transaction, scene.parse()?, at).await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn lay_project_tombstone(
@@ -372,12 +373,13 @@ impl ScenesCore {
         project: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, &ProjectLink::from(project), at)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -385,14 +387,14 @@ impl ScenesCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
     }
 
     async fn claimed(
@@ -407,27 +409,27 @@ impl ScenesCore {
         };
         let after = restyling.after.as_deref();
 
-        let mut transaction = self.transactions.begin().await?;
-        let claimed = if self
-            .tasks
-            .begin(&mut transaction, project, restyling.change, total, after)
-            .await?
-        {
-            Claimed::Page
-        } else {
-            match self.tasks.standing(&mut transaction, project).await? {
-                Some(standing) if standing.change > restyling.change => Claimed::Superseded,
-                Some(standing) if standing.finished => Claimed::Passed(None),
-                Some(standing) if standing.cursor.as_deref() == after => Claimed::Page,
-                Some(standing) => {
-                    Claimed::Passed(standing.cursor.as_deref().map(str::parse).transpose()?)
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let claimed = if self
+                .tasks
+                .begin(transaction, project, restyling.change, total, after)
+                .await?
+            {
+                Claimed::Page
+            } else {
+                match self.tasks.standing(transaction, project).await? {
+                    Some(standing) if standing.change > restyling.change => Claimed::Superseded,
+                    Some(standing) if standing.finished => Claimed::Passed(None),
+                    Some(standing) if standing.cursor.as_deref() == after => Claimed::Page,
+                    Some(standing) => {
+                        Claimed::Passed(standing.cursor.as_deref().map(str::parse).transpose()?)
+                    }
+                    None => Claimed::Page,
                 }
-                None => Claimed::Page,
-            }
-        };
-        transaction.finish().await?;
+            };
 
-        Ok(claimed)
+            Ok(claimed)
+        })
     }
 
     async fn scenes_in(&self, project: &str, at_most: usize) -> Result<u64, ScenesError> {
