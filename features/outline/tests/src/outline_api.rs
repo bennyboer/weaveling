@@ -650,6 +650,23 @@ async fn a_scene_moved_between_sections_answers_with_both() {
 }
 
 #[tokio::test]
+async fn a_change_answers_from_which_version_it_was_decided() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+    let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+    let first = attaching(&server, &outline.id, "scene_1", &one.section).await;
+
+    let second = attaching(&server, &outline.id, "scene_2", &one.section).await;
+
+    assert_eq!(first.since + 1, first.version);
+    assert_eq!(
+        second.since, first.version,
+        "a client holding another version than the one decided from cannot trust what a change leaves out"
+    );
+    assert_eq!(second.version, first.version + 1);
+}
+
+#[tokio::test]
 async fn a_retitle_answers_with_the_shape_of_the_book_and_no_scenes() {
     let server = a_server();
     let outline = an_open_outline(&server).await;

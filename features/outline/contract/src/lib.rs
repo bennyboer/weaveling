@@ -46,6 +46,8 @@ pub struct ChangedSectionDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct OutlineChangeDTO {
     pub id: String,
+    /// The version the change was decided from; a reply leaving attachments out holds for whoever held this one only.
+    pub since: u64,
     pub version: u64,
     pub project: String,
     pub sections: Vec<ChangedSectionDTO>,

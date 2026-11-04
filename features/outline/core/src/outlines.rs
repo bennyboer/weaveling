@@ -119,6 +119,7 @@ impl OutlinesCore {
 
         Ok(Added {
             section,
+            since: changed.since,
             version: changed.version,
             standing: changed.standing,
         })
@@ -436,6 +437,11 @@ impl OutlinesCore {
         )?;
 
         Ok(Changed {
+            since: Version::of(
+                landed.version.count()
+                    - u64::try_from(landed.events.len())
+                        .expect("a command appends a handful of events"),
+            ),
             version: landed.version,
             attachments_changed_in: service::attachments_changed_in(&landed),
             standing: self.service.latest(&outline).await?,

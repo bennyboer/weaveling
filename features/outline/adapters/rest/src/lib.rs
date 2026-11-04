@@ -179,6 +179,7 @@ async fn add(
         .await
         .map_err(problem_of)?;
     let unchanged = Changed {
+        since: added.since,
         version: added.version,
         attachments_changed_in: Vec::new(),
         standing: added.standing,
@@ -376,6 +377,7 @@ fn to_change_dto(outline: &str, changed: &Changed) -> OutlineChangeDTO {
 
     OutlineChangeDTO {
         id: outline.to_owned(),
+        since: changed.since.count(),
         version: standing.version.count(),
         project: standing.state.project().to_string(),
         sections: standing
