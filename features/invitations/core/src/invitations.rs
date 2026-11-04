@@ -77,22 +77,22 @@ impl InvitationsCore {
         self.service.admitted(&to).await?;
         let key = self.keys.key().await?;
 
-        let mut transaction = self.transactions.begin().await?;
-        let summary = self
-            .service
-            .issue(
-                &mut transaction,
-                &key,
-                &to,
-                origin,
-                scope,
-                by_an_operator,
-                agent,
-            )
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let summary = self
+                .service
+                .issue(
+                    transaction,
+                    &key,
+                    &to,
+                    origin,
+                    scope.clone(),
+                    by_an_operator,
+                    agent,
+                )
+                .await?;
 
-        Ok(summary)
+            Ok(summary)
+        })
     }
 
     pub async fn mail_issued(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
@@ -286,13 +286,11 @@ impl InvitationsCore {
         at: OffsetDateTime,
         by: &Agent,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        settled(
-            self.service
-                .accept(&mut transaction, invitation, at, by)
-                .await,
-        )?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            settled(self.service.accept(transaction, invitation, at, by).await)?;
+
+            Ok(())
+        })
     }
 
     pub async fn declined(
@@ -301,13 +299,15 @@ impl InvitationsCore {
         invitation: &InvitationId,
         reason: DeclineReason,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        settled(
-            self.service
-                .decline(&mut transaction, invitation, reason, &Agent::System)
-                .await,
-        )?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            settled(
+                self.service
+                    .decline(transaction, invitation, reason, &Agent::System)
+                    .await,
+            )?;
+
+            Ok(())
+        })
     }
 
     pub async fn decline_by_token(&self, token: &str) -> Result<(), InvitationsError> {
@@ -344,11 +344,13 @@ impl InvitationsCore {
         within: Option<&mut Transaction>,
         named: &ProjectName,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_project_name(&mut transaction, named)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_project_name(transaction, named)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn remember_trash(
@@ -358,11 +360,13 @@ impl InvitationsCore {
         version: Version,
         in_the_trash: bool,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_trash(&mut transaction, project, version, in_the_trash)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn lay_project_tombstone(
@@ -371,11 +375,13 @@ impl InvitationsCore {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, project, at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, project, at)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -383,18 +389,18 @@ impl InvitationsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, InvitationsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let projects = self
-            .catalog
-            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        let invitations = self
-            .catalog
-            .forget_invitation_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let projects = self
+                .catalog
+                .forget_project_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+            let invitations = self
+                .catalog
+                .forget_invitation_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(projects + invitations)
+            Ok(projects + invitations)
+        })
     }
 
     pub async fn remember_person(
@@ -402,11 +408,11 @@ impl InvitationsCore {
         within: Option<&mut Transaction>,
         person: &Person,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_person(&mut transaction, person)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.remember_person(transaction, person).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn catalogue(
@@ -416,18 +422,17 @@ impl InvitationsCore {
     ) -> Result<Option<ProjectLink>, InvitationsError> {
         let standing = self.service.latest(invitation).await?;
         let summary = InvitationSummary::of(*invitation, standing.version, &standing.state);
-        let mut transaction = self.transactions.join(within).await?;
-        if standing.state.is_retired() {
-            self.catalog
-                .forget(&mut transaction, invitation, self.clock.now())
-                .await?;
-            transaction.finish().await?;
-            return Ok(None);
-        }
-        self.catalog.remember(&mut transaction, &summary).await?;
-        transaction.finish().await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if standing.state.is_retired() {
+                self.catalog
+                    .forget(transaction, invitation, self.clock.now())
+                    .await?;
+                return Ok(None);
+            }
+            self.catalog.remember(transaction, &summary).await?;
 
-        Ok(summary.scope.project().cloned())
+            Ok(summary.scope.project().cloned())
+        })
     }
 
     pub async fn withdraw_if_project_gone(
@@ -436,16 +441,17 @@ impl InvitationsCore {
         invitation: &InvitationId,
         project: &ProjectLink,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        if self.catalog.has_project_tombstone(project).await? {
-            settled(
-                self.service
-                    .withdraw(&mut transaction, invitation, &Agent::System)
-                    .await,
-            )?;
-        }
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if self.catalog.has_project_tombstone(project).await? {
+                settled(
+                    self.service
+                        .withdraw(transaction, invitation, &Agent::System)
+                        .await,
+                )?;
+            }
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), InvitationsError> {
