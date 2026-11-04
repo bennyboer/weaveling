@@ -49,19 +49,16 @@ impl OutlinesCore {
             OutlinesError::ProjectNotThere
         })
         .await?;
-        let mut transaction = self.transactions.begin().await?;
-        if self
-            .catalog
-            .has_project_tombstone_within(&mut transaction, &project)
-            .await?
-        {
-            return Err(OutlinesError::ProjectNotThere);
-        }
-        let id = self
-            .service
-            .claim(&mut transaction, &project, agent)
-            .await?;
-        transaction.finish().await?;
+        let id = transacting::retrying!(&*self.transactions, |transaction| {
+            if self
+                .catalog
+                .has_project_tombstone_within(transaction, &project)
+                .await?
+            {
+                return Err(OutlinesError::ProjectNotThere);
+            }
+            self.service.claim(transaction, &project, agent).await
+        })?;
 
         Ok(Open {
             id,
@@ -247,21 +244,19 @@ impl OutlinesCore {
     ) -> Result<(), OutlinesError> {
         let standing = self.service.latest(outline).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        if standing.state.is_discarded() {
-            self.catalog
-                .forget(&mut transaction, outline, self.clock.now())
-                .await?;
-        } else {
-            self.catalog
-                .remember(
-                    &mut transaction,
-                    &OutlineSummary::of(*outline, &standing.state),
-                )
-                .await?;
-        }
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if standing.state.is_discarded() {
+                self.catalog
+                    .forget(transaction, outline, self.clock.now())
+                    .await?;
+            } else {
+                self.catalog
+                    .remember(transaction, &OutlineSummary::of(*outline, &standing.state))
+                    .await?;
+            }
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn index_attachments(
@@ -276,16 +271,13 @@ impl OutlinesCore {
             standing.state.attachments()
         };
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .holds(
-                &mut transaction,
-                *outline,
-                standing.version.count(),
-                &holding,
-            )
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .holds(transaction, *outline, standing.version.count(), &holding)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn lay_tombstone(
@@ -294,11 +286,11 @@ impl OutlinesCore {
         gone: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), OutlinesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_tombstone(&mut transaction, gone, at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.lay_tombstone(transaction, gone, at).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn let_go_everywhere(
@@ -306,11 +298,13 @@ impl OutlinesCore {
         within: Option<&mut Transaction>,
         gone: &Attachment,
     ) -> Result<(), OutlinesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        for outline in self.catalog.outlines_holding(gone).await? {
-            self.let_go(&mut transaction, outline, gone).await?;
-        }
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            for outline in self.catalog.outlines_holding(gone).await? {
+                self.let_go(transaction, outline, gone).await?;
+            }
+
+            Ok(())
+        })
     }
 
     pub async fn let_go_of_the_gone(
@@ -329,9 +323,11 @@ impl OutlinesCore {
             return Ok(());
         };
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.let_go(&mut transaction, *outline, &gone).await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.let_go(transaction, *outline, &gone).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), OutlinesError> {
@@ -357,11 +353,13 @@ impl OutlinesCore {
         project: &str,
         at: OffsetDateTime,
     ) -> Result<(), OutlinesError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, &ProjectLink::from(project), at)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -369,14 +367,14 @@ impl OutlinesCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, OutlinesError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
     }
 
     async fn let_go(
