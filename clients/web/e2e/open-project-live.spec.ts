@@ -151,8 +151,7 @@ test("a change missed on the way asks for the project again, and it comes out ri
 test("a change told while the project is still on its way asks for it again", async ({
   page,
 }) => {
-  const title = await aNewProject(page, "OpenInFlight");
-  const project = projectOf(page);
+  const { title, project } = await anOpenProjectFollowedLive(page, "OpenInFlight");
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
   let heard = 0;
   heardOn(
