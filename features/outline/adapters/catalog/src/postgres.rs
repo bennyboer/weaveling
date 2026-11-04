@@ -127,9 +127,6 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         transaction: &mut Transaction,
         summary: &OutlineSummary,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
@@ -146,9 +143,6 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         outline: &OutlineId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &outline.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)
             .bind(outline.to_string())
             .bind(at)
@@ -328,9 +322,6 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
@@ -354,9 +345,6 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         transaction: &mut Transaction,
         project: &ProjectLink,
     ) -> Result<bool, CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .fetch_one(connection(transaction).map_err(unreachable)?)
