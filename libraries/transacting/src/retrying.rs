@@ -55,9 +55,20 @@ macro_rules! retrying {
     }};
 }
 
+/// Runs the work in the transaction it is handed, or, handed none, in one of its own through `retrying!`: a transaction borrowed is the owner's to try again.
+#[macro_export]
+macro_rules! joining {
+    ($transactions:expr, $within:expr, |$transaction:ident| $work:block) => {
+        match $within {
+            Some($transaction) => async $work.await,
+            None => $crate::retrying!($transactions, |$transaction| $work),
+        }
+    };
+}
+
 #[doc(hidden)]
 pub fn again(failure: &impl LostRace, lost: bool, tried: u8, tries: u8) -> bool {
-    (lost || failure.lost_race()) && tried < tries
+    (lost && tried < TRIES) || (failure.lost_race() && tried < tries)
 }
 
 #[doc(hidden)]

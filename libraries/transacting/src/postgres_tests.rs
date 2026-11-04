@@ -269,3 +269,27 @@ async fn a_row_fetched_that_lost_a_race_is_tried_again() {
     assert_eq!((answered, tried), (Ok(2), 2));
     bench.cleanup().await;
 }
+
+#[tokio::test]
+async fn a_write_given_one_try_is_still_tried_again_when_its_transaction_lost_a_race() {
+    let bench = OnPostgres::setup().await;
+    let mut tried = 0;
+
+    let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), 1, |transaction| {
+        tried += 1;
+        if tried == 1 {
+            sqlx::raw_sql(AssertSqlSafe(raising("40001")))
+                .execute(postgres::connection(transaction)?)
+                .await
+                .map_err(|failure| Refused(failure.to_string()))?;
+        }
+        Ok(tried)
+    });
+
+    assert_eq!(
+        (answered, tried),
+        (Ok(2), 2),
+        "one try keeps a write aimed at a version from papering over its moving on, which a race in the database is not"
+    );
+    bench.cleanup().await;
+}

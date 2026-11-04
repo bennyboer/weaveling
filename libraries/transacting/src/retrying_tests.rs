@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::retrying::TRIES;
-use crate::{Failure, InMemoryTransactions, LostRace, Transaction, memory};
+use crate::{Failure, InMemoryTransactions, LostRace, Transaction, Transactions, memory};
 
 #[derive(Debug, PartialEq)]
 enum Refusal {
@@ -192,4 +192,48 @@ fn each_pause_is_drawn_up_to_twice_the_one_before_starting_at_ten_milliseconds()
             "pauses are drawn at random, so writers that collided do not collide again"
         );
     }
+}
+
+#[tokio::test]
+async fn joining_a_transaction_handed_in_leaves_its_lost_race_to_the_owner() {
+    let transactions = InMemoryTransactions::new();
+    let words = Words::default();
+    let mut tried = 0;
+    let mut owned = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+
+    let answered: Result<(), Refusal> =
+        crate::joining!(&transactions, Some(&mut owned), |transaction| {
+            tried += 1;
+            words.write(transaction, "warp".to_owned());
+            Err(Refusal::Lost)
+        });
+
+    assert_eq!((answered, tried), (Err(Refusal::Lost), 1));
+    assert_eq!(
+        words.written(),
+        vec!["warp".to_owned()],
+        "the owner decides whether what was written in its transaction stays"
+    );
+}
+
+#[tokio::test]
+async fn joining_no_transaction_tries_in_its_own_until_it_wins() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<_, Refusal> =
+        crate::joining!(&InMemoryTransactions::new(), None, |transaction| {
+            tried += 1;
+            words.write(transaction, format!("try {tried}"));
+            if tried < 2 {
+                return Err(Refusal::Lost);
+            }
+            Ok(tried)
+        });
+
+    assert_eq!(answered, Ok(2));
+    assert_eq!(words.written(), vec!["try 2".to_owned()]);
 }
