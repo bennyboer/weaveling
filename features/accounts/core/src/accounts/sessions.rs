@@ -1,6 +1,7 @@
 use ending::SessionEnd;
 use time::OffsetDateTime;
 use tokio::sync::watch;
+use transacting::Transaction;
 
 use super::AccountsCore;
 use crate::account::Account;
@@ -68,16 +69,25 @@ impl AccountsCore {
         account: Account,
         began: OffsetDateTime,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.opened_within(transaction, id, account.clone(), began)
+                .await
+        })
+    }
+
+    pub(super) async fn opened_within(
+        &self,
+        transaction: &mut Transaction,
+        id: AccountId,
+        account: Account,
+        began: OffsetDateTime,
+    ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
         let session = Session::begun(id, Stage::SignedIn, began);
-        transacting::retrying!(&*self.transactions, |transaction| {
-            Ok::<_, AccountsError>(
-                self.sessions
-                    .open(transaction, &token.digest(), &session)
-                    .await?,
-            )
-        })?;
+        self.sessions
+            .open(transaction, &token.digest(), &session)
+            .await?;
 
         Ok((token, SignedIn { session, account }))
     }

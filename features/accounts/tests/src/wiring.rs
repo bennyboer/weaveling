@@ -8,6 +8,7 @@ use accounts_core::{
 };
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
+use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use axum::Router;
 use clock::FixedClock;
@@ -106,6 +107,20 @@ pub fn wired() -> Wired {
 impl Wired {
     pub fn refusing_appends(&self) -> AccountsCore {
         self.over(Arc::new(RefusesAppending(self.store.clone())))
+    }
+
+    pub fn refusing_to_open_sessions(&self) -> AccountsCore {
+        AccountsCore::new(
+            self.store.clone(),
+            Arc::new(InMemoryTransactions::new()),
+            SecretStores {
+                sessions: Arc::new(RefusesOpening(self.secrets.clone())),
+                ..SecretStores::kept_by(self.secrets.clone(), self.throttles.clone())
+            },
+            self.catalog.clone(),
+            self.mailbox.clone(),
+            self.clock.clone(),
+        )
     }
 
     pub fn losing_races(&self, times: u8) -> AccountsCore {
@@ -243,4 +258,32 @@ async fn finished(transaction: Transaction) {
         .finish()
         .await
         .expect("finishing should succeed");
+}
+
+struct RefusesOpening(Arc<InMemorySecrets>);
+
+#[async_trait]
+impl Sessions for RefusesOpening {
+    async fn open(
+        &self,
+        _transaction: &mut Transaction,
+        _digest: &TokenDigest,
+        _session: &Session,
+    ) -> Result<(), SecretsError> {
+        Err(SecretsError::Backend(
+            "the sessions cannot be reached".into(),
+        ))
+    }
+
+    async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError> {
+        self.0.find(digest).await
+    }
+
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
+        self.0.end(transaction, digest).await
+    }
 }

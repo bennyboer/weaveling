@@ -112,7 +112,7 @@ impl AccountsCore {
         if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
-        let id = transacting::retrying!(&*self.transactions, |transaction| {
+        transacting::retrying!(&*self.transactions, |transaction| {
             self.not_paused(transaction, &found.scope).await?;
             let Some(ticket) = self
                 .invitation_tickets
@@ -142,12 +142,15 @@ impl AccountsCore {
                 )
                 .await?;
             self.passwords.keep(transaction, &id, &hashed).await?;
+            let account = self
+                .events
+                .latest_within(transaction, &AggregateId::from(&id))
+                .await?
+                .state;
 
-            Ok(id)
-        })?;
-        let account = self.get(&id).await?.state;
-
-        self.opened(id, account, self.clock.now()).await
+            self.opened_within(transaction, id, account, self.clock.now())
+                .await
+        })
     }
 
     pub(super) async fn tell_already_signed_up(

@@ -376,3 +376,29 @@ async fn a_sign_up_by_invitation_whose_account_cannot_be_kept_leaves_the_link_to
         .expect("the link signs its address up once the account can be kept");
     assert!(holder(&wired, ADA).await.is_some());
 }
+
+#[tokio::test]
+async fn a_sign_up_by_invitation_whose_session_cannot_be_opened_makes_no_account_and_leaves_the_link()
+ {
+    // given: an invitation, and sessions that cannot be opened
+    let wired = wiring::wired();
+    invited(&wired, ADA, TOKEN).await;
+
+    // when: its address signs up by it
+    let refused = wired
+        .refusing_to_open_sessions()
+        .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
+        .await;
+
+    // then: it is refused, no account was made and the link still signs up once sessions open again
+    assert!(refused.is_err());
+    assert_eq!(
+        holder(&wired, ADA).await,
+        None,
+        "told it failed, she would try again and find her address taken by an account she never got into"
+    );
+    signs_up(&wired, TOKEN)
+        .await
+        .expect("the link signs its address up once sessions can be opened");
+    assert!(holder(&wired, ADA).await.is_some());
+}

@@ -103,6 +103,16 @@ where
             .ok_or_else(|| self.nothing_there(aggregate))
     }
 
+    pub async fn latest_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+    ) -> Result<Standing<A>, ServiceError<A::Error>> {
+        self.standing_within(transaction, aggregate)
+            .await?
+            .ok_or_else(|| self.nothing_there(aggregate))
+    }
+
     pub async fn as_of(
         &self,
         aggregate: &AggregateId,
