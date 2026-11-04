@@ -60,18 +60,21 @@ impl NotificationsCore {
         }
         let id = NoticeId::generate(self.clock.now());
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.events
-            .begin(
-                &mut transaction,
-                &AggregateId::from(&id),
-                NoticeCommand::Note { account, about },
-                &Agent::System,
-            )
-            .await?;
-        transaction.finish().await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.events
+                .begin(
+                    transaction,
+                    &AggregateId::from(&id),
+                    NoticeCommand::Note {
+                        account: account.clone(),
+                        about: about.clone(),
+                    },
+                    &Agent::System,
+                )
+                .await?;
 
-        Ok(Some(id))
+            Ok(Some(id))
+        })
     }
 
     pub async fn read(
@@ -150,11 +153,11 @@ impl NotificationsCore {
         within: Option<&mut Transaction>,
         person: &Person,
     ) -> Result<(), NotificationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_person(&mut transaction, person)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.remember_person(transaction, person).await?;
+
+            Ok(())
+        })
     }
 
     pub async fn remember_project_name(
@@ -162,11 +165,13 @@ impl NotificationsCore {
         within: Option<&mut Transaction>,
         named: &ProjectName,
     ) -> Result<(), NotificationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember_project_name(&mut transaction, named)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_project_name(transaction, named)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn lay_project_tombstone(
@@ -175,11 +180,13 @@ impl NotificationsCore {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), NotificationsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, project, at)
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, project, at)
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn forget_due(&self, at_most: usize) -> Result<usize, NotificationsError> {
@@ -193,13 +200,15 @@ impl NotificationsCore {
             )
             .await?;
         for notice in &due {
-            let mut transaction = self.transactions.begin().await?;
-            self.store
-                .forget(&mut transaction, &AggregateId::from(notice), KIND)
-                .await
-                .map_err(ServiceError::Store)?;
-            self.catalog.forget(&mut transaction, notice, now).await?;
-            transaction.finish().await?;
+            transacting::retrying!(&*self.transactions, |transaction| {
+                self.store
+                    .forget(transaction, &AggregateId::from(notice), KIND)
+                    .await
+                    .map_err(ServiceError::Store)?;
+                self.catalog.forget(transaction, notice, now).await?;
+
+                Ok::<_, NotificationsError>(())
+            })?;
         }
 
         Ok(due.len())
@@ -210,18 +219,18 @@ impl NotificationsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, NotificationsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let projects = self
-            .catalog
-            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        let notices = self
-            .catalog
-            .forget_notice_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let projects = self
+                .catalog
+                .forget_project_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+            let notices = self
+                .catalog
+                .forget_notice_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(projects + notices)
+            Ok(projects + notices)
+        })
     }
 
     pub async fn catalogue(
@@ -235,14 +244,16 @@ impl NotificationsCore {
             Err(failure) => return Err(failure.into()),
         };
 
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .remember(
-                &mut transaction,
-                &NoticeSummary::of(*notice, standing.version, &standing.state),
-            )
-            .await?;
-        Ok(transaction.finish().await?)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember(
+                    transaction,
+                    &NoticeSummary::of(*notice, standing.version, &standing.state),
+                )
+                .await?;
+
+            Ok(())
+        })
     }
 }
 
