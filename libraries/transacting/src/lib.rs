@@ -18,7 +18,7 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use memory::InMemoryTransactions;
-pub use retrying::LostRace;
+pub use retrying::{LostRace, Tried};
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresTransactions;

@@ -6,7 +6,7 @@ use clock::FixedClock;
 use messaging::{ListenerName, MessageId};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::oneshot;
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 use crate::Inbox;
 
@@ -299,24 +299,21 @@ pub async fn two_handlers_hearing_one_message_at_once_hear_it_once<W: Workbench>
         },
         async {
             hearing.await.expect("the first handler heard the message");
-            let mut transaction = bench.begun().await;
-            let second = inbox
-                .heard_before(&mut transaction, &listener, message)
-                .await
-                .expect("hearing should succeed");
-            transaction
-                .finish()
-                .await
-                .expect("finishing should succeed");
 
-            second
+            transacting::retrying!(bench.workbench.transactions(), |transaction| {
+                inbox
+                    .heard_before(transaction, &listener, message)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("hearing should succeed")
         },
     );
 
     assert_eq!(
         (first, second),
         (false, true),
-        "the second waits for the first and then finds the message heard"
+        "the second waits for the first, or loses to it and hears again, and then finds the message heard"
     );
     bench.cleanup().await;
 }

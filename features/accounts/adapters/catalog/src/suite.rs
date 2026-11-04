@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use std::collections::BTreeMap;
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 use accounts_core::{
     AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, Lock,
@@ -52,9 +52,15 @@ impl<C: AccountCatalog> Committing<'_, C> {
     }
 
     pub async fn remember(&self, summary: &AccountSummary) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.remember(&mut transaction, summary).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember(transaction, summary)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

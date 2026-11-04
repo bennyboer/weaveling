@@ -323,17 +323,14 @@ async fn forgetting_a_stream_waits_for_an_append_under_way_and_takes_it_too() {
 
     tokio::join!(
         async {
-            let mut forgetting = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .forget(&mut forgetting, &aggregate, SAMPLE)
-                .await
-                .expect("forgetting should succeed");
-            forgetting.finish().await.expect("finishing should succeed");
+            transacting::retrying!(&bench.transactions, |forgetting| {
+                bench
+                    .store
+                    .forget(forgetting, &aggregate, SAMPLE)
+                    .await
+                    .map_err(transacting::Tried::Refused)
+            })
+            .expect("forgetting should succeed");
         },
         async {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;

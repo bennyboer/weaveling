@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use std::slice;
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 use eventsourcing::{AccountId, Version};
 use notifications_core::{
@@ -52,25 +52,39 @@ impl<C: NoticeCatalog> Committing<'_, C> {
     }
 
     pub async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.remember(&mut transaction, summary).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember(transaction, summary)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember_person(&mut transaction, person)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_person(transaction, person)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember_project_name(&mut transaction, named)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_project_name(transaction, named)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn lay_project_tombstone(
@@ -78,11 +92,15 @@ impl<C: NoticeCatalog> Committing<'_, C> {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, project, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, project, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
@@ -94,9 +112,15 @@ impl<C: NoticeCatalog> Committing<'_, C> {
         notice: &NoticeId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.forget(&mut transaction, notice, at).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget(transaction, notice, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_notice_tombstones_laid_before(
@@ -104,14 +128,16 @@ impl<C: NoticeCatalog> Committing<'_, C> {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let done = self
-            .catalog
-            .forget_notice_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .catalog
+                .forget_notice_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_project_tombstones_laid_before(
@@ -119,14 +145,16 @@ impl<C: NoticeCatalog> Committing<'_, C> {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let done = self
-            .catalog
-            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .catalog
+                .forget_project_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

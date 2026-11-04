@@ -5,7 +5,7 @@ use appearances_core::{
 };
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 const LAID: OffsetDateTime = datetime!(2026-10-25 12:00 UTC);
 
@@ -58,11 +58,15 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember(&mut transaction, subject, place, version)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember(transaction, subject, place, version)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget(
@@ -71,11 +75,15 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .forget(&mut transaction, subject, place, version)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget(transaction, subject, place, version)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_subject(
@@ -83,11 +91,15 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         subject: &Subject,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .forget_subject(&mut transaction, subject, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_subject(transaction, subject, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_place(
@@ -95,14 +107,16 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let done = self
-            .catalog
-            .forget_place(&mut transaction, place, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .catalog
+                .forget_place(transaction, place, at)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -110,14 +124,16 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let done = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_project(
@@ -125,11 +141,15 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         subject: &Subject,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember_project(&mut transaction, subject, project)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_project(transaction, subject, project)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

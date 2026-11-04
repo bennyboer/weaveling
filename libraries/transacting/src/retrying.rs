@@ -2,11 +2,41 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::time::Duration;
 
+use crate::Failure;
+
 pub const TRIES: u8 = 5;
 const FIRST_PAUSE: Duration = Duration::from_millis(10);
 
 pub trait LostRace {
     fn lost_race(&self) -> bool;
+}
+
+/// What a try under `retrying!` answered when it failed: the work's own refusal, which is never tried again, or its transaction's failure, which is when the transaction lost a race. Lets work whose error knows nothing of transactions, as an adapter's, be tried again all the same.
+#[derive(Debug)]
+pub enum Tried<E> {
+    Refused(E),
+    Failed(Failure),
+}
+
+impl<E> Tried<E> {
+    pub fn answered(self, failed: impl FnOnce(Failure) -> E) -> E {
+        match self {
+            Tried::Refused(refused) => refused,
+            Tried::Failed(failure) => failed(failure),
+        }
+    }
+}
+
+impl<E> LostRace for Tried<E> {
+    fn lost_race(&self) -> bool {
+        matches!(self, Tried::Failed(failure) if failure.lost_race())
+    }
+}
+
+impl<E> From<Failure> for Tried<E> {
+    fn from(failure: Failure) -> Self {
+        Tried::Failed(failure)
+    }
 }
 
 #[macro_export]

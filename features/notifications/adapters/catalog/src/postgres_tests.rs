@@ -3,7 +3,7 @@ use eventsourcing::Version;
 use notifications_core::{NoticeCatalog, NoticeSummary, ProjectLink, ProjectName};
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresNoticeCatalog;
@@ -73,17 +73,14 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
 
     tokio::join!(
         async {
-            let mut burying = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .lay_project_tombstone(&mut burying, &project, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("laying a tombstone should succeed");
-            burying.finish().await.expect("committing should succeed");
+            transacting::retrying!(&bench.transactions, |burying| {
+                bench
+                    .store
+                    .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("laying a tombstone should succeed");
         },
         async {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -120,20 +117,14 @@ async fn forgetting_a_notice_waits_for_its_cataloguing_under_way() {
 
     tokio::join!(
         async {
-            let mut forgetting = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .forget(&mut forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("forgetting should succeed");
-            forgetting
-                .finish()
-                .await
-                .expect("committing should succeed");
+            transacting::retrying!(&bench.transactions, |forgetting| {
+                bench
+                    .store
+                    .forget(forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("forgetting should succeed");
         },
         async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
