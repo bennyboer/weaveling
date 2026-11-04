@@ -207,11 +207,20 @@ impl<S: Secrets> Committing<'_, S> {
         Ok(closed)
     }
 
-    pub async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+    pub async fn keep_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
         let mut transaction = self.begun().await?;
-        self.store.keep_code(&mut transaction, digest).await?;
+        let kept = self.store.keep_code(&mut transaction, digest).await?;
+        self.finished(transaction).await?;
 
-        self.finished(transaction).await
+        Ok(kept)
+    }
+
+    pub async fn is_appointed(&self, account: &AccountId) -> Result<bool, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let appointed = self.store.is_appointed(&mut transaction, account).await?;
+        self.finished(transaction).await?;
+
+        Ok(appointed)
     }
 
     pub async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
@@ -935,6 +944,76 @@ pub async fn only_the_latest_code_kept_can_be_taken<S: Secrets>(secrets: &Commit
             .take_code(&a_digest("second"))
             .await
             .expect("taking should succeed")
+    );
+}
+
+pub async fn no_code_is_kept_once_someone_is_an_operator<S: Secrets>(secrets: &Committing<'_, S>) {
+    appointed(secrets, 1_000).await;
+
+    let kept = secrets
+        .keep_code(&a_digest("first"))
+        .await
+        .expect("keeping should succeed");
+
+    assert!(
+        !kept,
+        "a second instance starting after the first operator was made draws no code beside them"
+    );
+    assert!(
+        !secrets
+            .holds_code(&a_digest("first"))
+            .await
+            .expect("asking should succeed")
+    );
+}
+
+pub async fn a_code_kept_before_someone_became_an_operator_is_taken_no_more<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    assert!(
+        secrets
+            .keep_code(&a_digest("first"))
+            .await
+            .expect("keeping should succeed")
+    );
+    appointed(secrets, 1_000).await;
+
+    assert!(
+        !secrets
+            .take_code(&a_digest("first"))
+            .await
+            .expect("taking should succeed"),
+        "the code is for the first operator only, so once there is one it lets nobody in"
+    );
+}
+
+pub async fn an_operator_is_appointed_until_dismissed<S: Secrets>(secrets: &Committing<'_, S>) {
+    let ada = appointed(secrets, 1_000).await;
+    let grace = appointed(secrets, 2_000).await;
+    let nobody = AccountId::generate(at(3_000));
+
+    secrets
+        .dismiss(&grace)
+        .await
+        .expect("dismissing should succeed");
+
+    assert!(
+        secrets
+            .is_appointed(&ada)
+            .await
+            .expect("asking should succeed")
+    );
+    assert!(
+        !secrets
+            .is_appointed(&grace)
+            .await
+            .expect("asking should succeed")
+    );
+    assert!(
+        !secrets
+            .is_appointed(&nobody)
+            .await
+            .expect("asking should succeed")
     );
 }
 
@@ -2111,6 +2190,40 @@ pub async fn a_first_password_kept_in_a_dropped_transaction_was_never_kept<S: Se
     );
 }
 
+pub async fn a_code_kept_or_taken_in_a_transaction_that_is_dropped_is_as_it_was<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    secrets
+        .keep_code(&TokenDigest::kept("kept".to_owned()))
+        .await
+        .expect("keeping a code should succeed");
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    let store = secrets.store;
+    store
+        .take_code(&mut transaction, &TokenDigest::kept("kept".to_owned()))
+        .await
+        .expect("taking a code should succeed");
+    store
+        .keep_code(&mut transaction, &TokenDigest::kept("another".to_owned()))
+        .await
+        .expect("keeping a code should succeed");
+
+    drop(transaction);
+
+    assert!(
+        secrets
+            .holds_code(&TokenDigest::kept("kept".to_owned()))
+            .await
+            .expect("reading should succeed")
+    );
+    assert!(
+        !secrets
+            .holds_code(&TokenDigest::kept("another".to_owned()))
+            .await
+            .expect("reading should succeed")
+    );
+}
+
 pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropped_are_gone<
     S: Secrets,
 >(
@@ -2128,10 +2241,6 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
         .open(&kept_session, &a_session(Stage::SignedIn))
         .await
         .expect("opening should succeed");
-    secrets
-        .keep_code(&TokenDigest::kept("kept".to_owned()))
-        .await
-        .expect("keeping a code should succeed");
     let dropped_session = SessionToken::drawn().digest();
     let mut transaction = secrets.begun().await.expect("beginning should succeed");
     let store = secrets.store;
@@ -2169,14 +2278,6 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
         )
         .await
         .expect("closing should succeed");
-    store
-        .take_code(&mut transaction, &TokenDigest::kept("kept".to_owned()))
-        .await
-        .expect("taking a code should succeed");
-    store
-        .keep_code(&mut transaction, &TokenDigest::kept("another".to_owned()))
-        .await
-        .expect("keeping a code should succeed");
     store
         .appoint(&mut transaction, &ada)
         .await
@@ -2220,12 +2321,6 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
             .expect("attempting should succeed"),
         Attempt::Nothing
     );
-    assert!(
-        secrets
-            .holds_code(&TokenDigest::kept("kept".to_owned()))
-            .await
-            .expect("reading should succeed")
-    );
     assert_eq!(
         (
             secrets
@@ -2264,6 +2359,16 @@ macro_rules! conformance_tests {
             sessions_codes_and_operators_written_in_a_transaction_that_is_dropped_are_gone
         );
         $crate::secrets_conformance_case!($workbench, a_kept_ticket_is_taken_once_and_whole);
+        $crate::secrets_conformance_case!($workbench, no_code_is_kept_once_someone_is_an_operator);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_code_kept_before_someone_became_an_operator_is_taken_no_more
+        );
+        $crate::secrets_conformance_case!($workbench, an_operator_is_appointed_until_dismissed);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_code_kept_or_taken_in_a_transaction_that_is_dropped_is_as_it_was
+        );
         $crate::secrets_conformance_case!(
             $workbench,
             an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_as_before

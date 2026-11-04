@@ -106,18 +106,6 @@ impl AccountsCore {
         Ok(transaction.finish().await?)
     }
 
-    pub(super) async fn commanded(
-        &self,
-        account: &AccountId,
-        command: AccountCommand,
-        agent: &Agent,
-    ) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.commanded_in(transaction, account, command.clone(), agent)
-                .await
-        })
-    }
-
     pub(super) async fn commanded_in(
         &self,
         transaction: &mut Transaction,

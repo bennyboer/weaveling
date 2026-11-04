@@ -1,3 +1,5 @@
+use transacting::Transaction;
+
 use super::AccountsCore;
 use crate::account::AccountCommand;
 use crate::catalog::AccountSummary;
@@ -9,17 +11,15 @@ use crate::secrets::Dismissal;
 
 impl AccountsCore {
     pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
-        if self.operators.any_appointed().await? {
-            return Ok(None);
-        }
         let code = OperatorCode::drawn();
         let mut transaction = self.transactions.begin().await?;
-        self.operators
+        let kept = self
+            .operators
             .keep_code(&mut transaction, &code.digest())
             .await?;
         transaction.finish().await?;
 
-        Ok(Some(code))
+        Ok(kept.then_some(code))
     }
 
     pub async fn become_operator(&self, id: &AccountId, code: &str) -> Result<(), AccountsError> {
@@ -49,32 +49,33 @@ impl AccountsCore {
         account: &AccountId,
         reason: &str,
     ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        let reason = LockReason::new(reason).map_err(AccountsError::InvalidLockReason)?;
-
-        self.commanded(
-            account,
-            AccountCommand::Lock(LockKind::Operator, reason),
-            &by.acting(),
-        )
-        .await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.still_operating(transaction, by).await?;
+            let reason = LockReason::new(reason).map_err(AccountsError::InvalidLockReason)?;
+            self.commanded_in(
+                transaction,
+                account,
+                AccountCommand::Lock(LockKind::Operator, reason),
+                &by.acting(),
+            )
+            .await
+        })?;
         self.check_sessions();
 
         Ok(())
     }
 
     pub async fn unlock(&self, by: &AccountId, account: &AccountId) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        self.commanded(
-            account,
-            AccountCommand::Unlock(LockKind::Operator),
-            &by.acting(),
-        )
-        .await?;
-
-        Ok(())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.still_operating(transaction, by).await?;
+            self.commanded_in(
+                transaction,
+                account,
+                AccountCommand::Unlock(LockKind::Operator),
+                &by.acting(),
+            )
+            .await
+        })
     }
 
     pub async fn list(
@@ -93,9 +94,8 @@ impl AccountsCore {
         by: &AccountId,
         account: &AccountId,
     ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
         transacting::retrying!(&*self.transactions, |transaction| {
+            self.still_operating(transaction, by).await?;
             self.operators.appoint(transaction, account).await?;
             self.commanded_in(
                 transaction,
@@ -112,9 +112,8 @@ impl AccountsCore {
         by: &AccountId,
         account: &AccountId,
     ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
         transacting::retrying!(&*self.transactions, |transaction| {
+            self.still_operating(transaction, by).await?;
             if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
                 return Err(AccountsError::LastOperator);
             }
@@ -126,6 +125,18 @@ impl AccountsCore {
             )
             .await
         })
+    }
+
+    async fn still_operating(
+        &self,
+        transaction: &mut Transaction,
+        by: &AccountId,
+    ) -> Result<(), AccountsError> {
+        if self.operators.is_appointed(transaction, by).await? {
+            Ok(())
+        } else {
+            Err(AccountsError::NotAnOperator)
+        }
     }
 
     pub(super) async fn operating(&self, by: &AccountId) -> Result<(), AccountsError> {
