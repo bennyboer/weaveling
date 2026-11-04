@@ -115,8 +115,6 @@ impl PostgresAppearanceCatalog {
         let (subject_type, subject_id) = subject_type_and_id(subject);
         let (place_type, place_id) = place_type_and_id(place);
 
-        one_at_a_time(transaction, place_type, place_id).await?;
-        one_at_a_time(transaction, subject_type, subject_id).await?;
         sqlx::query(MARK)
             .bind(subject_type)
             .bind(subject_id)
@@ -130,16 +128,6 @@ impl PostgresAppearanceCatalog {
 
         Ok(())
     }
-}
-
-async fn one_at_a_time(
-    transaction: &mut Transaction,
-    kind: &str,
-    id: &str,
-) -> Result<(), CatalogError> {
-    transacting::postgres::one_at_a_time(transaction, &format!("appearance:{kind}:{id}"))
-        .await
-        .map_err(unreachable)
 }
 
 fn subject_type_and_id(subject: &Subject) -> (&'static str, &str) {
@@ -216,7 +204,6 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
     ) -> Result<(), CatalogError> {
         let (subject_type, subject_id) = subject_type_and_id(subject);
 
-        one_at_a_time(transaction, subject_type, subject_id).await?;
         sqlx::query(LAY_SUBJECT_TOMBSTONE)
             .bind(subject_type)
             .bind(subject_id)
@@ -242,7 +229,6 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
     ) -> Result<Vec<Subject>, CatalogError> {
         let (place_type, place_id) = place_type_and_id(place);
 
-        one_at_a_time(transaction, place_type, place_id).await?;
         sqlx::query(LAY_PLACE_TOMBSTONE)
             .bind(place_type)
             .bind(place_id)
