@@ -6,6 +6,7 @@ use sqlx::{AssertSqlSafe, Executor, PgPool};
 use crate::Unprepared;
 
 const POOLED: u32 = 5;
+const DUPLICATE_DATABASE: &str = "42P04";
 
 #[async_trait]
 pub trait Databases: Send + Sync {
@@ -72,14 +73,19 @@ pub async fn ensure(server: &str, feature: &str) -> Result<(), Unprepared> {
                 why: why.to_string(),
             })?;
 
-        held.execute(AssertSqlSafe(format!(r#"CREATE DATABASE "{database}""#)))
+        match held
+            .execute(AssertSqlSafe(format!(r#"CREATE DATABASE "{database}""#)))
             .await
-            .map_err(|why| Unprepared::Uncreatable {
-                database: database.clone(),
-                why: why.to_string(),
-            })?;
-
-        tracing::info!(database, "created a database for a feature that had none");
+        {
+            Ok(_) => tracing::info!(database, "created a database for a feature that had none"),
+            Err(why) if made_meanwhile(&why) => {}
+            Err(why) => {
+                return Err(Unprepared::Uncreatable {
+                    database,
+                    why: why.to_string(),
+                });
+            }
+        }
     }
 
     keeper.close().await;
@@ -119,6 +125,11 @@ pub async fn lay_out(feature: &str, pool: &PgPool, migrations: Migrator) -> Resu
         })
 }
 
+fn made_meanwhile(why: &sqlx::Error) -> bool {
+    matches!(why, sqlx::Error::Database(reason)
+        if reason.is_unique_violation() || reason.code().as_deref() == Some(DUPLICATE_DATABASE))
+}
+
 async fn joined(server: &str, about: &str) -> Result<PgPool, Unprepared> {
     PgPoolOptions::new()
         .max_connections(1)
@@ -132,6 +143,9 @@ async fn joined(server: &str, about: &str) -> Result<PgPool, Unprepared> {
 
 #[cfg(test)]
 mod tests {
+    use tokio::task::JoinSet;
+    use uuid::Uuid;
+
     use super::*;
 
     #[test]
@@ -159,5 +173,37 @@ mod tests {
     #[test]
     fn every_feature_is_named_the_same_way_the_init_script_names_it() {
         assert_eq!(named("outline"), "weaveling_outline");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn instances_starting_at_once_on_a_fresh_server_all_find_the_database_ready() {
+        let server = test_harness::database_url();
+        let feature = format!("racing_{}", Uuid::new_v4().simple());
+
+        let mut starting = JoinSet::new();
+        for _ in 0..8 {
+            let (server, feature) = (server.clone(), feature.clone());
+            starting.spawn(async move { ensure(&server, &feature).await });
+        }
+        let started = starting.join_all().await;
+
+        let keeper = joined(&server, &feature)
+            .await
+            .expect("the server is reachable");
+        keeper
+            .execute(AssertSqlSafe(format!(
+                r#"DROP DATABASE IF EXISTS "{}""#,
+                named(&feature)
+            )))
+            .await
+            .expect("the raced database can be dropped");
+        keeper.close().await;
+
+        for outcome in started {
+            assert!(
+                outcome.is_ok(),
+                "one created it, the others find it made: {outcome:?}"
+            );
+        }
     }
 }

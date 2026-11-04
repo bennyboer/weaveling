@@ -24,4 +24,7 @@ postgres = ["dep:sqlx", "eventsourcing/postgres", "outbox/postgres", "transactin
 sqlite = ["dep:sqlx", "sqlx/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+uuid = { workspace = true, features = ["v4"] }
+
+test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }
