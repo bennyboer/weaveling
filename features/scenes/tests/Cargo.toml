@@ -6,6 +6,7 @@ edition.workspace = true
 [dev-dependencies]
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
+ending = { version = "0.1.0", path = "../../../libraries/ending", package = "weaveling-ending" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 async-trait = { workspace = true }

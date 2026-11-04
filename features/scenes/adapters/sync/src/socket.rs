@@ -1,11 +1,11 @@
 use std::future;
 
-use acting::{Closing, SessionEnd, Staying};
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
+use ending::{Closing, SessionEnd, Staying};
 use eventsourcing::Agent;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};

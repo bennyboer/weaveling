@@ -1,4 +1,4 @@
-use acting::SessionEnd;
+use ending::SessionEnd;
 use time::OffsetDateTime;
 use tokio::sync::watch;
 

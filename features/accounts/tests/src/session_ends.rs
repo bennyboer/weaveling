@@ -6,9 +6,9 @@ use accounts_core::{
     AccountsCore, SecretStores, SecretsError, Session, SessionToken, Sessions, TokenDigest,
 };
 use accounts_secrets::InMemorySecrets;
-use acting::SessionEnd;
 use async_trait::async_trait;
 use clock::Clock;
+use ending::SessionEnd;
 use tokio::task::JoinHandle;
 use transacting::{InMemoryTransactions, Transaction};
 

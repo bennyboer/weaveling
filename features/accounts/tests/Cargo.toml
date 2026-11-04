@@ -25,6 +25,7 @@ throttling = { version = "0.1.0", path = "../../../libraries/throttling", packag
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
+ending = { version = "0.1.0", path = "../../../libraries/ending", package = "weaveling-ending" }
 accounts-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-accounts-catalog" }
 accounts-contract = { version = "0.1.0", path = "../contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }

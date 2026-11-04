@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use acting::{Ending, SessionEnd};
 use async_trait::async_trait;
+use ending::{Ending, SessionEnd};
 use time::OffsetDateTime;
 
 use crate::accounts::AccountsCore;

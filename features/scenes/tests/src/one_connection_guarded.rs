@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration as Wait;
 
-use acting::{Ending, SessionEnd};
 use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum_test::{TestServer, WsMessage};
 use clock::FixedClock;
+use ending::{Ending, SessionEnd};
 use eventsourcing::{AccountId, Agent};
 use live_contract::SESSION_ENDED;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
@@ -475,7 +475,7 @@ async fn the_socket_is_closed_as_such_when_its_session_ends() {
 #[tokio::test]
 async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_until_it_has() {
     let guarded = guarded().await;
-    let shutdown = acting::Shutdown::new();
+    let shutdown = ending::Shutdown::new();
     let server = TestServer::builder().http_transport().build(
         scenes_sync::router(guarded.live.clone())
             .layer(Extension(account("account_bo")))

@@ -3,11 +3,11 @@ use std::error::Error;
 use std::future;
 use std::sync::Arc;
 
-use acting::{Closing, SessionEnd, Staying};
 use async_trait::async_trait;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::{Extension, Router, routing};
+use ending::{Closing, SessionEnd, Staying};
 use eventsourcing::Agent;
 use live_contract::{
     ACCESS_CHANGED, AskedDTO, FrameDTO, SERVER_CLOSING, SESSION_ENDED, ToldDTO, ended,
