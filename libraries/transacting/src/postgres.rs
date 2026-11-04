@@ -12,7 +12,7 @@ use sqlx::{Describe, Either, Execute, Executor, PgPool, Postgres, SqlStr};
 
 use crate::{Failure, Transaction, Transactions, Unit};
 
-/// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which `Watched` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
+/// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which the transaction's `Connection` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
 pub const SERIALIZABLE: &str =
     "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
 
@@ -39,14 +39,14 @@ impl Transactions for PostgresTransactions {
             .await
             .map_err(|failure| Failure::Backend(Box::new(failure)))?;
 
-        Ok(Transaction::of(PostgresUnit(Watched {
+        Ok(Transaction::of(PostgresUnit(Connection {
             begun,
             lost_race: false,
         })))
     }
 }
 
-struct PostgresUnit(Watched);
+struct PostgresUnit(Connection);
 
 #[async_trait]
 impl Unit for PostgresUnit {
@@ -63,24 +63,24 @@ impl Unit for PostgresUnit {
     }
 }
 
-/// A transaction's connection, watched for the race it may lose.
+/// A transaction's connection, as adapters reach it through `connection`.
 ///
 /// Whatever an adapter makes of a failed query, as a message in its own error, the transaction remembers that a statement lost to another transaction, a serialization failure or a deadlock, so `retrying!` can try the whole work again however the failure came up to it.
-pub struct Watched {
+pub struct Connection {
     begun: sqlx::Transaction<'static, Postgres>,
     lost_race: bool,
 }
 
-impl Debug for Watched {
+impl Debug for Connection {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("Watched")
+            .debug_struct("Connection")
             .field("lost_race", &self.lost_race)
             .finish_non_exhaustive()
     }
 }
 
-impl<'c> Executor<'c> for &'c mut Watched {
+impl<'c> Executor<'c> for &'c mut Connection {
     type Database = Postgres;
 
     fn fetch_many<'e, 'q: 'e, E>(
@@ -91,7 +91,7 @@ impl<'c> Executor<'c> for &'c mut Watched {
         'c: 'e,
         E: 'q + Execute<'q, Postgres>,
     {
-        let Watched { begun, lost_race } = self;
+        let Connection { begun, lost_race } = self;
 
         (&mut **begun)
             .fetch_many(query)
@@ -107,7 +107,7 @@ impl<'c> Executor<'c> for &'c mut Watched {
         'c: 'e,
         E: 'q + Execute<'q, Postgres>,
     {
-        let Watched { begun, lost_race } = self;
+        let Connection { begun, lost_race } = self;
 
         (&mut **begun)
             .fetch_optional(query)
@@ -134,7 +134,7 @@ impl<'c> Executor<'c> for &'c mut Watched {
     }
 }
 
-pub fn connection(transaction: &mut Transaction) -> Result<&mut Watched, Failure> {
+pub fn connection(transaction: &mut Transaction) -> Result<&mut Connection, Failure> {
     Ok(&mut transaction.backend::<PostgresUnit>()?.0)
 }
 

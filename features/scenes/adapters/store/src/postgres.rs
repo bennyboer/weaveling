@@ -12,7 +12,7 @@ use scenes_core::{
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
-use transacting::postgres::Watched;
+use transacting::postgres::Connection;
 use transacting::{PostgresTransactions, Transaction};
 
 const REMEMBER: &str = "INSERT INTO scenes (scene, project, title) VALUES ($1, $2, $3)";
@@ -255,7 +255,7 @@ async fn bumped(
     ))
 }
 
-fn connection(transaction: &mut Transaction) -> Result<&mut Watched, StoreError> {
+fn connection(transaction: &mut Transaction) -> Result<&mut Connection, StoreError> {
     transacting::postgres::connection(transaction).map_err(unreachable)
 }
 
