@@ -53,8 +53,10 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
+    // given: a catalog
     let bench = OnPostgres::setup().await;
 
+    // when: the collation of its id column is read
     let collation: Option<String> = sqlx::query_scalar(
         "SELECT collation_name::text
          FROM information_schema.columns
@@ -65,6 +67,7 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: it sorts bytewise
     assert_eq!(
         collation.as_deref(),
         Some("C"),
@@ -77,6 +80,7 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
 
 #[tokio::test]
 async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
+    // given: a remembered project
     let bench = OnPostgres::setup().await;
     bench
         .committing()
@@ -86,13 +90,16 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
         ))
         .await
         .expect("remembering should succeed");
+    // and: its version set below zero by hand
     sqlx::query("UPDATE project_summaries SET version = -3")
         .execute(&bench.pool)
         .await
         .expect("editing the table by hand should succeed");
 
+    // when: the catalog is listed
     let found = bench.store.all().await;
 
+    // then: the listing is refused
     assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
@@ -100,9 +107,11 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_project_standing() {
+    // given: a catalog
     let bench = OnPostgres::setup().await;
     let catalog = bench.committing();
 
+    // when: each of many projects is remembered and forgotten at once
     for nth in 0..40 {
         let summary =
             suite::a_summary(ProjectId::generate(suite::at(1_000 + nth)), "Working Title");
@@ -114,6 +123,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_project_sta
         forgotten.expect("forgetting should succeed");
     }
 
+    // then: nothing is listed
     assert!(
         catalog
             .all()

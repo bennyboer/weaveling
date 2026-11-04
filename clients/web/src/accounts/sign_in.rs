@@ -634,8 +634,10 @@ mod tests {
 
     #[test]
     fn only_digits_count_in_a_code_however_it_was_pasted() {
+        // expect: spaces and letters are dropped from a code
         assert_eq!(digits_of("123 456"), "123456");
         assert_eq!(digits_of("12ab34"), "1234");
+        // and: digits past the sixth
         assert_eq!(
             digits_of("1234567"),
             "123456",
@@ -645,6 +647,7 @@ mod tests {
 
     #[test]
     fn a_code_is_whole_at_six_digits_and_not_before() {
+        // expect: five digits are not a whole code and six are
         assert!(!is_whole("12345"));
         assert!(is_whole("123456"));
     }

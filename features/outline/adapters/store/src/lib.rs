@@ -312,9 +312,11 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // given: a part and a chapter
         let part = a_section(1_000);
         let chapter = a_section(2_000);
 
+        // then: every kind of event comes back from storage as it went in
         for event in [
             OutlineEvent::Started {
                 project: ProjectLink::from("project_1"),
@@ -395,6 +397,7 @@ mod tests {
 
     #[test]
     fn a_snapshot_keeps_the_reading_order_of_its_sections_and_their_scenes() {
+        // given: a snapshot of sections, each with scenes out of order
         let shape = OutlineEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             sections: (1..=4)
@@ -411,6 +414,7 @@ mod tests {
             discarded: false,
         };
 
+        // then: it comes back from storage as it went in
         assert_eq!(
             round_trip(shape.clone()),
             shape,
@@ -420,15 +424,19 @@ mod tests {
 
     #[test]
     fn a_body_written_in_a_shape_we_no_longer_know_reads_as_nothing() {
+        // given: a body in a shape no event has
         let nonsense = serde_json::json!({ "WrittenByAHandFromAnotherAge": { "runes": 3 } });
 
+        // then: it reads as no event
         assert!(((codec().event)(nonsense)).is_none());
     }
 
     #[test]
     fn a_stored_section_that_is_not_an_id_reads_as_nothing() {
+        // given: a stored event naming a section by something that is not an id
         let bent = serde_json::json!({ "SectionPromoted": { "section": "not_a_section" } });
 
+        // then: it reads as no event
         assert!(
             ((codec().event)(bent)).is_none(),
             "an id the domain cannot parse must not become an event"
@@ -437,6 +445,7 @@ mod tests {
 
     #[test]
     fn an_untitled_section_round_trips_because_the_domain_allows_one() {
+        // given: an untitled section added
         let bare = OutlineEvent::SectionAdded {
             section: a_section(1_000),
             under: None,
@@ -444,6 +453,7 @@ mod tests {
             title: a_title(""),
         };
 
+        // then: it comes back from storage as it went in
         assert_eq!(
             round_trip(bare.clone()),
             bare,
@@ -453,10 +463,12 @@ mod tests {
 
     #[test]
     fn a_stored_title_the_domain_would_refuse_reads_as_nothing() {
+        // given: a stored retitling to a title the domain refuses
         let controlled = serde_json::json!({
             "SectionRetitled": { "section": a_section(1_000).to_string(), "title": "a\u{7}b" }
         });
 
+        // then: it reads as no event
         assert!(
             ((codec().event)(controlled)).is_none(),
             "a row the domain would refuse must not become an event, or an aggregate could \

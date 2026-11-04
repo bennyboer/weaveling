@@ -281,7 +281,7 @@ mod tests {
         OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
     }
 
-    fn saying(routing: &str) -> Message {
+    fn a_message(routing: &str) -> Message {
         Message::opening(
             RoutingKey::parse(routing).expect("a plain key is fine"),
             json!({ "nothing": "much" }),
@@ -317,7 +317,7 @@ mod tests {
 
         async fn publish(&self, routing: &str) {
             self.dispatcher
-                .publish(saying(routing))
+                .publish(a_message(routing))
                 .await
                 .expect("handing a message over should succeed");
         }
@@ -333,44 +333,57 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_that_refuses_once_is_offered_the_message_again() {
+        // given: a listener that refuses once
         let wired = a_workbench();
         let fussy = Fussy::refusing("catalogue-idea", 1);
         wired.dispatcher.listen(fussy.clone());
+        // and: a message for it
         wired.publish("idea.captured").await;
 
+        // when: deliveries are taken
         wired.consumer().drain(16).await;
+        // then: it was refused
         assert_eq!(fussy.how_many(), 0, "the first offer was refused");
+        // and: the message still waits
         assert_eq!(wired.waiting().await, 1);
 
+        // when: deliveries are taken once the retry is due
         wired
             .clock
             .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
+        // then: the listener heard it
         assert_eq!(
             fussy.how_many(),
             1,
             "a refusal is a retry, which is the whole of what Delivery::Kept promises"
         );
+        // and: nothing waits any more
         assert_eq!(wired.waiting().await, 0);
     }
 
     #[tokio::test]
     async fn a_retry_reaches_only_the_listener_that_refused() {
+        // given: a listener that copes and one that refuses once
         let wired = a_workbench();
         let coping = Fussy::refusing("catalogue-idea", 0);
         let fussy = Fussy::refusing("unpin-discarded-idea", 1);
         wired.dispatcher.listen(coping.clone());
         wired.dispatcher.listen(fussy.clone());
+        // and: a message for both
         wired.publish("idea.discarded").await;
 
+        // when: deliveries are taken, and again once the retry is due
         wired.consumer().drain(16).await;
         wired
             .clock
             .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
+        // then: the refusing one heard it once
         assert_eq!(fussy.how_many(), 1);
+        // and: so did the coping one
         assert_eq!(
             coping.how_many(),
             1,
@@ -381,12 +394,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_that_never_copes_ends_up_in_the_dead_letters() {
+        // given: a listener that always refuses
         let wired = a_workbench();
         wired
             .dispatcher
             .listen(Fussy::refusing("catalogue-idea", 100));
+        // and: a message for it
         wired.publish("idea.captured").await;
 
+        // when: every attempt is made
         let mut now = at(1_000);
         for attempt in 1..=ATTEMPTS {
             wired.clock.set(now);
@@ -394,11 +410,13 @@ mod tests {
             now = now + delivering::again_after(attempt) + Duration::seconds(1);
         }
 
+        // then: nothing waits any more
         assert_eq!(
             wired.waiting().await,
             0,
             "a message nobody can handle must not sit in the queue for ever"
         );
+        // and: one dead letter says how often, for whom and why
         let dead = wired.dead().await;
         assert_eq!(dead.len(), 1);
         assert_eq!(dead[0].attempts, ATTEMPTS);
@@ -412,13 +430,18 @@ mod tests {
 
     #[tokio::test]
     async fn a_fleeting_listener_refusing_is_dropped_rather_than_retried() {
+        // given: a fleeting listener that refuses
         let wired = a_workbench();
         wired.dispatcher.listen(Fussy::fleeting("board-live"));
+        // and: a message for it
         wired.publish("board.pinned").await;
 
+        // when: deliveries are taken
         wired.consumer().drain(16).await;
 
+        // then: nothing waits any more
         assert_eq!(wired.waiting().await, 0);
+        // and: nothing is dead
         assert!(
             wired.dead().await.is_empty(),
             "a fleeting message is superseded by the next one, so keeping it would be noise"
@@ -427,32 +450,38 @@ mod tests {
 
     #[tokio::test]
     async fn a_delivery_for_a_listener_nobody_registered_waits_rather_than_dying() {
+        // given: a delivery for a listener nobody registered
         let wired = a_workbench();
         wired
             .deliveries
             .enqueue(
                 &ListenerName::parse("not-wired-yet").expect("a plain name is fine"),
-                &saying("idea.captured"),
+                &a_message("idea.captured"),
             )
             .await
             .expect("enqueuing should succeed");
 
+        // when: deliveries are taken
         wired.consumer().drain(16).await;
 
+        // then: it still waits
         assert_eq!(
             wired.waiting().await,
             1,
             "a listener missing at startup is a wiring fault to fix, not a message to throw away"
         );
+        // and: nothing is dead
         assert!(wired.dead().await.is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_delivery_is_taken_long_before_the_next_look_would() {
+        // given: a listener
         let wired = a_workbench();
         let coping = Fussy::refusing("catalogue-idea", 0);
         wired.dispatcher.listen(coping.clone());
 
+        // and: a consumer looking only every five minutes
         let (stopping, stopped) = watch::channel(false);
         let running = tokio::spawn(
             DeliveryConsumer::new(
@@ -465,8 +494,10 @@ mod tests {
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
+        // when: a message for it is published
         wired.publish("idea.captured").await;
 
+        // then: the listener hears it long before the next look
         let mut took = false;
         for _ in 0..40 {
             if coping.how_many() == 1 {

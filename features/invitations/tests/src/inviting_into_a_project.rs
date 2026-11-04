@@ -66,7 +66,7 @@ fn guarded() -> Guarded {
     ]);
 
     Guarded {
-        wired: wiring::wired_guarded_by(roles.clone()),
+        wired: wiring::a_workbench_guarded_by(roles.clone()),
         roles,
     }
 }
@@ -88,7 +88,7 @@ fn served_to(guarded: &Guarded, acting: Acting) -> TestServer {
     )
 }
 
-async fn invited(server: &TestServer, as_whom: &str) -> TestResponse {
+async fn inviting(server: &TestServer, as_whom: &str) -> TestResponse {
     server
         .post("/invitations")
         .add_header(ORIGIN, INSTANCE)
@@ -107,7 +107,7 @@ fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) {
     assert_eq!(response.json::<Value>()["type"], kind);
 }
 
-async fn told(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
+async fn events_of(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
     wired
         .store
         .read_from(&AggregateId::from(id), KIND, Version::of(1))
@@ -120,10 +120,13 @@ async fn told(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
 
 #[tokio::test]
 async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
+    // given: a project ada owns
     let guarded = guarded();
 
-    let response = invited(&served_to(&guarded, ada()), role::AUTHOR).await;
+    // when: she invites into it for a role
+    let response = inviting(&served_to(&guarded, ada()), role::AUTHOR).await;
 
+    // then: the invitation is told as into the project for that role
     response.assert_status(StatusCode::CREATED);
     let summary: InvitationSummaryDTO = response.json();
     assert_eq!(
@@ -134,12 +137,14 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
         }
     );
     assert_eq!(summary.status, "open");
+    // and: it is issued so by no operator
     let id: InvitationId = summary.id.parse().expect("an invitation's id");
     assert!(matches!(
-        told(&guarded.wired, &id).await.as_slice(),
+        events_of(&guarded.wired, &id).await.as_slice(),
         [InvitationEvent::Issued { scope, by_an_operator: false, .. }]
             if *scope == Scope::Project { project: ProjectLink::from(PROJECT), role: Role::Author }
     ));
+    // and: one mail says as what
     let mailed = guarded.wired.sent_to(BO).await;
     assert_eq!(mailed.len(), 1);
     assert!(
@@ -147,6 +152,7 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
         "the mail says as what: {}",
         mailed[0].body
     );
+    // and: it carries the link
     assert!(
         guarded.wired.links_mailed_to(BO).await[0]
             .starts_with("https://weaveling.example.com/invitation#")
@@ -155,8 +161,10 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
 
 #[tokio::test]
 async fn an_invitation_issued_is_answered_with_who_issued_it() {
+    // given: a project ada owns
     let guarded = guarded();
 
+    // when: she invites into it
     let issued = guarded
         .wired
         .invitations
@@ -164,19 +172,23 @@ async fn an_invitation_issued_is_answered_with_who_issued_it() {
         .await
         .expect("an owner may invite");
 
+    // then: she is answered as who issued it
     assert_eq!(issued.issued_by, Some(AccountId::from("account_ada")));
 }
 
 #[tokio::test]
 async fn an_owner_who_runs_the_instance_issues_an_invitation_that_may_bring_in_a_new_address() {
+    // given: a project ada owns
     let guarded = guarded();
 
-    let response = invited(
+    // when: she invites into it while running the instance
+    let response = inviting(
         &served_to(&guarded, acting("account_ada", true)),
         role::READER,
     )
     .await;
 
+    // then: the invitation is issued as by an operator
     response.assert_status(StatusCode::CREATED);
     let id: InvitationId = response
         .json::<InvitationSummaryDTO>()
@@ -184,7 +196,7 @@ async fn an_owner_who_runs_the_instance_issues_an_invitation_that_may_bring_in_a
         .parse()
         .expect("an invitation's id");
     assert!(matches!(
-        told(&guarded.wired, &id).await.as_slice(),
+        events_of(&guarded.wired, &id).await.as_slice(),
         [InvitationEvent::Issued {
             by_an_operator: true,
             ..
@@ -194,10 +206,12 @@ async fn an_owner_who_runs_the_instance_issues_an_invitation_that_may_bring_in_a
 
 #[tokio::test]
 async fn only_an_owner_invites_and_whoever_may_not_read_the_project_finds_it_not_there() {
+    // given: a project ada owns and grace authors
     let guarded = guarded();
 
+    // then: grace inviting into it is refused as no owner
     refused_as(
-        &invited(
+        &inviting(
             &served_to(&guarded, acting("account_grace", false)),
             role::READER,
         )
@@ -205,23 +219,27 @@ async fn only_an_owner_invites_and_whoever_may_not_read_the_project_finds_it_not
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OWNER,
     );
+    // and: whoever may not read it finds it not there
     for stranger in [acting("account_cy", false), acting("account_op", true)] {
         refused_as(
-            &invited(&served_to(&guarded, stranger), role::READER).await,
+            &inviting(&served_to(&guarded, stranger), role::READER).await,
             StatusCode::NOT_FOUND,
             "not-found",
         );
     }
+    // and: nothing is mailed
     assert!(guarded.wired.sent_to(BO).await.is_empty());
 }
 
 #[tokio::test]
 async fn an_invitation_into_a_project_names_a_role_there_is() {
+    // given: a project ada owns
     let guarded = guarded();
     let server = served_to(&guarded, ada());
 
+    // then: inviting for a role there is not is refused
     refused_as(
-        &invited(&server, "editor").await,
+        &inviting(&server, "editor").await,
         StatusCode::UNPROCESSABLE_ENTITY,
         refused::ROLE_UNKNOWN,
     );
@@ -229,10 +247,12 @@ async fn an_invitation_into_a_project_names_a_role_there_is() {
 
 #[tokio::test]
 async fn whom_to_let_invite_not_being_known_is_a_failure_not_a_no() {
+    // given: a project whose roles cannot be told
     let guarded = guarded();
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
-    invited(&served_to(&guarded, ada()), role::READER)
+    // then: inviting into it is a failure
+    inviting(&served_to(&guarded, ada()), role::READER)
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 }
@@ -270,12 +290,16 @@ async fn listed_by(guarded: &Guarded, acting: Acting, path: &str) -> TestRespons
 
 #[tokio::test]
 async fn an_owner_lists_the_project_s_invitations_and_the_operators_list_keeps_to_the_instance() {
+    // given: a listed invitation into a project and one to the instance
     let guarded = guarded();
     let (into_the_project, to_the_instance) = issued_and_listed(&guarded).await;
 
+    // when: the project's owner lists the project's invitations
     let theirs = listed_by(&guarded, ada(), &format!("/invitations?project={PROJECT}")).await;
+    // and: an operator lists the instance's
     let operators = listed_by(&guarded, wiring::an_operator(), "/invitations").await;
 
+    // then: the owner is told the project's invitation alone, with its role
     theirs.assert_status_ok();
     let theirs = theirs.json::<InvitationPageDTO>().invitations;
     assert_eq!(
@@ -292,6 +316,7 @@ async fn an_owner_lists_the_project_s_invitations_and_the_operators_list_keeps_t
             role: role::READER.to_owned()
         }
     );
+    // and: the operator is told the instance's alone
     assert_eq!(
         operators
             .json::<InvitationPageDTO>()
@@ -305,15 +330,18 @@ async fn an_owner_lists_the_project_s_invitations_and_the_operators_list_keeps_t
 
 #[tokio::test]
 async fn only_an_owner_lists_a_project_s_invitations() {
+    // given: a listed invitation into a project ada owns and grace authors
     let guarded = guarded();
     issued_and_listed(&guarded).await;
     let at = format!("/invitations?project={PROJECT}");
 
+    // then: grace listing the project's invitations is refused as no owner
     refused_as(
         &listed_by(&guarded, acting("account_grace", false), &at).await,
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OWNER,
     );
+    // and: an operator who may not read the project finds it not there
     refused_as(
         &listed_by(&guarded, acting("account_op", true), &at).await,
         StatusCode::NOT_FOUND,
@@ -323,10 +351,12 @@ async fn only_an_owner_lists_a_project_s_invitations() {
 
 #[tokio::test]
 async fn an_owner_withdraws_a_project_s_invitation_which_nobody_else_may() {
+    // given: a listed invitation into a project ada owns and grace authors
     let guarded = guarded();
     let (into_the_project, _) = issued_and_listed(&guarded).await;
     let at = format!("/invitations/{into_the_project}");
 
+    // then: grace withdrawing it is refused as no owner
     refused_as(
         &served_to(&guarded, acting("account_grace", false))
             .delete(&at)
@@ -334,6 +364,7 @@ async fn an_owner_withdraws_a_project_s_invitation_which_nobody_else_may() {
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OWNER,
     );
+    // and: whoever may not read the project finds it not there
     for stranger in [acting("account_cy", false), acting("account_op", true)] {
         refused_as(
             &served_to(&guarded, stranger).delete(&at).await,
@@ -341,13 +372,17 @@ async fn an_owner_withdraws_a_project_s_invitation_which_nobody_else_may() {
             refused::INVITATION_NOT_FOUND,
         );
     }
+    // when: ada withdraws it
     served_to(&guarded, ada())
         .delete(&at)
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: it is withdrawn
     assert!(matches!(
-        told(&guarded.wired, &into_the_project).await.as_slice(),
+        events_of(&guarded.wired, &into_the_project)
+            .await
+            .as_slice(),
         [InvitationEvent::Issued { .. }, InvitationEvent::Withdrawn]
     ));
 }

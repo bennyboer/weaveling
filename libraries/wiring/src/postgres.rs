@@ -150,6 +150,7 @@ mod tests {
 
     #[test]
     fn a_feature_database_sits_beside_the_one_we_were_pointed_at() {
+        // expect: a feature's database is on the same server, named its own
         assert_eq!(
             beside(
                 "postgres://weaveling:weaveling@127.0.0.1:5432/weaveling",
@@ -161,6 +162,7 @@ mod tests {
 
     #[test]
     fn the_query_string_survives_being_pointed_elsewhere() {
+        // expect: a feature's database keeps the query string
         assert_eq!(
             beside(
                 "postgres://host/weaveling?sslmode=require&application_name=weaveling",
@@ -172,20 +174,31 @@ mod tests {
 
     #[test]
     fn every_feature_is_named_the_same_way_the_init_script_names_it() {
+        // expect: a feature's database is named after it
         assert_eq!(named("outline"), "weaveling_outline");
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn instances_starting_at_once_on_a_fresh_server_all_find_the_database_ready() {
+        // given: a feature with no database yet
         let server = test_harness::database_url();
         let feature = format!("racing_{}", Uuid::new_v4().simple());
 
+        // when: eight instances start at once
         let mut starting = JoinSet::new();
         for _ in 0..8 {
             let (server, feature) = (server.clone(), feature.clone());
             starting.spawn(async move { ensure(&server, &feature).await });
         }
         let started = starting.join_all().await;
+
+        // then: every one finds it ready
+        for outcome in started {
+            assert!(
+                outcome.is_ok(),
+                "one created it, the others find it made: {outcome:?}"
+            );
+        }
 
         let keeper = joined(&server, &feature)
             .await
@@ -198,12 +211,5 @@ mod tests {
             .await
             .expect("the raced database can be dropped");
         keeper.close().await;
-
-        for outcome in started {
-            assert!(
-                outcome.is_ok(),
-                "one created it, the others find it made: {outcome:?}"
-            );
-        }
     }
 }

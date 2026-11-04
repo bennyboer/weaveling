@@ -130,35 +130,44 @@ mod tests {
 
     #[test]
     fn a_slugged_address_reads_back_as_a_title() {
+        // expect: the slug's words in title case
         assert_eq!(named("the-silent-loom-project_034Jlq"), "The Silent Loom");
     }
 
     #[test]
     fn one_word_is_still_a_title() {
+        // expect: a one word slug reads as that word in title case
         assert_eq!(named("lautstille-project_034Jlq"), "Lautstille");
     }
 
     #[test]
     fn an_address_with_no_slug_has_no_name_to_show() {
+        // expect: a bare id reads as untitled
         assert_eq!(named("project_034Jlq"), "Untitled");
     }
 
     #[test]
     fn an_id_that_never_had_an_underscore_is_not_mistaken_for_a_slug() {
+        // expect: words without an id read as untitled
         assert_eq!(named("the-silent-loom"), "Untitled");
     }
 
     #[test]
     fn a_title_survives_the_round_trip_through_an_address() {
+        // given: a titled project
         let id = ProjectId::from("project_034Jlq".to_owned());
-        let address = project(&id, "The Silent Loom");
-        let segment = "the-silent-loom-project_034Jlq";
 
+        // when: its address is made
+        let address = project(&id, "The Silent Loom");
+
+        // then: it carries the title slugged before the id
+        let segment = "the-silent-loom-project_034Jlq";
         assert_eq!(
             address,
             format!("/projects/{segment}/write"),
             "a project opens on writing"
         );
+        // and: the title and id read back from it
         assert_eq!(named(segment), "The Silent Loom");
         assert_eq!(project_id(segment), id);
     }

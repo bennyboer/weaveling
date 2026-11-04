@@ -151,16 +151,21 @@ async fn tables_in(pool: &PgPool, schema: &str) -> Vec<String> {
 
 #[tokio::test]
 async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_database() {
+    // given: an event store laid down on postgres
     let fixture = PostgresFixture::setup().await;
     let pool = ready_for("sharing", &fixture).await;
 
+    // when: the tables of its namespace are listed
     let found = tables_in(&pool, &fixture.schema_of("sharing")).await;
 
+    // then: its events and its outbox are there
     assert!(found.contains(&"events".to_owned()) && found.contains(&"outbox".to_owned()));
+    // and: its own ledger
     assert!(
         found.contains(&"_sqlx_migrations_events".to_owned()),
         "the event store keeps its own ledger, found {found:?}"
     );
+    // and: not the usual one
     assert!(
         !found.contains(&"_sqlx_migrations".to_owned()),
         "the default ledger belongs to the feature whose database this is, found {found:?}"
@@ -171,9 +176,11 @@ async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_datab
 
 #[tokio::test]
 async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    // given: an event store laid down on postgres
     let fixture = PostgresFixture::setup().await;
     let pool = ready_for("indexed", &fixture).await;
 
+    // when: the indexes of its namespace are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 ORDER BY indexname",
     )
@@ -182,6 +189,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are those its queries rely on
     assert_eq!(
         found,
         vec![
@@ -202,6 +210,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
+    // given: a sample service on postgres
     let bench = OnPostgres::setup().await;
     let service: EventSourcingService<Sample> = EventSourcingService::new(
         Arc::new(PostgresEventStore::new(
@@ -211,6 +220,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
         )),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    // and: a transaction, every other connection of the pool taken
     let aggregate = AggregateId::from("sample_on_one_connection");
     let mut transaction = bench
         .transactions
@@ -228,6 +238,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
         );
     }
 
+    // when: a sample is begun and retitled twice in that transaction
     tokio::time::timeout(std::time::Duration::from_secs(3), async {
         service
             .begin(
@@ -255,12 +266,14 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
     })
     .await
     .expect("a command reads through the transaction it is given, needing no connection beside it");
+    // and: the transaction is finished
     drop(taken);
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: the sample has the last title
     assert_eq!(
         service
             .latest(&aggregate)
@@ -275,6 +288,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
+    // given: a sample service on postgres
     let bench = OnPostgres::setup().await;
     let service: EventSourcingService<Sample> = EventSourcingService::new(
         Arc::new(PostgresEventStore::new(
@@ -284,6 +298,7 @@ async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
         )),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    // and: a sample
     let aggregate = AggregateId::from("sample_forgotten");
     let mut transaction = bench
         .transactions
@@ -306,6 +321,7 @@ async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
         .finish()
         .await
         .expect("finishing should succeed");
+    // and: a transaction retitling it, not yet finished
     let mut appending = bench
         .transactions
         .begin()
@@ -321,6 +337,7 @@ async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
         .await
         .expect("retitling should succeed");
 
+    // when: the sample is forgotten while that transaction finishes
     tokio::join!(
         async {
             transacting::retrying!(&bench.transactions, |forgetting| {
@@ -341,6 +358,7 @@ async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
         }
     );
 
+    // then: nothing of the sample is left
     assert!(
         bench
             .store
@@ -355,6 +373,7 @@ async fn a_stream_forgotten_while_an_append_is_under_way_is_gone_either_way() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
+    // given: a sample service on postgres
     let bench = OnPostgres::setup().await;
     let service: EventSourcingService<Sample> = EventSourcingService::new(
         Arc::new(PostgresEventStore::new(
@@ -364,6 +383,7 @@ async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
         )),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    // and: two samples
     let (one, other) = (
         AggregateId::from("sample_one"),
         AggregateId::from("sample_other"),
@@ -391,6 +411,7 @@ async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
             .await
             .expect("finishing should succeed");
     }
+    // and: two transactions, each retitling one of them
     let mut first = bench
         .transactions
         .begin()
@@ -401,14 +422,16 @@ async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
         .begin()
         .await
         .expect("beginning should succeed");
-    assert!(!lost_race(&service, &mut first, &one).await);
-    assert!(!lost_race(&service, &mut second, &other).await);
+    assert!(!retitling_loses_a_race(&service, &mut first, &one).await);
+    assert!(!retitling_loses_a_race(&service, &mut second, &other).await);
 
+    // when: each retitles the other one too
     let (crossing, crossed) = tokio::join!(
-        lost_race(&service, &mut first, &other),
-        lost_race(&service, &mut second, &one)
+        retitling_loses_a_race(&service, &mut first, &other),
+        retitling_loses_a_race(&service, &mut second, &one)
     );
 
+    // then: one of them loses a race
     assert_eq!(
         [crossing, crossed].iter().filter(|lost| **lost).count(),
         1,
@@ -420,7 +443,7 @@ async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
     bench.cleanup().await;
 }
 
-async fn lost_race(
+async fn retitling_loses_a_race(
     service: &EventSourcingService<Sample>,
     transaction: &mut Transaction,
     aggregate: &AggregateId,

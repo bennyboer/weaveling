@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use crate::wiring;
 use crate::wiring::Wired;
 
-fn told(routing: &str, event: Value) -> Message {
+fn a_message(routing: &str, event: Value) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key is fine"),
         json!({
@@ -23,7 +23,7 @@ fn told(routing: &str, event: Value) -> Message {
     )
 }
 
-fn signed_up(named: &str, email: &str) -> Value {
+fn a_sign_up(named: &str, email: &str) -> Value {
     json!({
         "version": 1,
         "name": named,
@@ -41,19 +41,24 @@ async fn known(wired: &Wired) -> Vec<Person> {
 
 #[tokio::test]
 async fn whoever_signed_up_either_way_is_known_by_name_and_address() {
+    // given: either way of signing up
     for (routing, named) in [
         (SIGNED_UP, "SIGNED_UP"),
         (SIGNED_UP_BY_INVITATION, "SIGNED_UP_BY_INVITATION"),
     ] {
-        let wired = wiring::wired();
+        // and: the listener remembering who signed up
+        let wired = wiring::a_workbench();
         let listener = wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()));
+        // then: it hears that way
         assert!(listener.hears(&RoutingKey::parse(routing).expect("a declared key")));
 
+        // when: a sign-up is heard
         listener
-            .handle(&told(routing, signed_up(named, "ada@example.com")))
+            .handle(&a_message(routing, a_sign_up(named, "ada@example.com")))
             .await
             .expect("a sign-up is taken in");
 
+        // then: whoever signed up is known by name and address
         assert_eq!(
             known(&wired).await,
             vec![Person {
@@ -67,18 +72,22 @@ async fn whoever_signed_up_either_way_is_known_by_name_and_address() {
 
 #[tokio::test]
 async fn what_is_no_sign_up_or_names_no_address_is_refused_and_teaches_nothing() {
-    let wired = wiring::wired();
+    // given: the listener remembering who signed up
+    let wired = wiring::a_workbench();
     let listener = wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()));
 
+    // when: what is no sign-up or names no address is heard
     for unreadable in [
-        told(SIGNED_UP, json!({ "version": 1, "name": "EMAIL_VERIFIED" })),
-        told(SIGNED_UP, json!({ "version": 1, "name": "SIGNED_UP" })),
-        told(SIGNED_UP, signed_up("SIGNED_UP", "not an address")),
+        a_message(SIGNED_UP, json!({ "version": 1, "name": "EMAIL_VERIFIED" })),
+        a_message(SIGNED_UP, json!({ "version": 1, "name": "SIGNED_UP" })),
+        a_message(SIGNED_UP, a_sign_up("SIGNED_UP", "not an address")),
     ] {
+        // then: it is refused
         assert!(
             listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }
+    // and: nobody is known
     assert!(known(&wired).await.is_empty());
 }

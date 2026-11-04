@@ -17,7 +17,7 @@ fn an_owner() -> Acting {
     }
 }
 
-async fn invited_into(wired: &Wired, project: &str, to: &str) -> InvitationId {
+async fn a_listed_invitation_into(wired: &Wired, project: &str, to: &str) -> InvitationId {
     let id = wired
         .invitations
         .invite_to_project(&an_owner(), project, Role::Author, to, ORIGIN)
@@ -44,7 +44,7 @@ async fn last_of(wired: &Wired, id: &InvitationId) -> (InvitationEvent, Agent) {
     (last.event.clone(), last.metadata.agent.clone())
 }
 
-fn deleted(project: &str) -> Message {
+fn a_sweep_of(project: &str) -> Message {
     Message::opening(
         RoutingKey::parse(SWEEP_PROJECT).expect("a declared routing key is fine"),
         json!({ "project": project }),
@@ -54,25 +54,33 @@ fn deleted(project: &str) -> Message {
 
 #[tokio::test]
 async fn a_deleted_project_s_open_invitations_are_withdrawn_by_the_system_page_after_page() {
-    let wired = wiring::wired();
+    // given: the sweep of a deleted project's invitations
+    let wired = wiring::a_workbench();
     let listener = WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone());
+    // then: it hears a project's sweep
     assert!(listener.hears(&RoutingKey::parse(SWEEP_PROJECT).expect("a declared key")));
+    // and: not its deletion
     assert!(
         !listener.hears(&RoutingKey::parse(DELETED).expect("a declared key")),
         "the sweep waits for the tombstone, which asks for it once it has committed"
     );
+    // when: more than a page of invitations into a project and one into another are listed
     let mut into_the_loom = Vec::new();
     for n in 0..101 {
-        into_the_loom
-            .push(invited_into(&wired, "project_loom", &format!("reader{n}@example.com")).await);
+        into_the_loom.push(
+            a_listed_invitation_into(&wired, "project_loom", &format!("reader{n}@example.com"))
+                .await,
+        );
     }
-    let elsewhere = invited_into(&wired, "project_weft", "grace@example.com").await;
+    let elsewhere = a_listed_invitation_into(&wired, "project_weft", "grace@example.com").await;
 
+    // and: the project is swept
     listener
-        .take_in(&deleted("project_loom"))
+        .take_in(&a_sweep_of("project_loom"))
         .await
         .expect("the sweep goes through");
 
+    // then: each into it is withdrawn by the system
     for id in &into_the_loom {
         assert_eq!(
             last_of(&wired, id).await,
@@ -80,6 +88,7 @@ async fn a_deleted_project_s_open_invitations_are_withdrawn_by_the_system_page_a
             "every page is swept, not the first alone"
         );
     }
+    // and: the other stays open
     assert!(matches!(
         last_of(&wired, &elsewhere).await.0,
         InvitationEvent::Issued { .. }
@@ -89,27 +98,32 @@ async fn a_deleted_project_s_open_invitations_are_withdrawn_by_the_system_page_a
 #[tokio::test]
 async fn an_invitation_taken_up_or_withdrawn_before_is_left_as_it_was_and_a_sweep_heard_again_changes_nothing()
  {
-    let wired = wiring::wired();
+    // given: the sweep of a deleted project's invitations
+    let wired = wiring::a_workbench();
     let listener = WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone());
-    let accepted = invited_into(&wired, "project_loom", "ada@example.com").await;
-    let open = invited_into(&wired, "project_loom", "grace@example.com").await;
+    // and: an invitation into the project taken up and one open
+    let accepted = a_listed_invitation_into(&wired, "project_loom", "ada@example.com").await;
+    let open = a_listed_invitation_into(&wired, "project_loom", "grace@example.com").await;
     wired
         .invitations
         .taken_up(None, &accepted, &Agent::Account("account_ada".into()))
         .await
         .expect("taking up should succeed");
 
+    // when: the project is swept twice
     for _ in 0..2 {
         listener
-            .take_in(&deleted("project_loom"))
+            .take_in(&a_sweep_of("project_loom"))
             .await
             .expect("an invitation accepted meanwhile, or the sweep heard again, is no failure");
     }
 
+    // then: the one taken up stays accepted
     assert!(matches!(
         last_of(&wired, &accepted).await.0,
         InvitationEvent::Accepted { .. }
     ));
+    // and: the open one is withdrawn once
     let told = wired
         .store
         .read_from(&AggregateId::from(&open), KIND, Version::of(1))
@@ -126,7 +140,8 @@ async fn an_invitation_taken_up_or_withdrawn_before_is_left_as_it_was_and_a_swee
 #[tokio::test]
 async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_before_is_withdrawn_once_listed()
  {
-    let wired = wiring::wired();
+    // given: an invitation into a project not yet listed
+    let wired = wiring::a_workbench();
     let just_before = wired
         .invitations
         .invite_to_project(
@@ -139,8 +154,9 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
         .await
         .expect("an owner may invite")
         .id;
+    // and: the project swept and its tombstone laid
     WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone())
-        .take_in(&deleted("project_loom"))
+        .take_in(&a_sweep_of("project_loom"))
         .await
         .expect("the sweep goes through");
     wired
@@ -153,6 +169,7 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
         .await
         .expect("laying the tombstone should succeed");
 
+    // then: no invitation into it is issued
     assert!(matches!(
         wired
             .invitations
@@ -166,6 +183,7 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
             .await,
         Err(InvitationsError::ProjectNotThere)
     ));
+    // and: the one issued before is missed
     assert!(
         matches!(
             last_of(&wired, &just_before).await.0,
@@ -174,6 +192,7 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
         "the sweep missed it, as the list had not heard of it yet"
     );
 
+    // when: that one is listed and asked after
     let project = wired
         .invitations
         .catalogue(None, &just_before)
@@ -186,22 +205,26 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
         .await
         .expect("withdrawing should succeed");
 
+    // then: it is withdrawn by the system
     assert_eq!(
         last_of(&wired, &just_before).await,
         (InvitationEvent::Withdrawn, Agent::System)
     );
-    invited_into(&wired, "project_weft", "hedy@example.com").await;
+    // and: invitations into other projects are still issued
+    a_listed_invitation_into(&wired, "project_weft", "hedy@example.com").await;
 }
 
 #[tokio::test]
 async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_was() {
-    let wired = wiring::wired();
-    let accepted = invited_into(&wired, "project_loom", "ada@example.com").await;
+    // given: a listed invitation into a project, taken up
+    let wired = wiring::a_workbench();
+    let accepted = a_listed_invitation_into(&wired, "project_loom", "ada@example.com").await;
     wired
         .invitations
         .taken_up(None, &accepted, &Agent::Account("account_ada".into()))
         .await
         .expect("taking up should succeed");
+    // and: the project's tombstone
     wired
         .invitations
         .lay_project_tombstone(
@@ -212,6 +235,7 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
         .await
         .expect("laying the tombstone should succeed");
 
+    // when: the invitation is listed and asked after again
     wired
         .invitations
         .catalogue(None, &accepted)
@@ -223,6 +247,7 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
         .await
         .expect("an invitation taken up is no failure to withdraw if its project is gone");
 
+    // then: it stays accepted
     assert!(matches!(
         last_of(&wired, &accepted).await.0,
         InvitationEvent::Accepted { .. }

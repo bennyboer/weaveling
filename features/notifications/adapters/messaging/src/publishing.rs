@@ -63,6 +63,7 @@ mod tests {
 
     #[test]
     fn a_noted_role_change_is_published_with_whom_it_is_for_and_who_changed_it() {
+        // given: a noted role change
         let noted = recorded(
             NoticeEvent::Noted {
                 account: AccountId::from("account_bo"),
@@ -75,12 +76,15 @@ mod tests {
             false,
         );
 
+        // when: it is published
         let message = message_for(&noted).expect("a noted notice is published");
 
+        // then: it lands on the noted key
         assert_eq!(
             message.routing,
             RoutingKey::parse(NOTED).expect("a declared key")
         );
+        // and: tells whom it is for and who changed it
         assert_eq!(
             eventpublishing::published_in::<NoticeEventDTO>(&message)
                 .expect("the body reads back")
@@ -99,8 +103,10 @@ mod tests {
 
     #[test]
     fn dismissing_is_published_and_a_snapshot_is_not() {
+        // when: a dismissing is published
         let dismissed =
             message_for(&recorded(NoticeEvent::Dismissed, false)).expect("dismissing is published");
+        // and: a snapshot is offered
         let snapshot = recorded(
             NoticeEvent::Snapshotted {
                 account: AccountId::from("account_bo"),
@@ -115,10 +121,12 @@ mod tests {
             true,
         );
 
+        // then: the dismissing lands on the dismissed key
         assert_eq!(
             dismissed.routing,
             RoutingKey::parse(DISMISSED).expect("a declared key")
         );
+        // and: the snapshot is not published
         assert!(message_for(&snapshot).is_none());
     }
 }

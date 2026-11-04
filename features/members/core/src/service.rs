@@ -105,6 +105,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_project_s_members_are_founded_once_however_often_it_is_asked() {
+        // given: a project without members
         let store: Arc<InMemoryEventStore<MembersEvent>> = Arc::new(InMemoryEventStore::new());
         let members = MembersService::new(
             store.clone(),
@@ -114,6 +115,7 @@ mod tests {
 
         let transactions = InMemoryTransactions::new();
 
+        // when: its members are founded twice, each time by another owner
         for owner in [ada(), AccountId::from("account_grace")] {
             let mut transaction = transactions
                 .begin()
@@ -129,6 +131,7 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
+        // then: they were founded once, by the first
         let founded = store
             .read_from(&AggregateId::from(&project), crate::KIND, Version::of(1))
             .await
@@ -242,6 +245,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_store_that_is_down_is_a_failure_to_found() {
+        // given: members kept in a store that is down
         let members = MembersService::new(
             Arc::new(DownStore),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
@@ -252,6 +256,7 @@ mod tests {
             .await
             .expect("beginning should succeed");
 
+        // expect: founding fails
         assert!(
             members
                 .found(

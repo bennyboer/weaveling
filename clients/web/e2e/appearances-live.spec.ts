@@ -103,18 +103,23 @@ async function inspectedLive(page: Page, idea: string) {
 test("a section another author notes the idea in shows in its inspector, named, without asking again", async ({
   page,
 }) => {
+  // given: an idea in no section, inspected live
   await aNewProject(page, "AppearingLive");
   const idea = await anIdea(page, "A girl in a wood");
   const asks = await inspectedLive(page, idea);
   await expect(page.getByText("Not in the book yet")).toBeVisible();
 
+  // when: another author notes it in a section
   await noteInASection(page, idea, "Chapter one");
 
+  // then: the section shows in its inspector, named
   await expect(appearances(page).getByRole("link", { name: "Chapter one" })).toBeVisible();
+  // and: nothing is asked for again
   expect(asks()).toBe(1);
 });
 
 test("a scene that no longer draws on the idea leaves its inspector", async ({ page }) => {
+  // given: an idea a scene draws on, inspected live
   await aNewProject(page, "UnlinkedLive");
   const idea = await anIdea(page, "A girl in a wood");
   const scene = await linkFromAScene(page, idea, "The clearing");
@@ -127,13 +132,16 @@ test("a scene that no longer draws on the idea leaves its inspector", async ({ p
   await inspectedFollowingLive(page, idea);
   await expect(appearances(page).getByRole("link", { name: "The clearing" })).toBeVisible();
 
+  // when: the scene no longer draws on it
   const unlinked = await page.request.delete(`${API}/scenes/${scene}/ideas/${idea}`);
   expect(unlinked.ok()).toBe(true);
 
+  // then: the idea is in the book nowhere
   await expect(page.getByText("Not in the book yet")).toBeVisible();
 });
 
 test("a scene deleted leaves the inspector of every idea it drew on", async ({ page }) => {
+  // given: an idea noted in a section and drawn on by a scene, inspected live
   await aNewProject(page, "DeletedLive");
   const idea = await anIdea(page, "A girl in a wood");
   await noteInASection(page, idea, "Chapter one");
@@ -145,20 +153,25 @@ test("a scene deleted leaves the inspector of every idea it drew on", async ({ p
   await inspectedFollowingLive(page, idea);
   await expect(appearances(page).getByRole("listitem")).toHaveCount(2);
 
+  // when: the scene is deleted
   const deleted = await page.request.delete(`${API}/scenes/${scene}`);
   expect(deleted.ok()).toBe(true);
 
+  // then: the scene leaves the inspector
   await expect(appearances(page).getByRole("link", { name: "The clearing" })).toHaveCount(0);
+  // and: the section stays
   await expect(appearances(page).getByRole("link", { name: "Chapter one" })).toBeVisible();
 });
 
 test("places asked for and answered after newer ones were told are let go", async ({
   page,
 }) => {
+  // given: an idea noted in a section and drawn on by a scene
   await aNewProject(page, "AppearingOvertaken");
   const idea = await anIdea(page, "A girl in a wood");
   await noteInASection(page, idea, "Chapter one");
   const scene = await linkFromAScene(page, idea, "The clearing");
+  // and: its places asked for and not yet answered
   const live = await routingLive(page, { withheld: ["appearances"] });
   const tell = (places: object[]) =>
     live.tell("appearances", { of: idea, version: 1_000_000, event: { places } });
@@ -175,12 +188,16 @@ test("places asked for and answered after newer ones were told are let go", asyn
   await inspect(page, idea);
   await expect.poll(() => answering).toBe(true);
 
+  // when: newer places are told
   tell([{ type: "scene", id: scene }]);
+  // then: the scene shows
   await expect(appearances(page).getByRole("link", { name: "The clearing" })).toBeVisible();
+  // when: the older answer arrives
   release();
   await page.waitForResponse(/\/api\/appearances\?idea=/);
   await page.waitForTimeout(200);
 
+  // then: the scene still shows
   await expect(
     appearances(page).getByRole("link", { name: "The clearing" }),
     "the answer was asked for before the places were told",
@@ -190,14 +207,18 @@ test("places asked for and answered after newer ones were told are let go", asyn
 test("a scene the inspector hears of only through the idea's places is asked for, and named", async ({
   page,
 }) => {
+  // given: scenes not heard of live
   await routingLive(page, { withheld: ["scenes"] });
+  // and: an idea in no section, inspected live
   await aNewProject(page, "AppearingUnknownScene");
   const idea = await anIdea(page, "A girl in a wood");
   await inspectedLive(page, idea);
   await expect(page.getByText("Not in the book yet")).toBeVisible();
 
+  // when: a scene draws on it
   await linkFromAScene(page, idea, "The clearing");
 
+  // then: the scene shows, named
   await expect(
     appearances(page).getByRole("link", { name: "The clearing" }),
     "the scenes are asked for again, since the place named one the inspector did not know",

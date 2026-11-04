@@ -124,8 +124,10 @@ mod tests {
 
     #[test]
     fn a_link_is_announced_with_both_ends() {
+        // given: a scene
         let scene = a_scene();
 
+        // when: its link to an idea is announced
         let told = message_for(
             &SceneChange::IdeaLinked {
                 scene,
@@ -136,7 +138,9 @@ mod tests {
             at(2_000),
         );
 
+        // then: it goes under the link's key
         assert_eq!(told.routing.to_string(), IDEA_LINKED);
+        // and: names both ends, the version and the project
         assert_eq!(
             told.payload,
             json!({
@@ -147,11 +151,13 @@ mod tests {
             }),
             "a listener cannot ask scenes which idea it was, so both ends travel in the message,              and the version tells a late link from a newer unlink"
         );
+        // and: when it happened
         assert_eq!(told.occurred_at, at(2_000));
     }
 
     #[test]
     fn an_unlink_is_announced_under_its_own_key() {
+        // when: an unlink is announced
         let told = message_for(
             &SceneChange::IdeaUnlinked {
                 scene: a_scene(),
@@ -162,13 +168,16 @@ mod tests {
             at(2_000),
         );
 
+        // then: it goes under the unlink's key
         assert_eq!(told.routing.to_string(), IDEA_UNLINKED);
     }
 
     #[test]
     fn a_deletion_names_the_scene() {
+        // given: a scene
         let scene = a_scene();
 
+        // when: its deletion is announced
         let told = message_for(
             &SceneChange::Deleted {
                 scene,
@@ -177,7 +186,9 @@ mod tests {
             at(2_000),
         );
 
+        // then: it goes under the deletion's key
         assert_eq!(told.routing.to_string(), DELETED);
+        // and: names the scene and its project
         assert_eq!(
             told.payload,
             json!({ "scene": scene.to_string(), "context": { "project": "project_1" } })
@@ -186,8 +197,10 @@ mod tests {
 
     #[test]
     fn a_word_count_is_announced_with_its_scene_s_project() {
+        // given: a scene
         let scene = a_scene();
 
+        // when: its word count is announced
         let told = message_for(
             &SceneChange::WordsCounted {
                 scene,
@@ -197,7 +210,9 @@ mod tests {
             at(2_000),
         );
 
+        // then: it goes under the count's key
         assert_eq!(told.routing.to_string(), WORDS_COUNTED);
+        // and: reads back as the count of the scene in its project
         let counted: WordsCountedDTO =
             serde_json::from_value(told.payload).expect("a count reads back as its contract");
         assert_eq!(
@@ -213,9 +228,11 @@ mod tests {
 
     #[test]
     fn a_scene_s_name_travels_in_three_announcements_each_naming_its_project() {
+        // given: a scene in a project
         let scene = a_scene();
         let project = ProjectLink::from("project_1");
 
+        // when: its creation, retitling and new opening are announced
         let created = message_for(
             &SceneChange::Created {
                 scene,
@@ -241,6 +258,7 @@ mod tests {
             at(2_000),
         );
 
+        // then: the creation reads back with its project
         assert_eq!(created.routing.to_string(), CREATED);
         assert_eq!(
             serde_json::from_value::<SceneCreatedDTO>(created.payload).expect("reads back"),
@@ -249,6 +267,7 @@ mod tests {
                 project: "project_1".to_owned(),
             }
         );
+        // and: the retitling reads back with its project, title and version
         assert_eq!(retitled.routing.to_string(), RETITLED);
         assert_eq!(
             serde_json::from_value::<SceneRetitledDTO>(retitled.payload).expect("reads back"),
@@ -259,6 +278,7 @@ mod tests {
                 version: 4,
             }
         );
+        // and: the new opening reads back with its project
         assert_eq!(opened.routing.to_string(), OPENING_CHANGED);
         assert_eq!(
             serde_json::from_value::<OpeningChangedDTO>(opened.payload).expect("reads back"),
@@ -272,8 +292,10 @@ mod tests {
 
     #[test]
     fn every_announcement_reads_back_as_its_contract_shape() {
+        // given: a scene
         let scene = a_scene();
 
+        // when: its link and its deletion are announced and read back
         let linked: IdeaLinkDTO = serde_json::from_value(
             message_for(
                 &SceneChange::IdeaLinked {
@@ -299,6 +321,7 @@ mod tests {
         )
         .expect("a deletion reads back as the contract says");
 
+        // then: each says what was announced
         assert_eq!(linked.idea, "idea_1");
         assert_eq!(linked.version, 3);
         assert_eq!(deleted.scene, scene.to_string());
@@ -306,10 +329,12 @@ mod tests {
 
     #[test]
     fn every_announcement_carries_its_scene_s_project_as_its_context() {
+        // given: a scene in a project
         let scene = a_scene();
         let project = ProjectLink::from("project_1");
         let idea = IdeaLink::from("idea_1");
 
+        // when: each change of it is announced
         for change in [
             SceneChange::Created {
                 scene,
@@ -350,6 +375,7 @@ mod tests {
         ] {
             let told = message_for(&change, at(2_000));
 
+            // then: it carries the project as its context
             assert_eq!(
                 eventpublishing::context_in(&told).get(PROJECT),
                 Some("project_1"),

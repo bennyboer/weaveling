@@ -68,11 +68,13 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn a_transaction_begun_in_memory_has_no_postgres_connection() {
+    // given: a transaction begun in memory
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
         .expect("beginning should succeed");
 
+    // then: it has no postgres connection
     assert!(matches!(
         postgres::connection(&mut transaction),
         Err(Failure::BegunElsewhere)
@@ -81,6 +83,7 @@ async fn a_transaction_begun_in_memory_has_no_postgres_connection() {
 
 #[tokio::test]
 async fn a_transaction_begun_on_postgres_takes_no_undo() {
+    // given: a transaction begun on postgres
     let bench = OnPostgres::setup().await;
     let mut transaction = bench
         .transactions()
@@ -88,8 +91,10 @@ async fn a_transaction_begun_on_postgres_takes_no_undo() {
         .await
         .expect("beginning should succeed");
 
+    // when: an undo is taken for it
     let undoing = memory::undo_on_rollback(&mut transaction, || {});
 
+    // then: it is refused
     assert!(matches!(undoing, Err(Failure::BegunElsewhere)));
     drop(transaction);
     bench.cleanup().await;
@@ -135,8 +140,10 @@ async fn tries_until_it_raises_no_more(
 
 #[tokio::test]
 async fn a_statement_that_lost_a_race_is_tried_again_however_its_failure_was_answered() {
+    // given: transactions on postgres
     let bench = OnPostgres::setup().await;
 
+    // then: a statement that lost a race either way is tried once more and goes through
     for code in ["40001", "40P01"] {
         assert_eq!(
             tries_until_it_raises_no_more(&bench, code).await,
@@ -149,10 +156,13 @@ async fn a_statement_that_lost_a_race_is_tried_again_however_its_failure_was_ans
 
 #[tokio::test]
 async fn a_statement_failing_otherwise_is_not_tried_again() {
+    // given: transactions on postgres
     let bench = OnPostgres::setup().await;
 
+    // when: a statement fails other than by losing a race
     let (answered, tried) = tries_until_it_raises_no_more(&bench, "P0001").await;
 
+    // then: it is not tried again
     assert!(answered.is_err());
     assert_eq!(tried, 1);
     bench.cleanup().await;
@@ -160,7 +170,9 @@ async fn a_statement_failing_otherwise_is_not_tried_again() {
 
 #[tokio::test]
 async fn a_commit_that_lost_a_race_is_tried_again() {
+    // given: transactions on postgres
     let bench = OnPostgres::setup().await;
+    // and: a table whose rows lose a race when committed
     sqlx::raw_sql(AssertSqlSafe(
         "CREATE TABLE doomed (nth BIGINT);
          CREATE FUNCTION doom() RETURNS trigger AS $doom$ BEGIN RAISE EXCEPTION 'doomed' USING ERRCODE = '40001'; END $doom$ LANGUAGE plpgsql;
@@ -170,6 +182,7 @@ async fn a_commit_that_lost_a_race_is_tried_again() {
     .execute(&bench.pool)
     .await
     .expect("the doomed table should lay down");
+    // when: a row is written to it
     let mut tried = 0;
 
     let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), |transaction| {
@@ -183,6 +196,7 @@ async fn a_commit_that_lost_a_race_is_tried_again() {
         Ok(tried)
     });
 
+    // then: the write is tried once more and goes through
     assert_eq!(
         (answered, tried),
         (Ok(2), 2),
@@ -193,13 +207,16 @@ async fn a_commit_that_lost_a_race_is_tried_again() {
 
 #[tokio::test]
 async fn a_row_fetched_that_lost_a_race_is_tried_again() {
+    // given: transactions on postgres
     let bench = OnPostgres::setup().await;
+    // and: a function that loses a race when called
     sqlx::raw_sql(AssertSqlSafe(
         "CREATE FUNCTION lose() RETURNS BIGINT AS $lose$ BEGIN RAISE EXCEPTION 'lost' USING ERRCODE = '40001'; END $lose$ LANGUAGE plpgsql;",
     ))
     .execute(&bench.pool)
     .await
     .expect("the losing function should lay down");
+    // when: a row is fetched from it
     let mut tried = 0;
 
     let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), |transaction| {
@@ -213,13 +230,16 @@ async fn a_row_fetched_that_lost_a_race_is_tried_again() {
         Ok(tried)
     });
 
+    // then: the fetch is tried once more and goes through
     assert_eq!((answered, tried), (Ok(2), 2));
     bench.cleanup().await;
 }
 
 #[tokio::test]
 async fn a_write_given_one_try_is_still_tried_again_when_its_transaction_lost_a_race() {
+    // given: transactions on postgres
     let bench = OnPostgres::setup().await;
+    // when: a write given one try loses a race in the database
     let mut tried = 0;
 
     let answered: Result<u8, Refused> = crate::retrying!(bench.transactions(), 1, |transaction| {
@@ -233,6 +253,7 @@ async fn a_write_given_one_try_is_still_tried_again_when_its_transaction_lost_a_
         Ok(tried)
     });
 
+    // then: it is tried once more and goes through
     assert_eq!(
         (answered, tried),
         (Ok(2), 2),
@@ -241,7 +262,11 @@ async fn a_write_given_one_try_is_still_tried_again_when_its_transaction_lost_a_
     bench.cleanup().await;
 }
 
-async fn the_first_word(bench: &OnPostgres, word: &str, both_read: &tokio::sync::Barrier) -> u8 {
+async fn writing_the_first_word(
+    bench: &OnPostgres,
+    word: &str,
+    both_read: &tokio::sync::Barrier,
+) -> u8 {
     let mut tried = 0;
     let answered: Result<(), Refused> = crate::retrying!(bench.transactions(), |transaction| {
         tried += 1;
@@ -268,25 +293,30 @@ async fn the_first_word(bench: &OnPostgres, word: &str, both_read: &tokio::sync:
 
 #[tokio::test]
 async fn two_writers_that_each_read_nothing_written_yet_cannot_both_write() {
+    // given: transactions on postgres with nothing written yet
     let bench = OnPostgres::setup().await;
     let both_read = tokio::sync::Barrier::new(2);
 
+    // when: two writers each read nothing written and then write
     let (warp, weft) = tokio::join!(
-        the_first_word(&bench, "warp", &both_read),
-        the_first_word(&bench, "weft", &both_read)
+        writing_the_first_word(&bench, "warp", &both_read),
+        writing_the_first_word(&bench, "weft", &both_read)
     );
 
+    // then: only one of them wrote
     assert_eq!(
         bench.written().await.len(),
         1,
         "each read the table empty, so one of them must have lost and read it again"
     );
+    // and: the other tried once more
     assert_eq!(warp.max(weft), 2, "the one that lost tried once more");
     bench.cleanup().await;
 }
 
 #[tokio::test]
 async fn a_transaction_on_a_feature_pool_is_serializable() {
+    // given: a transaction begun on postgres
     let bench = OnPostgres::setup().await;
     let mut transaction = bench
         .transactions()
@@ -294,11 +324,13 @@ async fn a_transaction_on_a_feature_pool_is_serializable() {
         .await
         .expect("beginning should succeed");
 
+    // when: its isolation is asked
     let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
         .fetch_one(postgres::connection(&mut transaction).expect("a PostgreSQL transaction"))
         .await
         .expect("asking should succeed");
 
+    // then: it is serializable
     assert_eq!(isolation, "serializable");
     drop(transaction);
     bench.cleanup().await;

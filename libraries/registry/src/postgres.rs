@@ -73,11 +73,13 @@ mod tests {
 
     #[test]
     fn the_ledger_is_renamed_at_all() {
+        // expect: the ledger is the registry's own
         assert_eq!(migrations().table_name, LEDGER);
     }
 
     #[test]
     fn the_ledger_is_never_renamed_to_the_one_a_feature_will_want() {
+        // expect: the ledger is neither the default one nor the event store's
         assert_ne!(migrations().table_name, Migrator::DEFAULT.table_name);
         assert_ne!(
             migrations().table_name,

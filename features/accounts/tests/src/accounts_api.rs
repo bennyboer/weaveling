@@ -11,14 +11,14 @@ use time::Duration;
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
-fn served() -> (Wired, TestServer) {
+fn a_server() -> (Wired, TestServer) {
     let wired = wiring::wired();
     let server = TestServer::new(wired.routes.clone());
 
     (wired, server)
 }
 
-fn signing_up(email: &str, name: &str, password: &str) -> SignUpRequest {
+fn a_sign_up(email: &str, name: &str, password: &str) -> SignUpRequest {
     SignUpRequest {
         email: email.to_owned(),
         name: name.to_owned(),
@@ -38,62 +38,69 @@ fn refused_as(response: TestResponse, kind: &str) -> Value {
 
 #[tokio::test]
 async fn signing_up_is_accepted_and_a_code_goes_out() {
-    let (wired, server) = served();
+    // given: a server
+    let (wired, server) = a_server();
 
+    // when: an account signs up
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // and: a code is sent
     assert_eq!(wired.codes_sent_to(ADA).len(), 1);
 }
 
 #[tokio::test]
 async fn an_address_already_taken_is_answered_like_any_other() {
-    let (_wired, server) = served();
+    // given: an account signed up
+    let (_wired, server) = a_server();
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // then: signing up again with its address is accepted
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Mallory", "another long password"))
+        .json(&a_sign_up(ADA, "Mallory", "another long password"))
         .await
         .assert_status(StatusCode::ACCEPTED);
 }
 
 #[tokio::test]
 async fn what_cannot_make_an_account_is_refused_by_its_kind() {
-    let (_wired, server) = served();
+    // given: a server
+    let (_wired, server) = a_server();
 
+    // then: each sign up that cannot make an account is refused by its kind
     for (request, kind) in [
         (
-            signing_up("ada", "Ada", HER_PASSWORD),
+            a_sign_up("ada", "Ada", HER_PASSWORD),
             refused::EMAIL_MALFORMED,
         ),
         (
-            signing_up(
+            a_sign_up(
                 &format!("{}@example.com", "a".repeat(300)),
                 "Ada",
                 HER_PASSWORD,
             ),
             refused::EMAIL_TOO_LONG,
         ),
-        (signing_up(ADA, "  ", HER_PASSWORD), refused::NAME_BLANK),
+        (a_sign_up(ADA, "  ", HER_PASSWORD), refused::NAME_BLANK),
         (
-            signing_up(ADA, "A\u{7}da", HER_PASSWORD),
+            a_sign_up(ADA, "A\u{7}da", HER_PASSWORD),
             refused::NAME_CONTROL_CHARACTER,
         ),
         (
-            signing_up(ADA, &"a".repeat(101), HER_PASSWORD),
+            a_sign_up(ADA, &"a".repeat(101), HER_PASSWORD),
             refused::NAME_TOO_LONG,
         ),
-        (signing_up(ADA, "Ada", "short"), refused::PASSWORD_TOO_SHORT),
+        (a_sign_up(ADA, "Ada", "short"), refused::PASSWORD_TOO_SHORT),
         (
-            signing_up(ADA, "Ada", &"a".repeat(257)),
+            a_sign_up(ADA, "Ada", &"a".repeat(257)),
             refused::PASSWORD_TOO_LONG,
         ),
     ] {
@@ -103,29 +110,34 @@ async fn what_cannot_make_an_account_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn a_refused_length_says_its_numbers() {
-    let (_wired, server) = served();
+    // given: a server
+    let (_wired, server) = a_server();
 
+    // when: a sign up with too short a password is refused
     let told = refused_as(
         server
             .post("/accounts")
-            .json(&signing_up(ADA, "Ada", "short"))
+            .json(&a_sign_up(ADA, "Ada", "short"))
             .await,
         refused::PASSWORD_TOO_SHORT,
     );
 
+    // then: the refusal says the least length and the length given
     assert_eq!(told["min"], 12);
     assert_eq!(told["actual"], 5);
 }
 
 #[tokio::test]
 async fn the_code_sent_verifies_the_address() {
-    let (wired, server) = served();
+    // given: an account signed up
+    let (wired, server) = a_server();
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // then: verifying with the code sent succeeds
     server
         .post("/accounts/verification")
         .json(&VerifyEmailRequest {
@@ -138,8 +150,10 @@ async fn the_code_sent_verifies_the_address() {
 
 #[tokio::test]
 async fn a_wrong_code_is_refused_as_wrong() {
-    let (_wired, server) = served();
+    // given: a server
+    let (_wired, server) = a_server();
 
+    // then: verifying with a wrong code is refused as wrong
     refused_as(
         server
             .post("/accounts/verification")
@@ -154,17 +168,21 @@ async fn a_wrong_code_is_refused_as_wrong() {
 
 #[tokio::test]
 async fn an_expired_or_exhausted_code_is_refused_as_such() {
-    let (wired, server) = served();
+    // given: an account signed up with a code sent
+    let (wired, server) = a_server();
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
     let code = wired.last_code_sent_to(ADA);
 
+    // when: the code has expired
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::hours(1));
+
+    // then: verifying with it is refused as expired
     refused_as(
         server
             .post("/accounts/verification")
@@ -176,6 +194,7 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
         refused::CODE_EXPIRED,
     );
 
+    // when: the code is good again but every try is spent on wrong guesses
     wired.clock.set(wiring::at(1_700_000_000));
     let wrong = if code == "000000" { "000001" } else { "000000" };
     for _ in 0..5 {
@@ -187,6 +206,8 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
             })
             .await;
     }
+
+    // then: verifying with it is refused as exhausted
     refused_as(
         server
             .post("/accounts/verification")
@@ -201,13 +222,15 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
 
 #[tokio::test]
 async fn asking_for_a_code_again_is_accepted_whoever_asks() {
-    let (wired, server) = served();
+    // given: an account signed up
+    let (wired, server) = a_server();
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // when: a code is asked for again for its address and for one nobody has
     for email in [ADA, "nobody@example.com"] {
         server
             .post("/accounts/verification/code")
@@ -218,11 +241,13 @@ async fn asking_for_a_code_again_is_accepted_whoever_asks() {
             .assert_status(StatusCode::ACCEPTED);
     }
 
+    // then: the account is sent a second code
     assert_eq!(wired.codes_sent_to(ADA).len(), 2);
 }
 
 #[tokio::test]
 async fn every_refusal_kind_is_named_once() {
+    // expect: no refusal kind is named twice
     let mut kinds = refused::EVERY.to_vec();
     kinds.sort_unstable();
     kinds.dedup();
@@ -232,13 +257,15 @@ async fn every_refusal_kind_is_named_once() {
 
 #[tokio::test]
 async fn a_password_is_reset_by_the_code_sent_for_it() {
-    let (wired, server) = served();
+    // given: an account signed up
+    let (wired, server) = a_server();
     server
         .post("/accounts")
-        .json(&signing_up(ADA, "Ada", HER_PASSWORD))
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // when: it asks to reset its password
     server
         .post("/accounts/password-reset")
         .json(&PasswordResetRequest {
@@ -246,6 +273,7 @@ async fn a_password_is_reset_by_the_code_sent_for_it() {
         })
         .await
         .assert_status(StatusCode::ACCEPTED);
+    // and: sets a new one with the code sent
     server
         .post("/accounts/password")
         .json(&NewPasswordRequest {
@@ -256,6 +284,7 @@ async fn a_password_is_reset_by_the_code_sent_for_it() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: it signs in with the new one
     assert!(
         wired
             .accounts
@@ -267,8 +296,10 @@ async fn a_password_is_reset_by_the_code_sent_for_it() {
 
 #[tokio::test]
 async fn a_reset_is_refused_by_the_code_or_the_password_like_any_other() {
-    let (_wired, server) = served();
+    // given: a server
+    let (_wired, server) = a_server();
 
+    // then: a reset with a wrong code is refused as a wrong code
     refused_as(
         server
             .post("/accounts/password")
@@ -280,6 +311,7 @@ async fn a_reset_is_refused_by_the_code_or_the_password_like_any_other() {
             .await,
         refused::CODE_WRONG,
     );
+    // and: one with too short a password as too short
     refused_as(
         server
             .post("/accounts/password")
@@ -295,8 +327,10 @@ async fn a_reset_is_refused_by_the_code_or_the_password_like_any_other() {
 
 #[tokio::test]
 async fn asking_to_reset_is_accepted_whoever_asks() {
-    let (_wired, server) = served();
+    // given: a server
+    let (_wired, server) = a_server();
 
+    // then: asking to reset for an address nobody has is accepted
     server
         .post("/accounts/password-reset")
         .json(&PasswordResetRequest {
@@ -308,7 +342,8 @@ async fn asking_to_reset_is_accepted_whoever_asks() {
 
 #[tokio::test]
 async fn too_many_codes_asked_for_are_answered_with_how_long_to_wait() {
-    let (_wired, server) = served();
+    // given: as many resets asked for an address as are allowed
+    let (_wired, server) = a_server();
     let asking = PasswordResetRequest {
         email: ADA.to_owned(),
     };
@@ -320,9 +355,13 @@ async fn too_many_codes_asked_for_are_answered_with_how_long_to_wait() {
             .assert_status(StatusCode::ACCEPTED);
     }
 
+    // when: one more is asked for
     let response = server.post("/accounts/password-reset").json(&asking).await;
 
+    // then: it is answered with too many requests
     response.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    // and: how long to wait
     assert_eq!(response.header(RETRY_AFTER), "60");
+    // and: why
     assert_eq!(response.json::<Value>()["type"], refused::THROTTLED);
 }

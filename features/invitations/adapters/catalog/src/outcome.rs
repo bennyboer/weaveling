@@ -40,6 +40,7 @@ mod tests {
 
     #[test]
     fn every_outcome_reads_back_as_it_was_written() {
+        // given: each way an invitation stands
         for outcome in [
             Outcome::Open,
             Outcome::Accepted,
@@ -47,14 +48,17 @@ mod tests {
             Outcome::Declined(DeclineReason::AddressHasAccount),
             Outcome::Declined(DeclineReason::TurnedDown),
         ] {
+            // when: it is written
             let (kept, declined_for) = written(outcome);
 
+            // then: it reads back as it was
             assert_eq!(read(kept, declined_for).expect("readable"), outcome);
         }
     }
 
     #[test]
     fn a_way_to_stand_nobody_wrote_is_refused() {
+        // expect: a way to stand nobody wrote is refused
         for (outcome, declined_for) in [
             ("pending", None),
             ("declined", None),

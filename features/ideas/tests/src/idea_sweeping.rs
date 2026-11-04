@@ -154,7 +154,7 @@ impl Wired {
     }
 }
 
-fn deleted() -> Message {
+fn a_deletion() -> Message {
     Message::opening(
         RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
         json!({
@@ -169,49 +169,60 @@ fn deleted() -> Message {
 
 #[tokio::test]
 async fn an_idea_discarded_before_the_sweep_reaches_it_is_passed_over() {
+    // given: a project holding two ideas
     let wired = a_workbench(4);
     let held = wired.holding(2).await;
+    // and: one of them discarded
     wired
         .ideas
         .discard(&held[0].to_string(), None, &Agent::System)
         .await
         .expect("discarding should succeed");
 
+    // when: the project's deletion is heard
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("an idea discarded meanwhile is no reason to fail");
     wired.forget_what_was_discarded().await;
 
+    // then: none of its ideas is listed
     assert_eq!(wired.still_listed().await, 0);
 }
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_fails_the_sweep_so_it_is_tried_again() {
+    // given: a project holding ideas
     let wired = a_workbench(4);
     wired.holding(2).await;
+    // and: whom to let in not known
     wired.authorizer.down.store(true, Ordering::Release);
 
+    // then: hearing the project's deletion fails
     assert!(
-        wired.sweep.handle(&deleted()).await.is_err(),
+        wired.sweep.handle(&a_deletion()).await.is_err(),
         "a sweep that quietly skipped what it could not discard would leave the project's ideas behind"
     );
 }
 
 #[tokio::test]
 async fn a_project_smaller_than_one_batch_is_swept_in_one_go() {
+    // given: a project holding fewer ideas than a batch
     let wired = a_workbench(4);
     wired.holding(3).await;
 
+    // when: its deletion is heard
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("sweeping succeeds");
     wired.forget_what_was_discarded().await;
 
+    // then: none of its ideas is listed
     assert_eq!(wired.still_listed().await, 0);
+    // and: the sweep does not carry on
     assert!(
         wired.carried_on().is_empty(),
         "a batch that did not fill is the last one, and carrying on would never end"
@@ -220,17 +231,21 @@ async fn a_project_smaller_than_one_batch_is_swept_in_one_go() {
 
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
+    // given: a project holding more ideas than a batch
     let wired = a_workbench(2);
     wired.holding(7).await;
 
-    wired.sweep_through(deleted()).await;
+    // when: its deletion is swept through
+    wired.sweep_through(a_deletion()).await;
 
+    // then: none of its ideas is listed
     assert_eq!(
         wired.still_listed().await,
         0,
         "a sweep bounded at two ideas must carry itself on until the project is empty, \
          or a book of thousands is swept only as far as its first batch"
     );
+    // and: the sweep carried on once per full batch
     assert_eq!(
         wired.carried_on().len(),
         3,
@@ -240,32 +255,40 @@ async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
 
 #[tokio::test]
 async fn a_continuation_stays_in_the_conversation_the_deletion_opened() {
+    // given: a project holding two batches of ideas
     let wired = a_workbench(2);
     wired.holding(4).await;
-    let asked = deleted();
+    // and: its deletion
+    let asked = a_deletion();
 
+    // when: the deletion is heard
     wired.sweep.handle(&asked).await.expect("sweeping succeeds");
 
+    // then: the sweep carries on in the deletion's conversation
     let carried = wired.carried_on();
     assert_eq!(carried.len(), 1);
     assert_eq!(
         carried[0].conversation, asked.conversation,
         "the whole sweep has to be followable as one thing, however many batches it takes"
     );
+    // and: as caused by the deletion
     assert_eq!(carried[0].caused_by, Some(asked.id));
 }
 
 #[tokio::test]
 async fn a_continuation_starts_after_the_idea_it_names() {
+    // given: a project holding two batches of ideas
     let wired = a_workbench(2);
     let captured = wired.holding(4).await;
 
+    // when: its deletion is heard
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("sweeping succeeds");
 
+    // then: the sweep carries on after the last idea of the batch
     let asked: MoreToSweepDTO =
         serde_json::from_value(wired.carried_on()[0].payload.clone()).expect("readable");
 
@@ -280,19 +303,23 @@ async fn a_continuation_starts_after_the_idea_it_names() {
 
 #[tokio::test]
 async fn a_sweep_of_a_project_holding_nothing_carries_nothing_on() {
+    // given: a project holding nothing
     let wired = a_workbench(2);
 
+    // when: its deletion is heard
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("sweeping succeeds");
 
+    // then: the sweep does not carry on
     assert!(wired.carried_on().is_empty());
 }
 
 #[tokio::test]
 async fn a_continuation_nobody_can_read_is_refused() {
+    // given: a continuation nobody can read
     let wired = a_workbench(2);
     let nonsense = Message::opening(
         RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
@@ -300,6 +327,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
         at(1_000),
     );
 
+    // then: it is refused
     assert!(
         wired.sweep.handle(&nonsense).await.is_err(),
         "a continuation the sweep cannot act on belongs in dead letters, not dropped"
@@ -308,6 +336,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
 
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep() {
+    // given: a project holding more ideas than a batch
     let wired = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
     for nth in 0..=AT_MOST {
         wired
@@ -318,9 +347,11 @@ async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep(
     }
     wired.settle().await;
 
-    wired.outbox.enqueue(deleted());
+    // when: its deletion is published
+    wired.outbox.enqueue(a_deletion());
     wired.settle().await;
 
+    // then: none of its ideas is listed
     assert!(
         wired
             .catalog
@@ -334,23 +365,27 @@ async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep(
 
 #[tokio::test]
 async fn a_deleted_project_takes_no_new_idea() {
+    // given: a deleted project
     let wired = a_workbench(4);
 
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("sweeping succeeds");
+    // when: an idea is captured in it
     let refused = wired
         .ideas
         .capture(A_PROJECT, "Too late", &Agent::System)
         .await;
 
+    // then: it is refused
     assert!(matches!(refused, Err(IdeasError::ProjectNotThere)));
 }
 
 #[tokio::test]
 async fn an_idea_catalogued_only_after_its_project_was_swept_is_discarded_then() {
+    // given: an idea not yet catalogued
     let wired = a_workbench(4);
     let late = wired
         .ideas
@@ -358,12 +393,14 @@ async fn an_idea_catalogued_only_after_its_project_was_swept_is_discarded_then()
         .await
         .expect("capturing should succeed")
         .0;
+    // and: its project swept
     wired
         .sweep
-        .handle(&deleted())
+        .handle(&a_deletion())
         .await
         .expect("sweeping succeeds");
 
+    // when: the idea is catalogued
     wired
         .ideas
         .catalogue(None, &late)
@@ -375,6 +412,7 @@ async fn an_idea_catalogued_only_after_its_project_was_swept_is_discarded_then()
         .await
         .expect("cataloguing the discard should succeed");
 
+    // then: it is discarded
     assert!(
         wired
             .ideas
@@ -385,13 +423,16 @@ async fn an_idea_catalogued_only_after_its_project_was_swept_is_discarded_then()
             .is_discarded(),
         "the sweep reads the catalog, which had not heard of the idea yet, so cataloguing it discards it"
     );
+    // and: it is not listed
     assert_eq!(wired.still_listed().await, 0);
 }
 
 #[tokio::test]
 async fn a_continuation_of_the_sweep_lays_no_tombstone() {
+    // given: a project never deleted
     let wired = a_workbench(4);
 
+    // when: a continuation of its sweep is heard
     wired
         .sweep
         .handle(&Message::opening(
@@ -402,6 +443,7 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
         .await
         .expect("sweeping succeeds");
 
+    // then: the project still takes new ideas
     assert!(
         wired
             .ideas

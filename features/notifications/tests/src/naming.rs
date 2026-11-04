@@ -22,7 +22,7 @@ struct Naming {
     projects: Inboxed<RememberProjectNamesListener>,
 }
 
-fn naming() -> Naming {
+fn a_workbench() -> Naming {
     let catalog = Arc::new(InMemoryNoticeCatalog::new());
     let notifications = NotificationsCore::new(
         Arc::new(InMemoryEventStore::new()),
@@ -51,7 +51,7 @@ fn naming() -> Naming {
     }
 }
 
-fn told(key: &str, kind: &str, id: &str, version: u64, body: Value) -> Message {
+fn a_message(key: &str, kind: &str, id: &str, version: u64, body: Value) -> Message {
     Message::opening(
         RoutingKey::parse(key).expect("a declared key"),
         json!({
@@ -64,14 +64,14 @@ fn told(key: &str, kind: &str, id: &str, version: u64, body: Value) -> Message {
     )
 }
 
-fn signed_up(key: &str, name: &str) -> Message {
+fn a_sign_up(key: &str, name: &str) -> Message {
     let event = if key == SIGNED_UP {
         "SIGNED_UP"
     } else {
         "SIGNED_UP_BY_INVITATION"
     };
 
-    told(
+    a_message(
         key,
         "account",
         "account_ada",
@@ -80,8 +80,8 @@ fn signed_up(key: &str, name: &str) -> Message {
     )
 }
 
-fn project(key: &str, event: &str, version: u64, name: &str) -> Message {
-    told(
+fn a_project_change(key: &str, event: &str, version: u64, name: &str) -> Message {
+    a_message(
         key,
         "project",
         "project_1",
@@ -108,15 +108,19 @@ async fn project_named(naming: &Naming) -> Vec<ProjectName> {
 
 #[tokio::test]
 async fn whoever_signs_up_either_way_is_known_by_their_name_and_no_address() {
+    // given: either way of signing up
     for key in [SIGNED_UP, SIGNED_UP_BY_INVITATION] {
-        let naming = naming();
+        // and: the listeners remembering names
+        let naming = a_workbench();
 
+        // when: a sign-up is heard
         naming
             .people
-            .handle(&signed_up(key, "Ada Lovelace"))
+            .handle(&a_sign_up(key, "Ada Lovelace"))
             .await
             .expect("remembering should succeed");
 
+        // then: whoever signed up is known by name and no address
         assert_eq!(
             person_named(&naming).await,
             vec![Person {
@@ -129,12 +133,14 @@ async fn whoever_signs_up_either_way_is_known_by_their_name_and_no_address() {
 
 #[tokio::test]
 async fn a_project_is_known_by_the_name_it_started_with_and_then_by_its_newest() {
-    let naming = naming();
+    // given: the listeners remembering names
+    let naming = a_workbench();
 
+    // when: a project's start, a rename and an older rename heard late are heard
     for message in [
-        project(STARTED, "STARTED", 1, "Shared"),
-        project(RENAMED, "RENAMED", 3, "Shared Again"),
-        project(RENAMED, "RENAMED", 2, "Between"),
+        a_project_change(STARTED, "STARTED", 1, "Shared"),
+        a_project_change(RENAMED, "RENAMED", 3, "Shared Again"),
+        a_project_change(RENAMED, "RENAMED", 2, "Between"),
     ] {
         naming
             .projects
@@ -143,6 +149,7 @@ async fn a_project_is_known_by_the_name_it_started_with_and_then_by_its_newest()
             .expect("remembering should succeed");
     }
 
+    // then: it is known by the newest name
     assert_eq!(
         project_named(&naming).await,
         vec![ProjectName {
@@ -155,12 +162,14 @@ async fn a_project_is_known_by_the_name_it_started_with_and_then_by_its_newest()
 
 #[tokio::test]
 async fn what_tells_no_name_belongs_in_dead_letters() {
-    let naming = naming();
+    // given: the listeners remembering names
+    let naming = a_workbench();
 
+    // then: a sign-up telling no name is refused
     assert!(
         naming
             .people
-            .handle(&told(
+            .handle(&a_message(
                 SIGNED_UP,
                 "account",
                 "account_ada",
@@ -170,10 +179,11 @@ async fn what_tells_no_name_belongs_in_dead_letters() {
             .await
             .is_err()
     );
+    // and: a project's change telling no name is refused
     assert!(
         naming
             .projects
-            .handle(&told(
+            .handle(&a_message(
                 STARTED,
                 "project",
                 "project_1",
@@ -183,38 +193,46 @@ async fn what_tells_no_name_belongs_in_dead_letters() {
             .await
             .is_err()
     );
+    // and: nobody is named
     assert!(person_named(&naming).await.is_empty());
+    // and: no project is named
     assert!(project_named(&naming).await.is_empty());
 }
 
 #[test]
 fn sign_ups_and_projects_named_or_deleted_are_heard() {
-    let naming = naming();
+    // given: the listeners remembering names
+    let naming = a_workbench();
     let heard = |listener: &dyn Listener, key: &str| {
         listener.hears(&RoutingKey::parse(key).expect("a declared key"))
     };
 
+    // then: they hear sign-ups either way
     assert!(heard(&naming.people, SIGNED_UP));
     assert!(heard(&naming.people, SIGNED_UP_BY_INVITATION));
+    // and: projects started, renamed and deleted
     assert!(heard(&naming.projects, STARTED));
     assert!(heard(&naming.projects, RENAMED));
     assert!(heard(&naming.projects, DELETED));
+    // and: not a project's details changed
     assert!(!heard(&naming.projects, DETAILS_CHANGED));
 }
 
 #[tokio::test]
 async fn a_deleted_project_is_named_no_more_and_a_role_changed_in_it_later_notes_nothing() {
-    let naming = naming();
+    // given: the listeners remembering names
+    let naming = a_workbench();
+    // when: a project's start, its deletion and a rename heard late are heard
     for message in [
-        project(STARTED, "STARTED", 1, "Shared"),
-        told(
+        a_project_change(STARTED, "STARTED", 1, "Shared"),
+        a_message(
             DELETED,
             "project",
             "project_1",
             2,
             json!({ "version": 0, "name": "DELETED" }),
         ),
-        project(RENAMED, "RENAMED", 3, "Heard late"),
+        a_project_change(RENAMED, "RENAMED", 3, "Heard late"),
     ] {
         naming
             .projects
@@ -223,6 +241,7 @@ async fn a_deleted_project_is_named_no_more_and_a_role_changed_in_it_later_notes
             .expect("each is taken in");
     }
 
+    // and: a role changed in it is noted
     let noted = naming
         .notifications
         .note(
@@ -237,7 +256,9 @@ async fn a_deleted_project_is_named_no_more_and_a_role_changed_in_it_later_notes
         .await
         .expect("noting nothing is no failure");
 
+    // then: it is named no more
     assert!(project_named(&naming).await.is_empty());
+    // and: nothing is noted
     assert_eq!(
         noted, None,
         "the members' change may be heard after the project's deletion, and tells nothing then"

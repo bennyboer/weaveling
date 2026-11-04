@@ -51,10 +51,13 @@ async fn summary_of(wired: &Wired, id: &AccountId) -> AccountSummary {
 
 #[tokio::test]
 async fn an_account_is_listed_once_it_has_signed_up() {
+    // given: a fresh instance
     let wired = wiring::wired();
 
+    // when: an account signs up
     let ada = signed_up(&wired, ADA).await;
 
+    // then: it is listed as it signed up, not yet verified
     let summary = summary_of(&wired, &ada).await;
     assert_eq!(summary.email.to_string(), ADA);
     assert_eq!(summary.name.to_string(), "Someone");
@@ -63,11 +66,13 @@ async fn an_account_is_listed_once_it_has_signed_up() {
 
 #[tokio::test]
 async fn what_happens_to_an_account_reaches_the_list() {
+    // given: two verified accounts
     let wired = wiring::wired();
     let ada = signed_up(&wired, ADA).await;
     let grace = signed_up(&wired, GRACE).await;
     verified(&wired, ADA).await;
     verified(&wired, GRACE).await;
+    // and: one of them an operator
     let code = wired
         .accounts
         .draw_operator_code()
@@ -80,12 +85,14 @@ async fn what_happens_to_an_account_reaches_the_list() {
         .await
         .expect("the code drawn makes an operator");
 
+    // when: the operator locks the other
     wired
         .accounts
         .lock(&grace, &ada, "Sent spam.")
         .await
         .expect("an operator may lock an account");
 
+    // then: the list shows the verification, the lock and the operator
     let ada_listed = summary_of(&wired, &ada).await;
     assert!(ada_listed.verified);
     assert_eq!(
@@ -94,10 +101,13 @@ async fn what_happens_to_an_account_reaches_the_list() {
     );
     assert!(summary_of(&wired, &grace).await.operator);
 
+    // when: the operator unlocks it
     wired
         .accounts
         .unlock(&grace, &ada)
         .await
         .expect("an operator may unlock an account");
+
+    // then: the list shows no lock
     assert!(summary_of(&wired, &ada).await.locks.is_empty());
 }

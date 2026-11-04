@@ -53,11 +53,14 @@ async fn told(socket: &mut Subscriber) -> Value {
 #[tokio::test]
 async fn whoever_follows_the_projects_is_told_each_change_to_any_of_them_by_the_project_and_its_version()
  {
+    // given: someone following the projects
     let (wired, server) = served();
     let mut socket = following(&server).await;
 
+    // when: two projects are started
     let loom = started(&server, "The Loom").await;
     let weft = started(&server, "The Weft").await;
+    // and: one is renamed and the other deleted
     server
         .patch(&format!("/projects/{}", loom.id))
         .json(&RenameProjectRequest {
@@ -71,6 +74,7 @@ async fn whoever_follows_the_projects_is_told_each_change_to_any_of_them_by_the_
         .assert_status(StatusCode::NO_CONTENT);
     wired.settle().await;
 
+    // then: they are told each change by the project and its version
     let mut frames = Vec::new();
     for _ in 0..4 {
         let frame = told(&mut socket).await;
@@ -93,12 +97,15 @@ async fn whoever_follows_the_projects_is_told_each_change_to_any_of_them_by_the_
 
 #[tokio::test]
 async fn a_project_s_frame_says_when_it_changed() {
+    // given: someone following the projects
     let (wired, server) = served();
     let mut socket = following(&server).await;
 
+    // when: a project is started
     started(&server, "The Loom").await;
     wired.settle().await;
 
+    // then: they are told when it was started and what it is called
     let frame = told(&mut socket).await;
     assert_eq!(frame["at"], "1970-01-01T00:00:00Z");
     assert_eq!(frame["event"]["project_name"], "The Loom");
@@ -106,15 +113,18 @@ async fn a_project_s_frame_says_when_it_changed() {
 
 #[tokio::test]
 async fn whoever_follows_one_project_is_told_its_changes_and_not_another_s() {
+    // given: two projects
     let (wired, server) = served();
     let loom = started(&server, "The Loom").await;
     let weft = started(&server, "The Weft").await;
     wired.settle().await;
+    // and: someone following one of them
     let mut socket = Subscriber::on(&server).await;
     socket
         .subscribe("loom", "projects", &[("project", &loom.id)])
         .await;
 
+    // when: the other is renamed, and then the followed one
     for (project, name) in [(&weft, "Theirs"), (&loom, "The Heddle")] {
         server
             .patch(&format!("/projects/{}", project.id))
@@ -126,6 +136,7 @@ async fn whoever_follows_one_project_is_told_its_changes_and_not_another_s() {
     }
     wired.settle().await;
 
+    // then: the first they are told of is the followed one's renaming
     let frame = told(&mut socket).await;
     assert_eq!(
         (frame["of"].clone(), frame["event"]["project_name"].clone()),
@@ -149,9 +160,11 @@ async fn told_on_one_socket(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn on_the_one_socket_the_list_hears_every_project_and_one_project_its_own() {
+    // given: a project
     let (wired, server) = served();
     let loom = started(&server, "The Loom").await;
     wired.settle().await;
+    // and: one socket following the list and that project
     let (_live, mut socket) = on_one_socket(&wired).await;
     socket
         .subscribe("list", "projects", &[("mine", "true")])
@@ -160,9 +173,11 @@ async fn on_the_one_socket_the_list_hears_every_project_and_one_project_its_own(
         .subscribe("loom", "projects", &[("project", &loom.id)])
         .await;
 
+    // when: another project is started
     let weft = started(&server, "The Weft").await;
     wired.settle().await;
     let listed = told_on_one_socket(&mut socket).await;
+    // and: the followed project is renamed
     server
         .patch(&format!("/projects/{}", loom.id))
         .json(&json!({ "name": "The Loom Again" }))
@@ -174,13 +189,16 @@ async fn on_the_one_socket_the_list_hears_every_project_and_one_project_its_own(
         told_on_one_socket(&mut socket).await,
     ];
     renamed.sort_by_key(|told| told["id"].as_str().unwrap_or_default().to_owned());
+    // and: something that is no project is followed
     socket.subscribe("nothing", "projects", &[]).await;
 
+    // then: only the list hears of the other project
     assert_eq!(
         listed["id"], "list",
         "the list hears another project's start, the one project does not"
     );
     assert_eq!(listed["frame"]["of"], weft.id);
+    // and: both hear of the renaming
     assert_eq!(
         renamed
             .iter()
@@ -191,6 +209,7 @@ async fn on_the_one_socket_the_list_hears_every_project_and_one_project_its_own(
             (json!("loom"), json!(loom.id))
         ]
     );
+    // and: following nothing there is ended
     assert_eq!(
         told_on_one_socket(&mut socket).await,
         json!({ "told": "ended", "id": "nothing", "why": "not-there" })

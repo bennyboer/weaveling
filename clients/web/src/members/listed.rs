@@ -74,6 +74,7 @@ mod tests {
 
     #[test]
     fn each_role_told_is_read_as_that_role_with_whatever_else_was_told() {
+        // expect: a member told as each role is listed as it, the rest as told
         for (named, read) in [
             (role::OWNER, Role::Owner),
             (role::AUTHOR, Role::Author),
@@ -93,18 +94,22 @@ mod tests {
 
     #[test]
     fn every_role_goes_by_the_name_the_contract_gives_it() {
+        // expect: every role is read back from its name
         for chosen in Role::ALL {
             assert_eq!(Role::of(chosen.named()), Some(chosen));
         }
+        // and: the names are the contract's
         assert_eq!(
             Role::ALL.map(Role::named),
             [role::OWNER, role::AUTHOR, role::READER]
         );
+        // and: no other name is a role
         assert_eq!(Role::of("editor"), None);
     }
 
     #[test]
     fn a_role_nobody_declared_is_not_guessed_at() {
+        // expect: a member told as an undeclared role is unexpected
         assert_eq!(listed(told("editor")), Err(ApiError::Unexpected));
     }
 }

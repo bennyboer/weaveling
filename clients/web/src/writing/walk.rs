@@ -267,6 +267,7 @@ mod tests {
 
     #[test]
     fn the_cursor_walks_each_heading_before_the_scenes_under_it() {
+        // expect: each heading, then its scenes or else a line to begin one, then the sections inside it
         assert_eq!(
             stops_in_reading_order(&a_book()),
             vec![
@@ -283,21 +284,26 @@ mod tests {
 
     #[test]
     fn a_section_with_no_scenes_offers_a_line_to_begin_one() {
+        // given: the stops of a book with an empty section
         let read = stops_in_reading_order(&a_book());
 
+        // then: the empty section's heading follows the scene before it
         assert_eq!(
             neighbour(&read, &scene("scene_3"), Towards::After),
             Some(heading("part_2"))
         );
+        // and: its line to begin a scene follows its heading
         assert_eq!(
             neighbour(&read, &heading("part_2"), Towards::After),
             Some(opening("part_2")),
             "an empty section is where a scene is begun, so the cursor has to reach it"
         );
+        // and: walking back from a heading reaches the scene before it
         assert_eq!(
             neighbour(&read, &heading("chapter_1"), Towards::Before),
             Some(scene("scene_1"))
         );
+        // and: nothing lies before the first stop or after the last
         assert_eq!(neighbour(&read, &heading("part_1"), Towards::Before), None);
         assert_eq!(neighbour(&read, &opening("part_2"), Towards::After), None);
     }

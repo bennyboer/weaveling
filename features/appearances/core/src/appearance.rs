@@ -17,6 +17,7 @@ mod tests {
 
     #[test]
     fn places_of_different_types_never_coincide() {
+        // expect: a scene and a section never coincide, whatever their ids
         assert_ne!(
             Place::Section(SectionLink::from("same_1")),
             Place::Scene(SceneLink::from("same_1")),

@@ -75,7 +75,7 @@ mod tests {
 
     use super::*;
 
-    fn ada(locks: Vec<LockDTO>) -> AccountSummaryDTO {
+    fn an_account_of_ada(locks: Vec<LockDTO>) -> AccountSummaryDTO {
         AccountSummaryDTO {
             id: "account_1".to_owned(),
             name: "Ada".to_owned(),
@@ -89,8 +89,9 @@ mod tests {
 
     #[test]
     fn an_account_is_listed_as_the_server_told_it() {
+        // when: a page of one account the operator locked is read
         let page = AccountPage::of(AccountPageDTO {
-            accounts: vec![ada(vec![LockDTO {
+            accounts: vec![an_account_of_ada(vec![LockDTO {
                 kind: "operator".to_owned(),
                 reason: "Sent spam.".to_owned(),
                 since: "2026-10-23T09:30:00Z".to_owned(),
@@ -99,6 +100,7 @@ mod tests {
         })
         .expect("a page the server sends is readable");
 
+        // then: it lists the account, its lock and the next page as told
         assert_eq!(
             page,
             AccountPage {
@@ -121,8 +123,9 @@ mod tests {
 
     #[test]
     fn only_the_operators_lock_is_shown_as_one() {
+        // when: a page of one account pending deletion is read
         let page = AccountPage::of(AccountPageDTO {
-            accounts: vec![ada(vec![LockDTO {
+            accounts: vec![an_account_of_ada(vec![LockDTO {
                 kind: "pending-deletion".to_owned(),
                 reason: "Asked to be deleted.".to_owned(),
                 since: "2026-10-23T09:30:00Z".to_owned(),
@@ -131,14 +134,17 @@ mod tests {
         })
         .expect("a page the server sends is readable");
 
+        // then: the account is listed with no lock
         assert_eq!(page.accounts[0].lock, None);
     }
 
     #[test]
     fn a_moment_that_is_no_moment_is_unexpected() {
-        let mut broken = ada(vec![]);
+        // given: an account signed up at no moment
+        let mut broken = an_account_of_ada(vec![]);
         broken.signed_up_at = "yesterday".to_owned();
 
+        // then: a page of it is unexpected
         assert_eq!(
             AccountPage::of(AccountPageDTO {
                 accounts: vec![broken],

@@ -76,17 +76,21 @@ async fn retitled(catalog: &TellingScenes, id: SceneId, title: &str, version: u6
 
 #[tokio::test]
 async fn whoever_follows_a_project_s_scenes_is_told_each_scene_as_it_is_kept() {
+    // given: a project's scenes followed
     let mut followed = scenes_followed("project_1").await;
     let id = a_scene(1_000);
 
+    // when: a scene of it is kept
     followed
         .catalog
         .remember_committed(id, &ProjectLink::from("project_1"))
         .await
         .expect("remembering should succeed");
     let made = told(&mut followed.socket).await;
+    // and: retitled
     retitled(&followed.catalog, id, "The loom", 1).await;
     let named = told(&mut followed.socket).await;
+    // and: given an opening
     followed
         .catalog
         .note_opening_committed(
@@ -99,6 +103,7 @@ async fn whoever_follows_a_project_s_scenes_is_told_each_scene_as_it_is_kept() {
         .expect("noting should succeed");
     let opened = told(&mut followed.socket).await;
 
+    // then: the follower is told the scene each time, as it then stands
     assert_eq!(made["of"], id.to_string());
     assert_eq!(
         named["event"],
@@ -111,13 +116,16 @@ async fn whoever_follows_a_project_s_scenes_is_told_each_scene_as_it_is_kept() {
 
 #[tokio::test]
 async fn a_late_retitle_is_told_as_the_title_that_is_kept() {
+    // given: a followed scene retitled
     let mut followed = scenes_followed("project_1").await;
     let id = a_scene(1_000);
     retitled(&followed.catalog, id, "The loom, again", 2).await;
     told(&mut followed.socket).await;
 
+    // when: an older retitle arrives late
     retitled(&followed.catalog, id, "The loom", 1).await;
 
+    // then: the follower is told the newer title
     assert_eq!(
         told(&mut followed.socket).await["event"]["title"],
         "The loom, again"
@@ -126,7 +134,9 @@ async fn a_late_retitle_is_told_as_the_title_that_is_kept() {
 
 #[tokio::test]
 async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
+    // given: a project's scenes followed
     let mut followed = scenes_followed("project_1").await;
+    // and: a forgotten scene of it
     let gone = a_scene(1_000);
     followed
         .catalog
@@ -136,14 +146,18 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
     let theirs = a_scene(2_000);
     let mine = a_scene(3_000);
 
+    // when: the forgotten scene is retitled
     retitled(&followed.catalog, gone, "Gone", 1).await;
+    // and: another project's scene is kept
     followed
         .catalog
         .remember_committed(theirs, &ProjectLink::from("project_2"))
         .await
         .expect("remembering should succeed");
+    // and: a scene of the followed project is retitled
     retitled(&followed.catalog, mine, "Mine", 1).await;
 
+    // then: only the followed project's scene is told
     assert_eq!(
         told(&mut followed.socket).await["of"],
         mine.to_string(),
@@ -153,6 +167,7 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
 
 #[tokio::test]
 async fn forgetting_old_tombstones_reaches_the_catalog() {
+    // given: a scene forgotten, leaving a tombstone
     let followed = scenes_followed("project_1").await;
     followed
         .catalog
@@ -160,6 +175,7 @@ async fn forgetting_old_tombstones_reaches_the_catalog() {
         .await
         .expect("forgetting should succeed");
 
+    // when: tombstones laid before now are forgotten through the telling catalog
     let forgotten = followed
         .catalog
         .forget_tombstones_laid_before_committed(
@@ -169,12 +185,15 @@ async fn forgetting_old_tombstones_reaches_the_catalog() {
         .await
         .expect("forgetting tombstones should succeed");
 
+    // then: the tombstone is forgotten
     assert_eq!(forgotten, 1);
 }
 
 #[tokio::test]
 async fn a_scene_catalogued_in_a_transaction_that_is_dropped_tells_nobody() {
+    // given: a project's scenes followed
     let mut followed = scenes_followed("project_1").await;
+    // and: a scene of it catalogued in an open transaction
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -189,7 +208,9 @@ async fn a_scene_catalogued_in_a_transaction_that_is_dropped_tells_nobody() {
         .await
         .expect("remembering should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: nobody is told
     assert!(followed.socket.silent().await);
 }

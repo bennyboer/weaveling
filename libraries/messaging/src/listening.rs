@@ -184,19 +184,23 @@ mod tests {
 
     #[test]
     fn a_name_reads_back_as_it_was_written() {
+        // when: a name is parsed
         let name = ListenerName::parse("ideas-catalog").expect("a plain name is fine");
 
+        // then: it reads back as it was written
         assert_eq!(name.as_str(), "ideas-catalog");
         assert_eq!(name.to_string(), "ideas-catalog");
     }
 
     #[test]
     fn a_nameless_listener_is_refused() {
+        // expect: an empty name is refused
         assert_eq!(ListenerName::parse(""), Err(InvalidListenerName::Empty));
     }
 
     #[test]
     fn a_name_that_would_not_survive_a_queue_is_refused() {
+        // expect: a name with capitals, spaces, dots or underscores is refused
         for unspeakable in ["Ideas", "ideas catalog", "ideas.catalog", "ideas_catalog"] {
             assert_eq!(
                 ListenerName::parse(unspeakable),
@@ -208,6 +212,7 @@ mod tests {
 
     #[test]
     fn digits_and_hyphens_are_welcome() {
+        // expect: a name of lower case, digits and hyphens is taken
         assert!(ListenerName::parse("board-live-v2").is_ok());
     }
 
@@ -245,9 +250,11 @@ mod tests {
 
     #[test]
     fn a_sweep_is_kept_and_a_fleeting_handler_fleeting() {
+        // given: a sweeping handler and a fleeting one
         let sweep: &dyn Listener = &Refusing;
         let glance: &dyn Listener = &Glancing;
 
+        // then: the sweeping one is kept and the other fleeting
         assert_eq!(
             (sweep.delivery(), glance.delivery()),
             (Delivery::Kept, Delivery::Fleeting),
@@ -257,8 +264,10 @@ mod tests {
 
     #[test]
     fn a_handler_listens_as_it_declares() {
+        // given: a handler
         let listener: &dyn Listener = &Refusing;
 
+        // then: it is named, refused, listens and is delivered as it declares
         assert_eq!(listener.named().as_str(), "refuse-everything");
         assert_eq!(listener.when_refused(), "Nothing was taken in.");
         assert!(listener.hears(&RoutingKey::parse("idea.captured").expect("a plain key")));
@@ -269,14 +278,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_handler_that_fails_says_who_failed_at_what_and_why() {
+        // given: a message
         let routing = RoutingKey::parse("idea.captured").expect("a plain key");
         let message = Message::opening(routing.clone(), json!({}), OffsetDateTime::UNIX_EPOCH);
 
+        // when: a handler fails at it
         let refused = Refusing
             .handle(&message)
             .await
             .expect_err("the handler refuses everything");
 
+        // then: the refusal names the handler, the message's key and why
         assert_eq!(refused.listener.as_str(), "refuse-everything");
         assert_eq!(refused.routing, routing);
         assert_eq!(refused.because.to_string(), "the loom is jammed");

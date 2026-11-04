@@ -104,8 +104,10 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: a project
         let id = a_project();
 
+        // expect: each event published lands on the key the contract declares for it
         for (event, declared) in everything_worth_publishing() {
             let name = event.name();
 
@@ -120,7 +122,9 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
+        // expect: the declared subscription is the derived one
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_PROJECT);
+        // and: it covers every event published
         assert!(
             everything_worth_publishing().into_iter().all(|(event, _)| {
                 Subscription::parse(EVERY_PROJECT)
@@ -133,11 +137,14 @@ mod tests {
 
     #[test]
     fn what_a_project_event_says_comes_from_the_features_own_mapping() {
+        // given: a project
         let id = a_project();
 
+        // when: its start is published
         let body = eventpublishing::published_in::<ProjectEventDTO>(&published(&id, a_start()))
             .expect("what we wrote must be readable");
 
+        // then: the message says it as the contract does
         assert_eq!(
             body.event.body,
             ProjectEventDTO::Started {
@@ -148,19 +155,23 @@ mod tests {
 
     #[test]
     fn changed_details_travel_with_their_language_quotation_and_description() {
+        // given: a project
         let id = a_project();
+        // and: details with a language, quotation style and description
         let details = ProjectDetails {
             language: Some(BookLanguage::new("de").expect("a plain tag")),
             quotation: Some(QuotationMarks::LowHigh),
             description: ProjectDescription::new("A weaver's daughter.").expect("plain"),
         };
 
+        // when: their change is published
         let body = eventpublishing::published_in::<ProjectEventDTO>(&published(
             &id,
             ProjectEvent::DetailsChanged(details),
         ))
         .expect("what we wrote must be readable");
 
+        // then: the message carries all three
         assert_eq!(
             body.event.body,
             ProjectEventDTO::DetailsChanged {
@@ -173,14 +184,17 @@ mod tests {
 
     #[test]
     fn a_changed_quotation_style_travels_by_its_name() {
+        // given: a project
         let id = a_project();
 
+        // when: a change of its quotation style is published
         let body = eventpublishing::published_in::<ProjectEventDTO>(&published(
             &id,
             ProjectEvent::QuotationChanged(QuotationMarks::PointingOut),
         ))
         .expect("what we wrote must be readable");
 
+        // then: the message names the style
         assert_eq!(
             body.event.body,
             ProjectEventDTO::QuotationChanged {
@@ -191,8 +205,10 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
+        // given: a project
         let id = a_project();
 
+        // expect: each event published carries its own name
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
 
@@ -206,7 +222,9 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: a project
         let id = a_project();
+        // and: a snapshot of it
         let snapshot = ProjectEvent::Snapshotted {
             name: a_name(),
             details: ProjectDetails::default(),
@@ -216,6 +234,7 @@ mod tests {
             deleted: false,
         };
 
+        // expect: no message is made of it
         assert!(
             message_for(&recorded(&id, snapshot)).is_none(),
             "collapsing the log is our own housekeeping and no subscriber's business"
@@ -224,8 +243,10 @@ mod tests {
 
     #[test]
     fn the_project_can_be_read_back_out_of_a_message() {
+        // given: a project
         let id = a_project();
 
+        // expect: the message of its start says which project it is
         assert_eq!(
             eventpublishing::aggregate_in::<ProjectId>(&published(&id, a_start()))
                 .expect("what we wrote must be readable"),

@@ -81,18 +81,22 @@ mod tests {
 
     #[test]
     fn a_frame_as_the_server_sends_it_is_read_with_its_event() {
+        // when: a frame as the server sends it is read
         let told: FrameDTO = serde_json::from_str(r#"{"event":{"at":{"x":400,"y":200},"idea":"idea_1","name":"IDEA_PINNED","size":{"height":84,"width":168}},"version":2}"#).expect("a frame");
 
+        // then: it carries its version and an event its feature can read
         assert_eq!(told.version, 2);
         assert!(serde_json::from_value::<BoardEventDTO>(told.event).is_ok());
     }
 
     #[test]
     fn what_a_subscription_is_about_is_told_as_one_object() {
+        // expect: each thing it is about is a field of one object
         assert_eq!(
             about_as_told(&[("mine", "true"), ("project", "project_1")]),
             r#"{"mine":"true","project":"project_1"}"#
         );
+        // and: about nothing is an empty one
         assert_eq!(about_as_told(&[]), "{}");
     }
 }

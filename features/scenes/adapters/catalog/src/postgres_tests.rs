@@ -62,11 +62,13 @@ crate::suite::conformance_tests!(OnPostgres);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_scene_standing() {
+    // given: a catalog
     let bench = OnPostgres::setup().await;
     let catalog = Arc::new(PostgresSceneCatalog::new(bench.pool.clone()));
     let transactions = Arc::new(PostgresTransactions::new(bench.pool.clone()));
     let project = ProjectLink::from("project_1");
 
+    // when: scenes are remembered and forgotten at once, again and again
     for nth in 0..40 {
         let id = SceneId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000 + nth));
         let (remembering, forgetting) = (catalog.clone(), catalog.clone());
@@ -104,6 +106,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_scene_stand
             .expect("forgetting should succeed");
     }
 
+    // then: none of them is listed
     assert!(
         catalog
             .in_project_after(&project, None, 100)

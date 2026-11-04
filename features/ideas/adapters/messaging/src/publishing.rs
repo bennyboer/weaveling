@@ -82,8 +82,10 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: an idea
         let id = an_idea();
 
+        // then: every event is published on the key the contract declares
         for (event, declared) in everything_worth_publishing() {
             let name = event.name();
 
@@ -98,7 +100,9 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
+        // expect: the contract declares the subscription the library derives
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_IDEA);
+        // and: it covers every published event
         assert!(
             everything_worth_publishing().into_iter().all(|(event, _)| {
                 Subscription::parse(EVERY_IDEA)
@@ -111,6 +115,7 @@ mod tests {
 
     #[test]
     fn the_list_hears_every_idea_event_and_not_the_sweep_s_continuation() {
+        // given: what the list listens to
         let hears = |key: &RoutingKey| {
             crate::CatalogueIdeasListener::LISTENS_TO
                 .iter()
@@ -121,12 +126,14 @@ mod tests {
                 })
         };
 
+        // then: it hears every idea event
         assert!(
             everything_worth_publishing()
                 .into_iter()
                 .all(|(event, _)| hears(&eventpublishing::routing_for(KIND, event.name()))),
             "a change the list does not hear never reaches it"
         );
+        // and: not the sweep's continuation
         assert!(
             !hears(&RoutingKey::parse(MORE_TO_SWEEP).expect("a declared key")),
             "a continuation names no idea, so the list could only refuse it until it is dead"
@@ -135,11 +142,14 @@ mod tests {
 
     #[test]
     fn what_an_idea_event_says_comes_from_the_features_own_mapping() {
+        // given: an idea
         let id = an_idea();
 
+        // when: its capture is published
         let body = eventpublishing::published_in::<IdeaEventDTO>(&published(&id, a_capture()))
             .expect("what we wrote must be readable");
 
+        // then: the body says what the feature's mapping says
         assert_eq!(
             body.event.body,
             IdeaEventDTO::Captured {
@@ -151,8 +161,10 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
+        // given: an idea
         let id = an_idea();
 
+        // then: every event goes out under its own name
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
 
@@ -166,13 +178,16 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: an idea
         let id = an_idea();
+        // and: a snapshot of it
         let snapshot = IdeaEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             title: a_title(),
             discarded: false,
         };
 
+        // then: the snapshot is not published
         assert!(
             message_for(&recorded(&id, snapshot)).is_none(),
             "collapsing the log is our own housekeeping and no subscriber's business"
@@ -181,8 +196,10 @@ mod tests {
 
     #[test]
     fn the_idea_can_be_read_back_out_of_a_message() {
+        // given: an idea
         let id = an_idea();
 
+        // then: the idea is read back out of its published message
         assert_eq!(
             eventpublishing::aggregate_in::<IdeaId>(&published(&id, a_capture()))
                 .expect("what we wrote must be readable"),

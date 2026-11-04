@@ -677,7 +677,9 @@ mod tests {
 
     #[test]
     fn a_text_for_css_keeps_its_quotes_and_backslashes_inside() {
+        // expect: a plain text is quoted
         assert_eq!(as_css_text("An empty scene"), "\"An empty scene\"");
+        // and: the quotes and backslashes in it are escaped
         assert_eq!(
             as_css_text("a \"quiet\" one\\"),
             "\"a \\\"quiet\\\" one\\\\\""

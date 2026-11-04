@@ -87,6 +87,7 @@ mod tests {
 
     #[test]
     fn every_message_survives_a_round_trip() {
+        // expect: every kind of message decodes to what was encoded
         round_trip(Message::WhatDoYouHave(vec![0, 1, 2]));
         round_trip(Message::HereIsWhatYouMissed(vec![9, 8, 7]));
         round_trip(Message::JustHappened(vec![4]));
@@ -96,6 +97,7 @@ mod tests {
 
     #[test]
     fn frames_match_the_y_protocols_wire_format() {
+        // expect: each kind of message is encoded as the y-protocols write it
         assert_eq!(
             Message::WhatDoYouHave(vec![7, 7]).encode(),
             vec![0, 0, 2, 7, 7]
@@ -111,6 +113,7 @@ mod tests {
 
     #[test]
     fn a_truncated_frame_is_an_error_not_a_panic() {
+        // expect: truncated and unknown frames are refused
         assert!(Message::decode(&[]).is_err());
         assert!(Message::decode(&[0]).is_err());
         assert!(Message::decode(&[0, 0]).is_err());

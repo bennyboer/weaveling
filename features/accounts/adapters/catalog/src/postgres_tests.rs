@@ -51,8 +51,10 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
+    // given: a laid down catalog
     let bench = OnPostgres::setup().await;
 
+    // when: the collation of its id column is read
     let collation: Option<String> = sqlx::query_scalar(
         "SELECT collation_name::text
          FROM information_schema.columns
@@ -63,6 +65,7 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: it is bytewise
     assert_eq!(
         collation.as_deref(),
         Some("C"),
@@ -74,8 +77,10 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
 
 #[tokio::test]
 async fn the_locks_are_kept_as_json_postgres_can_look_into() {
+    // given: a laid down catalog
     let bench = OnPostgres::setup().await;
 
+    // when: the type of its locks column is read
     let kind: Option<String> = sqlx::query_scalar(
         "SELECT data_type::text
          FROM information_schema.columns
@@ -86,6 +91,7 @@ async fn the_locks_are_kept_as_json_postgres_can_look_into() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: it is jsonb
     assert_eq!(
         kind.as_deref(),
         Some("jsonb"),

@@ -89,6 +89,7 @@ crate::outbox_conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn an_enqueued_message_wakes_the_relay() {
+    // given: an outbox on sqlite, listened to for notifications
     let bench = Bench::<OnSqlite>::setup().await;
     let mut notifications = bench
         .workbench
@@ -96,8 +97,10 @@ async fn an_enqueued_message_wakes_the_relay() {
         .notifications()
         .await
         .expect("asking for notifications is not a failure");
+    // when: a message is enqueued
     bench.waiting(1).await;
 
+    // then: the relay is woken
     let woken = tokio::time::timeout(std::time::Duration::from_secs(1), notifications.wait()).await;
 
     assert!(
@@ -111,6 +114,7 @@ async fn an_enqueued_message_wakes_the_relay() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
+    // given: a message enqueued in a write not yet committed
     let bench = Bench::<OnSqlite>::setup().await;
     let outbox = bench.workbench.outbox.clone();
     let message = suite::a_link_message();
@@ -122,17 +126,20 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
         .await
         .expect("enqueueing should succeed");
 
+    // when: the relay delivers while the write is open
     let delivering = tokio::spawn({
         let outbox = outbox.clone();
         async move { outbox.deliver(10).await }
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // and: the write commits
     transaction.finish().await.expect("the transaction commits");
     delivering
         .await
         .expect("delivering should not panic")
         .expect("delivering should succeed");
 
+    // then: the relay publishes the message
     assert_eq!(
         bench.ids_heard(),
         [message.id],
@@ -144,6 +151,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_started_relay_delivers_by_polling_alone() {
+    // given: a started relay polling often
     let bench = Bench::<OnSqlite>::setup().await;
     let relay = RelayTask::started(
         bench.workbench.outbox.clone(),
@@ -153,8 +161,10 @@ async fn a_started_relay_delivers_by_polling_alone() {
         },
     );
 
+    // when: messages are enqueued
     bench.waiting(2).await;
 
+    // then: it delivers them
     let mut delivered = false;
     for _ in 0..500 {
         if bench.ids_heard().len() == 2 {
@@ -175,8 +185,10 @@ async fn a_started_relay_delivers_by_polling_alone() {
 
 #[tokio::test]
 async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_file() {
+    // given: an outbox laid down on sqlite
     let bench = Bench::<OnSqlite>::setup().await;
 
+    // when: the tables of its file are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     )
@@ -184,6 +196,7 @@ async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_file() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are its own ledger and its migrations alone
     assert_eq!(found, vec!["_sqlx_migrations_outbox", "outbox"]);
 
     bench.cleanup().await;
@@ -191,8 +204,10 @@ async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_file() {
 
 #[tokio::test]
 async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    // given: an outbox laid down on sqlite
     let bench = Bench::<OnSqlite>::setup().await;
 
+    // when: the indexes of its file are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name",
     )
@@ -200,6 +215,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are those its queries rely on
     assert_eq!(found, vec!["outbox_published", "outbox_waiting"]);
 
     bench.cleanup().await;
@@ -207,7 +223,9 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
 
 #[tokio::test]
 async fn an_event_s_version_is_kept_beside_its_message_and_an_unversioned_one_keeps_none() {
+    // given: an outbox on sqlite
     let bench = Bench::<OnSqlite>::setup().await;
+    // when: a message of a versioned event and one of no version are enqueued
     let mut transaction = SqliteTransactions::new(bench.workbench.pool.clone())
         .begin()
         .await
@@ -229,6 +247,7 @@ async fn an_event_s_version_is_kept_beside_its_message_and_an_unversioned_one_ke
     }
     transaction.finish().await.expect("the transaction commits");
 
+    // then: the event's version is kept and the other keeps none
     let kept: Vec<Option<i64>> = sqlx::query_scalar("SELECT version FROM outbox ORDER BY entry")
         .fetch_all(&bench.workbench.pool)
         .await

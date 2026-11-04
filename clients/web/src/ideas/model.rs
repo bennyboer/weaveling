@@ -130,11 +130,13 @@ mod tests {
 
     #[test]
     fn an_idea_is_shown_by_its_title() {
+        // expect: a titled idea shows its title
         assert_eq!(an_idea("The loom").shown_as(), "The loom");
     }
 
     #[test]
     fn an_idea_without_a_title_is_shown_as_untitled() {
+        // expect: an untitled idea shows as untitled
         assert_eq!(an_idea("").shown_as(), "Untitled");
     }
 
@@ -150,37 +152,49 @@ mod tests {
 
         #[test]
         fn an_idea_not_held_is_added() {
+            // given: no ideas held
             let mut held = Vec::new();
 
+            // when: an idea is held
             hold(&mut held, versioned("The loom", 1));
 
+            // then: it is the one held
             assert_eq!(held, vec![versioned("The loom", 1)]);
         }
 
         #[test]
         fn an_idea_already_held_is_not_held_twice() {
+            // given: an idea held
             let mut held = vec![versioned("The loom", 1)];
 
+            // when: the same is held again
             hold(&mut held, versioned("The loom", 1));
 
+            // then: it is held once
             assert_eq!(held, vec![versioned("The loom", 1)]);
         }
 
         #[test]
         fn a_newer_version_replaces_the_one_held() {
+            // given: an idea held
             let mut held = vec![versioned("The loom", 1)];
 
+            // when: a newer version of it is held
             hold(&mut held, versioned("The weft", 2));
 
+            // then: only the newer one is held
             assert_eq!(held, vec![versioned("The weft", 2)]);
         }
 
         #[test]
         fn an_older_version_leaves_the_newer_one_held() {
+            // given: an idea held
             let mut held = vec![versioned("The heddle", 3)];
 
+            // when: an older version of it is held
             hold(&mut held, versioned("The weft", 2));
 
+            // then: the newer one is still the one held
             assert_eq!(held, vec![versioned("The heddle", 3)]);
         }
     }
@@ -215,6 +229,7 @@ mod tests {
 
         #[test]
         fn an_idea_captured_elsewhere_joins_the_held_ones() {
+            // when: the capture of an idea not held is taken in
             let next = taken_in(
                 held(1, "The loom"),
                 told(
@@ -225,6 +240,7 @@ mod tests {
             )
             .expect("a captured idea follows on from nothing");
 
+            // then: it is held after the others with its title and project
             assert_eq!(titles(&next), vec![("The loom", 1), ("The shuttle", 1)]);
             assert_eq!(next[1].id, IdeaId::from("idea_2".to_owned()));
             assert_eq!(next[1].project, ProjectId::from("project_1".to_owned()));
@@ -232,6 +248,7 @@ mod tests {
 
         #[test]
         fn an_idea_already_held_is_not_captured_twice() {
+            // when: the capture of an idea held is taken in
             let next = taken_in(
                 held(1, "The loom"),
                 told(
@@ -241,11 +258,13 @@ mod tests {
                 ),
             );
 
+            // then: it is held once
             assert_eq!(next.as_deref().map(titles), Some(vec![("The loom", 1)]));
         }
 
         #[test]
         fn a_retitle_that_follows_on_is_taken_in() {
+            // when: a retitle of the next version is taken in
             let next = taken_in(
                 held(1, "The loom"),
                 told(
@@ -255,11 +274,13 @@ mod tests {
                 ),
             );
 
+            // then: the idea is held under its new title at that version
             assert_eq!(next.as_deref().map(titles), Some(vec![("The weft", 2)]));
         }
 
         #[test]
         fn a_change_already_held_changes_nothing() {
+            // when: a change at the version held is taken in
             let next = taken_in(
                 held(3, "The weft"),
                 told(
@@ -269,31 +290,37 @@ mod tests {
                 ),
             );
 
+            // then: the idea is held as it was
             assert_eq!(next.as_deref().map(titles), Some(vec![("The weft", 3)]));
         }
 
         #[test]
         fn a_discarded_idea_leaves() {
+            // when: the discarding of a held idea is taken in
             let next = taken_in(
                 held(2, "The loom"),
                 told("idea_1", 3, json!({ "name": "DISCARDED" })),
             );
 
+            // then: no idea is held
             assert_eq!(next.as_deref().map(titles), Some(vec![]));
         }
 
         #[test]
         fn an_idea_discarded_that_was_never_held_is_gone_already() {
+            // when: the discarding of an idea not held is taken in
             let next = taken_in(
                 held(1, "The loom"),
                 told("idea_9", 4, json!({ "name": "DISCARDED" })),
             );
 
+            // then: the held ones are held as they were
             assert_eq!(next.as_deref().map(titles), Some(vec![("The loom", 1)]));
         }
 
         #[test]
         fn what_cannot_be_taken_in_asks_for_the_ideas_again() {
+            // given: changes that do not follow on from the ideas held
             let cases = [
                 (
                     "a change further on than the next",
@@ -342,6 +369,7 @@ mod tests {
                 ),
             ];
 
+            // then: none of them can be taken in
             for (case, told) in cases {
                 assert_eq!(taken_in(held(1, "The loom"), told), None, "{case}");
             }
@@ -371,29 +399,36 @@ mod tests {
 
         #[test]
         fn a_change_told_awaits_the_idea_held_at_least_at_its_version() {
+            // when: a change is told
             let awaited =
                 Awaited::told(&told(2, json!({ "name": "RETITLED", "title": "The weft" })))
                     .expect("a retitle is awaited");
 
+            // then: neither no idea nor the idea before it holds it
             assert!(!awaited.holds(&[]));
             assert!(
                 !awaited.holds(&held(1)),
                 "an answer read before the change is behind"
             );
+            // and: the idea at its version does
             assert!(awaited.holds(&held(2)));
         }
 
         #[test]
         fn a_discard_told_awaits_the_idea_gone() {
+            // when: a discard is told
             let awaited = Awaited::told(&told(2, json!({ "name": "DISCARDED" })))
                 .expect("a discard is awaited");
 
+            // then: the idea still held does not hold it
             assert!(!awaited.holds(&held(1)));
+            // and: the idea gone does
             assert!(awaited.holds(&[]));
         }
 
         #[test]
         fn a_frame_that_names_nothing_awaits_nothing() {
+            // given: a frame about no idea
             let nameless = FrameDTO {
                 of: None,
                 version: 2,
@@ -401,6 +436,7 @@ mod tests {
                 event: json!({ "name": "DISCARDED" }),
             };
 
+            // then: neither it nor an unknown event awaits anything
             assert_eq!(Awaited::told(&nameless), None);
             assert_eq!(Awaited::told(&told(2, json!({ "name": "ARCHIVED" }))), None);
         }

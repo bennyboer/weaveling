@@ -85,7 +85,7 @@ mod tests {
         }
     }
 
-    fn started_by(agent: Value) -> Message {
+    fn a_start_by(agent: Value) -> Message {
         Message::opening(
             RoutingKey::parse(STARTED).expect("a declared key"),
             json!({
@@ -98,7 +98,7 @@ mod tests {
         )
     }
 
-    async fn happened(bench: &Bench) -> Vec<MembersEvent> {
+    async fn events_of(bench: &Bench) -> Vec<MembersEvent> {
         bench
             .store
             .read_from(
@@ -115,20 +115,23 @@ mod tests {
 
     #[tokio::test]
     async fn whoever_started_a_project_owns_it_however_often_it_is_told() {
+        // given: the listener
         let bench = bench();
 
+        // when: an account's start of a project is heard twice
         for _ in 0..2 {
             bench
                 .listener
-                .handle(&started_by(
+                .handle(&a_start_by(
                     json!({ "kind": "account", "id": "account_ada" }),
                 ))
                 .await
                 .expect("messages come at least once");
         }
 
+        // then: its members are founded once, with the account as owner
         assert_eq!(
-            happened(&bench).await,
+            events_of(&bench).await,
             vec![MembersEvent::Founded {
                 owner: AccountId::from("account_ada")
             }]
@@ -137,16 +140,19 @@ mod tests {
 
     #[tokio::test]
     async fn the_founding_is_the_system_s_carrying_out_what_the_start_decided() {
+        // given: the listener
         let bench = bench();
 
+        // when: an account's start of a project is heard
         bench
             .listener
-            .handle(&started_by(
+            .handle(&a_start_by(
                 json!({ "kind": "account", "id": "account_ada" }),
             ))
             .await
             .expect("founding should succeed");
 
+        // then: the founding was done by the system
         let recorded = bench
             .store
             .read_from(
@@ -167,8 +173,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_project_started_by_no_account_has_no_members_whatever_id_is_named() {
+        // given: the listener
         let bench = bench();
 
+        // when: starts by no account are heard
         for agent in [
             json!({ "kind": "local", "id": null }),
             json!({ "kind": "system", "id": null }),
@@ -177,19 +185,23 @@ mod tests {
         ] {
             bench
                 .listener
-                .handle(&started_by(agent))
+                .handle(&a_start_by(agent))
                 .await
                 .expect("nobody to found it with is no failure");
         }
 
-        assert!(happened(&bench).await.is_empty());
+        // then: no members are founded
+        assert!(events_of(&bench).await.is_empty());
     }
 
     #[tokio::test]
     async fn only_a_started_project_is_heard() {
+        // given: the listener
         let listener = bench().listener;
 
+        // expect: it hears a start
         assert!(listener.hears(&RoutingKey::parse(STARTED).expect("a declared key")));
+        // and: not a renaming
         assert!(
             !listener
                 .hears(&RoutingKey::parse(projects_contract::RENAMED).expect("a declared key"))
@@ -198,8 +210,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_that_is_no_started_project_belongs_in_dead_letters() {
+        // given: the listener
         let listener = bench().listener;
 
+        // expect: hearing something that is no start fails
         assert!(
             listener
                 .handle(&Message::opening(

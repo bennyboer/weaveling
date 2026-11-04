@@ -107,10 +107,26 @@ InvitationEventDTO::Issued { scope: ScopeDTO::Project { .. }, .. } => Ok(()),
 
 The ROADMAP says the same in its notes, but a note is not read where the code is. A `// TODO` goes away in the slice it names.
 
+**The third exception is a test's steps**, as in Spock: see [Tests](#tests).
+
 ## Tests
 
 - The name is the claim, as a sentence: `a_deleted_project_refuses_everything`, `a_batch_that_collides_halfway_writes_none_of_itself`.
-- Helpers are article-prefixed so call sites read as English: `a_project(&service, "Tapestry")`, `an_author()`, `a_workbench()`.
+- Every test, Rust and browser alike, reads in steps without its code: `// given: …`, `// when: …`, `// then: …`, each followed by the code it describes, and `// and: …` to go on with the step above. A `then` may be followed by another `when` and `then`. A test that only checks has a `then` alone, or `expect:` where there is nothing to set up. Each step is short, lower case, and says only what stays true of the behaviour for as long as it stands, not how it is done today or what other feature it leans on, unless the claim is about that feature.
+
+  ```rust
+  // given: an accepted invitation
+  let accepted = invited(&wired).await;
+  // and: a withdrawn one
+  let withdrawn = a_withdrawn_invitation(&wired).await;
+
+  // when: a taking up of each is heard
+  for id in [&accepted, &withdrawn] { /* … */ }
+
+  // then: the accepted one is accepted once
+  assert_eq!(events_of(&wired, &accepted).await.len(), 2);
+  ```
+- Helpers are named for the step they serve, so the code reads as its steps do: a `given` helper names the state it sets up (`an_open_invitation`, `a_project(&service, "Tapestry")`), a `when` helper the act (`hearing_it_taken_up`), a `then` helper what it reads back (`events_of`). Helpers that make a value are article-prefixed so call sites read as English: `an_author()`, `a_workbench()`.
 - A test's assembled world is a **`Wired`**, built by **`a_workbench()`** — the feature test wirings, and the library ones. Once a helper bundles more than a value, it is that, not a new name per file.
 - A behaviour two backends must share is a **conformance suite**: free functions taking `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro each backend invokes. One case list, both implementations.
 - A guard worth having is worth proving load-bearing — break it deliberately and watch the test fail.

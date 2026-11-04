@@ -69,25 +69,31 @@ fn a_start(id: &BoardId) -> Recorded<BoardEvent> {
 
 #[tokio::test]
 async fn opening_a_project_that_never_had_a_board_starts_one() {
+    // given: a project that never had a board
     let (wired, _) = a_workbench();
 
+    // when: it is opened
     let opened = wired
         .boards
         .open("project_1", &an_author())
         .await
         .expect("opening should succeed");
 
+    // then: a board is started for it
     assert_eq!(opened.standing.version, Version::of(1));
     assert_eq!(
         opened.standing.state.project(),
         &ProjectLink::from("project_1")
     );
+    // and: the board holds nothing
     assert!(opened.standing.state.ideas().is_empty());
 }
 
 #[tokio::test]
 async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
+    // given: a project whose board is claimed
     let (wired, _) = a_workbench();
+    // and: that board started
     let known = BoardId::generate(at(500));
     let mut transaction = InMemoryTransactions::new()
         .begin()
@@ -127,12 +133,14 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
         .await
         .expect("finishing should succeed");
 
+    // when: the project is opened
     let opened = wired
         .boards
         .open("project_1", &an_author())
         .await
         .expect("opening should succeed");
 
+    // then: it finds the claimed board
     assert_eq!(
         opened.id, known,
         "the find branch takes whoever holds the claim rather than starting afresh; the claim is \
@@ -142,12 +150,15 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
 
 #[tokio::test]
 async fn opening_the_same_project_again_finds_the_board_it_already_had() {
+    // given: a project that was opened
     let (wired, clock) = a_workbench();
     let first = an_open_board(&wired).await;
     clock.set(at(2_000));
 
+    // when: it is opened again
     let second = an_open_board(&wired).await;
 
+    // then: it finds the same board
     assert_eq!(
         first, second,
         "a second open must not leave the author looking at a different board; find-or-start reads \
@@ -157,16 +168,19 @@ async fn opening_the_same_project_again_finds_the_board_it_already_had() {
 
 #[tokio::test]
 async fn each_project_gets_a_board_of_its_own() {
+    // given: a project that was opened
     let (wired, clock) = a_workbench();
     let mine = an_open_board(&wired).await;
     clock.set(at(2_000));
 
+    // when: another project is opened
     let theirs = wired
         .boards
         .open("project_2", &an_author())
         .await
         .expect("opening should succeed");
 
+    // then: it gets a board of its own
     assert_ne!(mine, theirs.id);
     assert_eq!(
         theirs.standing.state.project(),
@@ -176,9 +190,11 @@ async fn each_project_gets_a_board_of_its_own() {
 
 #[tokio::test]
 async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
+    // given: an open board
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
 
+    // when: an idea is pinned to it
     wired
         .boards
         .pin(
@@ -192,6 +208,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
         .await
         .expect("pinning should succeed");
 
+    // then: the board read again holds the idea at its spot
     let standing = wired
         .boards
         .read(&id.to_string(), &an_author())
@@ -206,6 +223,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
 
 #[tokio::test]
 async fn a_moved_idea_keeps_its_new_spot() {
+    // given: a board holding an idea
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
@@ -221,6 +239,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
         .await
         .expect("pinning should succeed");
 
+    // when: the idea is moved
     wired
         .boards
         .reshape(
@@ -234,6 +253,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
         .await
         .expect("moving should succeed");
 
+    // then: the board read again holds it at the new spot
     let standing = wired
         .boards
         .read(&id.to_string(), &an_author())
@@ -247,6 +267,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
 
 #[tokio::test]
 async fn an_unpinned_idea_leaves_the_board() {
+    // given: a board holding an idea
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
@@ -262,12 +283,14 @@ async fn an_unpinned_idea_leaves_the_board() {
         .await
         .expect("pinning should succeed");
 
+    // when: the idea is unpinned
     wired
         .boards
         .unpin(&id.to_string(), an_idea(), None, &an_author())
         .await
         .expect("unpinning should succeed");
 
+    // then: the board read again holds nothing
     let standing = wired
         .boards
         .read(&id.to_string(), &an_author())
@@ -278,6 +301,7 @@ async fn an_unpinned_idea_leaves_the_board() {
 
 #[tokio::test]
 async fn pinning_the_same_idea_twice_is_refused() {
+    // given: a board holding an idea
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
@@ -293,6 +317,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
         .await
         .expect("pinning should succeed");
 
+    // when: the same idea is pinned again
     let refused = wired
         .boards
         .pin(
@@ -305,6 +330,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
         )
         .await;
 
+    // then: it is refused as already pinned
     assert!(matches!(
         refused,
         Err(BoardsError::Events(ServiceError::Refused(
@@ -315,6 +341,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
 
 #[tokio::test]
 async fn a_move_against_a_stale_version_is_refused() {
+    // given: a board that moved past its first version
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
@@ -330,6 +357,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         .await
         .expect("pinning should succeed");
 
+    // when: an idea is moved against the first version
     let refused = wired
         .boards
         .reshape(
@@ -342,6 +370,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         )
         .await;
 
+    // then: it is refused as outdated
     assert!(
         matches!(
             refused,
@@ -355,12 +384,15 @@ async fn a_move_against_a_stale_version_is_refused() {
 
 #[tokio::test]
 async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
+    // given: the catalog projector
     let (wired, _) = a_workbench();
 
+    // then: it hears a board being started
     assert!(
         wired.projector.hears(&a_key(STARTED)),
         "it has to hear a start"
     );
+    // and: nothing that happens on a board after that
     for quiet in [IDEA_PINNED, IDEA_MOVED, IDEA_UNPINNED] {
         assert!(
             !wired.projector.hears(&a_key(quiet)),
@@ -372,14 +404,17 @@ async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
 
 #[tokio::test]
 async fn a_board_nobody_started_is_not_found() {
+    // given: a board id nobody started
     let (wired, _) = a_workbench();
     let never_started = BoardId::generate(at(1_000));
 
+    // when: it is read
     let refused = wired
         .boards
         .read(&never_started.to_string(), &an_author())
         .await;
 
+    // then: it is not found
     assert!(matches!(
         refused,
         Err(BoardsError::Events(ServiceError::NotFound { .. }))
@@ -388,18 +423,22 @@ async fn a_board_nobody_started_is_not_found() {
 
 #[tokio::test]
 async fn an_id_that_is_not_a_board_is_refused() {
+    // given: no boards
     let (wired, _) = a_workbench();
 
+    // when: an id that is not a board's is read
     let refused = wired
         .boards
         .read("idea_031VkO0hnpeQZUiAB7nDma", &an_author())
         .await;
 
+    // then: it is refused as invalid
     assert!(matches!(refused, Err(BoardsError::InvalidId(_))));
 }
 
 #[tokio::test]
 async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_started_next_time() {
+    // given: boards whose starts cannot be kept
     let (wired, clock) = a_workbench();
     let refusing = BoardsCore::new(
         Arc::new(RefusesAppending(wired.store.clone())),
@@ -410,19 +449,24 @@ async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_starte
         clock,
     );
 
+    // when: a project is opened
     let refused = refusing.open("project_1", &an_author()).await;
     let held_after_refusal = wired
         .registry
         .holder(KIND.as_str(), "project_1")
         .await
         .expect("asking should succeed");
+    // and: opened again once starts are kept
     let opened = an_open_board(&wired).await;
 
+    // then: the first opening fails
     assert!(refused.is_err());
+    // and: it left no claim behind
     assert_eq!(
         held_after_refusal, None,
         "a claim kept for a board that never started would point every later open at nothing"
     );
+    // and: the second opening holds the claim
     assert_eq!(
         wired
             .registry
@@ -474,29 +518,36 @@ async fn an_idea_pinned_while_losing_races(
 
 #[tokio::test]
 async fn a_pin_that_lost_a_race_is_tried_again_and_lands() {
+    // when: an idea is pinned while losing four races
     let (pinned, on_board) = an_idea_pinned_while_losing_races(4, None).await;
 
+    // then: it lands
     assert_eq!(pinned.expect("the fifth try lands"), Version::of(2));
     assert!(on_board);
 }
 
 #[tokio::test]
 async fn a_pin_that_lost_every_race_it_may_try_is_a_conflict() {
+    // when: an idea is pinned while losing five races
     let (pinned, on_board) = an_idea_pinned_while_losing_races(5, None).await;
 
+    // then: it is refused as outdated
     assert!(matches!(
         pinned,
         Err(BoardsError::Events(ServiceError::Store(
             StoreError::Outdated { .. }
         )))
     ));
+    // and: it is not on the board
     assert!(!on_board);
 }
 
 #[tokio::test]
 async fn a_pin_aimed_at_a_version_that_lost_a_race_is_not_tried_again() {
+    // when: an idea is pinned at a version while losing one race
     let (pinned, on_board) = an_idea_pinned_while_losing_races(1, Some(Version::of(1))).await;
 
+    // then: it is refused as outdated and not on the board
     assert!(
         matches!(
             pinned,

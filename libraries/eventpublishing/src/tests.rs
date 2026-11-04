@@ -96,6 +96,7 @@ fn read(message: &Message) -> PublishedEvent<Body> {
 
 #[test]
 fn a_routing_key_is_the_kind_and_the_event_name() {
+    // expect: a key of the kind and the event name, an underscore separating too
     assert_eq!(routing_for(KIND, CAPTURED).to_string(), "idea.captured");
     assert_eq!(
         routing_for(KIND, SCENE_ATTACHED).to_string(),
@@ -106,14 +107,17 @@ fn a_routing_key_is_the_kind_and_the_event_name() {
 
 #[test]
 fn a_kind_can_be_subscribed_to_whole() {
+    // expect: one pattern matches every event of a kind
     assert_eq!(everything_from(KIND), "idea.#");
 }
 
 #[test]
 fn what_is_published_says_who_did_it() {
+    // when: an author's capture is published
     let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
+    // then: it says the author did it
     assert_eq!(
         read(&published).agent,
         PublishedAgent {
@@ -126,18 +130,23 @@ fn what_is_published_says_who_did_it() {
 
 #[test]
 fn a_local_agent_still_says_so() {
+    // when: a capture done locally is published
     let published = message_for(&recorded(a_capture(), 1, Agent::Local), body)
         .expect("a capture should be published");
 
+    // then: it says so
     assert_eq!(read(&published).agent.kind, "local");
+    // and: names no one
     assert_eq!(read(&published).agent.id, None);
 }
 
 #[test]
 fn what_is_published_names_the_aggregate_it_happened_to() {
+    // when: a capture at version seven is published
     let published = message_for(&recorded(a_capture(), 7, an_author()), body)
         .expect("a capture should be published");
 
+    // then: it names the aggregate, its kind and that version
     assert_eq!(
         read(&published).aggregate,
         PublishedAggregate {
@@ -151,9 +160,11 @@ fn what_is_published_names_the_aggregate_it_happened_to() {
 
 #[test]
 fn what_is_published_carries_the_body_the_feature_supplied() {
+    // when: a capture is published
     let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
+    // then: it carries the body the feature made of it, with its version
     assert_eq!(
         read(&published).event,
         PublishedBody {
@@ -168,9 +179,11 @@ fn what_is_published_carries_the_body_the_feature_supplied() {
 
 #[test]
 fn the_body_sits_beside_its_version_on_the_wire() {
+    // when: a capture is published
     let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
+    // then: its body sits flat beside its version
     assert_eq!(
         published.payload["event"],
         json!({ "version": 2, "name": "CAPTURED", "title": "The Loom" }),
@@ -180,30 +193,38 @@ fn the_body_sits_beside_its_version_on_the_wire() {
 
 #[test]
 fn an_event_with_nothing_to_say_still_says_its_name() {
+    // when: an event with nothing to say is published
     let published = message_for(&recorded(Happened::SceneAttached, 2, an_author()), body)
         .expect("an attachment should be published");
 
+    // then: it is routed by its name
     assert_eq!(published.routing.to_string(), "idea.scene.attached");
+    // and: its body still says its name
     assert_eq!(
         published.payload["event"],
         json!({ "version": 0, "name": "SCENE_ATTACHED" }),
         "a body with no fields must not compact the envelope around it"
     );
+    // and: it reads back as that event
     assert_eq!(read(&published).event.body, Body::SceneAttached);
 }
 
 #[test]
 fn what_is_published_says_when_it_happened_in_a_readable_way() {
+    // when: a capture is published
     let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
+    // then: when it happened reads as a date and time
     assert_eq!(read(&published).occurred_at, "1970-01-01T00:16:40Z");
 }
 
 #[test]
 fn a_snapshot_is_never_published() {
+    // when: a snapshot is offered for publishing
     let nothing = message_for(&recorded(Happened::Snapshotted, 101, an_author()), body);
 
+    // then: nothing is published
     assert!(
         nothing.is_none(),
         "collapsing the log is our own housekeeping and no subscriber's business"
@@ -212,10 +233,12 @@ fn a_snapshot_is_never_published() {
 
 #[test]
 fn an_event_the_feature_keeps_to_itself_is_not_published() {
+    // given: a feature that keeps every event to itself
     fn nothing_ever(_event: &Happened) -> Option<Body> {
         None
     }
 
+    // then: its capture is not published
     assert!(
         message_for(&recorded(a_capture(), 1, an_author()), nothing_ever).is_none(),
         "a feature must be able to keep an internal event off the wire"
@@ -224,12 +247,14 @@ fn an_event_the_feature_keeps_to_itself_is_not_published() {
 
 #[test]
 fn a_message_that_is_not_a_published_event_is_refused() {
+    // given: a message that is no published event
     let stray = Message::opening(
         routing_for(KIND, CAPTURED),
         json!({ "nothing": "useful" }),
         at(1_000),
     );
 
+    // then: reading it as one is refused
     assert!(matches!(
         published_in::<Body>(&stray),
         Err(UnreadableMessage::NotAPublishedEvent(..))
@@ -238,13 +263,16 @@ fn a_message_that_is_not_a_published_event_is_refused() {
 
 #[test]
 fn the_aggregate_a_message_is_about_is_read_as_its_own_kind_of_id() {
+    // given: a published capture
     let message =
         message_for(&recorded(a_capture(), 1, an_author()), body).expect("a capture is published");
 
+    // then: its aggregate reads as an id of text
     assert_eq!(
         aggregate_in::<String>(&message).expect("any text is an id of text"),
         "idea_1"
     );
+    // and: not as a number
     assert!(matches!(
         aggregate_in::<u32>(&message),
         Err(UnreadableMessage::NotItsId(..))
@@ -253,12 +281,14 @@ fn the_aggregate_a_message_is_about_is_read_as_its_own_kind_of_id() {
 
 #[test]
 fn a_message_that_is_not_a_published_event_names_no_aggregate() {
+    // given: a message that is no published event
     let stray = Message::opening(
         routing_for(KIND, CAPTURED),
         json!({ "nothing": "useful" }),
         at(1_000),
     );
 
+    // then: it names no aggregate
     assert!(matches!(
         aggregate_in::<String>(&stray),
         Err(UnreadableMessage::NotAPublishedEvent(..))
@@ -267,12 +297,16 @@ fn a_message_that_is_not_a_published_event_names_no_aggregate() {
 
 #[test]
 fn what_is_published_carries_the_context_its_aggregate_was_left_in() {
+    // given: a capture of an aggregate left in a context
     let mut happened = recorded(a_capture(), 7, an_author());
     happened.metadata.context = AggregateContext::default().with("shelf", "shelf_1");
 
+    // when: it is published
     let published = message_for(&happened, body).expect("a capture should be published");
 
+    // then: the context is on the wire
     assert_eq!(published.payload["context"], json!({ "shelf": "shelf_1" }));
+    // and: reads back
     assert_eq!(
         read(&published).context.get("shelf").map(String::as_str),
         Some("shelf_1")
@@ -281,33 +315,41 @@ fn what_is_published_carries_the_context_its_aggregate_was_left_in() {
 
 #[test]
 fn an_aggregate_in_no_context_publishes_none() {
+    // when: a capture of an aggregate in no context is published
     let published = message_for(&recorded(a_capture(), 7, an_author()), body)
         .expect("a capture should be published");
 
+    // then: no context is on the wire
     assert!(
         published.payload.get("context").is_none(),
         "what belongs to the whole instance looks on the wire as it always did"
     );
+    // and: an empty one reads back
     assert!(read(&published).context.is_empty());
 }
 
 #[test]
 fn the_context_of_any_message_is_read_the_same_way_and_none_is_an_empty_one() {
+    // given: a published event in a context
     let mut happened = recorded(a_capture(), 7, an_author());
     happened.metadata.context = AggregateContext::default().with("shelf", "shelf_1");
     let enveloped = message_for(&happened, body).expect("a capture should be published");
+    // and: a plain message in another
     let flat = Message::opening(
         RoutingKey::parse("scene.deleted").expect("a plain key"),
         json!({ "scene": "scene_1", "context": { "shelf": "shelf_2" } }),
         at(1_000),
     );
+    // and: a plain message in none
     let bare = Message::opening(
         RoutingKey::parse("scene.deleted").expect("a plain key"),
         json!({ "scene": "scene_1" }),
         at(1_000),
     );
 
+    // then: each context reads the same way
     assert_eq!(context_in(&enveloped).get("shelf"), Some("shelf_1"));
     assert_eq!(context_in(&flat).get("shelf"), Some("shelf_2"));
+    // and: none reads as an empty one
     assert!(context_in(&bare).is_empty());
 }

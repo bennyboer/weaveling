@@ -18,7 +18,7 @@ struct Kept {
     notifications: NotificationsCore,
 }
 
-fn kept() -> Kept {
+fn a_workbench() -> Kept {
     let store = Arc::new(InMemoryEventStore::new());
 
     Kept {
@@ -32,7 +32,7 @@ fn kept() -> Kept {
     }
 }
 
-fn account(id: &str) -> Agent {
+fn an_account(id: &str) -> Agent {
     Agent::Account(AccountId::from(id))
 }
 
@@ -44,7 +44,7 @@ fn made_an_author() -> About {
     }
 }
 
-async fn noted_for_bo(kept: &Kept) -> NoticeId {
+async fn a_notice_for_bo(kept: &Kept) -> NoticeId {
     kept.notifications
         .note(None, AccountId::from("account_bo"), made_an_author())
         .await
@@ -52,7 +52,7 @@ async fn noted_for_bo(kept: &Kept) -> NoticeId {
         .expect("its project is not deleted")
 }
 
-async fn told(kept: &Kept, notice: &NoticeId) -> Vec<NoticeEvent> {
+async fn events_of(kept: &Kept, notice: &NoticeId) -> Vec<NoticeEvent> {
     kept.store
         .read_from(&AggregateId::from(notice), KIND, Version::of(1))
         .await
@@ -71,19 +71,23 @@ fn not_found(answer: Result<impl Debug, NotificationsError>) -> bool {
 
 #[tokio::test]
 async fn a_notice_is_noted_and_read_by_whom_it_is_for() {
-    let kept = kept();
+    // given: nothing noted yet
+    let kept = a_workbench();
 
-    let first = noted_for_bo(&kept).await;
+    // when: a notice is noted for bo
+    let first = a_notice_for_bo(&kept).await;
 
+    // then: bo reads it, not dismissed
     let read = kept
         .notifications
-        .read(&first.to_string(), &account("account_bo"))
+        .read(&first.to_string(), &an_account("account_bo"))
         .await
         .expect("bo reads their own notice");
     assert_eq!(read.state.about(), &made_an_author());
     assert!(!read.state.is_dismissed());
+    // and: it is kept as noted for bo
     assert_eq!(
-        told(&kept, &first).await,
+        events_of(&kept, &first).await,
         vec![NoticeEvent::Noted {
             account: AccountId::from("account_bo"),
             about: made_an_author(),
@@ -93,17 +97,20 @@ async fn a_notice_is_noted_and_read_by_whom_it_is_for() {
 
 #[tokio::test]
 async fn another_s_notice_is_not_there_to_read_or_dismiss() {
-    let kept = kept();
-    let notice = noted_for_bo(&kept).await.to_string();
+    // given: a notice for bo
+    let kept = a_workbench();
+    let notice = a_notice_for_bo(&kept).await.to_string();
 
-    for agent in [account("account_ada"), Agent::System, Agent::Local] {
+    // then: nobody else may read or dismiss it
+    for agent in [an_account("account_ada"), Agent::System, Agent::Local] {
         assert!(not_found(kept.notifications.read(&notice, &agent).await));
         assert!(not_found(kept.notifications.dismiss(&notice, &agent).await));
     }
+    // and: it stands undismissed for bo
     assert!(
         !kept
             .notifications
-            .read(&notice, &account("account_bo"))
+            .read(&notice, &an_account("account_bo"))
             .await
             .expect("still there for bo")
             .state
@@ -113,56 +120,61 @@ async fn another_s_notice_is_not_there_to_read_or_dismiss() {
 
 #[tokio::test]
 async fn whom_it_is_for_dismisses_it_once() {
-    let kept = kept();
-    let notice = noted_for_bo(&kept).await;
+    // given: a notice for bo
+    let kept = a_workbench();
+    let notice = a_notice_for_bo(&kept).await;
 
+    // when: bo dismisses it twice
     for _ in 0..2 {
         kept.notifications
-            .dismiss(&notice.to_string(), &account("account_bo"))
+            .dismiss(&notice.to_string(), &an_account("account_bo"))
             .await
             .expect("dismissing should succeed");
     }
 
+    // then: it is dismissed
     assert!(
         kept.notifications
-            .read(&notice.to_string(), &account("account_bo"))
+            .read(&notice.to_string(), &an_account("account_bo"))
             .await
             .expect("still there to read")
             .state
             .is_dismissed()
     );
+    // and: once
     assert_eq!(
-        told(&kept, &notice).await.last(),
+        events_of(&kept, &notice).await.last(),
         Some(&NoticeEvent::Dismissed)
     );
-    assert_eq!(told(&kept, &notice).await.len(), 2, "dismissed once");
+    assert_eq!(events_of(&kept, &notice).await.len(), 2, "dismissed once");
 }
 
 #[tokio::test]
 async fn a_notice_nobody_noted_or_no_id_at_all_is_not_there() {
-    let kept = kept();
+    // given: nothing noted yet
+    let kept = a_workbench();
 
+    // then: dismissing a notice nobody noted finds none
     assert!(not_found(
         kept.notifications
             .dismiss(
                 &NoticeId::generate(OffsetDateTime::UNIX_EPOCH).to_string(),
-                &account("account_bo"),
+                &an_account("account_bo"),
             )
             .await
     ));
+    // and: dismissing what is no id at all is refused as invalid
     assert!(matches!(
         kept.notifications
-            .dismiss("no notice", &account("account_bo"))
+            .dismiss("no notice", &an_account("account_bo"))
             .await,
         Err(NotificationsError::InvalidId(_))
     ));
 }
 
-async fn a_notice_dismissed_while_losing_races(
-    losses: u8,
-) -> (Result<(), NotificationsError>, usize) {
-    let kept = kept();
-    let notice = noted_for_bo(&kept).await;
+async fn dismissing_while_losing_races(losses: u8) -> (Result<(), NotificationsError>, usize) {
+    let kept = a_workbench();
+    let notice = a_notice_for_bo(&kept).await;
     let losing = NotificationsCore::new(
         Arc::new(FailsAppending::losing_races(kept.store.clone(), losses)),
         Arc::new(InMemoryTransactions::new()),
@@ -171,29 +183,35 @@ async fn a_notice_dismissed_while_losing_races(
     );
 
     let dismissed = losing
-        .dismiss(&notice.to_string(), &account("account_bo"))
+        .dismiss(&notice.to_string(), &an_account("account_bo"))
         .await;
 
-    (dismissed, told(&kept, &notice).await.len())
+    (dismissed, events_of(&kept, &notice).await.len())
 }
 
 #[tokio::test]
 async fn a_dismissal_that_lost_a_race_is_tried_again_and_lands() {
-    let (dismissed, told) = a_notice_dismissed_while_losing_races(4).await;
+    // when: a dismissal loses four races
+    let (dismissed, told) = dismissing_while_losing_races(4).await;
 
+    // then: it lands
     dismissed.expect("the fifth try lands");
+    // and: once
     assert_eq!(told, 2, "dismissed once");
 }
 
 #[tokio::test]
 async fn a_dismissal_that_lost_every_race_it_may_try_is_a_conflict() {
-    let (dismissed, told) = a_notice_dismissed_while_losing_races(5).await;
+    // when: a dismissal loses five races
+    let (dismissed, told) = dismissing_while_losing_races(5).await;
 
+    // then: it is a conflict
     assert!(matches!(
         dismissed,
         Err(NotificationsError::Events(ServiceError::Store(
             StoreError::Outdated { .. }
         )))
     ));
+    // and: nothing is dismissed
     assert_eq!(told, 1, "noted, never dismissed");
 }

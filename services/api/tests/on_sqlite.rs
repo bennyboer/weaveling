@@ -126,6 +126,7 @@ impl Remembering {
 
 #[tokio::test]
 async fn what_was_written_survives_the_service_starting_again_from_its_files() {
+    // given: a project written by a service on local files
     let fixture = SqliteFixture::setup();
     let files = Arc::new(Remembering {
         directory: DataDirectory::at(fixture.directory()),
@@ -156,6 +157,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     };
     files.close_everything().await;
 
+    // when: the service starts again from its files
     let second = TestServer::new(weaveling_service_api::app(
         Adapters::assembled(
             local(),
@@ -168,6 +170,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     ));
     let found = second.get(&format!("/api/projects/{id}")).await;
 
+    // then: the project is still there
     found.assert_status_ok();
     assert_eq!(
         found.json::<Value>()["name"].as_str(),
@@ -182,8 +185,10 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_server_on_sqlite_keeps_an_address_signed_up_in_the_accounts_file() {
+    // given: a server on local files with accounts
     let journey = Journey::<OnSqlite>::with_accounts().await;
 
+    // when: an address signs up
     journey
         .server
         .post("/api/accounts")
@@ -191,6 +196,7 @@ async fn a_server_on_sqlite_keeps_an_address_signed_up_in_the_accounts_file() {
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // then: the accounts file keeps it and the one event
     assert_eq!(
         journey
             .backend

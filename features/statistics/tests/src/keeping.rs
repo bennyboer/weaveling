@@ -51,7 +51,7 @@ impl Wired {
             .expect("the listener should take this message");
     }
 
-    async fn in_project(&self, project: &str) -> Vec<WordCount> {
+    async fn counts_in(&self, project: &str) -> Vec<WordCount> {
         self.catalog
             .in_project(&ProjectLink::from(project))
             .await
@@ -92,6 +92,7 @@ fn a_count(scene: &str, words: u64) -> WordCount {
 
 #[test]
 fn it_listens_for_counts_and_for_deletions() {
+    // when: what it listens to is asked
     let keys: Vec<String> = a_workbench()
         .projector
         .listens_to()
@@ -99,30 +100,37 @@ fn it_listens_for_counts_and_for_deletions() {
         .map(ToString::to_string)
         .collect();
 
+    // then: it is counts and deletions
     assert_eq!(keys, vec![WORDS_COUNTED, DELETED]);
 }
 
 #[tokio::test]
 async fn a_counted_scene_is_kept_under_its_project() {
+    // given: nothing counted yet
     let bench = a_workbench();
 
+    // when: a count of a scene is heard
     bench.hears(counted("scene_1", 42, 1_000)).await;
 
+    // then: its project has it
     assert_eq!(
-        bench.in_project("project_1").await,
+        bench.counts_in("project_1").await,
         vec![a_count("scene_1", 42)]
     );
 }
 
 #[tokio::test]
 async fn a_count_is_ordered_by_when_it_was_counted() {
+    // given: a count of a scene heard
     let bench = a_workbench();
-
     bench.hears(counted("scene_1", 50, 2_000)).await;
+
+    // when: an older count of it is heard
     bench.hears(counted("scene_1", 42, 1_000)).await;
 
+    // then: the newer one stands
     assert_eq!(
-        bench.in_project("project_1").await,
+        bench.counts_in("project_1").await,
         vec![a_count("scene_1", 50)],
         "a redelivered older count must not stand over the newer one"
     );
@@ -130,26 +138,31 @@ async fn a_count_is_ordered_by_when_it_was_counted() {
 
 #[tokio::test]
 async fn a_deleted_scene_is_forgotten_for_good() {
+    // given: a counted scene
     let bench = a_workbench();
     bench.hears(counted("scene_1", 42, 1_000)).await;
 
+    // when: its deletion is heard
     bench.hears(deleted("scene_1")).await;
+    // and: a later count of it
     bench.hears(counted("scene_1", 43, 6_000)).await;
 
-    assert!(bench.in_project("project_1").await.is_empty());
+    // then: its project has no count
+    assert!(bench.counts_in("project_1").await.is_empty());
 }
 
 #[tokio::test]
 async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
+    // given: a deletion heard
     let bench = a_workbench();
     bench.hears(deleted("scene_1")).await;
-
     let statistics = StatisticsCore::new(
         Arc::new(InMemoryTransactions::new()),
         bench.catalog.clone(),
         Arc::new(AllowingEverything),
     );
 
+    // then: no tombstone was laid before the deletion
     assert_eq!(
         statistics
             .forget_tombstones_laid_before(at(5_000), u64::MAX)
@@ -158,6 +171,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         0,
         "laid when it happened, not when it was heard"
     );
+    // and: one was laid at it
     assert_eq!(
         statistics
             .forget_tombstones_laid_before(at(5_001), u64::MAX)
@@ -165,6 +179,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
             .expect("forgetting tombstones should succeed"),
         1
     );
+    // and: once forgotten it is gone
     assert_eq!(
         statistics
             .forget_tombstones_laid_before(at(5_001), u64::MAX)
@@ -177,7 +192,9 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
 
 #[tokio::test]
 async fn a_deletion_whose_hearing_does_not_commit_is_undone_with_it() {
+    // given: hearings that never commit
     let bench = a_workbench_hearing_in(InMemoryTransactions::refusing_commits());
+    // and: a kept count
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -198,14 +215,16 @@ async fn a_deletion_whose_hearing_does_not_commit_is_undone_with_it() {
         .await
         .expect("an in-memory transaction commits");
 
+    // when: the scene's deletion is heard
     bench
         .projector
         .handle(&deleted("scene_1"))
         .await
         .expect_err("a hearing that does not commit is not handled");
 
+    // then: the count is still kept
     assert_eq!(
-        bench.in_project("project_1").await,
+        bench.counts_in("project_1").await,
         vec![a_count("scene_1", 42)],
         "the deletion is written in the hearing's transaction"
     );

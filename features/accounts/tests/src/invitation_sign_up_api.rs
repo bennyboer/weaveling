@@ -12,7 +12,7 @@ use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 const TOKEN: &str = "a token drawn by invitations";
 
-async fn invited() -> (Wired, TestServer) {
+async fn an_open_invitation() -> (Wired, TestServer) {
     let wired = wiring::wired();
     wired
         .keep_ticket(
@@ -51,10 +51,13 @@ fn refused_as(response: TestResponse, status: StatusCode, kind: &str) {
 
 #[tokio::test]
 async fn an_invitation_makes_an_account_and_opens_its_session() {
-    let (wired, server) = invited().await;
+    // given: an open invitation
+    let (wired, server) = an_open_invitation().await;
 
+    // when: someone signs up by its link
     let response = signs_up(&server, TOKEN).await;
 
+    // then: an account is made under the invited address
     response.assert_status(StatusCode::CREATED);
     let signed_in: SignedInDTO = response.json();
     assert_eq!(
@@ -65,6 +68,7 @@ async fn an_invitation_makes_an_account_and_opens_its_session() {
         ),
         ("Ada", ADA, stage::SIGNED_IN)
     );
+    // and: its session is opened in a cookie scripts cannot read
     let cookie = response
         .maybe_header(SET_COOKIE)
         .expect("a session is opened")
@@ -76,6 +80,7 @@ async fn an_invitation_makes_an_account_and_opens_its_session() {
         "{cookie}"
     );
     assert!(cookie.contains("HttpOnly"), "{cookie}");
+    // and: the account signs in with its address confirmed
     wired
         .accounts
         .sign_in(ADA, HER_PASSWORD)
@@ -85,8 +90,10 @@ async fn an_invitation_makes_an_account_and_opens_its_session() {
 
 #[tokio::test]
 async fn a_link_that_leads_nowhere_is_refused_by_its_kind() {
-    let (_wired, server) = invited().await;
+    // given: an open invitation
+    let (_wired, server) = an_open_invitation().await;
 
+    // then: signing up by a link nobody was given is refused
     refused_as(
         signs_up(&server, "a token nobody was given").await,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -96,11 +103,14 @@ async fn a_link_that_leads_nowhere_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn a_link_run_out_is_refused_by_its_kind() {
-    let (wired, server) = invited().await;
+    // given: an open invitation
+    let (wired, server) = an_open_invitation().await;
+    // and: its last moment past
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::days(8));
 
+    // then: signing up by its link is refused
     refused_as(
         signs_up(&server, TOKEN).await,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -110,13 +120,16 @@ async fn a_link_run_out_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn an_address_with_an_account_already_is_refused_by_its_kind() {
-    let (wired, server) = invited().await;
+    // given: an open invitation
+    let (wired, server) = an_open_invitation().await;
+    // and: an account under the invited address already
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
         .await
         .expect("signing up should succeed");
 
+    // then: signing up by its link is refused
     refused_as(
         signs_up(&server, TOKEN).await,
         StatusCode::CONFLICT,
@@ -126,6 +139,7 @@ async fn an_address_with_an_account_already_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_its_kind() {
+    // given: an operator code drawn
     let wired = wiring::wired();
     let code = wired
         .accounts
@@ -133,6 +147,7 @@ async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_
         .await
         .expect("drawing should succeed")
         .expect("with nobody appointed a code is drawn");
+    // and: signing up by invitation only
     let server = TestServer::new(accounts_rest::router(
         wired.accounts.clone().signing_up(SigningUp::ByInvitation),
     ));
@@ -143,6 +158,7 @@ async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_
         operator_code: Some(code.to_owned()),
     };
 
+    // then: a sign up with a wrong code is refused
     refused_as(
         server
             .post("/accounts")
@@ -151,6 +167,7 @@ async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_
         StatusCode::UNPROCESSABLE_ENTITY,
         refused::OPERATOR_CODE_WRONG,
     );
+    // and: one with the code drawn is let in
     server
         .post("/accounts")
         .json(&signing_up(code.as_str()))
@@ -160,11 +177,13 @@ async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_
 
 #[tokio::test]
 async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
+    // given: signing up by invitation only
     let wired = wiring::wired();
     let server = TestServer::new(accounts_rest::router(
         wired.accounts.clone().signing_up(SigningUp::ByInvitation),
     ));
 
+    // then: a plain sign up is refused
     refused_as(
         server
             .post("/accounts")
@@ -182,6 +201,7 @@ async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_it
 
 #[tokio::test]
 async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
+    // given: an open invitation from an owner rather than an operator
     let wired = wiring::wired();
     wired
         .keep_ticket(
@@ -198,10 +218,12 @@ async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused
         )
         .await
         .expect("keeping should succeed");
+    // and: signing up by invitation only
     let server = TestServer::new(accounts_rest::router(
         wired.accounts.clone().signing_up(SigningUp::ByInvitation),
     ));
 
+    // then: signing up by its link is refused
     refused_as(
         signs_up(&server, TOKEN).await,
         StatusCode::FORBIDDEN,

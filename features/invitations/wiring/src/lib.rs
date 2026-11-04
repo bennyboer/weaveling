@@ -328,6 +328,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        // given: the feature wired with a tombstone long laid
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
@@ -340,12 +341,14 @@ mod tests {
             .await
             .expect("laying a tombstone should succeed");
 
+        // then: among its chores is one forgetting old tombstones
         let chore = wired
             .chores
             .iter()
             .find(|chore| chore.named() == "forget-old-invitation-tombstones")
             .expect("the feature forgets its tombstones as a chore");
 
+        // and: it forgets the tombstone
         assert_eq!(
             chore
                 .carry_out()
@@ -357,10 +360,13 @@ mod tests {
 
     #[test]
     fn the_feature_retires_forgets_its_tombstones_and_forgets_old_hearings_as_chores() {
+        // given: what the feature is wired with
         let context = a_context();
 
+        // when: it is wired
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
 
+        // then: its chores retire, forget its tombstones and forget old hearings
         assert_eq!(
             wired
                 .chores
@@ -377,6 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_retires_what_is_due_as_a_chore() {
+        // given: the feature wired with an invitation due for retiring
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
@@ -412,11 +419,13 @@ mod tests {
             .await
             .expect("finishing should succeed");
 
+        // then: among its chores is one retiring what is due
         let chore = wired
             .chores
             .iter()
             .find(|chore| chore.named() == "retire-due-invitations")
             .expect("the feature retires as a chore");
+        // and: it retires the invitation
         assert_eq!(
             chore
                 .carry_out()
@@ -424,6 +433,7 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
+        // and: in the system's name
         let told = ports
             .events
             .read_from(&AggregateId::from(&issued.id), KIND, Version::of(1))
@@ -443,10 +453,13 @@ mod tests {
     #[test]
     fn the_feature_mails_and_hears_its_invitations_taken_up_declined_and_listed_who_signed_up_and_the_projects_names()
      {
+        // given: what the feature is wired with
         let context = a_context();
 
+        // when: it is wired
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
 
+        // then: it hears its invitations issued, taken up, declined and listed, who signed up and the projects' names
         for named in [
             "mail-issued-invitation",
             "accept-taken-up-invitation",
@@ -476,9 +489,11 @@ mod postgres_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
+        // given: a database of its own
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("invitations").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in InvitationFeature::postgres_schema() {
                 schema
@@ -488,9 +503,11 @@ mod postgres_tests {
             }
         }
 
+        // then: the list keeps what it is told
         let ports = InvitationFeature::on_postgres(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        // and: in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM invitation_summaries")
             .fetch_one(&pool)
             .await
@@ -512,9 +529,11 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
+        // given: a database of its own
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("invitations").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in InvitationFeature::sqlite_schema() {
                 schema
@@ -524,9 +543,11 @@ mod sqlite_tests {
             }
         }
 
+        // then: the list keeps what it is told
         let ports = InvitationFeature::on_sqlite(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        // and: in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM invitation_summaries")
             .fetch_one(&pool)
             .await

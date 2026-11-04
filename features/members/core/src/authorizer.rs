@@ -209,7 +209,7 @@ mod tests {
         AccountId::from("account_ada")
     }
 
-    fn authorizer(roles: Vec<(&str, AccountId, Role)>) -> MembersAuthorizer {
+    fn an_authorizer(roles: Vec<(&str, AccountId, Role)>) -> MembersAuthorizer {
         MembersAuthorizer::new(Arc::new(Kept {
             roles: Mutex::new(
                 roles
@@ -222,7 +222,7 @@ mod tests {
         }))
     }
 
-    fn authorizer_with_trashed(
+    fn an_authorizer_with_trashed(
         roles: Vec<(&str, AccountId, Role)>,
         trashed: &[&str],
     ) -> MembersAuthorizer {
@@ -267,8 +267,10 @@ mod tests {
             (Role::Author, vec![Act::Read, Act::Write]),
             (Role::Reader, vec![Act::Read]),
         ] {
-            let authorizer = authorizer(vec![("project_1", ada(), role)]);
+            // given: ada in a project in each role
+            let authorizer = an_authorizer(vec![("project_1", ada(), role)]);
 
+            // expect: she may do what the role allows
             assert_eq!(
                 allowed(&authorizer, &Agent::Account(ada()), "project_1").await,
                 acts,
@@ -285,9 +287,11 @@ mod tests {
             (Role::Author, vec![]),
             (Role::Reader, vec![]),
         ] {
+            // given: ada in a project in the trash in each role
             let authorizer =
-                authorizer_with_trashed(vec![("project_1", ada(), role)], &["project_1"]);
+                an_authorizer_with_trashed(vec![("project_1", ada(), role)], &["project_1"]);
 
+            // expect: she may only restore it, and only as owner
             assert_eq!(
                 allowed(&authorizer, &Agent::Account(ada()), "project_1").await,
                 acts,
@@ -298,8 +302,10 @@ mod tests {
 
     #[tokio::test]
     async fn the_application_still_acts_on_a_project_in_the_trash() {
-        let authorizer = authorizer_with_trashed(vec![], &["project_1"]);
+        // given: a project in the trash
+        let authorizer = an_authorizer_with_trashed(vec![], &["project_1"]);
 
+        // expect: the application may do everything in it
         assert_eq!(
             allowed(&authorizer, &Agent::System, "project_1").await,
             vec![Act::Read, Act::Write, Act::Manage, Act::Restore],
@@ -309,7 +315,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_project_in_the_trash_is_readable_by_nobody() {
-        let authorizer = authorizer_with_trashed(
+        // given: ada owning two projects, one of them in the trash
+        let authorizer = an_authorizer_with_trashed(
             vec![
                 ("project_1", ada(), Role::Owner),
                 ("project_2", ada(), Role::Owner),
@@ -317,6 +324,7 @@ mod tests {
             &["project_1"],
         );
 
+        // expect: she reads only the other
         assert_eq!(
             authorizer
                 .readable_by(&Agent::Account(ada()))
@@ -328,16 +336,19 @@ mod tests {
 
     #[tokio::test]
     async fn an_account_may_do_nothing_in_a_project_it_is_not_in() {
-        let authorizer = authorizer(vec![
+        // given: ada in one project and grace in another
+        let authorizer = an_authorizer(vec![
             ("project_1", ada(), Role::Owner),
             ("project_2", AccountId::from("account_grace"), Role::Owner),
         ]);
 
+        // expect: ada may do nothing in grace's project
         assert!(
             allowed(&authorizer, &Agent::Account(ada()), "project_2")
                 .await
                 .is_empty()
         );
+        // and: nothing in a project nobody is in
         assert!(
             allowed(&authorizer, &Agent::Account(ada()), "project_3")
                 .await
@@ -347,12 +358,15 @@ mod tests {
 
     #[tokio::test]
     async fn on_a_server_the_application_may_act_and_nobody_unsigned_may() {
-        let authorizer = authorizer(vec![]);
+        // given: a project nobody is in
+        let authorizer = an_authorizer(vec![]);
 
+        // expect: the application may do everything in it
         assert_eq!(
             allowed(&authorizer, &Agent::System, "project_1").await,
             vec![Act::Read, Act::Write, Act::Manage, Act::Restore]
         );
+        // and: nobody unsigned may do anything
         assert!(
             allowed(&authorizer, &Agent::Local, "project_1")
                 .await
@@ -362,12 +376,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_list_that_cannot_be_asked_is_a_failure_not_a_no() {
+        // given: a list of members that is down
         let authorizer = MembersAuthorizer::new(Arc::new(Kept {
             roles: Mutex::new(vec![]),
             trashed: Mutex::new(Vec::new()),
             down: true,
         }));
 
+        // expect: asking what an account may do fails
         assert!(
             authorizer
                 .may(&Agent::Account(ada()), Act::Read, "project_1")
@@ -378,12 +394,14 @@ mod tests {
 
     #[tokio::test]
     async fn an_account_reads_every_project_it_is_in_whatever_its_role_and_no_other() {
-        let authorizer = authorizer(vec![
+        // given: ada in two projects in different roles and grace in a third
+        let authorizer = an_authorizer(vec![
             ("project_1", ada(), Role::Reader),
             ("project_2", ada(), Role::Owner),
             ("project_3", AccountId::from("account_grace"), Role::Owner),
         ]);
 
+        // expect: ada reads her two
         assert_eq!(
             authorizer
                 .readable_by(&Agent::Account(ada()))
@@ -398,8 +416,10 @@ mod tests {
 
     #[tokio::test]
     async fn on_a_server_the_application_reads_everything_and_nobody_unsigned_anything() {
-        let authorizer = authorizer(vec![("project_1", ada(), Role::Owner)]);
+        // given: a project
+        let authorizer = an_authorizer(vec![("project_1", ada(), Role::Owner)]);
 
+        // expect: the application reads everything
         assert_eq!(
             authorizer
                 .readable_by(&Agent::System)
@@ -407,6 +427,7 @@ mod tests {
                 .expect("nothing to ask"),
             Readable::Everything
         );
+        // and: nobody unsigned reads anything
         assert_eq!(
             authorizer
                 .readable_by(&Agent::Local)
@@ -418,12 +439,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_list_that_cannot_be_asked_is_a_failure_not_nothing_to_read() {
+        // given: a list of members that is down
         let authorizer = MembersAuthorizer::new(Arc::new(Kept {
             roles: Mutex::new(vec![]),
             trashed: Mutex::new(Vec::new()),
             down: true,
         }));
 
+        // expect: asking what an account may read fails
         assert!(
             authorizer
                 .readable_by(&Agent::Account(ada()))

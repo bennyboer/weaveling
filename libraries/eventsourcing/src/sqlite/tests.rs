@@ -201,10 +201,12 @@ async fn titles_in(store: &SqliteEventStore<SampleEvent>, aggregate: &AggregateI
 
 #[tokio::test]
 async fn an_event_keeps_the_instant_it_happened_to_the_nanosecond() {
+    // given: an event of an instant to the nanosecond
     let bench = OnSqlite::setup().await;
     let aggregate = AggregateId::from("sample_instant");
     let written = at(&aggregate, 1, a_creation());
 
+    // when: it is appended and read back
     bench
         .committing()
         .append(
@@ -221,6 +223,7 @@ async fn an_event_keeps_the_instant_it_happened_to_the_nanosecond() {
         .await
         .expect("reading should succeed");
 
+    // then: it keeps that instant, and all else it was stamped with
     assert_eq!(found[0].metadata, written.metadata);
 
     bench.cleanup().await;
@@ -228,20 +231,25 @@ async fn an_event_keeps_the_instant_it_happened_to_the_nanosecond() {
 
 #[tokio::test]
 async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_file() {
+    // given: an event store laid down on sqlite
     let fixture = SqliteFixture::setup();
     let pool = ready_for("sharing", &fixture).await;
 
+    // when: the tables of its file are listed
     let found: Vec<String> =
         sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
             .fetch_all(&pool)
             .await
             .expect("reading the catalog should succeed");
 
+    // then: its events and its outbox are there
     assert!(found.contains(&"events".to_owned()) && found.contains(&"outbox".to_owned()));
+    // and: its own ledger
     assert!(
         found.contains(&"_sqlx_migrations_events".to_owned()),
         "{found:?}"
     );
+    // and: not the usual one
     assert!(
         !found.contains(&"_sqlx_migrations".to_owned()),
         "the default ledger belongs to the feature whose file this is, found {found:?}"
@@ -252,9 +260,11 @@ async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_file(
 
 #[tokio::test]
 async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    // given: an event store laid down on sqlite
     let fixture = SqliteFixture::setup();
     let pool = ready_for("indexed", &fixture).await;
 
+    // when: the indexes of its file are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name",
     )
@@ -262,6 +272,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are those its queries rely on
     assert_eq!(
         found,
         vec!["events_snapshots", "outbox_published", "outbox_waiting"],
@@ -274,9 +285,11 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_was_busy() {
+    // given: a stream of one event
     let bench = OnSqlite::setup().await;
     let aggregate = AggregateId::from("sample_waiting");
     a_started_stream(&bench, &aggregate).await;
+    // and: another writer holding the file, having appended to it
     let mut other = bench
         .pool
         .begin_with("BEGIN IMMEDIATE")
@@ -294,6 +307,7 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
     .await
     .expect("the other writer writes");
 
+    // when: an append at the same version waits on that writer
     let store = Arc::new(SqliteEventStore::new(
         bench.pool.clone(),
         stored::codec(),
@@ -322,16 +336,19 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
             appended
         }
     });
+    // and: the other writer commits
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     other.commit().await.expect("the other writer commits");
 
     let mine = appending.await.expect("the append finishes");
 
+    // then: the append is refused as outdated
     assert!(
         matches!(mine, Err(StoreError::Outdated { .. })),
         "a deferred transaction that read the head before the other commit could not upgrade to \
          a writer, and SQLite says busy rather than waiting: {mine:?}"
     );
+    // and: only the other writer's event is written
     assert_eq!(titles_in(bench.store(), &aggregate).await, vec!["Theirs"]);
 
     bench.cleanup().await;
@@ -339,6 +356,7 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
 
 #[tokio::test(flavor = "multi_thread")]
 async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
+    // given: a sample service on sqlite
     let bench = OnSqlite::setup().await;
     let service: EventSourcingService<Sample> = EventSourcingService::new(
         Arc::new(SqliteEventStore::new(
@@ -348,6 +366,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
         )),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    // and: a transaction, every other connection of the pool taken
     let aggregate = AggregateId::from("sample_on_one_connection");
     let mut transaction = bench
         .transactions
@@ -365,6 +384,7 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
         );
     }
 
+    // when: a sample is begun and retitled twice in that transaction
     tokio::time::timeout(std::time::Duration::from_secs(3), async {
         service
             .begin(
@@ -392,12 +412,14 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
     })
     .await
     .expect("a command reads through the transaction it is given, needing no connection beside it");
+    // and: the transaction is finished
     drop(taken);
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: the sample has the last title
     assert_eq!(
         service
             .latest(&aggregate)

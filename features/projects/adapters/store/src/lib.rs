@@ -194,7 +194,7 @@ mod tests {
         ProjectName::new(saying).expect("the name should be usable")
     }
 
-    fn a_description() -> ProjectDetails {
+    fn some_details() -> ProjectDetails {
         ProjectDetails {
             language: Some(BookLanguage::new("de").expect("a plain tag")),
             quotation: Some(QuotationMarks::PointingIn),
@@ -212,10 +212,11 @@ A war.",
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // expect: each event read back after writing is the event written
         for event in [
             ProjectEvent::Started(a_name("The Weaver's Apprentice")),
             ProjectEvent::Renamed(a_name("A crown of straw")),
-            ProjectEvent::DetailsChanged(a_description()),
+            ProjectEvent::DetailsChanged(some_details()),
             ProjectEvent::DetailsChanged(ProjectDetails::default()),
             ProjectEvent::QuotationChanged(QuotationMarks::SpacedOut),
             ProjectEvent::Trashed { until: at(3_000) },
@@ -223,7 +224,7 @@ A war.",
             ProjectEvent::Deleted,
             ProjectEvent::Snapshotted {
                 name: a_name("The Weaver's Apprentice"),
-                details: a_description(),
+                details: some_details(),
                 created_at: at(1_000),
                 updated_at: at(2_000),
                 trashed_until: None,
@@ -252,6 +253,7 @@ A war.",
 
     #[test]
     fn a_snapshots_moments_are_stored_in_a_shape_a_human_can_read() {
+        // when: a snapshot is written
         let written = (codec().body)(&ProjectEvent::Snapshotted {
             name: a_name("Readable"),
             details: ProjectDetails::default(),
@@ -261,6 +263,7 @@ A war.",
             deleted: false,
         });
 
+        // then: its moments are written as dates and times
         assert_eq!(
             written["Snapshotted"]["created_at"],
             serde_json::json!("1970-01-01T00:16:40Z"),
@@ -271,6 +274,7 @@ A war.",
 
     #[test]
     fn a_snapshot_written_before_the_trash_reads_as_not_in_it() {
+        // given: a snapshot stored without a word about the trash
         let written = serde_json::json!({ "Snapshotted": {
             "name": "Older",
             "language": null,
@@ -280,6 +284,7 @@ A war.",
             "deleted": false,
         } });
 
+        // expect: it reads as a project out of the trash
         assert_eq!(
             (codec().event)(written),
             Some(ProjectEvent::Snapshotted {
@@ -295,21 +300,26 @@ A war.",
 
     #[test]
     fn a_stored_language_the_domain_would_refuse_reads_as_nothing() {
+        // given: stored details with a language the domain refuses
         let refused =
             serde_json::json!({ "DetailsChanged": { "language": "deutsch", "description": "" } });
 
+        // expect: they read as no event
         assert!((codec().event)(refused).is_none());
     }
 
     #[test]
     fn a_body_written_in_a_shape_we_no_longer_know_reads_as_nothing() {
+        // given: a body of an unknown shape
         let nonsense = serde_json::json!({ "WrittenByAHandFromAnotherAge": { "runes": 3 } });
 
+        // expect: it reads as no event
         assert!(((codec().event)(nonsense)).is_none());
     }
 
     #[test]
     fn a_stored_name_the_domain_would_refuse_reads_as_nothing() {
+        // expect: each stored name the domain refuses reads as no event
         for refused in [
             serde_json::json!({ "Renamed": { "name": "   " } }),
             serde_json::json!({ "Renamed": { "name": "a\u{7}b" } }),
@@ -324,8 +334,10 @@ A war.",
 
     #[test]
     fn the_stored_shape_names_its_variant() {
+        // when: a deletion is written
         let written = (codec().body)(&ProjectEvent::Deleted);
 
+        // then: it is stored by its variant's name
         assert_eq!(written, serde_json::json!("Deleted"));
     }
 }

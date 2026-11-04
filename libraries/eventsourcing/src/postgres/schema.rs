@@ -15,16 +15,19 @@ mod tests {
 
     #[test]
     fn the_ledger_is_renamed_at_all() {
+        // expect: the ledger is named as this library names it
         assert_eq!(migrations().table_name, LEDGER);
     }
 
     #[test]
     fn the_ledger_is_never_renamed_to_the_one_a_feature_will_want() {
+        // expect: the ledger is not named as a feature's would be
         assert_ne!(migrations().table_name, Migrator::DEFAULT.table_name);
     }
 
     #[test]
     fn there_is_something_to_lay_down() {
+        // expect: there are migrations to lay down
         assert!(!migrations().migrations.is_empty());
     }
 }

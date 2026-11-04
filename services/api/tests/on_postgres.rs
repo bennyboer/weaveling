@@ -91,8 +91,10 @@ journeys!(OnPostgres);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_server_keeps_an_address_signed_up_in_the_accounts_database() {
+    // given: a server with accounts
     let journey = Journey::<OnPostgres>::with_accounts().await;
 
+    // when: an address signs up
     journey
         .server
         .post("/api/accounts")
@@ -100,6 +102,7 @@ async fn a_server_keeps_an_address_signed_up_in_the_accounts_database() {
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // then: the accounts database keeps it and the one event
     assert_eq!(
         journey
             .backend

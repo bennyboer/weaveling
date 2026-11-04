@@ -165,6 +165,7 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // expect: every kind of event reads back as it was written
         for event in [
             SampleEvent::CreatedBeforeDescriptions {
                 title: "The Loom".to_owned(),
@@ -195,13 +196,16 @@ mod tests {
 
     #[test]
     fn a_body_written_in_a_shape_we_no_longer_know_reads_as_nothing() {
+        // expect: a body of a shape no longer known reads as nothing
         assert!(((codec().event)(nonsense())).is_none());
     }
 
     #[test]
     fn the_stored_shape_names_its_variant_so_a_row_can_be_read_without_the_columns() {
+        // when: an event is written
         let written = (codec().body)(&SampleEvent::Deleted);
 
+        // then: what is written names its variant
         assert_eq!(written, serde_json::json!("Deleted"));
     }
 }

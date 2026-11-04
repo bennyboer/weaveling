@@ -49,6 +49,7 @@ mod tests {
 
     #[test]
     fn every_scope_reads_back_as_it_was_written() {
+        // given: each scope
         for scope in [
             Scope::Instance,
             Scope::Project {
@@ -64,13 +65,16 @@ mod tests {
                 role: Role::Reader,
             },
         ] {
+            // when: it is written
             let (project, role) = written(&scope);
+            // then: it reads back as it was
             assert_eq!(read(project, role).expect("readable"), scope);
         }
     }
 
     #[test]
     fn half_a_scope_or_a_role_nobody_knows_is_a_failure() {
+        // expect: half a scope or a role nobody knows is a failure
         assert!(read(Some("project_1".to_owned()), None).is_err());
         assert!(read(None, Some(OWNER)).is_err());
         assert!(read(Some("project_1".to_owned()), Some("editor")).is_err());

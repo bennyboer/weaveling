@@ -371,15 +371,19 @@ const RELAYED: &str =
     "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry";
 
 pub async fn a_project_is_read_back_and_left_waiting_to_be_announced<B: Backend>() {
+    // given: a server with no relay running
     let journey = Journey::<B>::unrelayed().await;
 
+    // when: a project is started
     let id = journey.project("The Weaver's Apprentice").await;
 
+    // then: it is read back
     assert_eq!(
         journey.read(&format!("/api/projects/{id}")).await["name"],
         "The Weaver's Apprentice",
         "reading an aggregate replays its stream, so this needs no projection"
     );
+    // and: its start waits to be announced
     assert_eq!(
         journey.backend.read("projects", WAITING).await,
         ["project.started"],
@@ -389,16 +393,20 @@ pub async fn a_project_is_read_back_and_left_waiting_to_be_announced<B: Backend>
 }
 
 pub async fn a_captured_idea_is_read_back_and_left_waiting_to_be_announced<B: Backend>() {
+    // given: a project on a server with no relay running
     let journey = Journey::<B>::unrelayed().await;
     let project = journey.project("Capturing").await;
 
+    // when: an idea is captured in it
     let id = journey.idea(&project, "A girl in a wood").await;
 
+    // then: it is read back
     assert_eq!(
         journey.read(&format!("/api/ideas/{id}")).await["title"],
         "A girl in a wood",
         "reading an aggregate replays its stream, so this needs no projection"
     );
+    // and: its capture waits to be announced
     assert_eq!(
         journey.backend.read("ideas", WAITING).await,
         ["idea.captured"]
@@ -407,6 +415,7 @@ pub async fn a_captured_idea_is_read_back_and_left_waiting_to_be_announced<B: Ba
 }
 
 pub async fn what_was_written_survives_a_second_api_built_on_the_same_databases<B: Backend>() {
+    // given: a project written through one server
     let backend = B::setup().await;
     let first = a_server_on(&backend).await;
     let id = id_in(
@@ -419,8 +428,10 @@ pub async fn what_was_written_survives_a_second_api_built_on_the_same_databases<
     );
     drop(first);
 
+    // when: a second server is built on the same databases
     let second = a_server_on(&backend).await;
 
+    // then: it reads the project back
     assert_eq!(
         second
             .get(&format!("/api/projects/{id}"))
@@ -433,11 +444,14 @@ pub async fn what_was_written_survives_a_second_api_built_on_the_same_databases<
 }
 
 pub async fn every_feature_keeps_its_rows_where_it_was_told_to<B: Backend>() {
+    // given: a project
     let journey = Journey::<B>::unrelayed().await;
     let project = journey.project("Apart").await;
 
+    // when: an idea is captured in it
     journey.idea(&project, "A girl in a wood").await;
 
+    // then: the projects and the ideas have written their rows
     for (feature, counting) in [
         ("projects", "SELECT count(*) FROM events"),
         ("projects", "SELECT count(*) FROM outbox"),
@@ -447,6 +461,7 @@ pub async fn every_feature_keeps_its_rows_where_it_was_told_to<B: Backend>() {
         let held = journey.backend.count(feature, counting).await;
         assert!(held > 0, "{feature} should have written: {counting}");
     }
+    // and: the boards have written none
     assert_eq!(
         journey
             .backend
@@ -459,11 +474,14 @@ pub async fn every_feature_keeps_its_rows_where_it_was_told_to<B: Backend>() {
 }
 
 pub async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog<B: Backend>() {
+    // given: a project on a relayed server
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Relaying").await;
 
+    // when: an idea is captured in it
     journey.idea(&project, "A girl in a wood").await;
 
+    // then: it reaches the catalog of ideas
     assert!(
         until(|| async {
             journey.read(&format!("/api/ideas?project={project}")).await[0]["title"]
@@ -472,6 +490,7 @@ pub async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog<B: Bac
         .await,
         "the catalog is a projection, so this is the whole chain: append, outbox, relay, listener"
     );
+    // and: the project reaches the list of projects
     assert!(
         until(|| async {
             let projects = journey.read("/api/projects").await;
@@ -487,6 +506,7 @@ pub async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog<B: Bac
 }
 
 pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
+    // given: a project holding an idea, a scene, a board and an outline
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Doomed").await;
     journey.idea(&project, "A girl in a wood").await;
@@ -501,16 +521,19 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
         "the idea has to be catalogued before deleting can be shown to sweep it away"
     );
 
+    // when: it is deleted long ago and the trash purged
     journey
         .deleted_long_ago(&format!("/api/projects/{project}"))
         .await;
     journey.purge_the_trash().await;
 
+    // then: its ideas are gone
     assert!(
         until(|| async { journey.listed(&ideas).await.is_empty() }).await,
         "a deleted project must not leave its ideas behind; with a durable store an orphan \
          outlives the session rather than dying with the process"
     );
+    // and: its board and outline
     assert!(
         until(|| async {
             journey
@@ -527,6 +550,7 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
         .await,
         "the board and the outline go with the project, each disposing its own"
     );
+    // and: its scene
     assert!(
         until(|| async {
             journey
@@ -540,6 +564,7 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
         "the CRDT store holds the only copy of the prose, and nothing points at this scene \
          but its own project column, so the project's sweep is the only thing that can reach it"
     );
+    // and: nothing was given up on the way
     let stuck = journey
         .backend
         .read(
@@ -555,14 +580,17 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
 }
 
 pub async fn discarding_an_idea_unlinks_it_from_every_scene<B: Backend>() {
+    // given: an idea linked to a scene
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Linking").await;
     let idea = journey.idea(&project, "A girl in a wood").await;
     let scene = journey.scene(&project).await;
     journey.link(&scene, &idea).await;
 
+    // when: the idea is discarded
     journey.delete(&format!("/api/ideas/{idea}")).await;
 
+    // then: the scene no longer links it
     assert!(
         until(|| async {
             journey.read(&format!("/api/scenes/{scene}")).await["ideas"]
@@ -576,6 +604,7 @@ pub async fn discarding_an_idea_unlinks_it_from_every_scene<B: Backend>() {
 }
 
 pub async fn deleting_a_scene_takes_it_out_of_the_book<B: Backend>() {
+    // given: a scene placed in an outline
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Unplacing").await;
     let outline = journey.outline(&project).await;
@@ -583,8 +612,10 @@ pub async fn deleting_a_scene_takes_it_out_of_the_book<B: Backend>() {
     let scene = journey.scene(&project).await;
     journey.attach(&outline, "scene", &scene, &section).await;
 
+    // when: the scene is deleted
     journey.delete(&format!("/api/scenes/{scene}")).await;
 
+    // then: the outline no longer holds it
     assert!(
         until(|| async {
             journey.read(&format!("/api/outlines/{outline}")).await["sections"][0]["attachments"]
@@ -598,12 +629,15 @@ pub async fn deleting_a_scene_takes_it_out_of_the_book<B: Backend>() {
 }
 
 pub async fn linking_an_idea_is_announced_and_relayed<B: Backend>() {
+    // given: a scene
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Announcing").await;
     let scene = journey.scene(&project).await;
 
+    // when: an idea is linked to it
     journey.link(&scene, "idea_1").await;
 
+    // then: the linking is relayed after the scene's creation
     assert!(
         until(|| async {
             journey.backend.read("scenes", RELAYED).await == ["scene.created", "scene.idea.linked"]
@@ -615,16 +649,20 @@ pub async fn linking_an_idea_is_announced_and_relayed<B: Backend>() {
 }
 
 pub async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded<B: Backend>() {
+    // given: an idea noted in an outline
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Appearing").await;
     let idea = journey.idea(&project, "A girl in a wood").await;
     let outline = journey.outline(&project).await;
     let section = journey.section(&outline, "Chapter one").await;
     journey.attach(&outline, "idea", &idea, &section).await;
+    // and: a scene
     let scene = journey.scene(&project).await;
 
+    // when: the idea is linked to the scene
     journey.link(&scene, &idea).await;
 
+    // then: it appears in both
     let appearances = format!("/api/appearances?idea={idea}");
     assert!(
         until(|| async {
@@ -642,8 +680,10 @@ pub async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded<B: 
         "appearances hear both the outline and scenes, each through its own outbox"
     );
 
+    // when: the idea is discarded
     journey.delete(&format!("/api/ideas/{idea}")).await;
 
+    // then: it appears nowhere
     assert!(
         until(|| async {
             journey
@@ -659,10 +699,13 @@ pub async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded<B: 
 }
 
 pub async fn whoever_starts_a_project_owns_it<B: Backend>() {
+    // given: a signed in author
     let journey = Journey::<B>::signed_in("owning").await;
 
+    // when: she starts a project
     let project = journey.project("Owned").await;
 
+    // then: she is its owner
     let owned = vec![format!("{project} owner")];
     let (backend, owned) = (&journey.backend, &owned);
     assert!(
@@ -679,6 +722,7 @@ pub async fn whoever_starts_a_project_owns_it<B: Backend>() {
 }
 
 pub async fn an_idea_s_appearances_are_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    // given: a project its owner may read
     let journey = Journey::<B>::signed_in("appearing").await;
     let project = journey.project("Appearing").await;
     let server = &journey.server;
@@ -687,11 +731,14 @@ pub async fn an_idea_s_appearances_are_there_only_for_whoever_may_read_its_proje
         until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
         "its owner may read the project once the members have heard of her"
     );
+    // and: an idea and a scene in it
     let idea = journey.idea(&project, "A girl in a wood").await;
     let scene = journey.scene(&project).await;
 
+    // when: the idea is linked to the scene
     journey.link(&scene, &idea).await;
 
+    // then: its owner reads where it appears
     let asked = format!("/api/appearances?idea={idea}");
     let placed = json!([{ "type": "scene", "id": scene }]);
     let (asked, placed) = (&asked, &placed);
@@ -699,12 +746,15 @@ pub async fn an_idea_s_appearances_are_there_only_for_whoever_may_read_its_proje
         until(|| async move { server.get(asked).await.json::<Value>() == *placed }).await,
         "the link is relayed with its project, and the appearances keep both"
     );
+    // when: another account signs in
     journey.signed_in_as_another("grace@example.com").await;
+    // then: its appearances are not found
     server.get(asked).await.assert_status(StatusCode::NOT_FOUND);
     journey.end().await;
 }
 
 pub async fn a_project_s_board_is_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    // given: a project its owner may read
     let journey = Journey::<B>::signed_in("pinning").await;
     let project = journey.project("Pinned").await;
     let server = &journey.server;
@@ -713,13 +763,16 @@ pub async fn a_project_s_board_is_there_only_for_whoever_may_read_its_project<B:
         until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
         "its owner may read the project once the members have heard of her"
     );
+    // and: its board
     let opened = journey
         .posted("/api/boards", json!({ "project": project }), StatusCode::OK)
         .await;
     let board = opened["id"].as_str().expect("a board has an id").to_owned();
 
+    // when: another account signs in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // then: it neither opens nor reads the board
     server
         .post("/api/boards")
         .json(&json!({ "project": project }))
@@ -733,6 +786,7 @@ pub async fn a_project_s_board_is_there_only_for_whoever_may_read_its_project<B:
 }
 
 pub async fn a_project_s_outline_is_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    // given: a project its owner may read
     let journey = Journey::<B>::signed_in("outlining").await;
     let project = journey.project("Outlined").await;
     let server = &journey.server;
@@ -741,10 +795,13 @@ pub async fn a_project_s_outline_is_there_only_for_whoever_may_read_its_project<
         until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
         "its owner may read the project once the members have heard of her"
     );
+    // and: its outline
     let outline = journey.outline(&project).await;
 
+    // when: another account signs in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // then: it neither opens nor reads the outline
     server
         .post("/api/outlines")
         .json(&json!({ "project": project }))
@@ -758,6 +815,7 @@ pub async fn a_project_s_outline_is_there_only_for_whoever_may_read_its_project<
 }
 
 pub async fn a_project_s_scenes_are_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    // given: a project its owner may read
     let journey = Journey::<B>::signed_in("writing").await;
     let project = journey.project("Written").await;
     let server = &journey.server;
@@ -766,16 +824,20 @@ pub async fn a_project_s_scenes_are_there_only_for_whoever_may_read_its_project<
         until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
         "its owner may read the project once the members have heard of her"
     );
+    // and: a scene in it
     let scene = journey.scene(&project).await;
 
+    // when: another account signs in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // then: it neither lists nor reads the scenes
     for path in [
         format!("/api/scenes?project={project}"),
         format!("/api/scenes/{scene}"),
     ] {
         server.get(&path).await.assert_status(StatusCode::NOT_FOUND);
     }
+    // and: it starts none
     server
         .post("/api/scenes")
         .json(&json!({ "project": project }))
@@ -785,6 +847,7 @@ pub async fn a_project_s_scenes_are_there_only_for_whoever_may_read_its_project<
 }
 
 pub async fn a_project_s_members_are_listed_for_whoever_may_read_it<B: Backend>() {
+    // given: a project its owner may list the members of
     let journey = Journey::<B>::signed_in("members").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -794,17 +857,22 @@ pub async fn a_project_s_members_are_listed_for_whoever_may_read_it<B: Backend>(
         "its owner may list the members once they have heard of her"
     );
 
+    // when: she lists them
     let listed: Value = server.get(&at).await.json();
+    // then: she alone is listed, as owner
     assert_eq!(listed.as_array().map(Vec::len), Some(1));
     assert_eq!(listed[0]["role"], "owner");
 
+    // when: another account signs in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // then: the members are not found
     server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
     journey.end().await;
 }
 
 pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up<B: Backend>() {
+    // given: a project its owner may invite into
     let journey = Journey::<B>::signed_in("joining").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -813,6 +881,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
         "its owner may invite once the members have heard of her"
     );
+    // and: an account invited into it as author
     server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -822,6 +891,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         }))
         .await
         .assert_status(StatusCode::CREATED);
+    // and: the link mailed to it
     let drop = journey
         .drop
         .as_ref()
@@ -829,8 +899,10 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
     let token = crate::mail_drop::invitation_token_mailed_to(drop, "grace@example.com")
         .await
         .expect("the link should have been mailed");
+    // and: the invited account signed in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // when: it takes the invitation up
     assert!(
         until(|| async {
             server
@@ -843,6 +915,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         .await,
         "accounts hear of the invitation only through the outbox, its relay and their own listener"
     );
+    // then: it joins as an author
     assert!(
         until(|| async {
             let listed: Value = server.get(&at).await.json();
@@ -853,6 +926,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         .await,
         "invitations accept what accounts took up, and members let her join as she was invited"
     );
+    // and: the members are listed by name, without addresses
     let listed: Value = server.get(&at).await.json();
     assert_eq!(
         listed,
@@ -866,6 +940,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
 }
 
 pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it<B: Backend>() {
+    // given: a project its owner may list the members of
     let journey = Journey::<B>::signed_in("disbanding").await;
     let project = journey.project("Gone").await;
     let server = &journey.server;
@@ -875,11 +950,13 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
         "its owner may list the members once they have heard of her"
     );
 
+    // when: it is deleted long ago and the trash purged
     journey
         .deleted_long_ago(&format!("/api/projects/{project}"))
         .await;
     journey.purge_the_trash().await;
 
+    // then: nobody may invite into it
     assert!(
         until(|| async {
             server
@@ -896,6 +973,7 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
         .await,
         "the members hear the project deleted and let everyone go, so nobody invites into it"
     );
+    // and: its members are not found
     server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
     journey.end().await;
 }
@@ -903,6 +981,7 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
 pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there<
     B: Backend,
 >() {
+    // given: a project its owner may invite into
     let journey = Journey::<B>::signed_in("told").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -911,6 +990,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
         until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
         "its owner may invite once the members have heard of her"
     );
+    // and: an account invited into it as author
     server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -921,8 +1001,10 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
         .await
         .assert_status(StatusCode::CREATED);
 
+    // when: the invited account signs in
     journey.signed_in_as_another("grace@example.com").await;
 
+    // then: it is told what it is invited into and by whom
     assert!(
         until(|| async {
             let mine: Value = server.get("/api/invitations/mine").await.json();
@@ -936,6 +1018,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
     assert_eq!(mine[0]["project"], project);
     assert_eq!(mine[0]["role"], "author");
 
+    // when: it takes the invitation up there
     assert!(
         until(|| async {
             server
@@ -951,6 +1034,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
         "taken up once the accounts have kept the invitation's ticket, which they do on a listener of their own, so the list may show it a moment before"
     );
 
+    // then: it joins as it was invited
     assert!(
         until(|| async {
             let listed: Value = server.get(&members).await.json();
@@ -961,6 +1045,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
         .await,
         "taken up in the application, no link followed, she joins as she was invited"
     );
+    // and: it is invited to it no more
     assert!(
         until(|| async {
             server
@@ -977,6 +1062,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
 }
 
 pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B: Backend>() {
+    // given: a project its owner may invite into
     let journey = Journey::<B>::signed_in("turned-down").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -985,6 +1071,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
         "its owner may invite once the members have heard of her"
     );
+    // and: an account invited into it as author
     server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -995,6 +1082,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         .await
         .assert_status(StatusCode::CREATED);
 
+    // and: the invited account signed in and told of it
     journey.signed_in_as_another("grace@example.com").await;
     assert!(
         until(|| async {
@@ -1008,6 +1096,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         .await,
         "invitations hear of her sign-up"
     );
+    // when: it turns the invitation down there
     let mine: Value = server.get("/api/invitations/mine").await.json();
     assert!(
         until(|| async {
@@ -1024,6 +1113,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         "turned down once the accounts have kept the invitation's ticket, which they do on a listener of their own, so the list may show it a moment before"
     );
 
+    // then: it is invited to it no more
     assert!(
         until(|| async {
             server
@@ -1036,6 +1126,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         .await,
         "turned down, she is invited to it no more"
     );
+    // and: the owner sees it turned down
     server
         .post("/api/sessions")
         .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
@@ -1049,6 +1140,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         listed["invitations"][0]["declined_for"], "turned-down",
         "the owner sees why"
     );
+    // and: nobody joined
     assert!(
         !server
             .get(&members)
@@ -1062,6 +1154,7 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
 }
 
 pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into<B: Backend>() {
+    // given: a project its owner may invite into
     let journey = Journey::<B>::signed_in("turned-down-by-link").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -1070,12 +1163,14 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
         until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
         "its owner may invite once the members have heard of her"
     );
+    // and: an account for the address to invite
     journey.signed_in_as_another("grace@example.com").await;
     server
         .post("/api/sessions")
         .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
         .await
         .assert_status_ok();
+    // and: an invitation mailed to that address
     server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -1094,6 +1189,7 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
     )
     .await
     .expect("the link should have been mailed");
+    // and: its link refusing a sign-up for an address that has an account
     let signing_up = || async {
         server
             .post("/api/accounts/by-invitation")
@@ -1108,16 +1204,19 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
         "accounts keep the ticket, though her address has an account already"
     );
 
+    // when: it is turned down by the link
     server
         .post("/api/invitations/decline")
         .json(&json!({ "token": token }))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: the link signs nobody up
     assert!(
         until(|| async { signing_up().await == "invitation-invalid" }).await,
         "accounts hear it was turned down and forget the ticket, so the link signs nobody up after"
     );
+    // and: the owner sees it turned down
     let invited = format!("/api/invitations?project={project}");
     assert!(
         until(|| async {

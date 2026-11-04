@@ -292,10 +292,13 @@ mod tests {
     #[test]
     fn the_feature_founds_the_members_of_a_started_project_lets_the_invited_join_remembers_who_signed_up_disbands_a_deleted_project_s_lists_every_change_tells_it_and_forgets_old_hearings()
      {
+        // given: a context
         let context = a_context();
 
+        // when: the feature is wired in memory
         let wired = MembersFeature::wire(&MembersFeature::in_memory(&context), &context);
 
+        // then: it listens as it should, in that order
         let named: Vec<String> = wired
             .listeners
             .iter()
@@ -313,6 +316,7 @@ mod tests {
                 "broadcast-membership-changes"
             ]
         );
+        // and: it forgets old hearings
         assert_eq!(
             wired
                 .chores
@@ -332,9 +336,11 @@ mod postgres_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
+        // given: a database
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("members").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in MembersFeature::postgres_schema() {
                 schema
@@ -344,9 +350,11 @@ mod postgres_tests {
             }
         }
 
+        // then: the feature wired on it keeps what its list is told
         let ports = MembersFeature::on_postgres(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        // and: keeps it in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM memberships")
             .fetch_one(&pool)
             .await
@@ -368,9 +376,11 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
+        // given: a database
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("members").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in MembersFeature::sqlite_schema() {
                 schema
@@ -380,9 +390,11 @@ mod sqlite_tests {
             }
         }
 
+        // then: the feature wired on it keeps what its list is told
         let ports = MembersFeature::on_sqlite(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        // and: keeps it in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM memberships")
             .fetch_one(&pool)
             .await

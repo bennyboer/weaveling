@@ -135,6 +135,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+        // given: the feature wired
         let context = Context {
             clock: Arc::new(FixedClock::new(
                 NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
@@ -146,6 +147,7 @@ mod tests {
         };
         let ports = StatisticsFeature::in_memory(&context);
         let wired = StatisticsFeature::wire(&ports, &context);
+        // and: one tombstone kept long enough and one not
         for (scene, laid) in [
             ("scene_long_gone", NOW),
             ("scene_just_gone", NOW + Duration::SECOND),
@@ -166,12 +168,15 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
+        // when: its chores are looked at
         let [tombstones, hearings] = wired.chores.as_slice() else {
             panic!("the feature hands over two chores");
         };
 
+        // then: one forgets tombstones and one hearings
         assert_eq!(tombstones.named(), "forget-old-statistics-tombstones");
         assert_eq!(hearings.named(), "forget-old-statistics-hearings");
+        // and: the tombstone one forgets only the tombstone kept long enough
         assert_eq!(
             tombstones
                 .carry_out()
@@ -183,6 +188,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        // given: two deleted scenes
         let statistics = StatisticsCore::new(
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryWordCountCatalog::new()),
@@ -195,11 +201,13 @@ mod tests {
                 .expect("forgetting should succeed");
         }
 
+        // when: their tombstones are forgotten in batches of one
         let forgotten = StatisticsTombstones::of(statistics)
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
     }
 }

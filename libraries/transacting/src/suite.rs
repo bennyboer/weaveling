@@ -20,6 +20,7 @@ pub trait Workbench: Sized {
 }
 
 pub async fn what_a_finished_transaction_wrote_is_kept(bench: &impl Workbench) {
+    // given: a transaction that wrote two words
     let mut transaction = bench
         .transactions()
         .begin()
@@ -28,15 +29,18 @@ pub async fn what_a_finished_transaction_wrote_is_kept(bench: &impl Workbench) {
     bench.write(&mut transaction, "warp").await;
     bench.write(&mut transaction, "weft").await;
 
+    // when: it is finished
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: both words are kept
     assert_eq!(bench.written().await, vec!["warp", "weft"]);
 }
 
 pub async fn what_a_dropped_transaction_wrote_is_gone(bench: &impl Workbench) {
+    // given: a transaction that wrote two words
     let mut transaction = bench
         .transactions()
         .begin()
@@ -45,8 +49,10 @@ pub async fn what_a_dropped_transaction_wrote_is_gone(bench: &impl Workbench) {
     bench.write(&mut transaction, "warp").await;
     bench.write(&mut transaction, "weft").await;
 
+    // when: it is dropped
     drop(transaction);
 
+    // then: nothing is kept
     assert!(
         bench.written().await.is_empty(),
         "a transaction not finished leaves nothing behind"
@@ -56,6 +62,7 @@ pub async fn what_a_dropped_transaction_wrote_is_gone(bench: &impl Workbench) {
 pub async fn what_was_finished_before_stays_when_a_later_transaction_is_dropped(
     bench: &impl Workbench,
 ) {
+    // given: a finished transaction
     let mut kept = bench
         .transactions()
         .begin()
@@ -63,6 +70,7 @@ pub async fn what_was_finished_before_stays_when_a_later_transaction_is_dropped(
         .expect("beginning should succeed");
     bench.write(&mut kept, "warp").await;
     kept.finish().await.expect("finishing should succeed");
+    // and: a later one that wrote too
     let mut dropped = bench
         .transactions()
         .begin()
@@ -70,31 +78,39 @@ pub async fn what_was_finished_before_stays_when_a_later_transaction_is_dropped(
         .expect("beginning should succeed");
     bench.write(&mut dropped, "weft").await;
 
+    // when: the later one is dropped
     drop(dropped);
 
+    // then: what the finished one wrote is kept
     assert_eq!(bench.written().await, vec!["warp"]);
 }
 
 pub async fn joining_none_begins_a_transaction_its_joiner_finishes(bench: &impl Workbench) {
+    // when: none is joined
     let mut joined = bench
         .transactions()
         .join(None)
         .await
         .expect("joining should succeed");
+    // then: a transaction of its own begins
     assert!(matches!(joined, Joined::Own(_)));
+    // when: it is written in and finished
     bench.write(&mut joined, "warp").await;
 
     joined.finish().await.expect("finishing should succeed");
 
+    // then: what it wrote is kept
     assert_eq!(bench.written().await, vec!["warp"]);
 }
 
 pub async fn a_borrowed_transaction_is_not_finished_by_whoever_joined_it(bench: &impl Workbench) {
+    // given: an owned transaction
     let mut owned = bench
         .transactions()
         .begin()
         .await
         .expect("beginning should succeed");
+    // and: a joined one that wrote and finished
     let mut joined = bench
         .transactions()
         .join(Some(&mut owned))
@@ -103,8 +119,10 @@ pub async fn a_borrowed_transaction_is_not_finished_by_whoever_joined_it(bench: 
     bench.write(&mut joined, "warp").await;
     joined.finish().await.expect("finishing should succeed");
 
+    // when: the owned one is dropped
     drop(owned);
 
+    // then: nothing is kept
     assert!(
         bench.written().await.is_empty(),
         "only the owner of a transaction finishes it"
@@ -114,12 +132,14 @@ pub async fn a_borrowed_transaction_is_not_finished_by_whoever_joined_it(bench: 
 pub async fn a_borrowed_transaction_keeps_what_was_written_in_it_once_its_owner_finishes(
     bench: &impl Workbench,
 ) {
+    // given: an owned transaction that wrote
     let mut owned = bench
         .transactions()
         .begin()
         .await
         .expect("beginning should succeed");
     bench.write(&mut owned, "warp").await;
+    // and: a joined one that wrote and finished
     let mut joined = bench
         .transactions()
         .join(Some(&mut owned))
@@ -128,8 +148,10 @@ pub async fn a_borrowed_transaction_keeps_what_was_written_in_it_once_its_owner_
     bench.write(&mut joined, "weft").await;
     joined.finish().await.expect("finishing should succeed");
 
+    // when: the owned one is finished
     owned.finish().await.expect("finishing should succeed");
 
+    // then: what both wrote is kept
     assert_eq!(bench.written().await, vec!["warp", "weft"]);
 }
 
@@ -166,6 +188,7 @@ impl Followups {
 pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_asked(
     bench: &impl Workbench,
 ) {
+    // given: a transaction that asked for a slow follow-up and then a quick one
     let followups = Followups::new();
     let mut transaction = bench
         .transactions()
@@ -177,11 +200,13 @@ pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_
     transaction.after_commit(followups.noting("told"));
     let before = followups.ran();
 
+    // when: it is finished
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: both have run, in the order they were asked
     assert_eq!(
         (before, followups.ran()),
         (Vec::new(), vec!["woken", "told"]),
@@ -192,6 +217,7 @@ pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_
 pub async fn what_follows_a_commit_never_runs_when_the_transaction_is_dropped(
     bench: &impl Workbench,
 ) {
+    // given: a transaction that asked for a follow-up
     let followups = Followups::new();
     let mut transaction = bench
         .transactions()
@@ -201,14 +227,17 @@ pub async fn what_follows_a_commit_never_runs_when_the_transaction_is_dropped(
     bench.write(&mut transaction, "warp").await;
     transaction.after_commit(followups.noting("woken"));
 
+    // when: it is dropped
     drop(transaction);
 
+    // then: the follow-up never runs
     assert!(followups.ran().is_empty());
 }
 
 pub async fn what_follows_a_commit_asked_through_a_borrowed_transaction_waits_for_its_owner(
     bench: &impl Workbench,
 ) {
+    // given: a joined transaction that asked for a follow-up and finished
     let followups = Followups::new();
     let mut owned = bench
         .transactions()
@@ -224,8 +253,10 @@ pub async fn what_follows_a_commit_asked_through_a_borrowed_transaction_waits_fo
     joined.finish().await.expect("finishing should succeed");
     let after_joined = followups.ran();
 
+    // when: its owner is finished
     owned.finish().await.expect("finishing should succeed");
 
+    // then: the follow-up runs only then
     assert_eq!((after_joined, followups.ran()), (Vec::new(), vec!["woken"]));
 }
 

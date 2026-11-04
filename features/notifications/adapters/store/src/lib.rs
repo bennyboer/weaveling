@@ -160,6 +160,7 @@ mod tests {
 
     #[test]
     fn every_notice_event_reads_back_as_it_was_written() {
+        // given: every notice event
         for event in [
             NoticeEvent::Noted {
                 account: AccountId::from("account_bo"),
@@ -180,12 +181,14 @@ mod tests {
                 ),
             },
         ] {
+            // then: it reads back as it was written
             assert_eq!(round_trip(event.clone()), Some(event));
         }
     }
 
     #[test]
     fn what_is_no_notice_event_reads_as_nothing() {
+        // expect: what is no notice event reads as nothing
         assert_eq!(
             (codec().event)(serde_json::json!({ "Forgotten": {} })),
             None

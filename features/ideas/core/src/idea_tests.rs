@@ -53,8 +53,10 @@ fn grown(events: &[IdeaEvent]) -> Idea {
 
 #[test]
 fn an_idea_is_captured_with_a_project_and_a_title() {
+    // when: an idea is captured
     let events = Idea::begin(a_capture(), &an_author()).expect("capturing should succeed");
 
+    // then: its project and title are recorded
     assert_eq!(
         events,
         vec![IdeaEvent::Captured {
@@ -66,6 +68,7 @@ fn an_idea_is_captured_with_a_project_and_a_title() {
 
 #[test]
 fn an_idea_may_be_captured_with_no_title_at_all() {
+    // when: an idea is captured with no title
     let events = Idea::begin(
         IdeaCommand::Capture {
             project: ProjectLink::from("project_1"),
@@ -75,11 +78,13 @@ fn an_idea_may_be_captured_with_no_title_at_all() {
     )
     .expect("an idea arrives before its name");
 
+    // then: it stands untitled
     assert_eq!(grown(&events).title(), &IdeaTitle::untitled());
 }
 
 #[test]
 fn nothing_but_a_capture_can_start_an_idea() {
+    // expect: anything but a capture is refused before there is an idea
     assert_eq!(
         Idea::begin(IdeaCommand::Discard, &an_author()),
         Err(IdeaError::NotCapturedYet)
@@ -92,6 +97,7 @@ fn nothing_but_a_capture_can_start_an_idea() {
 
 #[test]
 fn retitling_records_the_title_it_became() {
+    // when: a captured idea is retitled
     let decided = a_captured_idea()
         .decide(
             IdeaCommand::Retitle(a_title("The Silent Loom")),
@@ -99,6 +105,7 @@ fn retitling_records_the_title_it_became() {
         )
         .expect("retitling should succeed");
 
+    // then: the new title is recorded
     assert_eq!(
         decided,
         vec![IdeaEvent::Retitled(a_title("The Silent Loom"))]
@@ -107,10 +114,12 @@ fn retitling_records_the_title_it_became() {
 
 #[test]
 fn retitling_to_the_same_title_records_nothing() {
+    // when: a captured idea is retitled to the title it has
     let decided = a_captured_idea()
         .decide(IdeaCommand::Retitle(a_title("The Loom")), &an_author())
         .expect("retitling should succeed");
 
+    // then: nothing is recorded
     assert!(
         decided.is_empty(),
         "an unchanged title must not clutter the history"
@@ -119,7 +128,9 @@ fn retitling_to_the_same_title_records_nothing() {
 
 #[test]
 fn an_idea_can_be_given_a_title_it_never_had() {
+    // given: a captured idea
     let mut idea = a_captured_idea();
+    // when: its title is cleared
     let decided = idea
         .decide(IdeaCommand::Retitle(IdeaTitle::untitled()), &an_author())
         .expect("clearing a title is a legal change");
@@ -128,11 +139,13 @@ fn an_idea_can_be_given_a_title_it_never_had() {
         idea.apply(event, &stamped(2));
     }
 
+    // then: it is untitled
     assert!(idea.title().is_untitled());
 }
 
 #[test]
 fn what_exists_cannot_be_captured_again() {
+    // expect: a captured idea cannot be captured again
     assert_eq!(
         a_captured_idea().decide(a_capture(), &an_author()),
         Err(IdeaError::AlreadyCaptured)
@@ -141,9 +154,11 @@ fn what_exists_cannot_be_captured_again() {
 
 #[test]
 fn a_discarded_idea_accepts_nothing_further() {
+    // given: a discarded idea
     let mut idea = a_captured_idea();
     idea.apply(&IdeaEvent::Discarded, &stamped(2));
 
+    // then: it refuses a retitling and a discarding
     assert_eq!(
         idea.decide(IdeaCommand::Retitle(a_title("Too late")), &an_author()),
         Err(IdeaError::Discarded)
@@ -156,6 +171,7 @@ fn a_discarded_idea_accepts_nothing_further() {
 
 #[test]
 fn a_snapshot_replays_into_exactly_the_idea_it_came_from() {
+    // given: an idea that was retitled and discarded
     let mut idea = a_captured_idea();
     idea.apply(
         &IdeaEvent::Retitled(a_title("The Silent Loom")),
@@ -163,25 +179,30 @@ fn a_snapshot_replays_into_exactly_the_idea_it_came_from() {
     );
     idea.apply(&IdeaEvent::Discarded, &stamped(4));
 
+    // when: it is restored from its snapshot
     let snapshot = idea.snapshot();
     let restored = Idea::from_first(&snapshot, &stamped(5)).expect("a snapshot gives birth");
 
+    // then: it is the idea it came from
     assert_eq!(restored, idea);
 }
 
 #[test]
 fn a_snapshot_declares_itself_a_snapshot() {
+    // expect: a snapshot says it is one and an event does not
     assert!(a_captured_idea().snapshot().is_snapshot());
     assert!(!IdeaEvent::Discarded.is_snapshot());
 }
 
 #[test]
 fn a_stream_that_does_not_start_with_a_capture_gives_birth_to_nothing() {
+    // expect: a stream starting with a discarding gives birth to nothing
     assert!(Idea::from_first(&IdeaEvent::Discarded, &stamped(1)).is_none());
 }
 
 #[test]
 fn every_event_has_a_name_of_its_own() {
+    // given: the names of every kind of event
     use std::collections::HashSet;
 
     let named: HashSet<_> = [
@@ -197,6 +218,7 @@ fn every_event_has_a_name_of_its_own() {
     .into_iter()
     .collect();
 
+    // then: no two are the same
     assert_eq!(
         named.len(),
         4,
@@ -206,6 +228,7 @@ fn every_event_has_a_name_of_its_own() {
 
 #[test]
 fn a_replayed_stream_ends_where_the_events_say() {
+    // when: a capture and a retitling are replayed
     let idea = grown(&[
         IdeaEvent::Captured {
             project: ProjectLink::from("project_1"),
@@ -214,11 +237,14 @@ fn a_replayed_stream_ends_where_the_events_say() {
         IdeaEvent::Retitled(a_title("The Silent Loom")),
     ]);
 
+    // then: the idea has the later title
     assert_eq!(idea.title(), &a_title("The Silent Loom"));
+    // and: it is not discarded
     assert!(!idea.is_discarded());
 }
 
 #[test]
 fn an_idea_is_in_the_context_of_its_project() {
+    // expect: a captured idea is in the context of its project
     assert_eq!(a_captured_idea().context().get(PROJECT), Some("project_1"));
 }

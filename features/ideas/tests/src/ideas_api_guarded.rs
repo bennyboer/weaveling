@@ -85,7 +85,7 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
     )
 }
 
-async fn guarded() -> Guarded {
+async fn an_idea_in_ada_s_project() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     let wired = wiring::wired_guarded_by(
@@ -113,7 +113,7 @@ async fn guarded() -> Guarded {
     }
 }
 
-async fn titled(guarded: &Guarded) -> Value {
+async fn title_of(guarded: &Guarded) -> Value {
     guarded
         .ada
         .get(&format!("/ideas/{}", guarded.idea))
@@ -124,9 +124,11 @@ async fn titled(guarded: &Guarded) -> Value {
 
 #[tokio::test]
 async fn the_ideas_of_a_project_are_not_there_for_whoever_may_not_read_it() {
-    let guarded = guarded().await;
+    // given: an idea in a project grace may not read
+    let guarded = an_idea_in_ada_s_project().await;
     let at = format!("/ideas/{}", guarded.idea);
 
+    // then: every request of hers about its ideas is not found
     for answered in [
         guarded
             .grace
@@ -148,19 +150,23 @@ async fn the_ideas_of_a_project_are_not_there_for_whoever_may_not_read_it() {
         answered.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answered.json::<Value>()["type"], "not-found");
     }
+    // and: following them is not there
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
     assert_eq!(hers.ended().await, "not-there");
-    assert_eq!(titled(&guarded).await, "A girl in a wood");
+    // and: the idea stays as it was
+    assert_eq!(title_of(&guarded).await, "A girl in a wood");
 }
 
 #[tokio::test]
 async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_change_them() {
-    let guarded = guarded().await;
+    // given: an idea in a project grace may read
+    let guarded = an_idea_in_ada_s_project().await;
     guarded.roles.give("account_grace", &READER);
     let at = format!("/ideas/{}", guarded.idea);
 
+    // then: she can list and fetch its ideas
     let listed = guarded
         .grace
         .get(&format!("/ideas?project={PROJECT}"))
@@ -168,10 +174,12 @@ async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_cha
     listed.assert_status_ok();
     assert_eq!(listed.json::<Value>()[0]["id"], guarded.idea.as_str());
     guarded.grace.get(&at).await.assert_status_ok();
+    // and: follow them
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
     hers.nothing().await;
+    // and: every change she asks for is refused as not an author's
     for refused in [
         guarded
             .grace
@@ -188,30 +196,35 @@ async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_cha
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-author");
     }
-    assert_eq!(titled(&guarded).await, "A girl in a wood");
+    // and: the idea stays as it was
+    assert_eq!(title_of(&guarded).await, "A girl in a wood");
 }
 
 #[tokio::test]
 async fn an_author_captures_retitles_and_discards() {
-    let guarded = guarded().await;
+    // given: an idea in a project grace may write in
+    let guarded = an_idea_in_ada_s_project().await;
     guarded
         .roles
         .give("account_grace", &[Act::Read, Act::Write]);
     let at = format!("/ideas/{}", guarded.idea);
 
+    // then: she may capture an idea
     guarded
         .grace
         .post("/ideas")
         .json(&json!({ "project": PROJECT, "title": "Hers" }))
         .await
         .assert_status(StatusCode::CREATED);
+    // and: retitle one
     guarded
         .grace
         .patch(&at)
         .json(&json!({ "title": "A boy in a wood" }))
         .await
         .assert_status_ok();
-    assert_eq!(titled(&guarded).await, "A boy in a wood");
+    assert_eq!(title_of(&guarded).await, "A boy in a wood");
+    // and: discard one
     guarded
         .grace
         .delete(&at)
@@ -221,7 +234,8 @@ async fn an_author_captures_retitles_and_discards() {
 
 #[tokio::test]
 async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow_on() {
-    let guarded = guarded().await;
+    // given: grace and the owner following a project's ideas
+    let guarded = an_idea_in_ada_s_project().await;
     guarded.roles.give("account_grace", &READER);
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
@@ -231,18 +245,22 @@ async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow
         .subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
 
+    // when: grace's role is taken away
     guarded.roles.give("account_grace", &[]);
     guarded.roles.access_changed(PROJECT);
 
+    // then: she is closed out
     assert_eq!(
         hers.ended().await,
         "access-lost",
         "a member removed hears nothing more of the project"
     );
+    // and: the owner is told the members changed
     assert!(
         matches!(ada_s.told().await, ToldDTO::Notice { notice, .. } if notice == ACCESS_CHANGED),
         "the owner stays and is told the members changed"
     );
+    // when: the owner captures an idea
     guarded
         .ada
         .post("/ideas")
@@ -250,6 +268,7 @@ async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow
         .await
         .assert_status(StatusCode::CREATED);
     guarded.wired.settle().await;
+    // then: the owner is told of it
     assert_eq!(
         ada_s.frame().await["event"]["title"],
         "Told to the owner",
@@ -259,15 +278,19 @@ async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let guarded = guarded().await;
+    // given: an idea
+    let guarded = an_idea_in_ada_s_project().await;
+    // and: whom to let in not known
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
+    // then: reading its ideas fails
     for answered in [
         guarded.ada.get(&format!("/ideas?project={PROJECT}")).await,
         guarded.ada.get(&format!("/ideas/{}", guarded.idea)).await,
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    // and: following them fails
     let mut ada_s = Subscriber::on(&guarded.ada).await;
     ada_s
         .subscribe("ideas", "ideas", &[("project", PROJECT)])

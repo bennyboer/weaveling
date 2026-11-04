@@ -108,14 +108,18 @@ fn carried(envelope: &Envelope) -> (String, Message) {
 
 #[tokio::test]
 async fn joining_a_scene_greets_the_client_under_that_scene_s_name() {
+    // given: a scene and a connection
     let (service, live) = a_workbench();
     let scene = a_scene(&service).await;
     let (mut connection, mut heard) = a_connection(&live);
 
+    // when: the connection joins the scene
     join(&mut connection, &scene).await;
 
+    // then: it is greeted under the scene's name
     let (named, greeting) = carried(&next(&mut heard).await.expect("a greeting"));
     assert_eq!(named, scene);
+    // and: the greeting asks what the client has
     assert!(
         matches!(greeting, Message::WhatDoYouHave(_)),
         "the server asks what the client has, as it does on a socket of its own"
@@ -124,13 +128,17 @@ async fn joining_a_scene_greets_the_client_under_that_scene_s_name() {
 
 #[tokio::test]
 async fn a_scene_that_cannot_be_joined_is_refused_by_name() {
+    // given: a connection
     let (_, live) = a_workbench();
     let (mut connection, mut heard) = a_connection(&live);
+    // and: a scene nobody created
     let unknown = scenes_core::SceneId::generate(OffsetDateTime::UNIX_EPOCH).to_string();
 
+    // when: it joins that scene and something that is no scene id
     join(&mut connection, &unknown).await;
     join(&mut connection, "not an id").await;
 
+    // then: each is refused by its name
     assert_eq!(
         everything(&mut heard).await,
         vec![
@@ -142,6 +150,7 @@ async fn a_scene_that_cannot_be_joined_is_refused_by_name() {
 
 #[tokio::test]
 async fn an_edit_reaches_another_connection_in_the_same_scene_and_is_stored() {
+    // given: two connections in one scene
     let (service, live) = a_workbench();
     let scene = a_scene(&service).await;
     let other = a_scene(&service).await;
@@ -150,13 +159,16 @@ async fn an_edit_reaches_another_connection_in_the_same_scene_and_is_stored() {
     let (mut cy, mut heard_by_cy) = a_connection(&live);
     join(&mut ada, &scene).await;
     join(&mut bo, &scene).await;
+    // and: a third in another scene
     join(&mut cy, &other).await;
     everything(&mut heard_by_ada).await;
     everything(&mut heard_by_bo).await;
     everything(&mut heard_by_cy).await;
 
+    // when: one of the first two edits the scene
     edit(&mut ada, &scene, "The loom stood silent.").await;
 
+    // then: the other in the same scene hears the edit under its name
     let to_bo: Vec<(String, Message)> = everything(&mut heard_by_bo)
         .await
         .iter()
@@ -168,10 +180,12 @@ async fn an_edit_reaches_another_connection_in_the_same_scene_and_is_stored() {
             .any(|(named, message)| named == &scene && matches!(message, Message::JustHappened(_))),
         "bo writes in the same scene, so bo hears the edit under its name, got {to_bo:?}"
     );
+    // and: the one in another scene hears nothing
     assert!(
         everything(&mut heard_by_cy).await.is_empty(),
         "cy writes in another scene and hears nothing of this one"
     );
+    // and: the edit is stored
     assert_eq!(
         service.open(&scene).await.expect("should reopen").text(),
         "The loom stood silent."
@@ -180,6 +194,7 @@ async fn an_edit_reaches_another_connection_in_the_same_scene_and_is_stored() {
 
 #[tokio::test]
 async fn after_leaving_a_scene_nothing_more_of_it_arrives() {
+    // given: two connections in one scene
     let (service, live) = a_workbench();
     let scene = a_scene(&service).await;
     let (mut ada, _) = a_connection(&live);
@@ -188,14 +203,18 @@ async fn after_leaving_a_scene_nothing_more_of_it_arrives() {
     join(&mut bo, &scene).await;
     everything(&mut heard_by_bo).await;
 
+    // when: one leaves the scene
     bo.hear(&Envelope::Leave(scene.clone()).encode()).await;
+    // and: the other edits it
     edit(&mut ada, &scene, "The loom stood silent.").await;
 
+    // then: the one that left hears nothing
     assert!(everything(&mut heard_by_bo).await.is_empty());
 }
 
 #[tokio::test]
 async fn a_frame_for_a_scene_not_joined_is_ignored() {
+    // given: a connection in one scene
     let (service, live) = a_workbench();
     let joined = a_scene(&service).await;
     let scene = a_scene(&service).await;
@@ -203,9 +222,12 @@ async fn a_frame_for_a_scene_not_joined_is_ignored() {
     join(&mut connection, &joined).await;
     everything(&mut heard).await;
 
+    // when: it edits a scene it has not joined
     edit(&mut connection, &scene, "Never joined.").await;
 
+    // then: nothing is heard
     assert!(everything(&mut heard).await.is_empty());
+    // and: neither scene changes
     for untouched in [&scene, &joined] {
         assert_eq!(
             service.open(untouched).await.expect("should reopen").text(),
@@ -217,22 +239,27 @@ async fn a_frame_for_a_scene_not_joined_is_ignored() {
 
 #[tokio::test]
 async fn one_connection_carries_many_scenes_at_once() {
+    // given: two scenes and a connection
     let (service, live) = a_workbench();
     let first = a_scene(&service).await;
     let second = a_scene(&service).await;
     let (mut connection, mut heard) = a_connection(&live);
 
+    // when: the connection joins both
     join(&mut connection, &first).await;
     join(&mut connection, &second).await;
+    // and: edits each
     edit(&mut connection, &first, "First.").await;
     edit(&mut connection, &second, "Second.").await;
 
+    // then: it is greeted in both
     let greeted: Vec<String> = everything(&mut heard)
         .await
         .iter()
         .map(|envelope| carried(envelope).0)
         .collect();
     assert_eq!(greeted, vec![first.clone(), second.clone()]);
+    // and: each scene stores its own edit
     assert_eq!(
         service.open(&first).await.expect("reopens").text(),
         "First."
@@ -245,25 +272,31 @@ async fn one_connection_carries_many_scenes_at_once() {
 
 #[tokio::test]
 async fn an_edit_into_a_scene_deleted_while_live_refuses_it_and_nobody_joins_it_again() {
+    // given: a connection in a scene
     let (service, live) = a_workbench();
     let scene = a_scene(&service).await;
     let (mut writing, mut heard) = a_connection(&live);
     join(&mut writing, &scene).await;
     everything(&mut heard).await;
+    // and: the scene deleted
     service
         .delete(&scene, &Agent::Local)
         .await
         .expect("deleting should succeed");
 
+    // when: the connection edits it
     edit(&mut writing, &scene, "Too late.").await;
     let told = everything(&mut heard).await;
+    // and: another connection joins it
     let (mut joining, mut joined) = a_connection(&live);
     join(&mut joining, &scene).await;
 
+    // then: the edit is refused
     assert!(
         told.contains(&Envelope::Refused(scene.clone())),
         "an edit the store cannot take is not silently kept for an eviction that will drop it"
     );
+    // and: the join is refused
     assert_eq!(
         everything(&mut joined).await,
         vec![Envelope::Refused(scene)],

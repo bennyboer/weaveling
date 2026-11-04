@@ -50,21 +50,26 @@ async function anOpenProjectFollowedLive(page: Page, named: string) {
 test("the open project's name follows another author's rename without asking again", async ({
   page,
 }) => {
+  // given: an open project followed live
   const { asks, project } = await anOpenProjectFollowedLive(
     page,
     "OpenRenamed",
   );
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
 
+  // when: another author renames it
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
 
+  // then: the masthead shows the new name
   await expect(masthead(page)).toHaveText(renamed);
+  // and: the project is not asked for again
   expect(asks()).toBe(1);
 });
 
 test("the book's language follows another author's change of the details", async ({
   page,
 }) => {
+  // given: an open project followed live, its book in english
   const { asks, project } = await anOpenProjectFollowedLive(
     page,
     "OpenDetails",
@@ -75,6 +80,7 @@ test("the book's language follows another author's change of the details", async
     await page.request.get(`${API}/projects/${project}`)
   ).json();
 
+  // when: another author changes its language
   await anotherAuthor(
     page,
     "put",
@@ -83,13 +89,16 @@ test("the book's language follows another author's change of the details", async
     { "If-Match": `"${now.version}"` },
   );
 
+  // then: the book follows
   await expect(flow(page)).toHaveAttribute("lang", "de");
+  // and: the project is not asked for again
   expect(asks()).toBe(1);
 });
 
 test("an open project another author moves to the trash says so, and is followed no longer", async ({
   page,
 }) => {
+  // given: an open project followed live
   let closed = false;
   const { project } = await anOpenProjectFollowedLive(page, "OpenTrashed");
   unsubscribedOn(page, "projects", { project }, () => {
@@ -97,11 +106,14 @@ test("an open project another author moves to the trash says so, and is followed
   });
   await openTheWritingView(page);
 
+  // when: another author moves it to the trash
   await anotherAuthor(page, "delete", `/projects/${project}`);
 
+  // then: it says so
   await expect(page.getByRole("alert")).toContainText(
     "This project was moved to the trash meanwhile.",
   );
+  // and: it is followed no longer
   await expect
     .poll(() => closed, {
       message: "a project in the trash has nothing more to tell",
@@ -112,6 +124,7 @@ test("an open project another author moves to the trash says so, and is followed
 test("a change missed on the way asks for the project again, and it comes out right", async ({
   page,
 }) => {
+  // given: an open project followed live that will miss the next change
   let passed = 0;
   await routingLive(page, {
     heard: {
@@ -137,11 +150,14 @@ test("a change missed on the way asks for the project again, and it comes out ri
   const missed = `Missed ${crypto.randomUUID().slice(0, 8)}`;
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
 
+  // when: another author renames it twice
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: missed });
   await expect.poll(() => passed).toBe(1);
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
 
+  // then: the masthead shows the last name
   await expect(masthead(page)).toHaveText(renamed);
+  // and: the project was asked for again
   expect(
     asks(),
     "the rename after the missed one does not follow on, so it asks again",
@@ -151,6 +167,7 @@ test("a change missed on the way asks for the project again, and it comes out ri
 test("a change told while the project is still on its way asks for it again", async ({
   page,
 }) => {
+  // given: an open project reloaded, its answer still on its way
   const { title, project } = await anOpenProjectFollowedLive(page, "OpenInFlight");
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
   let heard = 0;
@@ -182,10 +199,12 @@ test("a change told while the project is still on its way asks for it again", as
   await page.reload();
   await expect.poll(() => answered).toBe(true);
 
+  // when: another author renames it before the answer arrives
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
   await expect.poll(() => heard).toBe(1);
   release();
 
+  // then: the masthead shows the new name
   await expect(
     masthead(page),
     "the first answer was read before the rename, and the rename was told before it arrived",
@@ -196,6 +215,7 @@ test("a change told while the project is still on its way asks for it again", as
 test("my details answered after another author's newer rename leave their name", async ({
   page,
 }) => {
+  // given: an open project followed live
   const { project } = await anOpenProjectFollowedLive(page, "OpenOvertaken");
   const theirs = `Theirs ${crypto.randomUUID().slice(0, 8)}`;
   let heard = 0;
@@ -209,6 +229,7 @@ test("my details answered after another author's newer rename leave their name",
   );
   await page.reload();
   await expect.poll(() => heard).toBe(0);
+  // and: another author renaming it while my details are answered
   await page.route(
     new RegExp(`/api/projects/${project}/details$`),
     async (route) => {
@@ -222,11 +243,13 @@ test("my details answered after another author's newer rename leave their name",
     },
   );
 
+  // when: its details are saved here
   await page.getByRole("button", { name: "Project details" }).click();
   const details = page.getByRole("dialog", { name: "Project details" });
   await details.getByLabel("Description").fill("Two cities.");
   await details.getByRole("button", { name: "Save" }).click();
 
+  // then: the masthead keeps their newer name
   await expect(details).toBeHidden();
   await expect(
     masthead(page),

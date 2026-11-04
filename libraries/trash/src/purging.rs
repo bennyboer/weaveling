@@ -143,7 +143,7 @@ mod tests {
         chore: PurgeTheTrash,
     }
 
-    fn bench(refusing: Option<&'static str>, taking_out: bool) -> Bench {
+    fn a_workbench(refusing: Option<&'static str>, taking_out: bool) -> Bench {
         let trash = Arc::new(InMemoryTrash::new());
         let purging = Arc::new(Purging {
             trash: trash.clone(),
@@ -208,7 +208,8 @@ mod tests {
     #[tokio::test]
     async fn everything_due_of_every_kind_is_purged_batch_after_batch_and_nothing_before_its_time()
     {
-        let bench = bench(None, true);
+        // given: more due than one batch holds, of more than one kind
+        let bench = a_workbench(None, true);
         let many = PURGED_AT_MOST * 2 + 5;
         for nth in 0..many {
             bench
@@ -216,19 +217,23 @@ mod tests {
                 .await;
         }
         bench.put_into(ACCOUNT, "account_1", at(29)).await;
+        // and: something not yet due
         bench.put_into(PROJECT, "project_later", at(31)).await;
 
+        // when: the trash is purged
         let purged = bench
             .chore
             .carry_out()
             .await
             .expect("purging should succeed");
 
+        // then: everything due is purged, each with its kind
         assert_eq!(purged, many + 1);
         assert!(
             bench.purged().contains(&trashed(ACCOUNT, "account_1")),
             "the purge is handed each thing with its kind"
         );
+        // and: what is not yet due stays
         assert_eq!(
             bench.still_due().await,
             [trashed(PROJECT, "project_later")],
@@ -238,21 +243,26 @@ mod tests {
 
     #[tokio::test]
     async fn one_that_cannot_be_purged_stays_and_the_others_are_purged_still() {
-        let bench = bench(Some("project_2"), true);
+        // given: three things due, one of which cannot be purged
+        let bench = a_workbench(Some("project_2"), true);
         for id in ["project_1", "project_2", "project_3"] {
             bench.put_into(PROJECT, id, at(29)).await;
         }
 
+        // when: the trash is purged
         let purged = bench.chore.carry_out().await;
 
+        // then: the purge fails
         assert!(
             purged.is_err(),
             "a purge refused is told, so the chore says so"
         );
+        // and: the others are purged
         assert_eq!(
             bench.purged(),
             [trashed(PROJECT, "project_1"), trashed(PROJECT, "project_3")]
         );
+        // and: the one stays due
         assert_eq!(
             bench.still_due().await,
             [trashed(PROJECT, "project_2")],
@@ -262,16 +272,20 @@ mod tests {
 
     #[tokio::test]
     async fn a_purge_that_leaves_its_entry_behind_stops_the_round_rather_than_going_on_for_ever() {
-        let bench = bench(None, false);
+        // given: a batch due, purged by a purge that leaves each entry behind
+        let bench = a_workbench(None, false);
         for nth in 0..PURGED_AT_MOST {
             bench
                 .put_into(PROJECT, &format!("project_{nth:04}"), at(29))
                 .await;
         }
 
+        // when: the trash is purged
         let purged = bench.chore.carry_out().await;
 
+        // then: the purge fails
         assert!(purged.is_err());
+        // and: each was handed over once
         assert_eq!(
             bench.purged().len() as u64,
             PURGED_AT_MOST,
@@ -281,8 +295,10 @@ mod tests {
 
     #[test]
     fn the_chore_is_named_as_it_is_wired_and_comes_round_hourly() {
-        let bench = bench(None, true);
+        // given: a purging chore
+        let bench = a_workbench(None, true);
 
+        // then: it is named as wired and comes round hourly
         assert_eq!(bench.chore.named(), "purge-the-projects-trash");
         assert_eq!(bench.chore.every(), Duration::from_secs(3_600));
     }

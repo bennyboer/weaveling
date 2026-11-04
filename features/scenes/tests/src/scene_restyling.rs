@@ -176,7 +176,7 @@ impl Wired {
         written
     }
 
-    async fn saying(&self, scenes: &[SceneId]) -> Vec<String> {
+    async fn texts_of(&self, scenes: &[SceneId]) -> Vec<String> {
         let mut said = Vec::new();
 
         for scene in scenes {
@@ -199,7 +199,7 @@ impl Wired {
             .expect("reading progress should succeed")
     }
 
-    fn carried_on(&self) -> Vec<Message> {
+    fn continuations(&self) -> Vec<Message> {
         self.overheard
             .heard()
             .into_iter()
@@ -211,13 +211,13 @@ impl Wired {
         let mut asked = asked;
 
         loop {
-            let before = self.carried_on().len();
+            let before = self.continuations().len();
             self.restyle
                 .handle(&asked)
                 .await
                 .expect("restyling succeeds");
 
-            let carried = self.carried_on();
+            let carried = self.continuations();
             if carried.len() == before {
                 break;
             }
@@ -256,32 +256,40 @@ fn more_of(project: &str, quotation: &str, change: u64, after: SceneId) -> Messa
 
 #[tokio::test]
 async fn a_new_style_reaches_every_scene_of_the_book() {
+    // given: a book smaller than a batch
     let wired = a_workbench(4);
     let book = wired.holding(A_PROJECT, 3).await;
 
+    // when: a new style is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
         .expect("restyling succeeds");
 
-    assert_eq!(wired.saying(&book).await, vec!["„Ja.“"; 3]);
+    // then: every scene has it
+    assert_eq!(wired.texts_of(&book).await, vec!["„Ja.“"; 3]);
+    // and: the restyling does not carry on
     assert!(
-        wired.carried_on().is_empty(),
+        wired.continuations().is_empty(),
         "a batch that did not fill is the last one"
     );
 }
 
 #[tokio::test]
 async fn a_book_larger_than_one_batch_is_restyled_batch_by_batch() {
+    // given: a book of several batches
     let wired = a_workbench(2);
     let book = wired.holding(A_PROJECT, 5).await;
 
+    // when: a new style is restyled through
     wired.restyle_through(restyled(A_PROJECT, "curly", 3)).await;
 
-    assert_eq!(wired.saying(&book).await, vec!["“Ja.”"; 5]);
+    // then: every scene has it
+    assert_eq!(wired.texts_of(&book).await, vec!["“Ja.”"; 5]);
+    // and: it carried on once per full batch
     assert_eq!(
-        wired.carried_on().len(),
+        wired.continuations().len(),
         2,
         "five scenes in batches of two is two continuations and a short third batch"
     );
@@ -289,17 +297,20 @@ async fn a_book_larger_than_one_batch_is_restyled_batch_by_batch() {
 
 #[tokio::test]
 async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
+    // given: a book larger than a batch
     let wired = a_workbench(2);
     let book = wired.holding(A_PROJECT, 3).await;
     let asked = restyled(A_PROJECT, "low-high", 3);
 
+    // when: a new style is heard
     wired
         .restyle
         .handle(&asked)
         .await
         .expect("restyling succeeds");
 
-    let carried = wired.carried_on();
+    // then: the continuation carries the style, the change and the last scene restyled
+    let carried = wired.continuations();
     let more: MoreQuotationMarksToRestyleDTO =
         serde_json::from_value(carried[0].payload.clone()).expect("readable");
     assert_eq!(
@@ -311,6 +322,7 @@ async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
             after: book[1].to_string(),
         }
     );
+    // and: it stays in the change's conversation
     assert_eq!(
         carried[0].conversation, asked.conversation,
         "the whole restyling has to be followable as one thing"
@@ -319,42 +331,50 @@ async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
 
 #[tokio::test]
 async fn another_book_keeps_its_marks() {
+    // given: two books
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 2).await;
     let theirs = wired.holding(ANOTHER_PROJECT, 2).await;
 
+    // when: a new style of one is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
         .expect("restyling succeeds");
 
-    assert_eq!(wired.saying(&theirs).await, vec!["»Ja.«"; 2]);
+    // then: the other keeps its marks
+    assert_eq!(wired.texts_of(&theirs).await, vec!["»Ja.«"; 2]);
 }
 
 #[tokio::test]
 async fn a_newer_style_stops_an_older_restyling_half_way() {
+    // given: a book larger than a batch
     let wired = a_workbench(2);
     let book = wired.holding(A_PROJECT, 3).await;
+    // and: a style begun
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
         .expect("restyling succeeds");
+    // and: a newer style begun after it
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 5))
         .await
         .expect("restyling succeeds");
 
+    // when: the older restyling's continuation is heard
     wired
         .restyle
         .handle(&more_of(A_PROJECT, "low-high", 3, book[0]))
         .await
         .expect("an outdated continuation is not a failure");
 
+    // then: the rest of the book keeps what it had
     assert_eq!(
-        wired.saying(&book[1..]).await,
+        wired.texts_of(&book[1..]).await,
         vec!["“Ja.”", "»Ja.«"],
         "the older restyling would otherwise overwrite what the newer one did"
     );
@@ -362,6 +382,7 @@ async fn a_newer_style_stops_an_older_restyling_half_way() {
 
 #[tokio::test]
 async fn an_older_style_heard_late_is_not_begun() {
+    // given: a book restyled
     let wired = a_workbench(4);
     let book = wired.holding(A_PROJECT, 2).await;
     wired
@@ -370,47 +391,56 @@ async fn an_older_style_heard_late_is_not_begun() {
         .await
         .expect("restyling succeeds");
 
+    // when: an older style is heard late
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
         .expect("an outdated change is not a failure");
 
-    assert_eq!(wired.saying(&book).await, vec!["“Ja.”"; 2]);
+    // then: the book keeps the newer style
+    assert_eq!(wired.texts_of(&book).await, vec!["“Ja.”"; 2]);
 }
 
 #[tokio::test]
 async fn the_latest_restyling_carries_on() {
+    // given: a book larger than a batch
     let wired = a_workbench(1);
     let book = wired.holding(A_PROJECT, 2).await;
+    // and: its latest style begun
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 5))
         .await
         .expect("restyling succeeds");
 
+    // when: its continuation is heard
     wired
         .restyle
         .handle(&more_of(A_PROJECT, "low-high", 5, book[0]))
         .await
         .expect("restyling succeeds");
 
-    assert_eq!(wired.saying(&book).await, vec!["„Ja.“"; 2]);
+    // then: the whole book has the style
+    assert_eq!(wired.texts_of(&book).await, vec!["„Ja.“"; 2]);
 }
 
 #[tokio::test]
 async fn a_continuation_nobody_remembers_beginning_carries_on() {
+    // given: a book nobody remembers restyling
     let wired = a_workbench(1);
     let book = wired.holding(A_PROJECT, 2).await;
 
+    // when: a continuation of a restyling is heard
     wired
         .restyle
         .handle(&more_of(A_PROJECT, "curly", 5, book[0]))
         .await
         .expect("restyling succeeds");
 
+    // then: the rest of the book is restyled
     assert_eq!(
-        wired.saying(&book[1..]).await,
+        wired.texts_of(&book[1..]).await,
         vec!["“Ja.”"],
         "a restart forgets what was begun, and the book must not stay half restyled"
     );
@@ -418,8 +448,10 @@ async fn a_continuation_nobody_remembers_beginning_carries_on() {
 
 #[tokio::test]
 async fn a_scene_deleted_meanwhile_is_passed_over() {
+    // given: a book
     let plain = a_workbench(4);
     let book = plain.holding(A_PROJECT, 2).await;
+    // and: one of its scenes deleted while it is restyled
     let wired = restyling_with(
         plain.scenes.clone(),
         plain.tasks.clone(),
@@ -431,19 +463,23 @@ async fn a_scene_deleted_meanwhile_is_passed_over() {
         4,
     );
 
+    // when: a new style is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 3))
         .await
         .expect("a scene deleted while the book is restyled is no failure");
 
-    assert_eq!(wired.saying(&book[1..]).await, vec!["“Ja.”"]);
+    // then: the rest of the book has it
+    assert_eq!(wired.texts_of(&book[1..]).await, vec!["“Ja.”"]);
 }
 
 #[tokio::test]
 async fn a_scene_that_cannot_be_restyled_fails_the_batch_so_it_is_tried_again() {
+    // given: a book
     let plain = a_workbench(4);
     plain.holding(A_PROJECT, 2).await;
+    // and: its scenes cannot be restyled
     let wired = restyling_with(
         plain.scenes.clone(),
         plain.tasks.clone(),
@@ -452,6 +488,7 @@ async fn a_scene_that_cannot_be_restyled_fails_the_batch_so_it_is_tried_again() 
         4,
     );
 
+    // then: hearing a new style fails
     assert!(
         wired
             .restyle
@@ -464,8 +501,10 @@ async fn a_scene_that_cannot_be_restyled_fails_the_batch_so_it_is_tried_again() 
 
 #[tokio::test]
 async fn a_style_nobody_knows_is_refused() {
+    // given: a listener for new styles
     let wired = a_workbench(4);
 
+    // then: hearing a style nobody knows fails
     assert!(
         wired
             .restyle
@@ -478,6 +517,7 @@ async fn a_style_nobody_knows_is_refused() {
 
 #[tokio::test]
 async fn a_message_about_no_project_at_all_is_refused() {
+    // given: a message about no project at all
     let wired = a_workbench(4);
     let nonsense = Message::opening(
         RoutingKey::parse(QUOTATION_CHANGED).expect("a declared routing key is fine"),
@@ -485,11 +525,13 @@ async fn a_message_about_no_project_at_all_is_refused() {
         at(1_000),
     );
 
+    // then: hearing it fails
     assert!(wired.restyle.handle(&nonsense).await.is_err());
 }
 
 #[tokio::test]
 async fn a_project_event_that_changes_no_style_is_refused() {
+    // given: a project event that changes no style
     let wired = a_workbench(4);
     let renamed = Message::opening(
         RoutingKey::parse(QUOTATION_CHANGED).expect("a declared routing key is fine"),
@@ -502,11 +544,13 @@ async fn a_project_event_that_changes_no_style_is_refused() {
         at(1_000),
     );
 
+    // then: hearing it fails
     assert!(wired.restyle.handle(&renamed).await.is_err());
 }
 
 #[tokio::test]
 async fn a_continuation_heard_after_a_restart_still_turns_an_older_style_away() {
+    // given: a book whose newer restyling was carried on after a restart
     let wired = a_workbench(1);
     let book = wired.holding(A_PROJECT, 2).await;
     wired
@@ -515,14 +559,16 @@ async fn a_continuation_heard_after_a_restart_still_turns_an_older_style_away() 
         .await
         .expect("restyling succeeds");
 
+    // when: an older style is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
         .expect("an outdated change is not a failure");
 
+    // then: the book keeps the newer style
     assert_eq!(
-        wired.saying(&book[1..]).await,
+        wired.texts_of(&book[1..]).await,
         vec!["“Ja.”"],
         "the continuation tells of a newer change, so the older one must not begin"
     );
@@ -539,16 +585,20 @@ fn so_far(total: u64, done: u64, finished: bool) -> Option<QuotationRestylingPro
 
 #[tokio::test]
 async fn a_restyling_counts_the_book_before_it_begins() {
+    // given: a book of several batches
     let wired = a_workbench(2);
     wired.holding(A_PROJECT, 5).await;
+    // and: another book
     wired.holding(ANOTHER_PROJECT, 4).await;
 
+    // when: a new style of the first is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 3))
         .await
         .expect("restyling succeeds");
 
+    // then: its progress counts its own scenes and the first batch done
     assert_eq!(
         wired.progress().await,
         so_far(5, 2, false),
@@ -558,56 +608,69 @@ async fn a_restyling_counts_the_book_before_it_begins() {
 
 #[tokio::test]
 async fn a_restyling_is_finished_once_its_last_batch_is_done() {
+    // given: a book whose last batch is short
     let wired = a_workbench(2);
     wired.holding(A_PROJECT, 5).await;
 
+    // when: a new style is restyled through
     wired.restyle_through(restyled(A_PROJECT, "curly", 3)).await;
 
+    // then: the restyling is finished
     assert_eq!(wired.progress().await, so_far(5, 5, true));
 }
 
 #[tokio::test]
 async fn a_book_whose_last_batch_is_full_is_finished_by_the_empty_one_after() {
+    // given: a book whose last batch is full
     let wired = a_workbench(2);
     wired.holding(A_PROJECT, 4).await;
 
+    // when: a new style is restyled through
     wired.restyle_through(restyled(A_PROJECT, "curly", 3)).await;
 
+    // then: the restyling is finished
     assert_eq!(wired.progress().await, so_far(4, 4, true));
 }
 
 #[tokio::test]
 async fn a_book_without_scenes_is_finished_at_once() {
+    // given: a book without scenes
     let wired = a_workbench(2);
 
+    // when: a new style is heard
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 3))
         .await
         .expect("restyling succeeds");
 
+    // then: the restyling is finished
     assert_eq!(wired.progress().await, so_far(0, 0, true));
 }
 
 #[tokio::test]
 async fn a_change_heard_again_carries_on_where_it_got_and_counts_each_scene_once() {
+    // given: a book larger than a batch
     let wired = a_workbench(1);
     let book = wired.holding(A_PROJECT, 2).await;
+    // and: a new style heard
     let asked = restyled(A_PROJECT, "curly", 3);
     wired
         .restyle
         .handle(&asked)
         .await
         .expect("restyling succeeds");
-    let first = wired.carried_on();
+    let first = wired.continuations();
 
+    // when: it is heard again
     wired
         .restyle
         .handle(&asked)
         .await
         .expect("a redelivery is not a failure");
 
-    let again = wired.carried_on();
+    // then: it carries on with the continuation it sent before
+    let again = wired.continuations();
     assert_eq!(
         again.len(),
         2,
@@ -617,25 +680,32 @@ async fn a_change_heard_again_carries_on_where_it_got_and_counts_each_scene_once
         again[1].id, first[0].id,
         "it carries on with the continuation it sent before, so a second chain cannot fork"
     );
+    // and: the first batch is counted once
     assert_eq!(wired.progress().await, so_far(2, 1, false));
 
+    // when: it is restyled through
     wired.restyle_through(again[1].clone()).await;
 
-    assert_eq!(wired.saying(&book).await, vec!["“Ja.”"; 2]);
+    // then: the whole book has the style
+    assert_eq!(wired.texts_of(&book).await, vec!["“Ja.”"; 2]);
+    // and: each scene is counted once
     assert_eq!(wired.progress().await, so_far(2, 2, true));
 }
 
 #[tokio::test]
 async fn a_page_heard_twice_is_counted_once() {
+    // given: a book of several batches
     let wired = a_workbench(1);
     wired.holding(A_PROJECT, 3).await;
+    // and: its restyling begun
     wired
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 3))
         .await
         .expect("restyling succeeds");
-    let next = wired.carried_on()[0].clone();
+    let next = wired.continuations()[0].clone();
 
+    // when: its next page is heard twice
     for _ in 0..2 {
         wired
             .restyle
@@ -644,8 +714,10 @@ async fn a_page_heard_twice_is_counted_once() {
             .expect("a page heard again is not a failure");
     }
 
+    // then: the page is counted once
     assert_eq!(wired.progress().await, so_far(3, 2, false));
-    let carried = wired.carried_on();
+    // and: both hearings carry on with the same continuation
+    let carried = wired.continuations();
     assert_eq!(carried.len(), 3);
     assert_eq!(
         carried[1].id, carried[2].id,
@@ -655,8 +727,10 @@ async fn a_page_heard_twice_is_counted_once() {
 
 #[tokio::test]
 async fn a_restyling_whose_page_keeps_failing_stays_unfinished_until_it_is_tried_again() {
+    // given: a book
     let plain = a_workbench(4);
     let book = plain.holding(A_PROJECT, 2).await;
+    // and: its scenes cannot be restyled for now
     let broken = restyling_with(
         plain.scenes.clone(),
         plain.tasks.clone(),
@@ -666,27 +740,34 @@ async fn a_restyling_whose_page_keeps_failing_stays_unfinished_until_it_is_tried
     );
     let asked = restyled(A_PROJECT, "curly", 3);
 
+    // then: hearing a new style fails
     assert!(broken.restyle.handle(&asked).await.is_err());
+    // and: the restyling stays unfinished
     assert_eq!(
         plain.progress().await,
         so_far(2, 0, false),
         "a page that failed is not counted, so the bar shows the book unfinished"
     );
 
+    // when: it is tried again once the scenes can be restyled
     plain
         .restyle
         .handle(&asked)
         .await
         .expect("the dead letter tried again succeeds");
 
-    assert_eq!(plain.saying(&book).await, vec!["“Ja.”"; 2]);
+    // then: the whole book has the style
+    assert_eq!(plain.texts_of(&book).await, vec!["“Ja.”"; 2]);
+    // and: the restyling is finished
     assert_eq!(plain.progress().await, so_far(2, 2, true));
 }
 
 #[tokio::test]
 async fn a_page_overtaken_by_a_copy_of_itself_leaves_carrying_on_to_the_copy() {
+    // given: a book larger than a batch
     let plain = a_workbench(1);
     plain.holding(A_PROJECT, 2).await;
+    // and: a copy of its first page that overtakes it
     let asked = restyled(A_PROJECT, "curly", 3);
     let wired = restyling_with(
         plain.scenes.clone(),
@@ -699,15 +780,18 @@ async fn a_page_overtaken_by_a_copy_of_itself_leaves_carrying_on_to_the_copy() {
         1,
     );
 
+    // when: the page is heard
     wired
         .restyle
         .handle(&asked)
         .await
         .expect("a page overtaken is no failure");
 
+    // then: it does not carry on itself
     assert!(
-        wired.carried_on().is_empty(),
+        wired.continuations().is_empty(),
         "the copy counted the page and carries on, so the one it overtook must not fork a second chain"
     );
+    // and: the page is counted once
     assert_eq!(wired.progress().await, so_far(2, 1, false));
 }

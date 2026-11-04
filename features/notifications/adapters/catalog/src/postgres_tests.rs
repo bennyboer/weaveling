@@ -51,6 +51,7 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name() {
+    // given: a project's name under way
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut naming = bench
@@ -71,6 +72,7 @@ async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name()
         .await
         .expect("remembering should succeed");
 
+    // when: its tombstone is laid meanwhile
     tokio::join!(
         async {
             transacting::retrying!(&bench.transactions, |burying| {
@@ -91,6 +93,7 @@ async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name()
         }
     );
 
+    // then: it has no name
     assert!(
         bench
             .store
@@ -105,6 +108,7 @@ async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name()
 
 #[tokio::test]
 async fn a_notice_forgotten_while_its_cataloguing_is_under_way_stays_forgotten() {
+    // given: a notice's cataloguing under way
     let bench = OnPostgres::setup().await;
     let notice: NoticeSummary = crate::suite::a_summary("account_bo", 1_000, 1, false);
     let mut cataloguing = bench
@@ -118,6 +122,7 @@ async fn a_notice_forgotten_while_its_cataloguing_is_under_way_stays_forgotten()
         .await
         .expect("remembering should succeed");
 
+    // when: it is forgotten meanwhile
     tokio::join!(
         async {
             transacting::retrying!(&bench.transactions, |forgetting| {
@@ -138,6 +143,7 @@ async fn a_notice_forgotten_while_its_cataloguing_is_under_way_stays_forgotten()
         }
     );
 
+    // then: it is listed no more
     assert!(
         bench
             .store

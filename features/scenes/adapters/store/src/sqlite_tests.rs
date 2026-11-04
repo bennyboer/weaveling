@@ -162,8 +162,10 @@ mod compacting {
 
 #[tokio::test]
 async fn walking_a_project_comes_out_of_the_index() {
+    // given: a store
     let bench = OnSqlite::setup().await;
 
+    // when: walking one project after a cursor is planned
     let plan: Vec<String> = sqlx::query(
         "EXPLAIN QUERY PLAN
          SELECT scene
@@ -186,11 +188,13 @@ async fn walking_a_project_comes_out_of_the_index() {
 ",
     );
 
+    // then: the walk comes out of the project's index
     assert!(
         plan.contains("USING COVERING INDEX scenes_by_project")
             || plan.contains("USING INDEX scenes_by_project"),
         "deleting a project sweeps its prose one batch at a time, so the batch must come out of the index: {plan}"
     );
+    // and: never from a scan or a sort
     assert!(
         !plan.contains("SCAN scenes") && !plan.contains("TEMP B-TREE"),
         "a scan or a sort here is silent; the sweep keeps working and only gets slower: {plan}"
@@ -201,6 +205,7 @@ async fn walking_a_project_comes_out_of_the_index() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
+    // given: a stored scene in a store that compacts after two updates
     let (fixture, pool) = a_migrated_schema().await;
     let transactions = Arc::new(SqliteTransactions::new(pool.clone()));
     let store = Arc::new(SqliteSceneStore::compacting_after(pool, 2));
@@ -218,6 +223,7 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
         .await
         .expect("finishing should succeed");
 
+    // when: it is edited and compacted at once, again and again
     let mut writing = JoinSet::new();
     for nth in 0..200 {
         let (store, transactions) = (store.clone(), transactions.clone());
@@ -250,6 +256,7 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
             .expect("writing should succeed");
     }
 
+    // then: every edit is in its prose
     let text = store.load(id).await.expect("loading should succeed").text();
     let lost: Vec<usize> = (0..200)
         .filter(|nth| !text.contains(&format!("[{nth}]")))

@@ -21,7 +21,7 @@ struct Kept {
     notifications: NotificationsCore,
 }
 
-fn kept() -> Kept {
+fn a_workbench() -> Kept {
     let store = Arc::new(InMemoryEventStore::new());
     let catalog = Arc::new(InMemoryNoticeCatalog::new());
     let clock = Arc::new(FixedClock::new(NOTED_AT));
@@ -44,7 +44,7 @@ fn bo() -> Agent {
 }
 
 impl Kept {
-    async fn noted(&self) -> NoticeId {
+    async fn a_listed_notice(&self) -> NoticeId {
         let notice = self
             .notifications
             .note(
@@ -71,7 +71,7 @@ impl Kept {
             .expect("cataloguing should succeed");
     }
 
-    async fn forgotten_at(&self, at: OffsetDateTime) -> usize {
+    async fn forgetting_what_is_due_at(&self, at: OffsetDateTime) -> usize {
         self.clock.set(at);
 
         self.notifications
@@ -98,8 +98,9 @@ impl Kept {
 
 #[tokio::test]
 async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismissed() {
-    let kept = kept();
-    let notice = kept.noted().await;
+    // given: a listed notice dismissed five days after it was noted
+    let kept = a_workbench();
+    let notice = kept.a_listed_notice().await;
     let dismissed_at = NOTED_AT + Duration::days(5);
     kept.clock.set(dismissed_at);
     kept.notifications
@@ -108,15 +109,19 @@ async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismisse
         .expect("dismissing should succeed");
     kept.catalogued(&notice).await;
 
+    // when: what is due is forgotten a moment before thirty days are up, and a moment after
     let early = kept
-        .forgotten_at(dismissed_at + DISMISSED_KEPT_FOR - Duration::seconds(1))
+        .forgetting_what_is_due_at(dismissed_at + DISMISSED_KEPT_FOR - Duration::seconds(1))
         .await;
     let due = kept
-        .forgotten_at(dismissed_at + DISMISSED_KEPT_FOR + Duration::seconds(1))
+        .forgetting_what_is_due_at(dismissed_at + DISMISSED_KEPT_FOR + Duration::seconds(1))
         .await;
 
+    // then: it is forgotten only after
     assert_eq!((early, due), (0, 1), "a day short of thirty is kept");
+    // and: its events go with it
     assert!(kept.gone(&notice).await, "its events go with it");
+    // and: its row in the list
     assert!(
         kept.catalog
             .due_for_forgetting(
@@ -133,11 +138,13 @@ async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismisse
 
 #[tokio::test]
 async fn a_notice_never_dismissed_is_forgotten_ninety_days_after_it_was_noted() {
-    let kept = kept();
-    let notice = kept.noted().await;
+    // given: a listed notice never dismissed
+    let kept = a_workbench();
+    let notice = kept.a_listed_notice().await;
 
+    // when: what is due is forgotten a moment before ninety days are up, the list read, and forgotten a moment after
     let early = kept
-        .forgotten_at(NOTED_AT + UNDISMISSED_KEPT_FOR - Duration::seconds(1))
+        .forgetting_what_is_due_at(NOTED_AT + UNDISMISSED_KEPT_FOR - Duration::seconds(1))
         .await;
     let listed = kept
         .notifications
@@ -146,11 +153,14 @@ async fn a_notice_never_dismissed_is_forgotten_ninety_days_after_it_was_noted() 
         .expect("listing should succeed")
         .len();
     let due = kept
-        .forgotten_at(NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1))
+        .forgetting_what_is_due_at(NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1))
         .await;
 
+    // then: it is listed until then and forgotten after
     assert_eq!((early, listed, due), (0, 1, 1));
+    // and: its events go with it
     assert!(kept.gone(&notice).await);
+    // and: it is listed no more
     assert!(
         kept.notifications
             .open_for(&bo())
@@ -162,31 +172,41 @@ async fn a_notice_never_dismissed_is_forgotten_ninety_days_after_it_was_noted() 
 
 #[tokio::test]
 async fn a_notice_of_a_deleted_project_is_forgotten_at_once() {
-    let kept = kept();
-    let notice = kept.noted().await;
+    // given: a listed notice of a deleted project
+    let kept = a_workbench();
+    let notice = kept.a_listed_notice().await;
     kept.notifications
         .lay_project_tombstone(None, &ProjectLink::from("project_1"), NOTED_AT)
         .await
         .expect("laying a tombstone should succeed");
 
-    assert_eq!(kept.forgotten_at(NOTED_AT + Duration::hours(1)).await, 1);
+    // then: forgetting what is due forgets it at once
+    assert_eq!(
+        kept.forgetting_what_is_due_at(NOTED_AT + Duration::hours(1))
+            .await,
+        1
+    );
+    // and: its events go with it
     assert!(kept.gone(&notice).await);
 }
 
 #[test]
 fn notices_are_kept_thirty_days_dismissed_and_ninety_not() {
+    // expect: notices are kept thirty days dismissed and ninety not
     assert_eq!(DISMISSED_KEPT_FOR, Duration::days(30));
     assert_eq!(UNDISMISSED_KEPT_FOR, Duration::days(90));
 }
 
 #[tokio::test]
 async fn a_project_tombstone_forgotten_is_forgotten_for_good() {
-    let kept = kept();
+    // given: a project's tombstone
+    let kept = a_workbench();
     kept.notifications
         .lay_project_tombstone(None, &ProjectLink::from("project_1"), NOTED_AT)
         .await
         .expect("laying a tombstone should succeed");
 
+    // when: what was laid before a later moment is forgotten twice
     let forgotten = [
         kept.notifications
             .forget_tombstones_laid_before(NOTED_AT + Duration::seconds(1), 10)
@@ -198,18 +218,22 @@ async fn a_project_tombstone_forgotten_is_forgotten_for_good() {
             .expect("forgetting should succeed"),
     ];
 
+    // then: it is forgotten once
     assert_eq!(forgotten, [1, 0]);
 }
 
 #[tokio::test]
 async fn a_notice_catalogued_after_it_was_forgotten_is_nothing_to_catalogue() {
-    let kept = kept();
-    let notice = kept.noted().await;
-    kept.forgotten_at(NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1))
+    // given: a forgotten notice
+    let kept = a_workbench();
+    let notice = kept.a_listed_notice().await;
+    kept.forgetting_what_is_due_at(NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1))
         .await;
 
+    // when: it is catalogued
     kept.catalogued(&notice).await;
 
+    // then: nothing is listed
     assert!(
         kept.catalog
             .open_for(&AccountId::from("account_bo"))
@@ -222,11 +246,13 @@ async fn a_notice_catalogued_after_it_was_forgotten_is_nothing_to_catalogue() {
 
 #[tokio::test]
 async fn a_forgotten_notice_s_tombstone_is_forgotten_by_the_same_chore() {
-    let kept = kept();
-    kept.noted().await;
+    // given: a forgotten notice
+    let kept = a_workbench();
+    kept.a_listed_notice().await;
     let forgotten_at = NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1);
-    kept.forgotten_at(forgotten_at).await;
+    kept.forgetting_what_is_due_at(forgotten_at).await;
 
+    // when: what was laid before a later moment is forgotten twice
     let forgotten = [
         kept.notifications
             .forget_tombstones_laid_before(forgotten_at + Duration::seconds(1), 10)
@@ -238,5 +264,6 @@ async fn a_forgotten_notice_s_tombstone_is_forgotten_by_the_same_chore() {
             .expect("forgetting should succeed"),
     ];
 
+    // then: its tombstone is forgotten once
     assert_eq!(forgotten, [1, 0]);
 }

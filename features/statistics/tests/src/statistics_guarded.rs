@@ -55,7 +55,7 @@ struct Guarded {
     grace: TestServer,
 }
 
-async fn guarded() -> Guarded {
+async fn a_project_only_ada_may_read() -> Guarded {
     let authorizer = Arc::new(OnlyAda::default());
     let statistics = StatisticsCore::new(
         Arc::new(InMemoryTransactions::new()),
@@ -95,52 +95,68 @@ async fn following(account: &TestServer) -> Subscriber {
 
 #[tokio::test]
 async fn whoever_may_read_the_project_is_told_its_counts_and_follows_them() {
-    let guarded = guarded().await;
+    // given: a counted project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
 
+    // when: ada asks for its counts
     let counts = guarded
         .ada
         .get(&format!("/statistics/word-counts?project={PROJECT}"))
         .await;
 
+    // then: she is told them
     counts.assert_status_ok();
     assert_eq!(counts.json::<Value>()[0]["words"], 42);
+    // and: she may follow them
     following(&guarded.ada).await.nothing().await;
 }
 
 #[tokio::test]
 async fn a_project_s_counts_are_not_there_for_whoever_may_not_read_it() {
-    let guarded = guarded().await;
+    // given: a counted project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
 
+    // when: grace asks for its counts
     let counts = guarded
         .grace
         .get(&format!("/statistics/word-counts?project={PROJECT}"))
         .await;
 
+    // then: they are not there
     counts.assert_status(StatusCode::NOT_FOUND);
     assert_eq!(counts.json::<Value>()["type"], "not-found");
+    // and: following them finds nothing there
     assert_eq!(following(&guarded.grace).await.ended().await, "not-there");
 }
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let guarded = guarded().await;
+    // given: a counted project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+    // and: who may read it cannot be known
     *guarded.authorizer.down.lock().expect("never poisoned") = true;
 
+    // then: ada asking for its counts fails
     guarded
         .ada
         .get(&format!("/statistics/word-counts?project={PROJECT}"))
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    // and: so does her following them
     assert_eq!(following(&guarded.ada).await.ended().await, "failed");
 }
 
 #[tokio::test]
 async fn a_follower_who_may_no_longer_read_the_project_is_closed_out() {
-    let guarded = guarded().await;
+    // given: a counted project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+    // and: ada following its counts
     let mut socket = following(&guarded.ada).await;
 
+    // when: ada may no longer read it
     *guarded.authorizer.ada_left.lock().expect("never poisoned") = true;
     guarded.authorizer.access_changed(PROJECT);
 
+    // then: she is closed out
     assert_eq!(socket.ended().await, "access-lost");
 }

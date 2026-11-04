@@ -63,7 +63,7 @@ fn guarded() -> Guarded {
     }
 }
 
-async fn started(guarded: &Guarded, count: i64) -> Vec<String> {
+async fn projects_started(guarded: &Guarded, count: i64) -> Vec<String> {
     let mut ids = Vec::new();
     for nth in 1..=count {
         guarded
@@ -98,9 +98,10 @@ async fn listed(wired: &Wired) -> Vec<String> {
 
 #[tokio::test]
 async fn an_account_sees_only_the_projects_it_may_read_newest_first() {
+    // given: three projects started one after another
     let guarded = guarded();
-    let ids = started(&guarded, 3).await;
-
+    let ids = projects_started(&guarded, 3).await;
+    // and: an account that may read the first, the last and something that is no project
     guarded
         .reading
         .lets_read(Some(Readable::Only(BTreeSet::from([
@@ -109,6 +110,7 @@ async fn an_account_sees_only_the_projects_it_may_read_newest_first() {
             "not-a-project-id".to_owned(),
         ]))));
 
+    // then: it sees the last and the first, in that order
     assert_eq!(
         listed(&guarded.wired).await,
         vec![ids[2].clone(), ids[0].clone()]
@@ -117,11 +119,13 @@ async fn an_account_sees_only_the_projects_it_may_read_newest_first() {
 
 #[tokio::test]
 async fn whoever_may_read_everything_sees_every_project() {
+    // given: two projects started one after another
     let guarded = guarded();
-    let ids = started(&guarded, 2).await;
-
+    let ids = projects_started(&guarded, 2).await;
+    // and: an account that may read everything
     guarded.reading.lets_read(Some(Readable::Everything));
 
+    // then: it sees both, newest first
     assert_eq!(
         listed(&guarded.wired).await,
         vec![ids[1].clone(), ids[0].clone()]
@@ -130,23 +134,27 @@ async fn whoever_may_read_everything_sees_every_project() {
 
 #[tokio::test]
 async fn an_account_in_no_project_sees_none() {
+    // given: two projects
     let guarded = guarded();
-    started(&guarded, 2).await;
-
+    projects_started(&guarded, 2).await;
+    // and: an account that may read none of them
     guarded
         .reading
         .lets_read(Some(Readable::Only(BTreeSet::new())));
 
+    // then: it sees none
     assert!(listed(&guarded.wired).await.is_empty());
 }
 
 #[tokio::test]
 async fn whom_to_show_what_not_being_known_is_a_failure_not_an_empty_list() {
+    // given: a project
     let guarded = guarded();
-    started(&guarded, 1).await;
-
+    projects_started(&guarded, 1).await;
+    // and: what the account may read cannot be learned
     guarded.reading.lets_read(None);
 
+    // then: listing fails
     assert!(matches!(
         guarded.wired.projects.list(&ada()).await,
         Err(ProjectsError::Authorizer(_))

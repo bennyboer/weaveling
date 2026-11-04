@@ -28,11 +28,13 @@ mod tests {
 
     #[test]
     fn a_moment_is_told_by_its_day_month_year_and_time() {
+        // expect: the day, the month by name, the year and the time to the minute
         assert_eq!(told(datetime!(2026-10-10 09:01 UTC)), "10 Oct 2026, 09:01");
     }
 
     #[test]
     fn the_first_and_last_months_are_named_and_the_day_is_not_padded() {
+        // expect: january and december named, a single digit day unpadded
         assert_eq!(told(datetime!(2026-01-05 23:59 UTC)), "5 Jan 2026, 23:59");
         assert_eq!(told(datetime!(2026-12-31 00:00 UTC)), "31 Dec 2026, 00:00");
     }

@@ -56,26 +56,34 @@ mod tests {
 
     #[test]
     fn a_context_holds_what_it_was_given_by_name() {
+        // given: a context of two names
         let context = AggregateContext::default()
             .with("shelf", "shelf_1")
             .with("room", "room_2");
 
+        // then: each name holds what it was given
         assert_eq!(context.get("shelf"), Some("shelf_1"));
         assert_eq!(context.get("room"), Some("room_2"));
+        // and: another holds nothing
         assert_eq!(context.get("drawer"), None);
+        // and: it is not empty, as one of no names is
         assert!(!context.is_empty());
         assert!(AggregateContext::default().is_empty());
     }
 
     #[test]
     fn a_context_is_written_as_an_object_and_read_back_as_it_was() {
+        // given: a context
         let context = AggregateContext::default().with("shelf", "shelf_1");
 
+        // then: it is written as an object
         assert_eq!(context.written(), json!({ "shelf": "shelf_1" }));
+        // and: reads back as it was
         assert_eq!(
             AggregateContext::read(&context.written()),
             Some(context.clone())
         );
+        // and: an empty object reads as an empty context
         assert_eq!(
             AggregateContext::read(&json!({})),
             Some(AggregateContext::default())
@@ -84,6 +92,7 @@ mod tests {
 
     #[test]
     fn what_is_no_context_reads_as_nothing() {
+        // expect: what is not an object of text reads as no context
         for written in [
             json!("shelf_1"),
             json!({ "shelf": 1 }),

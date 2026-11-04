@@ -59,11 +59,13 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_counted() {
+    // given: a catalog on postgres
     let bench = OnPostgres::setup().await;
     let catalog = Arc::new(PostgresWordCountCatalog::new(bench.pool.clone()));
     let transactions = Arc::new(PostgresTransactions::new(bench.pool.clone()));
     let project = ProjectLink::from("project_1");
 
+    // when: many scenes are each kept and forgotten at once
     for nth in 0..40 {
         let scene = SceneLink::from(format!("scene_{nth}"));
         let (keeping, forgetting) = (catalog.clone(), catalog.clone());
@@ -96,6 +98,7 @@ async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_cou
             .expect("forgetting should succeed");
     }
 
+    // then: none of them is counted
     assert!(
         catalog
             .in_project(&project)

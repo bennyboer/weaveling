@@ -75,19 +75,25 @@ fn a_started_project_told_of(id: &ProjectId) -> Message {
 
 #[tokio::test]
 async fn a_started_project_reaches_the_listing() {
+    // given: a workbench
     let wired = a_workbench();
 
+    // when: a project is started
     a_started_project(&wired).await;
 
+    // then: it is listed
     assert_eq!(listed(&wired).await, ["The Weaver's Apprentice"]);
 }
 
 #[tokio::test]
 async fn the_listing_carries_the_moments_the_project_stands_at() {
+    // given: a workbench
     let wired = a_workbench();
 
+    // when: a project is started
     a_started_project(&wired).await;
 
+    // then: it is listed as created and updated when it started
     let found = wired.catalog.all().await.expect("looking should succeed");
     assert_eq!(
         found
@@ -100,15 +106,18 @@ async fn the_listing_carries_the_moments_the_project_stands_at() {
 
 #[tokio::test]
 async fn hearing_the_same_message_twice_leaves_one_project() {
+    // given: a started project
     let wired = a_workbench();
     let id = a_started_project(&wired).await;
 
+    // when: its start is heard again
     wired
         .projector
         .handle(&a_started_project_told_of(&id))
         .await
         .expect("a redelivery is not a failure");
 
+    // then: it is listed once
     assert_eq!(
         listed(&wired).await,
         ["The Weaver's Apprentice"],
@@ -118,6 +127,7 @@ async fn hearing_the_same_message_twice_leaves_one_project() {
 
 #[tokio::test]
 async fn a_stale_message_cannot_resurrect_a_deleted_project() {
+    // given: a trashed and purged project
     let wired = a_workbench();
     let id = a_started_project(&wired).await;
     wired
@@ -131,21 +141,25 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
         .await
         .expect("purging should succeed");
     wired.settle().await;
+    // and: it is no longer listed
     assert!(
         listed(&wired).await.is_empty(),
         "the deletion was projected"
     );
 
+    // when: its start is heard late
     wired
         .projector
         .handle(&a_started_project_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
 
+    // then: it is still not listed
     assert!(
         listed(&wired).await.is_empty(),
         "the projector reads the project rather than trusting the message, so order cannot bite"
     );
+    // and: its tombstone was laid as it went and is forgotten once
     assert_eq!(
         (
             wired
@@ -171,6 +185,7 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
 
 #[tokio::test]
 async fn the_listing_follows_the_latest_name_however_messages_arrive() {
+    // given: a renamed project
     let wired = a_workbench();
     let id = a_started_project(&wired).await;
     wired
@@ -180,12 +195,14 @@ async fn the_listing_follows_the_latest_name_however_messages_arrive() {
         .expect("renaming should succeed");
     wired.settle().await;
 
+    // when: its start is heard late
     wired
         .projector
         .handle(&a_started_project_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
 
+    // then: it is listed by its latest name
     assert_eq!(
         listed(&wired).await,
         ["A crown of straw"],
@@ -195,6 +212,7 @@ async fn the_listing_follows_the_latest_name_however_messages_arrive() {
 
 #[tokio::test]
 async fn a_message_about_no_project_at_all_is_refused() {
+    // given: a message about no project
     let wired = a_workbench();
     let nonsense = Message::opening(
         RoutingKey::parse("project.started").expect("a plain key is fine"),
@@ -202,8 +220,10 @@ async fn a_message_about_no_project_at_all_is_refused() {
         at(1_000),
     );
 
+    // when: it is heard
     let refused = wired.projector.handle(&nonsense).await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a message the projector cannot act on belongs in dead letters, not silently dropped"
@@ -212,14 +232,17 @@ async fn a_message_about_no_project_at_all_is_refused() {
 
 #[tokio::test]
 async fn a_message_about_a_project_that_was_never_stored_is_refused() {
+    // given: a project never stored
     let wired = a_workbench();
     let never_stored = ProjectId::generate(at(1_000));
 
+    // when: its start is heard
     let refused = wired
         .projector
         .handle(&a_started_project_told_of(&never_stored))
         .await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a refusal reaches dead letters and can be retried, while acknowledging it would \

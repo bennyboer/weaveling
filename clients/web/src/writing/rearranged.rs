@@ -86,7 +86,7 @@ mod tests {
     use super::*;
     use crate::outline::model::{OutlineId, Section};
 
-    fn section(id: &str, parent: Option<&str>) -> Section {
+    fn a_section(id: &str, parent: Option<&str>) -> Section {
         Section {
             id: SectionId::from(id.to_owned()),
             parent: parent.map(|parent| SectionId::from(parent.to_owned())),
@@ -111,21 +111,24 @@ mod tests {
 
     #[test]
     fn a_section_gone_from_the_book_is_removed_with_its_title_and_scenes() {
-        let mut part = section("two", None);
+        // given: a titled section with a scene
+        let mut part = a_section("two", None);
         part.title = "Part Two".to_owned();
         part.attachments = vec![crate::outline::model::Attachment::Scene(SceneId::from(
             "scene_1".to_owned(),
         ))];
+        // and: a book before and after it is gone
         let before = Outline {
             id: OutlineId::from("outline_1".to_owned()),
             version: 1,
-            sections: vec![section("one", None), part],
+            sections: vec![a_section("one", None), part],
         };
         let after = Outline {
-            sections: vec![section("one", None)],
+            sections: vec![a_section("one", None)],
             ..before.clone()
         };
 
+        // then: it is removed with its title and scenes
         assert_eq!(
             removed(&before, &after),
             vec![Removed {
@@ -134,35 +137,44 @@ mod tests {
                 scenes: vec![SceneId::from("scene_1".to_owned())],
             }]
         );
+        // and: nothing is removed from a book unchanged
         assert!(removed(&before, &before).is_empty());
     }
 
     #[test]
     fn a_section_nested_under_another_is_rearranged() {
-        let before = book(vec![section("one", None), section("two", None)]);
-        let after = book(vec![section("one", None), section("two", Some("one"))]);
+        // given: a book before and after one section is nested under the other
+        let before = book(vec![a_section("one", None), a_section("two", None)]);
+        let after = book(vec![a_section("one", None), a_section("two", Some("one"))]);
 
+        // then: the nested one is rearranged
         assert_eq!(named(rearranged(&before, &after)), ["two"]);
     }
 
     #[test]
     fn two_sections_trading_places_are_both_rearranged() {
-        let before = book(vec![section("one", None), section("two", None)]);
-        let after = book(vec![section("two", None), section("one", None)]);
+        // given: a book before and after two sections trade places
+        let before = book(vec![a_section("one", None), a_section("two", None)]);
+        let after = book(vec![a_section("two", None), a_section("one", None)]);
 
+        // then: both are rearranged
         assert_eq!(named(rearranged(&before, &after)), ["one", "two"]);
     }
 
     #[test]
     fn a_section_added_or_removed_beside_mine_rearranges_nothing() {
-        let before = book(vec![section("one", None), section("two", None)]);
+        // given: a book
+        let before = book(vec![a_section("one", None), a_section("two", None)]);
+        // and: the same with a section added before them
         let added = book(vec![
-            section("new", None),
-            section("one", None),
-            section("two", None),
+            a_section("new", None),
+            a_section("one", None),
+            a_section("two", None),
         ]);
-        let removed = book(vec![section("two", None)]);
+        // and: the same with the first removed
+        let removed = book(vec![a_section("two", None)]);
 
+        // then: neither rearranges anything
         assert!(rearranged(&before, &added).is_empty());
         assert!(rearranged(&before, &removed).is_empty());
     }

@@ -108,14 +108,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_published_change_is_passed_on_as_its_version_and_its_event() {
+        // given: someone hearing an outline
         let broadcaster = Broadcaster::new();
         let mut hearing = broadcaster.hear("outline_1".to_owned());
 
+        // when: a change to it is published
         broadcasting(&broadcaster)
             .handle(&retitled("outline_1", 7))
             .await
             .expect("passing on is not a failure");
 
+        // then: it hears the change's version and event
         let told = tokio::time::timeout(Duration::from_millis(100), hearing.next())
             .await
             .expect("the change is passed on at once")
@@ -134,19 +137,23 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_that_is_no_published_change_is_let_go() {
+        // given: someone hearing an outline
         let broadcaster = Broadcaster::new();
         let mut hearing = broadcaster.hear("outline_1".to_owned());
+        // and: a message that is no published change
         let stray = Message::opening(
             RoutingKey::parse("outline.started").expect("a plain key"),
             json!({ "nothing": "useful" }),
             OffsetDateTime::UNIX_EPOCH,
         );
 
+        // when: it is handled
         broadcasting(&broadcaster)
             .handle(&stray)
             .await
             .expect("a stray message is no reason to stop");
 
+        // then: nothing is heard
         assert!(
             tokio::time::timeout(Duration::from_millis(100), hearing.next())
                 .await
@@ -156,10 +163,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_change_is_told_on_every_channel_it_is_read_to_belong_to() {
+        // given: someone hearing all outlines
         let broadcaster = Broadcaster::new();
         let mut everyone = broadcaster.hear("outlines".to_owned());
+        // and: someone hearing one of them
         let mut one = broadcaster.hear("outline_1".to_owned());
 
+        // when: a change to that one is published to both channels
         BroadcastChangesListener::new(
             "broadcast-outline-changes",
             "outline.#",
@@ -170,12 +180,14 @@ mod tests {
         .await
         .expect("passing on is not a failure");
 
+        // then: whoever hears all outlines hears it
         let told = tokio::time::timeout(Duration::from_millis(100), everyone.next())
             .await
             .expect("the change is passed on at once")
             .expect("the broadcaster still tells");
         let frame: Value = serde_json::from_str(&told).expect("a frame is JSON");
         assert_eq!(frame["of"], "outline_1");
+        // and: whoever hears the one hears the same
         let its_own = tokio::time::timeout(Duration::from_millis(100), one.next())
             .await
             .expect("whoever follows the one aggregate is told too")
@@ -185,8 +197,10 @@ mod tests {
 
     #[test]
     fn broadcasting_is_fleeting_and_hears_what_it_was_given() {
+        // given: a broadcasting listener
         let broadcast = broadcasting(&Broadcaster::<String>::new());
 
+        // then: it is fleeting, hears its keys and is named as given
         assert_eq!(
             broadcast.delivery(),
             Delivery::Fleeting,

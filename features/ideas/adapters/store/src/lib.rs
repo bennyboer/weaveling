@@ -97,6 +97,7 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // expect: every kind of event reads back as it was written
         for event in [
             IdeaEvent::Captured {
                 project: ProjectLink::from("project_1"),
@@ -121,13 +122,16 @@ mod tests {
 
     #[test]
     fn a_body_written_in_a_shape_we_no_longer_know_reads_as_nothing() {
+        // given: a body in a shape no event has
         let nonsense = serde_json::json!({ "WrittenByAHandFromAnotherAge": { "runes": 3 } });
 
+        // then: it reads as no event
         assert!(((codec().event)(nonsense)).is_none());
     }
 
     #[test]
     fn an_untitled_idea_round_trips_because_the_domain_allows_one() {
+        // expect: an untitled retitling reads back as it was written
         assert_eq!(
             round_trip(IdeaEvent::Retitled(IdeaTitle::untitled())),
             IdeaEvent::Retitled(IdeaTitle::untitled())
@@ -136,8 +140,10 @@ mod tests {
 
     #[test]
     fn a_stored_title_the_domain_would_refuse_reads_as_nothing() {
+        // given: a stored title holding a control character
         let controlled = serde_json::json!({ "Retitled": { "title": "a\u{7}b" } });
 
+        // then: it reads as no event
         assert!(
             ((codec().event)(controlled)).is_none(),
             "a row the domain would refuse must not become an event, or an aggregate could \
@@ -147,12 +153,14 @@ mod tests {
 
     #[test]
     fn the_stored_shape_names_its_variant() {
+        // when: a snapshot is written
         let written = (codec().body)(&IdeaEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             title: a_title("A crown of straw"),
             discarded: true,
         });
 
+        // then: its body is named for its variant
         assert_eq!(
             written,
             serde_json::json!({

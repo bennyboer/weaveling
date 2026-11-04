@@ -116,7 +116,7 @@ fn an_author() -> Agent {
     Agent::Account(AccountId::from("author-7"))
 }
 
-fn happenings(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {
+fn events_of(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {
     landed
         .events
         .iter()
@@ -124,7 +124,7 @@ fn happenings(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {
         .collect()
 }
 
-fn retitled(to: &str) -> SampleCommand {
+fn a_retitling(to: &str) -> SampleCommand {
     SampleCommand::UpdateTitle(to.to_owned())
 }
 
@@ -140,15 +140,19 @@ async fn a_created_sample(service: &EventSourcingService<Sample>) -> AggregateId
 
 #[tokio::test]
 async fn creating_lands_the_first_version() {
+    // given: an aggregate never created
     let service = a_workbench();
     let id = AggregateId::from("sample_1");
 
+    // when: it is created
     let landed = service
         .begin_committed(&id, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
 
+    // then: it lands at version one
     assert_eq!(landed.version, Version::of(1));
+    // and: reads as created
     assert_eq!(
         service
             .latest(&id)
@@ -162,15 +166,19 @@ async fn creating_lands_the_first_version() {
 
 #[tokio::test]
 async fn a_further_command_lands_the_next_version() {
+    // given: a created sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
+    // when: it is retitled
     let landed = service
-        .execute_committed(&id, retitled("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // then: that lands the next version
     assert_eq!(landed.version, Version::of(2));
+    // and: it reads retitled
     assert_eq!(
         service.latest(&id).await.expect("it exists").state.title,
         "The Silent Loom"
@@ -179,14 +187,17 @@ async fn a_further_command_lands_the_next_version() {
 
 #[tokio::test]
 async fn asking_for_what_was_never_created_is_not_found() {
+    // given: an aggregate never created
     let service = a_workbench();
     let missing = AggregateId::from("sample_nobody");
 
+    // when: it is asked for
     let absent = service
         .latest(&missing)
         .await
         .expect_err("nothing is there");
 
+    // then: it is not found
     assert!(matches!(
         absent,
         ServiceError::NotFound { aggregate, kind } if aggregate == missing && kind == Sample::KIND
@@ -195,14 +206,17 @@ async fn asking_for_what_was_never_created_is_not_found() {
 
 #[tokio::test]
 async fn a_command_on_something_that_does_not_exist_is_not_found() {
+    // given: an aggregate never created
     let service = a_workbench();
     let missing = AggregateId::from("sample_early");
 
+    // when: it is retitled
     let refused = service
-        .execute_committed(&missing, retitled("Too soon"), &an_author())
+        .execute_committed(&missing, a_retitling("Too soon"), &an_author())
         .await
         .expect_err("nothing exists to update");
 
+    // then: it is not found
     assert!(
         matches!(
             refused,
@@ -214,17 +228,20 @@ async fn a_command_on_something_that_does_not_exist_is_not_found() {
 
 #[tokio::test]
 async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggregate() {
+    // given: nothing created
     let service = a_workbench();
 
+    // when: a sample is begun with a retitling
     let refused = service
         .begin_committed(
             &AggregateId::from("sample_early"),
-            retitled("Too soon"),
+            a_retitling("Too soon"),
             &an_author(),
         )
         .await
         .expect_err("only a creation command can start a stream");
 
+    // then: the aggregate refuses it as not created yet
     assert!(matches!(
         refused,
         ServiceError::Refused(SampleError::NotCreatedYet)
@@ -233,14 +250,17 @@ async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggrega
 
 #[tokio::test]
 async fn beginning_something_that_already_exists_is_a_conflict() {
+    // given: a created sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
+    // when: it is begun again
     let refused = service
         .begin_committed(&id, a_creation(), &an_author())
         .await
         .expect_err("it is already there");
 
+    // then: that is refused as outdated
     assert!(matches!(
         refused,
         ServiceError::Store(StoreError::Outdated { .. })
@@ -249,22 +269,26 @@ async fn beginning_something_that_already_exists_is_a_conflict() {
 
 #[tokio::test]
 async fn a_command_at_a_stale_version_is_refused() {
+    // given: a sample retitled once
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, retitled("Second"), &an_author())
+        .execute_committed(&id, a_retitling("Second"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // when: a command expecting its first version is executed
     let refused = service
-        .execute_at_committed(&id, Version::of(1), retitled("Stale"), &an_author())
+        .execute_at_committed(&id, Version::of(1), a_retitling("Stale"), &an_author())
         .await
         .expect_err("the stream has moved on");
 
+    // then: it is refused as outdated
     assert!(matches!(
         refused,
         ServiceError::Store(StoreError::Outdated { .. })
     ));
+    // and: the sample is unchanged
     assert_eq!(
         service.latest(&id).await.expect("it exists").state.title,
         "Second",
@@ -274,23 +298,26 @@ async fn a_command_at_a_stale_version_is_refused() {
 
 #[tokio::test]
 async fn a_command_at_the_current_version_is_accepted() {
+    // given: a created sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
+    // when: a command expecting its version is executed
     let landed = service
         .execute_at_committed(
             &id,
             Version::of(1),
-            retitled("The Silent Loom"),
+            a_retitling("The Silent Loom"),
             &an_author(),
         )
         .await
         .expect("the caller was up to date");
 
+    // then: it lands the next version
     assert_eq!(landed.version, Version::of(2));
 }
 
-async fn begun_within(
+async fn beginning_within(
     service: &EventSourcingService<Sample>,
     command: SampleCommand,
 ) -> (Transaction, Outcome<Sample>) {
@@ -307,18 +334,22 @@ async fn begun_within(
 
 #[tokio::test]
 async fn something_begun_within_a_transaction_lands_when_its_owner_finishes_it() {
+    // given: nothing created
     let service = a_workbench();
 
-    let (transaction, begun) = begun_within(&service, a_creation()).await;
+    // when: a sample is begun within a transaction its owner finishes
+    let (transaction, begun) = beginning_within(&service, a_creation()).await;
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: it landed at version one
     assert_eq!(
         begun.expect("beginning should succeed").version,
         Version::of(1)
     );
+    // and: it reads as created
     assert_eq!(
         service
             .latest(&sample::a_sample())
@@ -332,16 +363,20 @@ async fn something_begun_within_a_transaction_lands_when_its_owner_finishes_it()
 
 #[tokio::test]
 async fn something_begun_within_a_transaction_that_is_dropped_was_never_begun() {
+    // given: nothing created
     let service = a_workbench();
 
-    let (transaction, begun) = begun_within(&service, a_creation()).await;
+    // when: a sample is begun within a transaction that is dropped
+    let (transaction, begun) = beginning_within(&service, a_creation()).await;
     begun.expect("beginning should succeed");
     drop(transaction);
 
+    // then: it is not found
     assert!(matches!(
         service.latest(&sample::a_sample()).await,
         Err(ServiceError::NotFound { .. })
     ));
+    // and: it can be begun again
     service
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
@@ -350,14 +385,17 @@ async fn something_begun_within_a_transaction_that_is_dropped_was_never_begun() 
 
 #[tokio::test]
 async fn beginning_within_a_transaction_what_already_exists_is_a_conflict() {
+    // given: a created sample
     let service = a_workbench();
     service
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
 
-    let (_, begun) = begun_within(&service, a_creation()).await;
+    // when: it is begun again within a transaction
+    let (_, begun) = beginning_within(&service, a_creation()).await;
 
+    // then: that is refused as outdated
     assert!(matches!(
         begun,
         Err(ServiceError::Store(StoreError::Outdated { .. }))
@@ -366,10 +404,13 @@ async fn beginning_within_a_transaction_what_already_exists_is_a_conflict() {
 
 #[tokio::test]
 async fn beginning_within_a_transaction_with_what_does_not_begin_is_refused() {
+    // given: nothing created
     let service = a_workbench();
 
-    let (_, begun) = begun_within(&service, retitled("Too soon")).await;
+    // when: a sample is begun within a transaction with a retitling
+    let (_, begun) = beginning_within(&service, a_retitling("Too soon")).await;
 
+    // then: the aggregate refuses it as not created yet
     assert!(matches!(
         begun,
         Err(ServiceError::Refused(SampleError::NotCreatedYet))
@@ -378,6 +419,7 @@ async fn beginning_within_a_transaction_with_what_does_not_begin_is_refused() {
 
 #[tokio::test]
 async fn commands_after_deletion_are_refused() {
+    // given: a deleted sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
@@ -385,11 +427,13 @@ async fn commands_after_deletion_are_refused() {
         .await
         .expect("deleting should succeed");
 
+    // when: it is retitled
     let refused = service
-        .execute_committed(&id, retitled("Too late"), &an_author())
+        .execute_committed(&id, a_retitling("Too late"), &an_author())
         .await
         .expect_err("a deleted sample accepts nothing");
 
+    // then: it is refused as deleted
     assert!(matches!(
         refused,
         ServiceError::Refused(SampleError::Deleted)
@@ -398,30 +442,36 @@ async fn commands_after_deletion_are_refused() {
 
 #[tokio::test]
 async fn an_older_version_can_still_be_read() {
+    // given: a retitled sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, retitled("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // when: its first version and its latest are read
     let then = service
         .as_of(&id, Version::of(1))
         .await
         .expect("version 1 existed");
     let now = service.latest(&id).await.expect("it exists");
 
+    // then: the first reads as it was
     assert_eq!(then.state.title, "The Loom");
     assert_eq!(then.version, Version::of(1));
+    // and: the latest as it is
     assert_eq!(now.state.title, "The Silent Loom");
 }
 
 #[tokio::test]
 async fn many_aggregates_do_not_interfere() {
+    // given: nothing created
     let service = a_workbench();
     let one = AggregateId::from("sample_one");
     let other = AggregateId::from("sample_other");
 
+    // when: two samples are created and one of them retitled
     service
         .begin_committed(&one, a_creation(), &an_author())
         .await
@@ -431,14 +481,16 @@ async fn many_aggregates_do_not_interfere() {
         .await
         .expect("creating should succeed");
     service
-        .execute_committed(&other, retitled("Apart"), &an_author())
+        .execute_committed(&other, a_retitling("Apart"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // then: the other keeps its title
     assert_eq!(
         service.latest(&one).await.expect("exists").state.title,
         "The Loom"
     );
+    // and: the retitled one has its new title
     assert_eq!(
         service.latest(&other).await.expect("exists").state.title,
         "Apart"
@@ -447,9 +499,11 @@ async fn many_aggregates_do_not_interfere() {
 
 #[tokio::test]
 async fn one_command_may_land_several_events_at_once() {
+    // given: a created sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
+    // when: it is rewritten, title and description at once
     let landed = service
         .execute_committed(
             &id,
@@ -462,11 +516,13 @@ async fn one_command_may_land_several_events_at_once() {
         .await
         .expect("rewriting should succeed");
 
+    // then: two versions land
     assert_eq!(
         landed.version,
         Version::of(3),
         "two events land two versions"
     );
+    // and: it reads rewritten
     let state = service.latest(&id).await.expect("exists").state;
     assert_eq!(state.title, "The Silent Loom");
     assert_eq!(state.description, "It remembers.");
@@ -474,9 +530,11 @@ async fn one_command_may_land_several_events_at_once() {
 
 #[tokio::test]
 async fn what_landed_carries_the_events_that_were_appended() {
+    // given: a created sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
+    // when: it is rewritten
     let landed = service
         .execute_committed(
             &id,
@@ -489,14 +547,16 @@ async fn what_landed_carries_the_events_that_were_appended() {
         .await
         .expect("rewriting should succeed");
 
+    // then: what landed carries both events
     assert_eq!(
-        happenings(&landed),
+        events_of(&landed),
         vec![
             SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
             SampleEvent::DescriptionUpdated("It remembers.".to_owned()),
         ],
         "a caller that has to publish what happened cannot work it out from a version alone"
     );
+    // and: each with its own version
     assert_eq!(
         landed
             .events
@@ -506,36 +566,42 @@ async fn what_landed_carries_the_events_that_were_appended() {
         vec![Version::of(2), Version::of(3)],
         "each event has its own version, and the last one alone cannot say so"
     );
+    // and: says something changed
     assert!(!landed.changed_nothing());
 }
 
 #[tokio::test]
 async fn a_snapshot_is_not_something_that_happened() {
+    // given: a sample one event short of a snapshot
     let service = a_workbench();
     let id = a_created_sample(&service).await;
 
     for counted in 2..100 {
         service
-            .execute_committed(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
             .await
             .expect("updating should succeed");
     }
 
+    // when: the event that makes it due lands
     let landed = service
-        .execute_committed(&id, retitled("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // then: the version moved along for the snapshot
     assert_eq!(
         landed.version,
         Version::of(101),
         "the snapshot still moved the version along"
     );
+    // and: only the command's event is among what landed
     assert_eq!(
-        happenings(&landed),
+        events_of(&landed),
         vec![SampleEvent::TitleUpdated("Title 100".to_owned())],
         "one command happened once, and collapsing the log is not news"
     );
+    // and: no snapshot is
     assert!(
         landed
             .events
@@ -547,17 +613,19 @@ async fn a_snapshot_is_not_something_that_happened() {
 
 #[tokio::test]
 async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let service = a_service(store.clone());
     let id = a_created_sample(&service).await;
 
     for counted in 2..100 {
         service
-            .execute_committed(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
             .await
             .expect("updating should succeed");
     }
 
+    // then: it has no snapshot yet
     assert!(
         store
             .latest_snapshot(&id, Sample::KIND)
@@ -567,16 +635,19 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
         "ninety-nine events is not yet a hundred"
     );
 
+    // when: the event that makes it due lands
     let landed = service
-        .execute_committed(&id, retitled("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // then: a snapshot follows it
     assert_eq!(
         landed.version,
         Version::of(101),
         "the hundredth event should be followed by a snapshot"
     );
+    // and: is stored
     assert_eq!(
         store
             .latest_snapshot(&id, Sample::KIND)
@@ -587,6 +658,7 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
             .version,
         Version::of(101)
     );
+    // and: the sample reads the same
     assert_eq!(
         service.latest(&id).await.expect("exists").state.title,
         "Title 100",
@@ -596,26 +668,31 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
 
 #[tokio::test]
 async fn collapsing_leaves_only_a_snapshot_behind() {
+    // given: a retitled sample
     let store = a_store();
     let service = a_service(store.clone());
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, retitled("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // when: it is collapsed
     let taken = service
         .compact_committed(&id, &an_author())
         .await
         .expect("collapsing should succeed");
 
+    // then: the snapshot is taken at the next version
     assert_eq!(taken, Version::of(3));
+    // and: it alone is left of the stream
     let stream = store
         .read_from(&id, Sample::KIND, Version::ZERO)
         .await
         .expect("reading should succeed");
     assert_eq!(stream.len(), 1, "everything the snapshot replaced is gone");
     assert!(stream[0].metadata.is_snapshot);
+    // and: the sample reads the same
     assert_eq!(
         service.latest(&id).await.expect("exists").state.title,
         "The Silent Loom",
@@ -625,6 +702,7 @@ async fn collapsing_leaves_only_a_snapshot_behind() {
 
 #[tokio::test]
 async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
+    // given: a collapsed sample
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
@@ -632,12 +710,15 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
         .await
         .expect("collapsing should succeed");
 
+    // when: it is retitled
     let landed = service
-        .execute_committed(&id, retitled("After the compact"), &an_author())
+        .execute_committed(&id, a_retitling("After the compact"), &an_author())
         .await
         .expect("a collapsed aggregate still accepts commands");
 
+    // then: that lands after the snapshot
     assert_eq!(landed.version, Version::of(3));
+    // and: it reads retitled
     assert_eq!(
         service.latest(&id).await.expect("exists").state.title,
         "After the compact"
@@ -646,10 +727,12 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
 
 #[tokio::test]
 async fn who_acted_and_when_is_recorded() {
+    // when: an author creates a sample
     let store = a_store();
     let service = a_service(store.clone());
     let id = a_created_sample(&service).await;
 
+    // then: its event records who acted, when, on what kind and which aggregate
     let stream = store
         .read_from(&id, Sample::KIND, Version::ZERO)
         .await
@@ -663,10 +746,11 @@ async fn who_acted_and_when_is_recorded() {
 
 #[tokio::test]
 async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
+    // given: a retitled sample, collapsed
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, retitled("Second"), &an_author())
+        .execute_committed(&id, a_retitling("Second"), &an_author())
         .await
         .expect("updating should succeed");
     service
@@ -674,11 +758,13 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
         .await
         .expect("collapsing should succeed");
 
+    // when: a command expecting its first version is executed
     let refused = service
-        .execute_at_committed(&id, Version::of(1), retitled("Stale"), &an_author())
+        .execute_at_committed(&id, Version::of(1), a_retitling("Stale"), &an_author())
         .await
         .expect_err("version 1 was pruned away, but the aggregate is very much there");
 
+    // then: it is refused as outdated, not as missing
     assert!(
         matches!(refused, ServiceError::Store(StoreError::Outdated { .. })),
         "a version the snapshot swallowed must not read as a missing aggregate, got {refused:?}"
@@ -687,6 +773,7 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
 
 #[tokio::test]
 async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_sees_it() {
+    // given: an event stored in its shape from before kinds
     let store = a_store();
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_ancient");
@@ -716,12 +803,15 @@ async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_se
         .await
         .expect("finishing should succeed");
 
+    // when: its aggregate is rebuilt
     let standing = service
         .latest(&id)
         .await
         .expect("a stream written before kinds existed must still rebuild");
 
+    // then: it reads as stored
     assert_eq!(standing.state.title, "The Loom");
+    // and: with the kind the patch supplies
     assert_eq!(
         standing.state.kind,
         SampleKind::Ordinary,
@@ -731,15 +821,20 @@ async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_se
 
 #[tokio::test]
 async fn an_unpatched_old_event_would_not_rebuild_at_all() {
+    // given: a patcher holding no patches
     let patcher = Patcher::holding(Vec::new());
+    // and: an event from before kinds
     let ancient = SampleEvent::CreatedBeforeKinds {
         title: "The Loom".to_owned(),
         description: "A silent machine.".to_owned(),
     };
 
+    // when: the event is patched
     let untouched = patcher.patch(ancient.clone());
 
+    // then: it is untouched
     assert_eq!(untouched, ancient);
+    // and: gives birth to nothing
     assert!(
         Sample::from_first(&untouched, &sample::stamped(&sample::a_sample(), 1)).is_none(),
         "the previous test only means something because the aggregate cannot read the old shape"
@@ -748,13 +843,16 @@ async fn an_unpatched_old_event_would_not_rebuild_at_all() {
 
 #[tokio::test]
 async fn a_current_event_is_left_alone_by_the_patcher() {
+    // given: the sample's patcher
     let patcher = Patcher::holding(Sample::patches());
+    // and: an event of the current shape
     let current = SampleEvent::Created {
         title: "The Loom".to_owned(),
         description: "A silent machine.".to_owned(),
         kind: SampleKind::Remarkable,
     };
 
+    // then: patching leaves it alone
     assert_eq!(
         patcher.patch(current.clone()),
         current,
@@ -764,6 +862,7 @@ async fn a_current_event_is_left_alone_by_the_patcher() {
 
 #[tokio::test]
 async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
+    // given: an event stored in its shape from before kinds
     let store = a_store();
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_ancient_collapsed");
@@ -793,11 +892,13 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
         .await
         .expect("finishing should succeed");
 
+    // when: its aggregate is collapsed
     service
         .compact_committed(&id, &an_author())
         .await
         .expect("collapsing a patched stream should succeed");
 
+    // then: it reads with the kind the patch supplied
     assert_eq!(
         service
             .latest(&id)
@@ -812,6 +913,7 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
 
 #[tokio::test]
 async fn an_event_two_versions_old_climbs_the_whole_chain() {
+    // given: an event stored in its shape from before descriptions
     let store = a_store();
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_very_ancient");
@@ -840,25 +942,32 @@ async fn an_event_two_versions_old_climbs_the_whole_chain() {
         .await
         .expect("finishing should succeed");
 
+    // when: its aggregate is rebuilt
     let standing = service
         .latest(&id)
         .await
         .expect("two patches in a row must carry it all the way to the current shape");
 
+    // then: it reads as stored
     assert_eq!(standing.state.title, "The Loom");
+    // and: with what both patches supply
     assert_eq!(standing.state.description, "");
     assert_eq!(standing.state.kind, SampleKind::Ordinary);
 }
 
 #[tokio::test]
 async fn patches_are_applied_in_version_order_however_they_were_registered() {
+    // given: the sample's patcher, its newer patch registered first
     let backwards = Patcher::holding(Sample::patches());
+    // and: an event from before descriptions
     let ancient = SampleEvent::CreatedBeforeDescriptions {
         title: "The Loom".to_owned(),
     };
 
+    // when: the event is patched
     let climbed = backwards.patch(ancient);
 
+    // then: it reaches the current shape
     assert_eq!(
         climbed,
         SampleEvent::Created {
@@ -1143,7 +1252,7 @@ async fn a_sample_one_short_of_a_snapshot(
     let id = a_created_sample(&service).await;
     for counted in 2..100 {
         service
-            .execute_committed(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
             .await
             .expect("updating should succeed");
     }
@@ -1151,7 +1260,7 @@ async fn a_sample_one_short_of_a_snapshot(
     id
 }
 
-fn over(store: Arc<RefusesSnapshots>) -> EventSourcingService<Sample> {
+fn a_service_over(store: Arc<RefusesSnapshots>) -> EventSourcingService<Sample> {
     EventSourcingService::new(store, Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)))
 }
 
@@ -1164,24 +1273,30 @@ fn titled_100(store_read: Vec<Recorded<SampleEvent>>) -> usize {
 
 #[tokio::test]
 async fn a_command_whose_snapshot_fails_lands_neither() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
 
+    // and: a store that breaks on snapshots
     let broken = RefusesSnapshots::as_broken(store.clone());
 
-    let refused = over(broken.clone())
-        .execute_committed(&id, retitled("Title 100"), &an_author())
+    // when: the event that makes it due is executed
+    let refused = a_service_over(broken.clone())
+        .execute_committed(&id, a_retitling("Title 100"), &an_author())
         .await;
 
+    // then: it fails as the backend's failure
     assert!(matches!(
         refused,
         Err(ServiceError::Store(StoreError::Backend { .. }))
     ));
+    // and: is not tried again
     assert_eq!(
         broken.refused(),
         1,
         "a store that broke did not lose a race, so the command is not tried again"
     );
+    // and: the event did not land
     assert_eq!(
         titled_100(
             store
@@ -1196,19 +1311,24 @@ async fn a_command_whose_snapshot_fails_lands_neither() {
 
 #[tokio::test]
 async fn a_command_whose_snapshot_lost_a_race_is_tried_again_whole() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
 
+    // and: a store where every snapshot loses a race
     let overtaken = RefusesSnapshots::as_outdated(store.clone());
 
-    let refused = over(overtaken.clone())
-        .execute_committed(&id, retitled("Title 100"), &an_author())
+    // when: the event that makes it due is executed
+    let refused = a_service_over(overtaken.clone())
+        .execute_committed(&id, a_retitling("Title 100"), &an_author())
         .await;
 
+    // then: it is refused as outdated
     assert!(matches!(
         refused,
         Err(ServiceError::Store(StoreError::Outdated { .. }))
     ));
+    // and: the event did not land
     assert_eq!(
         titled_100(
             store
@@ -1219,21 +1339,30 @@ async fn a_command_whose_snapshot_lost_a_race_is_tried_again_whole() {
         0,
         "each try rolled back whole, the command with its snapshot"
     );
+    // and: it was tried as often as tries allow
     assert_eq!(overtaken.refused(), transacting::retrying::TRIES);
 }
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_takes_its_snapshot_in_it() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    // and: a transaction
     let service = a_service(store.clone());
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
         .expect("beginning should succeed");
 
+    // when: the event that makes it due is executed within it, which is then finished
     let landed = service
-        .execute(&mut transaction, &id, retitled("Title 100"), &an_author())
+        .execute(
+            &mut transaction,
+            &id,
+            a_retitling("Title 100"),
+            &an_author(),
+        )
         .await
         .expect("updating should succeed");
     transaction
@@ -1241,11 +1370,13 @@ async fn a_command_executed_within_a_transaction_takes_its_snapshot_in_it() {
         .await
         .expect("finishing should succeed");
 
+    // then: the snapshot's version is answered
     assert_eq!(
         landed.version,
         Version::of(101),
         "the version answered is the snapshot's, so whoever aims at it next is not refused"
     );
+    // and: the snapshot is stored
     assert_eq!(
         store
             .latest_snapshot(&id, Sample::KIND)
@@ -1260,20 +1391,29 @@ async fn a_command_executed_within_a_transaction_takes_its_snapshot_in_it() {
 
 #[tokio::test]
 async fn a_snapshot_taken_within_a_transaction_that_is_dropped_was_never_taken() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    // and: a transaction that executed the event making it due
     let service = a_service(store.clone());
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
         .expect("beginning should succeed");
     service
-        .execute(&mut transaction, &id, retitled("Title 100"), &an_author())
+        .execute(
+            &mut transaction,
+            &id,
+            a_retitling("Title 100"),
+            &an_author(),
+        )
         .await
         .expect("updating should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: no snapshot is stored
     assert!(
         store
             .latest_snapshot(&id, Sample::KIND)
@@ -1285,15 +1425,19 @@ async fn a_snapshot_taken_within_a_transaction_that_is_dropped_was_never_taken()
 
 #[tokio::test]
 async fn a_command_aimed_at_a_version_takes_the_snapshot_it_makes_due() {
+    // given: a sample one event short of a snapshot
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
 
+    // when: the event that makes it due is executed at its version
     let landed = a_service(store.clone())
-        .execute_at_committed(&id, Version::of(99), retitled("Title 100"), &an_author())
+        .execute_at_committed(&id, Version::of(99), a_retitling("Title 100"), &an_author())
         .await
         .expect("updating should succeed");
 
+    // then: the snapshot's version is answered
     assert_eq!(landed.version, Version::of(101));
+    // and: the snapshot is stored
     assert_eq!(
         store
             .latest_snapshot(&id, Sample::KIND)
@@ -1307,7 +1451,7 @@ async fn a_command_aimed_at_a_version_takes_the_snapshot_it_makes_due() {
     );
 }
 
-async fn executed_within(
+async fn executing_within(
     service: &EventSourcingService<Sample>,
     command: SampleCommand,
 ) -> (Transaction, Outcome<Sample>) {
@@ -1331,19 +1475,23 @@ async fn a_sample_begun(service: &EventSourcingService<Sample>) {
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_lands_when_its_owner_finishes_it() {
+    // given: a created sample
     let service = a_workbench();
     a_sample_begun(&service).await;
 
-    let (transaction, executed) = executed_within(&service, retitled("Rewoven")).await;
+    // when: it is retitled within a transaction its owner finishes
+    let (transaction, executed) = executing_within(&service, a_retitling("Rewoven")).await;
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: the next version landed
     assert_eq!(
         executed.expect("executing should succeed").version,
         Version::of(2)
     );
+    // and: it reads retitled
     assert_eq!(
         service
             .latest(&sample::a_sample())
@@ -1357,13 +1505,16 @@ async fn a_command_executed_within_a_transaction_lands_when_its_owner_finishes_i
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_that_is_dropped_never_landed() {
+    // given: a created sample
     let service = a_workbench();
     a_sample_begun(&service).await;
 
-    let (transaction, executed) = executed_within(&service, retitled("Rewoven")).await;
+    // when: it is retitled within a transaction that is dropped
+    let (transaction, executed) = executing_within(&service, a_retitling("Rewoven")).await;
     executed.expect("executing should succeed");
     drop(transaction);
 
+    // then: it reads as it was
     let standing = service
         .latest(&sample::a_sample())
         .await
@@ -1376,16 +1527,20 @@ async fn a_command_executed_within_a_transaction_that_is_dropped_never_landed() 
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_is_not_tried_again_but_left_to_its_owner() {
+    // given: a created sample
     let store = a_store();
     a_sample_begun(&a_service(store.clone())).await;
+    // and: a store refusing the next append as outdated
     let balking = BalksOnce::wrapping(store, 1);
     let service = EventSourcingService::<Sample>::new(
         balking.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
-    let (_, executed) = executed_within(&service, retitled("Rewoven")).await;
+    // when: it is retitled within a transaction
+    let (_, executed) = executing_within(&service, a_retitling("Rewoven")).await;
 
+    // then: it is refused as outdated
     assert!(
         matches!(
             executed,
@@ -1397,15 +1552,19 @@ async fn a_command_executed_within_a_transaction_is_not_tried_again_but_left_to_
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_on_nothing_is_not_found() {
+    // given: nothing created
     let service = a_workbench();
 
-    let (_, executed) = executed_within(&service, retitled("Rewoven")).await;
+    // when: a sample is retitled within a transaction
+    let (_, executed) = executing_within(&service, a_retitling("Rewoven")).await;
 
+    // then: it is not found
     assert!(matches!(executed, Err(ServiceError::NotFound { .. })));
 }
 
 #[tokio::test]
 async fn a_command_executed_within_a_transaction_that_changes_nothing_appends_nothing() {
+    // given: a shelved sample
     let service = a_workbench();
     a_sample_begun(&service).await;
     let shelved = || SampleCommand::Shelve("shelf_1".to_owned());
@@ -1414,30 +1573,36 @@ async fn a_command_executed_within_a_transaction_that_changes_nothing_appends_no
         .await
         .expect("shelving should succeed");
 
-    let (transaction, executed) = executed_within(&service, shelved()).await;
+    // when: it is shelved there again within a transaction its owner finishes
+    let (transaction, executed) = executing_within(&service, shelved()).await;
     transaction
         .finish()
         .await
         .expect("finishing should succeed");
 
+    // then: nothing changed
     let executed = executed.expect("executing should succeed");
     assert!(executed.changed_nothing());
+    // and: its version stays
     assert_eq!(executed.version, Version::of(2));
 }
 
 #[tokio::test]
 async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
+    // given: a created sample
     let store = a_store();
     a_service(store.clone())
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
+    // and: a store refusing the next two appends as outdated
     let balking = BalksOnce::wrapping(store, 2);
     let service = EventSourcingService::<Sample>::new(
         balking.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
+    // when: it is retitled
     let landed = service
         .execute_committed(
             &sample::a_sample(),
@@ -1447,24 +1612,28 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
         .await
         .expect("two refusals are ridden out");
 
+    // then: the retitling lands once
     assert_eq!(
-        happenings(&landed),
+        events_of(&landed),
         vec![SampleEvent::TitleUpdated("Rewoven".to_owned())]
     );
 }
 
 #[tokio::test]
 async fn a_command_gives_up_once_it_has_run_out_of_tries() {
+    // given: a created sample
     let store = a_store();
     a_service(store.clone())
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
+    // and: a store refusing every try as outdated
     let service = EventSourcingService::<Sample>::new(
         BalksOnce::wrapping(store, transacting::retrying::TRIES),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
+    // when: it is retitled
     let refused = service
         .execute_committed(
             &sample::a_sample(),
@@ -1473,6 +1642,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
         )
         .await;
 
+    // then: it is refused as outdated
     assert!(matches!(
         refused,
         Err(ServiceError::Store(StoreError::Outdated { .. }))
@@ -1481,16 +1651,19 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
 
 #[tokio::test]
 async fn a_command_aimed_at_one_version_is_never_tried_again() {
+    // given: a created sample
     let store = a_store();
     a_service(store.clone())
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
+    // and: a store refusing the next append as outdated
     let service = EventSourcingService::<Sample>::new(
         BalksOnce::wrapping(store, 1),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
+    // when: it is retitled at its version
     let refused = service
         .execute_at_committed(
             &sample::a_sample(),
@@ -1500,6 +1673,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
         )
         .await;
 
+    // then: it is refused as outdated
     assert!(
         matches!(
             refused,
@@ -1622,16 +1796,19 @@ impl EventStore<SampleEvent> for Yielding {
 
 #[tokio::test(flavor = "current_thread")]
 async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_collide() {
+    // given: a created sample
     let store = a_store();
     a_service(store.clone())
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
+    // and: a store that yields while reading
     let service = Arc::new(EventSourcingService::<Sample>::new(
         Arc::new(Yielding { inner: store }),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     ));
 
+    // when: eight retitlings run at once, each retried
     let transactions = Arc::new(InMemoryTransactions::new());
 
     let mut commanded = tokio::task::JoinSet::new();
@@ -1661,6 +1838,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
     }
     reached.sort();
 
+    // then: each lands a version of its own
     assert_eq!(
         reached,
         (2..=9).map(Version::of).collect::<Vec<_>>(),
@@ -1677,9 +1855,11 @@ fn shelves_in(stream: &[Recorded<SampleEvent>]) -> Vec<Option<String>> {
 
 #[tokio::test]
 async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregate_in() {
+    // given: nothing created
     let store = a_store();
     let service = a_service(store.clone());
 
+    // when: a sample is created and then shelved
     let created = service
         .begin_committed(&sample::a_sample(), a_creation(), &an_author())
         .await
@@ -1693,16 +1873,19 @@ async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregat
         .await
         .expect("the sample is shelved");
 
+    // then: the creation's event is in no context
     assert_eq!(
         shelves_in(&created.events),
         [None],
         "a sample on no shelf is in no context"
     );
+    // and: the shelving's is in the shelf's
     assert_eq!(
         shelves_in(&shelved.events),
         [Some("shelf_1".to_owned())],
         "the context is the aggregate's after the command, not before it"
     );
+    // and: they are stored so
     let stored = store
         .read_from(&sample::a_sample(), sample::SAMPLE, Version::ZERO)
         .await
@@ -1712,6 +1895,7 @@ async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregat
 
 #[tokio::test]
 async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_keeps_it() {
+    // given: a shelved sample
     let store = a_store();
     let service = a_service(store.clone());
     service
@@ -1727,6 +1911,7 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
         .await
         .expect("the sample is shelved");
 
+    // when: it is collapsed and then retitled
     service
         .compact_committed(&sample::a_sample(), &an_author())
         .await
@@ -1740,12 +1925,14 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
         .await
         .expect("the sample is retitled");
 
+    // then: the snapshot is in the shelf's context
     let snapshot = store
         .latest_snapshot(&sample::a_sample(), sample::SAMPLE)
         .await
         .expect("reading should succeed")
         .expect("the snapshot is there");
     assert_eq!(snapshot.metadata.context.get("shelf"), Some("shelf_1"));
+    // and: so is the retitling's event
     assert_eq!(
         shelves_in(&retitled.events),
         [Some("shelf_1".to_owned())],
@@ -1755,6 +1942,7 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
 
 #[test]
 fn a_write_aimed_at_a_version_is_tried_once_and_one_aimed_at_none_until_it_stops_losing_races() {
+    // expect: a write aimed at a version is tried once, one aimed at none as often as tries allow
     assert_eq!(
         (tries_for(Some(Version::of(3))), tries_for(None)),
         (1, transacting::retrying::TRIES),

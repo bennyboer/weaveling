@@ -28,7 +28,7 @@ async function aSceneToWriteIn(page: Page, named: string) {
   return only;
 }
 
-async function paragraphs(page: Page, count: number) {
+async function writingParagraphs(page: Page, count: number) {
   for (let nth = 1; nth <= count; nth++) {
     await page.keyboard.type(`Paragraph ${nth} of the morning by the river.`);
     await page.keyboard.press("Enter");
@@ -53,13 +53,18 @@ const whereTheCaretIs = (page: Page) =>
 test("typewriter scrolling is off at first, and once on stays on across a reload", async ({
   page,
 }) => {
+  // given: a scene to write in
   await aSceneToWriteIn(page, "TypewriterKept");
+  // then: typewriter scrolling is off
   await expect(flow(page)).not.toHaveClass(/typewriter/);
 
+  // when: it is switched on and the page reloaded
   await typewriterScrolling(page, true);
   await page.reload();
 
+  // then: it is still on
   await expect(flow(page)).toHaveClass(/typewriter/);
+  // and: the writing settings show it on
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
@@ -71,12 +76,15 @@ test("typewriter scrolling is off at first, and once on stays on across a reload
 test("with typewriter scrolling on, the line being written stays in the middle of the window", async ({
   page,
 }) => {
+  // given: typewriter scrolling on, the cursor in a scene
   const only = await aSceneToWriteIn(page, "TypewriterMiddle");
   await typewriterScrolling(page, true);
   await scene(page, only).click();
 
-  await paragraphs(page, 14);
+  // when: many paragraphs are written
+  await writingParagraphs(page, 14);
 
+  // then: the line being written stays in the middle of the window
   await expect
     .poll(async () => {
       const { line, middle } = await whereTheCaretIs(page);
@@ -88,11 +96,14 @@ test("with typewriter scrolling on, the line being written stays in the middle o
 test("without typewriter scrolling the line being written runs on down the window", async ({
   page,
 }) => {
+  // given: typewriter scrolling off, the cursor in a scene
   const only = await aSceneToWriteIn(page, "TypewriterOff");
   await scene(page, only).click();
 
-  await paragraphs(page, 14);
+  // when: many paragraphs are written
+  await writingParagraphs(page, 14);
 
+  // then: the line being written is well below the middle of the window
   const { line, middle } = await whereTheCaretIs(page);
   expect(
     line - middle,
@@ -103,6 +114,7 @@ test("without typewriter scrolling the line being written runs on down the windo
 test("a heading further down comes to the middle once the button is let go, not while it is held", async ({
   page,
 }) => {
+  // given: typewriter scrolling on, the pointer over a heading further down
   await aSceneToWriteIn(page, "TypewriterClicked");
   await page.setViewportSize({ width: 1280, height: 1000 });
   await typewriterScrolling(page, true);
@@ -112,14 +124,18 @@ test("a heading further down comes to the middle once the button is let go, not 
   await page.mouse.move(first.x + 20, first.y + 10);
   const before = await page.evaluate(() => window.scrollY);
 
+  // when: the button is pressed and held
   await page.mouse.down();
   await page.waitForTimeout(300);
+  // then: the page stays where it was
   expect(
     await page.evaluate(() => window.scrollY),
     "the page must not run off under a held button",
   ).toBe(before);
+  // when: the button is let go
   await page.mouse.up();
 
+  // then: the heading comes to the middle of the window
   await expect
     .poll(
       async () => {
@@ -137,19 +153,24 @@ test("a heading further down comes to the middle once the button is let go, not 
 test("at the top of the book the first heading already sits in the middle, the masthead in view", async ({
   page,
 }) => {
+  // given: typewriter scrolling on, at the top of the book
   await aSceneToWriteIn(page, "TypewriterTop");
   await page.setViewportSize({ width: 1280, height: 900 });
   await typewriterScrolling(page, true);
   await page.waitForTimeout(300);
 
+  // when: the first heading is clicked
   await flow(page).getByRole("heading", { name: "Part One" }).click();
   await page.waitForTimeout(300);
 
+  // then: nothing moves
   expect(
     await page.evaluate(() => window.scrollY),
     "nothing needs to move to put the first line in the middle",
   ).toBeLessThanOrEqual(2);
+  // and: the masthead is in view
   await expect(page.getByRole("heading", { level: 1 })).toBeInViewport();
+  // and: the heading sits in the middle of the window
   const { line, middle } = await whereTheCaretIs(page);
   expect(Math.abs(line - middle)).toBeLessThanOrEqual(20);
 });
@@ -162,29 +183,37 @@ const firstHeadingFromTheTop = (page: Page) =>
 test("the first heading stays in the middle when the window changes size", async ({
   page,
 }) => {
+  // given: typewriter scrolling on
   await aSceneToWriteIn(page, "TypewriterResized");
   await page.setViewportSize({ width: 1280, height: 900 });
   await typewriterScrolling(page, true);
 
+  // when: the window changes size and the first heading is clicked
   await page.setViewportSize({ width: 1280, height: 700 });
   await page.waitForTimeout(300);
 
   await flow(page).getByRole("heading", { name: "Part One" }).click();
   await page.waitForTimeout(300);
+  // then: nothing moves
   expect(await page.evaluate(() => window.scrollY)).toBeLessThanOrEqual(2);
+  // and: the heading sits in the middle of the window
   const { line, middle } = await whereTheCaretIs(page);
   expect(Math.abs(line - middle)).toBeLessThanOrEqual(20);
 });
 
 test("turned off again, the room above the book goes", async ({ page }) => {
+  // given: a scene to write in, the first heading's usual place known
   await aSceneToWriteIn(page, "TypewriterTurnedOff");
   const usual = await firstHeadingFromTheTop(page);
+  // and: typewriter scrolling on, with room above the book
   await typewriterScrolling(page, true);
   await expect
     .poll(() => firstHeadingFromTheTop(page))
     .toBeGreaterThan(usual + 50);
 
+  // when: it is switched off
   await typewriterScrolling(page, false);
 
+  // then: the room above the book goes
   await expect.poll(() => firstHeadingFromTheTop(page)).toBeCloseTo(usual, 0);
 });

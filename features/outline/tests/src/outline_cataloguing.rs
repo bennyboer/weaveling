@@ -32,7 +32,7 @@ fn a_workbench() -> Wired {
     wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn titled(what: &str) -> SectionTitle {
+fn a_title(what: &str) -> SectionTitle {
     SectionTitle::new(what).expect("the title should be usable")
 }
 
@@ -113,7 +113,14 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
 
     let part = wired
         .outlines
-        .add(&address, None, None, titled("Part One"), None, &an_author())
+        .add(
+            &address,
+            None,
+            None,
+            a_title("Part One"),
+            None,
+            &an_author(),
+        )
         .await
         .expect("adding should succeed")
         .section;
@@ -127,7 +134,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
                 &address,
                 Some(part),
                 behind,
-                titled(named),
+                a_title(named),
                 None,
                 &an_author(),
             )
@@ -191,8 +198,10 @@ async fn standing(wired: &Wired, outline: &OutlineId) -> Standing<Outline> {
 
 #[tokio::test]
 async fn starting_an_outline_puts_it_in_the_catalog() {
+    // given: a project with no outline
     let wired = a_workbench();
 
+    // when: its outline is opened
     let outline = wired
         .outlines
         .open("project_1", &an_author())
@@ -201,20 +210,24 @@ async fn starting_an_outline_puts_it_in_the_catalog() {
         .id;
     wired.settle().await;
 
+    // then: the catalog lists it in the project
     assert_eq!(catalogued(&wired, "project_1").await, vec![outline]);
 }
 
 #[tokio::test]
 async fn a_start_the_projector_never_heard_is_catalogued_when_it_arrives() {
+    // given: an outline stored without its start being heard
     let wired = a_workbench();
     let outline = a_stored_outline(&wired, "project_1").await;
 
+    // when: its start is heard
     wired
         .projector
         .handle(&told_of(&a_start(&outline, "project_1")))
         .await
         .expect("projecting should succeed");
 
+    // then: the catalog lists it in its project
     assert_eq!(
         catalogued(&wired, "project_1").await,
         vec![outline],
@@ -224,9 +237,11 @@ async fn a_start_the_projector_never_heard_is_catalogued_when_it_arrives() {
 
 #[tokio::test]
 async fn hearing_the_same_start_twice_leaves_one_entry() {
+    // given: a stored outline
     let wired = a_workbench();
     let outline = a_stored_outline(&wired, "project_1").await;
 
+    // when: its start is heard twice
     for _ in 0..2 {
         wired
             .projector
@@ -235,6 +250,7 @@ async fn hearing_the_same_start_twice_leaves_one_entry() {
             .expect("a redelivery is not a failure");
     }
 
+    // then: the catalog lists it once
     assert_eq!(
         catalogued(&wired, "project_1").await.len(),
         1,
@@ -244,9 +260,11 @@ async fn hearing_the_same_start_twice_leaves_one_entry() {
 
 #[tokio::test]
 async fn a_start_naming_an_outline_that_was_never_stored_is_refused() {
+    // given: an outline never stored
     let wired = a_workbench();
     let never_written = OutlineId::generate(at(2_000));
 
+    // then: hearing its start fails
     assert!(
         wired
             .projector
@@ -259,14 +277,17 @@ async fn a_start_naming_an_outline_that_was_never_stored_is_refused() {
 
 #[tokio::test]
 async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log() {
+    // given: a written book
     let wired = a_workbench();
     let (outline, _) = a_written_book(&wired).await;
 
+    // when: it is read by a service that never saw it written
     let replayed = (wired.reopened)()
         .read(&outline.to_string(), &an_author())
         .await
         .expect("a fresh service should read the stream");
 
+    // then: it has the same shape
     assert_eq!(
         shape(&replayed.state),
         shapes::shaped(
@@ -279,6 +300,7 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
         ),
         "structure has to come back out of the log, not out of whoever wrote it"
     );
+    // and: reads in the same order
     assert_eq!(
         replayed
             .state
@@ -293,19 +315,23 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
 
 #[tokio::test]
 async fn a_snapshot_carries_the_whole_shape_of_the_book() {
+    // given: a written book
     let wired = a_workbench();
     let (outline, _) = a_written_book(&wired).await;
     let built = standing(&wired, &outline).await;
 
+    // when: it is snapshotted
     let OutlineEvent::Snapshotted { sections, .. } = built.state.snapshot() else {
         panic!("a snapshot should be a snapshot");
     };
 
+    // then: the snapshot holds every section as it stands
     assert_eq!(
         sections,
         built.state.sections(),
         "a snapshot is what the log collapses to, so it has to say everything the fold knows"
     );
+    // and: keeps them nested
     assert!(
         sections.iter().any(|placed| placed.parent.is_some()),
         "a flat snapshot of a nested book would lose the nesting silently"
@@ -314,6 +340,7 @@ async fn a_snapshot_carries_the_whole_shape_of_the_book() {
 
 #[tokio::test]
 async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
+    // given: a project whose outline is claimed and stored
     let wired = a_workbench();
     let known = OutlineId::generate(at(500));
     let mut transaction = InMemoryTransactions::new()
@@ -346,12 +373,14 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
         .await
         .expect("finishing should succeed");
 
+    // when: the project's outline is opened
     let opened = wired
         .outlines
         .open("project_1", &an_author())
         .await
         .expect("opening should succeed");
 
+    // then: it is the claimed one
     assert_eq!(
         opened.id, known,
         "the find branch takes whoever holds the claim rather than starting afresh; the claim is \
@@ -361,6 +390,7 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
 
 #[tokio::test]
 async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_started_next_time() {
+    // given: a store that refuses every start
     let wired = a_workbench();
     let refusing = OutlinesCore::new(
         Arc::new(RefusesAppending(wired.store.clone())),
@@ -371,7 +401,9 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
         Arc::new(FixedClock::new(at(1_000))),
     );
 
+    // when: an outline is opened against it
     let refused = refusing.open("project_1", &an_author()).await;
+    // and: then opened again against one that keeps it
     let held_after_refusal = wired
         .registry
         .holder(KIND.as_str(), "project_1")
@@ -384,11 +416,14 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
         .expect("opening should succeed")
         .id;
 
+    // then: the first opening fails
     assert!(refused.is_err());
+    // and: leaves no claim behind
     assert_eq!(
         held_after_refusal, None,
         "a claim kept for an outline that never started would point every later open at nothing"
     );
+    // and: the second claims the project for its outline
     assert_eq!(
         wired
             .registry
@@ -424,7 +459,7 @@ async fn a_section_added_while_losing_races(
             &outline.to_string(),
             None,
             None,
-            titled("Act One"),
+            a_title("Act One"),
             expected,
             &an_author(),
         )
@@ -444,29 +479,36 @@ async fn a_section_added_while_losing_races(
 
 #[tokio::test]
 async fn a_section_added_after_a_lost_race_is_tried_again_and_lands() {
+    // when: a section is added after losing four races
     let (added, sections) = a_section_added_while_losing_races(4, None).await;
 
+    // then: it lands
     assert_eq!(added.expect("the fifth try lands"), Version::of(2));
     assert_eq!(sections, 1);
 }
 
 #[tokio::test]
 async fn a_section_added_after_losing_every_race_it_may_try_is_a_conflict() {
+    // when: a section is added after losing as many races as it may try
     let (added, sections) = a_section_added_while_losing_races(5, None).await;
 
+    // then: it is refused as outdated
     assert!(matches!(
         added,
         Err(OutlinesError::Events(ServiceError::Store(
             StoreError::Outdated { .. }
         )))
     ));
+    // and: the outline holds no section
     assert_eq!(sections, 0);
 }
 
 #[tokio::test]
 async fn a_section_added_at_a_version_after_a_lost_race_is_not_tried_again() {
+    // when: a section is added at a version after losing a race
     let (added, sections) = a_section_added_while_losing_races(1, Some(Version::of(1))).await;
 
+    // then: it is refused as outdated and the outline holds no section
     assert!(
         matches!(
             added,

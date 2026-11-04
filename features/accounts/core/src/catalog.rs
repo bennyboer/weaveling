@@ -88,6 +88,7 @@ mod tests {
 
     #[test]
     fn a_summary_tells_what_the_account_is_at_its_version() {
+        // given: a locked operator not yet verified
         let email = EmailAddress::new("ada@example.com").expect("a plain address");
         let name = AccountName::new("Ada").expect("a plain name");
         let mut account = Account::from_first(
@@ -109,6 +110,7 @@ mod tests {
         );
         let id = AccountId::generate(at(1_000));
 
+        // expect: its summary tells all of that
         assert_eq!(
             AccountSummary::of(id, Version::of(3), &account),
             AccountSummary {
@@ -129,7 +131,10 @@ mod tests {
             }
         );
 
+        // when: its address is verified
         account.apply(&AccountEvent::EmailVerified, &stamped(4, 4_000));
+
+        // then: its summary at the next version tells it verified
         assert!(AccountSummary::of(id, Version::of(4), &account).verified);
     }
 }

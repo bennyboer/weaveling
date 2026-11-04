@@ -247,9 +247,11 @@ mod tests {
     #[tokio::test]
     async fn the_feature_counts_what_is_left_uncounted_and_forgets_its_old_tombstones_and_hearings_as_chores()
      {
+        // given: a wired feature
         let context = a_context();
         let ports = SceneFeature::in_memory(&context);
         let wired = SceneFeature::wire(&ports, &context);
+        // and: one tombstone old enough to forget and one not
         for (made, laid) in [(1, NOW), (2, NOW + Duration::SECOND)] {
             let mut transaction = ports
                 .transactions
@@ -271,13 +273,16 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
+        // when: its chores are taken
         let [counting, tombstones, hearings] = wired.chores.as_slice() else {
             panic!("the feature hands over three chores");
         };
 
+        // then: they count, forget tombstones and forget hearings
         assert_eq!(counting.named(), "count-scenes-left-uncounted");
         assert_eq!(tombstones.named(), "forget-old-scene-tombstones");
         assert_eq!(hearings.named(), "forget-old-scene-hearings");
+        // and: forgetting tombstones forgets only the old one
         assert_eq!(
             tombstones
                 .carry_out()
@@ -289,6 +294,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        // given: two old tombstones
         let context = a_context();
         let ports = SceneFeature::in_memory(&context);
         for made in [1, 2] {
@@ -320,11 +326,13 @@ mod tests {
             context.clock.clone(),
         );
 
+        // when: a batch of one is forgotten
         let forgotten = SceneTombstones::of(scenes)
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
     }
 }

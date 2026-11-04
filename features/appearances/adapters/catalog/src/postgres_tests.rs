@@ -63,7 +63,7 @@ enum Gone {
     Place,
 }
 
-async fn remembered_while_gone(gone: Gone) -> Vec<Place> {
+async fn places_left_racing(gone: Gone) -> Vec<Place> {
     let bench = OnPostgres::setup().await;
     let catalog = Arc::new(PostgresAppearanceCatalog::new(bench.pool.clone()));
     let transactions = Arc::new(PostgresTransactions::new(bench.pool.clone()));
@@ -124,16 +124,18 @@ async fn remembered_while_gone(gone: Gone) -> Vec<Place> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_appearance_racing_its_idea_s_discard_never_brings_the_idea_back() {
+    // expect: appearances racing their idea's discard leave none behind
     assert!(
-        remembered_while_gone(Gone::Subject).await.is_empty(),
+        places_left_racing(Gone::Subject).await.is_empty(),
         "an appearance written while its idea was forgotten must not outlive the tombstone"
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_appearance_racing_its_place_going_never_brings_the_place_back() {
+    // expect: appearances racing their place's going leave none behind
     assert!(
-        remembered_while_gone(Gone::Place).await.is_empty(),
+        places_left_racing(Gone::Place).await.is_empty(),
         "an appearance written while its place went must not outlive the tombstone"
     );
 }

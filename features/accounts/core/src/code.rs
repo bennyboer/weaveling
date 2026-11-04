@@ -76,6 +76,7 @@ mod tests {
 
     #[test]
     fn a_code_is_six_digits_to_copy_from_a_mail() {
+        // expect: every code drawn is six digits
         for _ in 0..100 {
             let code = VerificationCode::drawn();
 
@@ -86,15 +87,19 @@ mod tests {
 
     #[test]
     fn a_code_is_drawn_anew_each_time() {
+        // when: codes are drawn again and again
         let drawn: Vec<_> = (0..20).map(|_| VerificationCode::drawn()).collect();
 
+        // then: they are not all the same
         assert!(drawn.iter().any(|code| *code != drawn[0]));
     }
 
     #[test]
     fn a_draw_beyond_the_last_whole_million_is_thrown_back() {
+        // given: draws beyond the last whole million before one within it
         let mut draws = [u32::MAX, 4_294_000_000, 4_293_999_999].into_iter();
 
+        // expect: the code is made of the first draw within it
         assert_eq!(
             VerificationCode::fairly_from(|| draws.next().expect("a draw left")),
             VerificationCode::kept("999999".to_owned()),
@@ -105,6 +110,7 @@ mod tests {
 
     #[test]
     fn a_small_draw_is_padded_to_six_digits() {
+        // expect: a draw of few digits makes a code led by zeros
         assert_eq!(
             VerificationCode::fairly_from(|| 42),
             VerificationCode::kept("000042".to_owned())
@@ -113,17 +119,22 @@ mod tests {
 
     #[test]
     fn a_code_pasted_with_spaces_around_it_still_counts() {
+        // given: a code led by zeros
         let code = VerificationCode::kept("004217".to_owned());
 
+        // then: it is the code pasted with spaces around it
         assert!(code.is(" 004217\n"));
+        // and: not the code without its zeros
         assert!(!code.is("4217"));
     }
 
     #[test]
     fn an_issued_code_lasts_a_quarter_of_an_hour_and_is_untried() {
+        // when: a code is issued
         let now = OffsetDateTime::UNIX_EPOCH;
         let pending = PendingVerification::issued(now);
 
+        // then: it lasts fifteen minutes and has not been tried
         assert_eq!(pending.until, now + Duration::minutes(15));
         assert_eq!(pending.tried, 0);
     }

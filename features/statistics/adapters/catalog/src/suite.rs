@@ -137,7 +137,7 @@ async fn kept(
         .expect("keeping should succeed");
 }
 
-async fn in_project(
+async fn counts_in(
     catalog: &Committing<'_, impl WordCountCatalog>,
     project: &str,
 ) -> Vec<WordCount> {
@@ -161,35 +161,42 @@ async fn forgotten_at(catalog: &Committing<'_, impl WordCountCatalog>, scene: &s
 pub async fn a_project_nobody_counted_has_no_counts(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
-    assert!(in_project(catalog, "project_1").await.is_empty());
+    // expect: no counts for a project nobody counted
+    assert!(counts_in(catalog, "project_1").await.is_empty());
 }
 
 pub async fn a_kept_count_comes_back_with_its_project(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // when: a count is kept
     kept(catalog, "scene_1", 42, 1_000).await;
 
+    // then: its project has it
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_1", 42)]
     );
 }
 
 pub async fn another_project_sees_none_of_them(catalog: &Committing<'_, impl WordCountCatalog>) {
+    // given: a count kept for one project
     kept(catalog, "scene_1", 42, 1_000).await;
 
-    assert!(in_project(catalog, "project_2").await.is_empty());
+    // then: another project has none
+    assert!(counts_in(catalog, "project_2").await.is_empty());
 }
 
 pub async fn counts_come_back_in_one_order_whatever_order_they_were_kept_in(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // when: counts are kept out of order
     kept(catalog, "scene_2", 2, 1_000).await;
     kept(catalog, "scene_3", 3, 1_000).await;
     kept(catalog, "scene_1", 1, 1_000).await;
 
+    // then: they come back ordered by scene
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![
             counted("scene_1", 1),
             counted("scene_2", 2),
@@ -201,11 +208,15 @@ pub async fn counts_come_back_in_one_order_whatever_order_they_were_kept_in(
 pub async fn a_newer_count_takes_the_place_of_an_older_one(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a count of a scene
     kept(catalog, "scene_1", 42, 1_000).await;
+
+    // when: a newer count of it is kept
     kept(catalog, "scene_1", 50, 2_000).await;
 
+    // then: only the newer one comes back
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_1", 50)]
     );
 }
@@ -213,24 +224,31 @@ pub async fn a_newer_count_takes_the_place_of_an_older_one(
 pub async fn a_late_count_does_not_undo_a_newer_one(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a count of a scene
     kept(catalog, "scene_1", 50, 2_000).await;
+
+    // when: an older count of it arrives
     kept(catalog, "scene_1", 42, 1_000).await;
 
+    // then: the newer one stays
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_1", 50)],
         "counts may arrive out of order, and the one counted last is the one that is true"
     );
 }
 
 pub async fn a_forgotten_scene_has_no_count(catalog: &Committing<'_, impl WordCountCatalog>) {
+    // given: counts of two scenes
     kept(catalog, "scene_1", 42, 1_000).await;
     kept(catalog, "scene_2", 7, 1_000).await;
 
+    // when: one scene is forgotten
     forgotten(catalog, "scene_1").await;
 
+    // then: only the other one's count comes back
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_2", 7)]
     );
 }
@@ -238,17 +256,21 @@ pub async fn a_forgotten_scene_has_no_count(catalog: &Committing<'_, impl WordCo
 pub async fn a_count_arriving_after_its_scene_was_forgotten_does_not_bring_it_back(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a forgotten scene
     forgotten(catalog, "scene_1").await;
 
+    // when: a count of it arrives later
     kept(catalog, "scene_1", 42, 3_000).await;
 
+    // then: it has no count
     assert!(
-        in_project(catalog, "project_1").await.is_empty(),
+        counts_in(catalog, "project_1").await.is_empty(),
         "a scene counted just before it was deleted can have its count arrive after the deletion"
     );
 }
 
 pub async fn keeping_says_what_is_kept(catalog: &Committing<'_, impl WordCountCatalog>) {
+    // given: a way of keeping counts of one scene
     let keeping = |words: u64, seconds: i64| async move {
         catalog
             .keep(
@@ -261,12 +283,15 @@ pub async fn keeping_says_what_is_kept(catalog: &Committing<'_, impl WordCountCa
             .expect("keeping should succeed")
     };
 
+    // when: a first, a newer and a late count are kept
     let first = keeping(42, 1_000).await;
     let newer = keeping(50, 2_000).await;
     let late = keeping(7, 1_500).await;
+    // and: one more after the scene is forgotten
     forgotten(catalog, "scene_1").await;
     let gone = keeping(60, 3_000).await;
 
+    // then: each says the count that is kept
     assert_eq!(
         [first, newer, late, gone],
         [Some(42), Some(50), Some(50), None],
@@ -277,10 +302,12 @@ pub async fn keeping_says_what_is_kept(catalog: &Committing<'_, impl WordCountCa
 pub async fn forgetting_what_was_never_counted_is_harmless(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // when: a scene never counted is forgotten twice
     forgotten(catalog, "scene_1").await;
     forgotten(catalog, "scene_1").await;
 
-    assert!(in_project(catalog, "project_1").await.is_empty());
+    // then: there are still no counts
+    assert!(counts_in(catalog, "project_1").await.is_empty());
 }
 
 async fn forget_long_gone(
@@ -297,15 +324,20 @@ async fn forget_long_gone(
 pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a scene forgotten long ago
     forgotten_at(catalog, "scene_long_gone", 1_000).await;
+    // and: one forgotten just now
     forgotten_at(catalog, "scene_just_gone", 2_000).await;
 
+    // then: forgetting tombstones laid before now forgets only the old one
     assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
 
+    // when: counts of both scenes arrive
     kept(catalog, "scene_long_gone", 5, 3_000).await;
     kept(catalog, "scene_just_gone", 6, 3_000).await;
+    // then: only the scene whose tombstone was forgotten has one
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_long_gone", 5)],
         "laid at the moment asked about is not before it"
     );
@@ -314,9 +346,13 @@ pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
 pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a scene forgotten
     forgotten_at(catalog, "scene_1", 1_000).await;
+
+    // when: it is forgotten again later
     forgotten_at(catalog, "scene_1", 5_000).await;
 
+    // then: its tombstone is as old as the first forgetting
     assert_eq!(
         forget_long_gone(catalog, 2_000, u64::MAX).await,
         1,
@@ -327,6 +363,7 @@ pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: three scenes forgotten one after another
     for (scene, seconds) in [
         ("scene_newest", 1_002),
         ("scene_oldest", 1_000),
@@ -335,23 +372,30 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
         forgotten_at(catalog, scene, seconds).await;
     }
 
+    // then: forgetting at most two tombstones forgets two
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
 
+    // when: counts of all three arrive
     for scene in ["scene_newest", "scene_oldest", "scene_older"] {
         kept(catalog, scene, 7, 9_500).await;
     }
+    // then: the two oldest scenes have them
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_older", 7), counted("scene_oldest", 7)]
     );
+    // and: one tombstone is left to forget
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
+    // given: a kept count
     kept(catalog, "scene_kept", 5, 1_000).await;
+    // and: a forgotten scene
     forgotten_at(catalog, "scene_gone", 1_000).await;
+    // and: a transaction that keeps, forgets and forgets tombstones
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
@@ -373,11 +417,14 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("forgetting tombstones should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
+    // and: a count of the forgotten scene arrives
     kept(catalog, "scene_gone", 9, 3_000).await;
 
+    // then: only what was there before stands
     assert_eq!(
-        in_project(catalog, "project_1").await,
+        counts_in(catalog, "project_1").await,
         vec![counted("scene_kept", 5)],
         "nothing written in the dropped transaction stands, and the tombstone it forgot is still laid"
     );

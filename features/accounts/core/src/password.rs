@@ -83,8 +83,10 @@ mod tests {
 
     #[test]
     fn a_password_is_long_enough_to_resist_guessing_and_bounded() {
+        // expect: passwords at either limit are fine
         assert!(Password::new(&"a".repeat(Password::MIN_CHARS)).is_ok());
         assert!(Password::new(&"a".repeat(Password::MAX_CHARS)).is_ok());
+        // and: one too short is refused
         assert_eq!(
             Password::new(&"a".repeat(Password::MIN_CHARS - 1)).err(),
             Some(InvalidPassword::TooShort {
@@ -92,6 +94,7 @@ mod tests {
                 actual: Password::MIN_CHARS - 1,
             })
         );
+        // and: one too long is refused
         assert_eq!(
             Password::new(&"a".repeat(Password::MAX_CHARS + 1)).err(),
             Some(InvalidPassword::TooLong {
@@ -103,51 +106,66 @@ mod tests {
 
     #[test]
     fn a_password_is_kept_as_it_was_typed_spaces_and_all() {
+        // given: the hash of a password with spaces around it
         let hash = Password::new("  spaced out  ")
             .expect("long enough")
             .hashed();
 
+        // then: it admits the password with its spaces
         assert!(hash.admits("  spaced out  "));
+        // and: not without them
         assert!(!hash.admits("spaced out"));
     }
 
     #[test]
     fn a_hash_admits_its_own_password_and_no_other() {
+        // given: the hash of a password
         let hash = Password::new(A_PASSWORD).expect("long enough").hashed();
 
+        // then: it admits that password
         assert!(hash.admits(A_PASSWORD));
+        // and: not another
         assert!(!hash.admits("incorrect horse battery"));
     }
 
     #[test]
     fn a_hash_is_argon2id_and_salted_anew_each_time() {
+        // given: a password
         let password = Password::new(A_PASSWORD).expect("long enough");
+
+        // when: it is hashed
         let first = password.hashed();
 
+        // then: the hash is argon2id
         assert!(
             first.as_str().starts_with("$argon2id$"),
             "{}",
             first.as_str()
         );
+        // and: hashing it again gives another hash
         assert_ne!(
             first,
             password.hashed(),
             "the same password hashed twice must not look the same in the table"
         );
+        // and: the hash does not hold the password
         assert!(!first.as_str().contains(A_PASSWORD));
     }
 
     #[test]
     fn the_stand_in_is_hashed_as_any_password_is() {
+        // expect: the stand in is an argon2id hash
         assert!(
             PasswordHash::stand_in().as_str().starts_with("$argon2id$"),
             "an address nobody has must cost the same work as a real one"
         );
+        // and: it admits no password
         assert!(!PasswordHash::stand_in().admits(A_PASSWORD));
     }
 
     #[test]
     fn a_kept_hash_that_cannot_be_read_admits_nothing() {
+        // expect: a kept hash that is no hash admits no password
         assert!(!PasswordHash::kept("scribbled by hand".to_owned()).admits(A_PASSWORD));
     }
 }

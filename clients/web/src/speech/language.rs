@@ -75,6 +75,7 @@ mod tests {
 
     #[test]
     fn a_tag_is_told_by_its_language_whatever_its_region() {
+        // expect: each tag the app speaks is its language, with or without a region, in any case
         assert_eq!(Language::told("de-AT"), Some(Language::German));
         assert_eq!(Language::told("pt-PT"), Some(Language::Portuguese));
         assert_eq!(Language::told("pt-BR"), Some(Language::Portuguese));
@@ -85,6 +86,7 @@ mod tests {
 
     #[test]
     fn a_language_the_app_does_not_speak_is_told_by_none() {
+        // expect: no language for a tag the app does not speak or for none
         assert_eq!(Language::told("it"), None);
         assert_eq!(Language::told(""), None);
     }

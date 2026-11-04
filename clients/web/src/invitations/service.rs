@@ -105,11 +105,13 @@ mod tests {
 
     #[test]
     fn the_instance_s_invitations_are_asked_for_bare_and_a_project_s_by_the_project() {
+        // expect: the instance's invitations are asked for with no project
         assert_eq!(InvitedInto::Instance.listing(None), "/api/invitations");
         assert_eq!(
             InvitedInto::Instance.listing(Some("invitation_9")),
             "/api/invitations?after=invitation_9"
         );
+        // and: a project's are asked for by the project
         let loom = InvitedInto::Project("project_1".to_owned());
         assert_eq!(loom.listing(None), "/api/invitations?project=project_1");
         assert_eq!(

@@ -134,11 +134,13 @@ mod tests {
 
     #[test]
     fn one_word_is_told_as_one() {
+        // expect: a single word in the singular
         assert_eq!(in_words(1), "1 word");
     }
 
     #[test]
     fn many_words_are_grouped_by_thousands() {
+        // expect: any other count in the plural, its thousands set apart by commas
         assert_eq!(in_words(0), "0 words");
         assert_eq!(in_words(999), "999 words");
         assert_eq!(in_words(1_234_567), "1,234,567 words");

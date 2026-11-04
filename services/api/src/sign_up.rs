@@ -72,12 +72,14 @@ mod tests {
 
     #[test]
     fn nothing_set_means_anyone_may_sign_up() {
+        // expect: nothing set lets anyone sign up
         assert_eq!(SignUp::chosen(None), Ok(SignUp::Open));
         assert_eq!(SignUp::chosen(set("  ")), Ok(SignUp::Open));
     }
 
     #[test]
     fn open_and_invitation_are_read_however_they_are_written() {
+        // expect: open and invitation are read whatever their case and spacing
         assert_eq!(SignUp::chosen(set("open")), Ok(SignUp::Open));
         assert_eq!(SignUp::chosen(set(" Open ")), Ok(SignUp::Open));
         assert_eq!(SignUp::chosen(set("invitation")), Ok(SignUp::ByInvitation));
@@ -86,6 +88,7 @@ mod tests {
 
     #[test]
     fn anything_else_is_refused_rather_than_guessed() {
+        // expect: any other setting is refused
         assert_eq!(
             SignUp::chosen(set("invited")),
             Err(UnreadableSignUp {
@@ -93,6 +96,7 @@ mod tests {
             }),
             "a server meant to be closed must not start open because of a typo"
         );
+        // and: the refusal names what was given and what would do
         assert_eq!(
             UnreadableSignUp {
                 given: "invited".to_owned()
@@ -104,6 +108,7 @@ mod tests {
 
     #[test]
     fn the_client_is_told_the_way_in_by_the_contracts_words() {
+        // expect: each way in is told by the contract's word
         assert_eq!(SignUp::Open.told(), "open");
         assert_eq!(SignUp::ByInvitation.told(), "invitation");
     }

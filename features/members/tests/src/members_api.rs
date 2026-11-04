@@ -120,7 +120,7 @@ fn refused_as(response: TestResponse, status: StatusCode, kind: &str) {
     assert_eq!(response.json::<Value>()["type"], kind);
 }
 
-async fn role_changed(server: &TestServer, account: &str, to: &str) -> TestResponse {
+async fn changing_the_role(server: &TestServer, account: &str, to: &str) -> TestResponse {
     server
         .patch(&format!("/members/{PROJECT}/accounts/{account}"))
         .json(&ChangeRoleRequest {
@@ -131,13 +131,16 @@ async fn role_changed(server: &TestServer, account: &str, to: &str) -> TestRespo
 
 #[tokio::test]
 async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // when: its reader lists its members
     let listed = members
         .as_account("account_bo")
         .get(&format!("/members?project={PROJECT}"))
         .await;
 
+    // then: they see every member by name and role, without addresses
     listed.assert_status_ok();
     assert_eq!(
         listed.json::<Vec<MemberDTO>>(),
@@ -148,6 +151,7 @@ async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it
         ],
         "a reader sees who is in it by name, but learns no address"
     );
+    // and: a stranger finds no such project
     refused_as(
         members
             .as_account("account_cy")
@@ -160,14 +164,17 @@ async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it
 
 #[tokio::test]
 async fn one_s_own_memberships_are_listed_with_one_s_role_and_nobody_else_s() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // when: its author and a stranger list their own memberships
     let grace_s = members
         .as_account("account_grace")
         .get("/members/mine")
         .await;
     let cy_s = members.as_account("account_cy").get("/members/mine").await;
 
+    // then: the author sees the project as author
     grace_s.assert_status_ok();
     assert_eq!(
         grace_s.json::<Vec<MembershipDTO>>(),
@@ -176,14 +183,17 @@ async fn one_s_own_memberships_are_listed_with_one_s_role_and_nobody_else_s() {
             role: role::AUTHOR.to_owned(),
         }]
     );
+    // and: the stranger sees none
     cy_s.assert_status_ok();
     assert!(cy_s.json::<Vec<MembershipDTO>>().is_empty());
 }
 
 #[tokio::test]
 async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_listed_unnamed() {
+    // given: a project of three, one never signed up
     let members = a_project_of_three().await;
 
+    // expect: its owner sees every member's name and address, and none for the one never signed up
     assert_eq!(
         members.listed().await,
         vec![
@@ -212,22 +222,27 @@ async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_list
 
 #[tokio::test]
 async fn an_owner_changes_a_member_s_role_and_is_answered_with_the_members_as_they_are() {
+    // given: a project of three
     let members = a_project_of_three().await;
     let ada = members.as_account("account_ada");
 
-    let changed = role_changed(&ada, "account_grace", role::READER).await;
+    // when: its owner makes the author a reader
+    let changed = changing_the_role(&ada, "account_grace", role::READER).await;
+    // then: the owner is answered with the members as they are
     changed.assert_status_ok();
     assert_eq!(
         changed.json::<Vec<MemberDTO>>()[1],
         a_member("account_grace", role::READER)
     );
 
-    role_changed(&ada, "account_bo", role::AUTHOR)
+    // when: the owner makes the reader an author and the other an owner
+    changing_the_role(&ada, "account_bo", role::AUTHOR)
         .await
         .assert_status_ok();
-    role_changed(&ada, "account_grace", role::OWNER)
+    changing_the_role(&ada, "account_grace", role::OWNER)
         .await
         .assert_status_ok();
+    // then: the members hold those roles
     assert_eq!(
         members.listed().await,
         vec![
@@ -241,10 +256,12 @@ async fn an_owner_changes_a_member_s_role_and_is_answered_with_the_members_as_th
 
 #[tokio::test]
 async fn only_an_owner_changes_roles_and_a_stranger_finds_nothing_to_change() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // expect: its author may not change a role
     refused_as(
-        role_changed(
+        changing_the_role(
             &members.as_account("account_grace"),
             "account_bo",
             role::AUTHOR,
@@ -253,8 +270,9 @@ async fn only_an_owner_changes_roles_and_a_stranger_finds_nothing_to_change() {
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OWNER,
     );
+    // and: a stranger finds no such project
     refused_as(
-        role_changed(
+        changing_the_role(
             &members.as_account("account_cy"),
             "account_bo",
             role::AUTHOR,
@@ -263,6 +281,7 @@ async fn only_an_owner_changes_roles_and_a_stranger_finds_nothing_to_change() {
         StatusCode::NOT_FOUND,
         "not-found",
     );
+    // and: the author may not remove anyone
     refused_as(
         members
             .as_account("account_grace")
@@ -271,6 +290,7 @@ async fn only_an_owner_changes_roles_and_a_stranger_finds_nothing_to_change() {
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OWNER,
     );
+    // and: the reader stays a reader
     assert_eq!(
         members.listed().await[2],
         a_member("account_bo", role::READER)
@@ -279,10 +299,12 @@ async fn only_an_owner_changes_roles_and_a_stranger_finds_nothing_to_change() {
 
 #[tokio::test]
 async fn the_role_of_someone_who_is_not_a_member_is_not_changed() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // expect: its owner changing a stranger's role is refused as no member
     refused_as(
-        role_changed(
+        changing_the_role(
             &members.as_account("account_ada"),
             "account_cy",
             role::AUTHOR,
@@ -295,10 +317,12 @@ async fn the_role_of_someone_who_is_not_a_member_is_not_changed() {
 
 #[tokio::test]
 async fn a_role_nobody_knows_is_refused() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // expect: giving a role there is not is refused
     refused_as(
-        role_changed(
+        changing_the_role(
             &members.as_account("account_ada"),
             "account_grace",
             "editor",
@@ -311,20 +335,24 @@ async fn a_role_nobody_knows_is_refused() {
 
 #[tokio::test]
 async fn the_last_owner_neither_steps_down_nor_leaves() {
+    // given: a project of three with one owner
     let members = a_project_of_three().await;
     let ada = members.as_account("account_ada");
 
+    // expect: the owner stepping down is refused
     refused_as(
-        role_changed(&ada, "account_ada", role::AUTHOR).await,
+        changing_the_role(&ada, "account_ada", role::AUTHOR).await,
         StatusCode::CONFLICT,
         refused::LAST_OWNER,
     );
+    // and: the owner leaving is refused
     refused_as(
         ada.delete(&format!("/members/{PROJECT}/accounts/account_ada"))
             .await,
         StatusCode::CONFLICT,
         refused::LAST_OWNER,
     );
+    // and: they stay owner
     assert_eq!(
         members.listed().await[0],
         a_member("account_ada", role::OWNER)
@@ -333,15 +361,18 @@ async fn the_last_owner_neither_steps_down_nor_leaves() {
 
 #[tokio::test]
 async fn an_owner_removes_a_member_and_removing_one_gone_already_changes_nothing() {
+    // given: a project of three
     let members = a_project_of_three().await;
     let ada = members.as_account("account_ada");
 
+    // when: its owner removes the reader twice
     for _ in 0..2 {
         ada.delete(&format!("/members/{PROJECT}/accounts/account_bo"))
             .await
             .assert_status(StatusCode::NO_CONTENT);
     }
 
+    // then: the others are left
     assert_eq!(
         members.listed().await,
         vec![
@@ -353,13 +384,16 @@ async fn an_owner_removes_a_member_and_removing_one_gone_already_changes_nothing
 
 #[tokio::test]
 async fn a_member_leaves_of_their_own_accord_and_a_stranger_has_nothing_to_leave() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // expect: its reader leaves
     members
         .as_account("account_bo")
         .delete(&format!("/members/{PROJECT}/accounts/account_bo"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
+    // and: a stranger finds no such project to leave
     refused_as(
         members
             .as_account("account_cy")
@@ -369,11 +403,13 @@ async fn a_member_leaves_of_their_own_accord_and_a_stranger_has_nothing_to_leave
         "not-found",
     );
 
+    // and: two members are left
     assert_eq!(members.listed().await.len(), 2);
 }
 
 #[tokio::test]
 async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
+    // given: a project, with everyone allowed to read everything
     let store = Arc::new(InMemoryEventStore::new());
     let core = MembersCore::new(
         store,
@@ -385,8 +421,10 @@ async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
     core.found(None, PROJECT, "account_ada")
         .await
         .expect("founding should succeed");
+    // and: a stranger
     let cy = Agent::Account(AccountId::from("account_cy"));
 
+    // expect: the stranger finds no such project to leave, nor one never started
     for project in [PROJECT, "project_never_started"] {
         assert!(
             matches!(
@@ -400,21 +438,26 @@ async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
 
 #[tokio::test]
 async fn the_system_is_no_member_and_has_nothing_to_leave() {
+    // given: a project of three
     let members = a_project_of_three().await;
 
+    // expect: the system leaving it is refused as no member
     assert!(matches!(
         members.core.leave(PROJECT, &Agent::System).await,
         Err(MembersCoreError::Events(ServiceError::Refused(
             MembersError::NotMember
         )))
     ));
+    // and: all three stay
     assert_eq!(members.listed().await.len(), 3);
 }
 
 #[tokio::test]
 async fn joining_is_the_system_s_carrying_out_what_an_invitation_decided() {
+    // given: a project of three, two who joined
     let members = a_project_of_three().await;
 
+    // when: what happened to its members is read
     let recorded = members
         .store
         .read_from(
@@ -425,6 +468,7 @@ async fn joining_is_the_system_s_carrying_out_what_an_invitation_decided() {
         .await
         .expect("reading should succeed");
 
+    // then: every joining was done by the system
     assert!(
         recorded
             .iter()

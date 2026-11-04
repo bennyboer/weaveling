@@ -88,7 +88,7 @@ struct Guarded {
     scene: String,
 }
 
-async fn guarded() -> Guarded {
+async fn a_guarded_scene() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     roles.give("account_bo", &READER);
@@ -201,12 +201,15 @@ async fn joined_on_the_socket_as(guarded: &Guarded, name: &str) -> Envelope {
 
 #[tokio::test]
 async fn the_socket_asks_for_whoever_opened_it() {
-    let guarded = guarded().await;
+    // given: a scene in a project with members
+    let guarded = a_guarded_scene().await;
 
+    // then: a non-member joining on the socket is refused
     assert_eq!(
         joined_on_the_socket_as(&guarded, "account_grace").await,
         Envelope::Refused(guarded.scene.clone())
     );
+    // and: the owner joining on the socket is greeted
     assert!(matches!(
         joined_on_the_socket_as(&guarded, "account_ada").await,
         Envelope::Carry { .. }
@@ -215,10 +218,13 @@ async fn the_socket_asks_for_whoever_opened_it() {
 
 #[tokio::test]
 async fn whoever_may_not_read_the_project_is_refused_the_scene_by_name() {
-    let guarded = guarded().await;
+    // given: a scene in a project with members
+    let guarded = a_guarded_scene().await;
 
+    // when: a non-member joins it
     let (_, mut heard_by_grace) = guarded.joined_as("account_grace").await;
 
+    // then: the scene is refused by name
     let bytes = heard_by_grace.recv().await.expect("an answer");
     assert_eq!(
         Envelope::decode(&bytes).expect("a whole envelope"),
@@ -229,11 +235,15 @@ async fn whoever_may_not_read_the_project_is_refused_the_scene_by_name() {
 
 #[tokio::test]
 async fn when_who_may_join_cannot_be_asked_the_scene_is_refused() {
-    let guarded = guarded().await;
+    // given: a scene in a project with members
+    let guarded = a_guarded_scene().await;
+    // and: who may join cannot be asked
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
+    // when: the owner joins it
     let (_, mut heard_by_ada) = guarded.joined_as("account_ada").await;
 
+    // then: the scene is refused
     let bytes = heard_by_ada.recv().await.expect("an answer");
     assert_eq!(
         Envelope::decode(&bytes).expect("a whole envelope"),
@@ -243,10 +253,14 @@ async fn when_who_may_join_cannot_be_asked_the_scene_is_refused() {
 
 #[tokio::test]
 async fn a_reader_joins_asks_what_is_there_and_hears_an_author_s_edits() {
-    let guarded = guarded().await;
+    // given: a scene in a project with members
+    let guarded = a_guarded_scene().await;
+
+    // when: an author and a reader join it
     let (mut ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_ada).await;
+    // then: the reader is greeted
     assert!(
         matches!(
             everything(&mut heard_by_bo).await.as_slice(),
@@ -255,14 +269,17 @@ async fn a_reader_joins_asks_what_is_there_and_hears_an_author_s_edits() {
         "the reader is greeted as an author is"
     );
 
+    // when: the author edits
     send(
         &mut ada,
         &guarded.scene,
         Message::JustHappened(a_paragraph("The loom stood silent.")),
     )
     .await;
+    // and: the reader asks what is there
     send(&mut bo, &guarded.scene, Message::WhatDoYouHave(vec![0])).await;
 
+    // then: the reader hears the edit and what it missed
     let to_bo = everything(&mut heard_by_bo).await;
     assert!(
         to_bo
@@ -273,17 +290,20 @@ async fn a_reader_joins_asks_what_is_there_and_hears_an_author_s_edits() {
                 .any(|message| matches!(message, Message::HereIsWhatYouMissed(_))),
         "bo hears the edit and is told what was missed, got {to_bo:?}"
     );
+    // and: the edit is stored
     assert_eq!(guarded.text().await, "The loom stood silent.");
 }
 
 #[tokio::test]
 async fn what_a_reader_sends_to_change_the_text_goes_nowhere() {
-    let guarded = guarded().await;
+    // given: an author and a reader in a scene
+    let guarded = a_guarded_scene().await;
     let (_ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_ada).await;
     everything(&mut heard_by_bo).await;
 
+    // when: the reader sends changes to the text
     send(
         &mut bo,
         &guarded.scene,
@@ -297,22 +317,27 @@ async fn what_a_reader_sends_to_change_the_text_goes_nowhere() {
     )
     .await;
 
+    // then: nobody hears anything
     assert!(everything(&mut heard_by_ada).await.is_empty());
     assert!(everything(&mut heard_by_bo).await.is_empty());
+    // and: the text is unchanged
     assert_eq!(guarded.text().await, "");
 }
 
 #[tokio::test]
 async fn a_reader_is_seen_by_the_others_and_asks_who_is_there() {
-    let guarded = guarded().await;
+    // given: an author and a reader in a scene
+    let guarded = a_guarded_scene().await;
     let (_ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_ada).await;
     everything(&mut heard_by_bo).await;
 
+    // when: the reader tells where it is and asks who is there
     send(&mut bo, &guarded.scene, Message::Awareness(vec![1, 2, 3])).await;
     send(&mut bo, &guarded.scene, Message::WhoIsHere).await;
 
+    // then: the author hears both
     assert_eq!(
         everything(&mut heard_by_ada).await,
         vec![Message::Awareness(vec![1, 2, 3]), Message::WhoIsHere],
@@ -320,7 +345,7 @@ async fn a_reader_is_seen_by_the_others_and_asks_who_is_there() {
     );
 }
 
-async fn asked_again(connection: &mut Connection) {
+async fn asking_again(connection: &mut Connection) {
     let scene = tokio::time::timeout(Wait::from_secs(1), connection.access_changed())
         .await
         .expect("a change to the members is heard");
@@ -329,16 +354,19 @@ async fn asked_again(connection: &mut Connection) {
 
 #[tokio::test]
 async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more() {
-    let guarded = guarded().await;
+    // given: an owner and a member in a scene
+    let guarded = a_guarded_scene().await;
     let (mut ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_ada).await;
     everything(&mut heard_by_bo).await;
 
+    // when: the member is removed and both connections ask again
     guarded.roles.change("account_bo", &[]);
-    asked_again(&mut bo).await;
-    asked_again(&mut ada).await;
+    asking_again(&mut bo).await;
+    asking_again(&mut ada).await;
 
+    // then: the removed member is refused the scene
     let bytes = tokio::time::timeout(Wait::from_secs(1), heard_by_bo.recv())
         .await
         .expect("told while it is fresh")
@@ -347,6 +375,7 @@ async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more
         Envelope::decode(&bytes).expect("a whole envelope"),
         Envelope::Refused(guarded.scene.clone())
     );
+    // when: each sends to the scene
     send(&mut bo, &guarded.scene, Message::Awareness(vec![1, 2, 3])).await;
     send(
         &mut ada,
@@ -354,51 +383,63 @@ async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more
         Message::JustHappened(a_paragraph("Not for Bo.")),
     )
     .await;
+    // then: neither hears the other
     assert!(everything(&mut heard_by_ada).await.is_empty());
     assert!(
         everything(&mut heard_by_bo).await.is_empty(),
         "nothing more of the scene reaches whoever left it"
     );
+    // and: the owner's edit is stored
     assert_eq!(guarded.text().await, "Not for Bo.", "the owner writes on");
 }
 
 #[tokio::test]
 async fn a_reader_made_an_author_writes_and_an_author_made_a_reader_no_longer_does() {
-    let guarded = guarded().await;
+    // given: a reader in a scene
+    let guarded = a_guarded_scene().await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_bo).await;
 
+    // when: the reader is made an author
     guarded.roles.change("account_bo", &[Act::Read, Act::Write]);
-    asked_again(&mut bo).await;
+    asking_again(&mut bo).await;
+    // and: edits the scene
     send(
         &mut bo,
         &guarded.scene,
         Message::JustHappened(a_paragraph("Bo writes now.")),
     )
     .await;
+    // then: the edit is stored
     assert_eq!(guarded.text().await, "Bo writes now.");
 
+    // when: the author is made a reader again
     guarded.roles.change("account_bo", &READER);
-    asked_again(&mut bo).await;
+    asking_again(&mut bo).await;
+    // and: edits the scene
     send(
         &mut bo,
         &guarded.scene,
         Message::JustHappened(a_paragraph("And no more.")),
     )
     .await;
+    // then: the edit is not stored
     assert_eq!(guarded.text().await, "Bo writes now.");
 }
 
 #[tokio::test]
 async fn when_who_may_stay_cannot_be_asked_the_scene_is_refused() {
-    let guarded = guarded().await;
+    // given: a member in a scene
+    let guarded = a_guarded_scene().await;
     let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
     everything(&mut heard_by_bo).await;
 
+    // when: the members change while who may stay cannot be asked
     *guarded.roles.down.lock().expect("never poisoned") = true;
     guarded.roles.access_changed(PROJECT);
-    asked_again(&mut bo).await;
+    asking_again(&mut bo).await;
 
+    // then: the scene is refused
     let bytes = tokio::time::timeout(Wait::from_secs(1), heard_by_bo.recv())
         .await
         .expect("told while it is fresh")
@@ -411,7 +452,8 @@ async fn when_who_may_stay_cannot_be_asked_the_scene_is_refused() {
 
 #[tokio::test]
 async fn the_socket_asks_again_when_the_members_change() {
-    let guarded = guarded().await;
+    // given: a member joined on the socket
+    let guarded = a_guarded_scene().await;
     let server = TestServer::builder()
         .http_transport()
         .build(scenes_sync::router(guarded.live.clone()).layer(Extension(account("account_bo"))));
@@ -429,8 +471,10 @@ async fn the_socket_asks_again_when_the_members_change() {
         .await
         .expect("greeted while it is fresh");
 
+    // when: the member is removed
     guarded.roles.change("account_bo", &[]);
 
+    // then: the socket refuses the scene
     let bytes = tokio::time::timeout(Wait::from_secs(1), socket.receive_bytes())
         .await
         .expect("told while it is fresh");
@@ -451,7 +495,8 @@ impl Ending for Signing {
 
 #[tokio::test]
 async fn the_socket_is_closed_as_such_when_its_session_ends() {
-    let guarded = guarded().await;
+    // given: a socket opened in a session
+    let guarded = a_guarded_scene().await;
     let signing = Arc::new(Signing(Notify::new()));
     let server = TestServer::builder().http_transport().build(
         scenes_sync::router(guarded.live.clone())
@@ -464,8 +509,10 @@ async fn the_socket_is_closed_as_such_when_its_session_ends() {
         .into_websocket()
         .await;
 
+    // when: the session ends
     signing.0.notify_one();
 
+    // then: the socket is closed as ended by its session
     assert!(matches!(
         tokio::time::timeout(Wait::from_secs(1), socket.receive_message()).await,
         Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SESSION_ENDED
@@ -474,7 +521,8 @@ async fn the_socket_is_closed_as_such_when_its_session_ends() {
 
 #[tokio::test]
 async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_until_it_has() {
-    let guarded = guarded().await;
+    // given: an open socket
+    let guarded = a_guarded_scene().await;
     let shutdown = ending::Shutdown::new();
     let server = TestServer::builder().http_transport().build(
         scenes_sync::router(guarded.live.clone())
@@ -486,15 +534,20 @@ async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_
         .await
         .into_websocket()
         .await;
+    // and: the server not drained while it is open
     let open = tokio::time::timeout(Wait::from_millis(50), shutdown.drained()).await;
 
+    // when: the server closes
     shutdown.close();
 
+    // then: the open socket was waited for
     assert!(open.is_err(), "an open socket is waited for");
+    // and: the socket is closed as the server closing
     assert!(matches!(
         tokio::time::timeout(Wait::from_secs(1), socket.receive_message()).await,
         Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SERVER_CLOSING
     ));
+    // and: the server is drained
     assert!(
         tokio::time::timeout(Wait::from_secs(1), shutdown.drained())
             .await

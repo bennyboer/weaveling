@@ -213,7 +213,7 @@ fn a_title(saying: &str) -> SceneTitle {
     SceneTitle::new(saying).expect("a plain title is fine")
 }
 
-fn summary(id: SceneId, title: &str, opening: &str) -> SceneSummary {
+fn a_summary(id: SceneId, title: &str, opening: &str) -> SceneSummary {
     SceneSummary {
         id,
         project: a_project("project_1"),
@@ -283,36 +283,44 @@ async fn listed(catalog: &Committing<'_, impl SceneCatalog>, project: &str) -> V
 }
 
 pub async fn a_project_nobody_wrote_in_lists_nothing(catalog: &Committing<'_, impl SceneCatalog>) {
+    // expect: a project nobody wrote in lists nothing
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
 pub async fn a_remembered_scene_is_listed_untitled_and_without_an_opening(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a scene
     let id = a_scene(1_000);
 
+    // when: it is remembered
     remembered(catalog, id).await;
 
+    // then: it is listed untitled and without an opening
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "", "")]
+        vec![a_summary(id, "", "")]
     );
 }
 
 pub async fn another_project_sees_none_of_them(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a scene remembered in one project
     remembered(catalog, a_scene(1_000)).await;
 
+    // then: another project lists nothing
     assert!(listed(catalog, "project_2").await.is_empty());
 }
 
 pub async fn scenes_are_listed_in_order_a_page_at_a_time(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: three scenes remembered out of order
     let [first, second, third] = [a_scene(1_000), a_scene(2_000), a_scene(3_000)];
     for id in [third, first, second] {
         remembered(catalog, id).await;
     }
 
+    // when: they are listed two at a time
     let page = catalog
         .in_project_after(&a_project("project_1"), None, 2)
         .await
@@ -322,10 +330,12 @@ pub async fn scenes_are_listed_in_order_a_page_at_a_time(
         .await
         .expect("listing should succeed");
 
+    // then: the first page holds the first two in order
     assert_eq!(
         page.iter().map(|scene| scene.id).collect::<Vec<_>>(),
         vec![first, second]
     );
+    // and: the next page holds the rest
     assert_eq!(
         rest.iter().map(|scene| scene.id).collect::<Vec<_>>(),
         vec![third],
@@ -334,74 +344,90 @@ pub async fn scenes_are_listed_in_order_a_page_at_a_time(
 }
 
 pub async fn a_retitle_names_the_scene(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a remembered scene
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
+    // when: it is retitled
     retitled(catalog, id, "The loom", 1).await;
 
+    // then: it is listed under its title
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "The loom", "")]
+        vec![a_summary(id, "The loom", "")]
     );
 }
 
 pub async fn a_late_retitle_does_not_undo_a_newer_one(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a remembered scene
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
+    // when: a newer title arrives before an older one
     retitled(catalog, id, "The loom, again", 2).await;
     retitled(catalog, id, "The loom", 1).await;
 
+    // then: the newer title stands
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "The loom, again", "")],
+        vec![a_summary(id, "The loom, again", "")],
         "the version tells which title came last, whatever order they arrive in"
     );
 }
 
 pub async fn an_opening_is_kept_beside_the_title(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a titled scene
     let id = a_scene(1_000);
     remembered(catalog, id).await;
     retitled(catalog, id, "The loom", 1).await;
 
+    // when: its opening is noted
     opened(catalog, id, "The loom stood silent.", 1_000).await;
 
+    // then: it is listed with both
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "The loom", "The loom stood silent.")]
+        vec![a_summary(id, "The loom", "The loom stood silent.")]
     );
 }
 
 pub async fn a_late_opening_does_not_undo_a_newer_one(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a remembered scene
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
+    // when: a newer opening arrives before an older one
     opened(catalog, id, "Then it spoke.", 2_000).await;
     opened(catalog, id, "The loom stood silent.", 1_000).await;
 
+    // then: the newer opening stands
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "", "Then it spoke.")]
+        vec![a_summary(id, "", "Then it spoke.")]
     );
 }
 
 pub async fn a_scene_named_before_it_was_remembered_is_listed_and_keeps_its_name(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a scene
     let id = a_scene(1_000);
 
+    // when: it is titled and opened before it is remembered
     retitled(catalog, id, "The loom", 1).await;
     opened(catalog, id, "The loom stood silent.", 1_000).await;
     remembered(catalog, id).await;
 
+    // then: it is listed with its title and opening
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(id, "The loom", "The loom stood silent.")],
+        vec![a_summary(id, "The loom", "The loom stood silent.")],
         "messages may come in any order, and the one saying a scene exists must not wipe its name"
     );
 }
 
 pub async fn a_scene_s_summary_is_what_is_kept(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: a scene retitled and opened out of order
     let id = a_scene(1_000);
     let forgotten_one = a_scene(2_000);
     remembered(catalog, id).await;
@@ -409,9 +435,11 @@ pub async fn a_scene_s_summary_is_what_is_kept(catalog: &Committing<'_, impl Sce
     retitled(catalog, id, "The loom", 1).await;
     opened(catalog, id, "Once there was", 5).await;
     opened(catalog, id, "Before that", 3).await;
+    // and: a forgotten scene
     remembered(catalog, forgotten_one).await;
     forgotten(catalog, forgotten_one).await;
 
+    // when: the summaries of it, the forgotten one and one never remembered are asked for
     let kept = catalog.summary_of(id).await.expect("asking should succeed");
     let gone = catalog
         .summary_of(forgotten_one)
@@ -422,33 +450,44 @@ pub async fn a_scene_s_summary_is_what_is_kept(catalog: &Committing<'_, impl Sce
         .await
         .expect("asking should succeed");
 
-    assert_eq!(kept, Some(summary(id, "The loom, again", "Once there was")));
+    // then: the scene's summary has its newest title and opening
+    assert_eq!(
+        kept,
+        Some(a_summary(id, "The loom, again", "Once there was"))
+    );
+    // and: the others have none
     assert_eq!((gone, never), (None, None));
 }
 
 pub async fn a_forgotten_scene_is_not_listed(catalog: &Committing<'_, impl SceneCatalog>) {
+    // given: two remembered scenes
     let [gone, kept] = [a_scene(1_000), a_scene(2_000)];
     remembered(catalog, gone).await;
     remembered(catalog, kept).await;
 
+    // when: one is forgotten
     forgotten(catalog, gone).await;
 
+    // then: only the other is listed
     assert_eq!(
         listed(catalog, "project_1").await,
-        vec![summary(kept, "", "")]
+        vec![a_summary(kept, "", "")]
     );
 }
 
 pub async fn nothing_arriving_after_a_scene_was_forgotten_brings_it_back(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a forgotten scene
     let id = a_scene(1_000);
     forgotten(catalog, id).await;
 
+    // when: it is remembered, retitled and opened after
     remembered(catalog, id).await;
     retitled(catalog, id, "The loom", 7).await;
     opened(catalog, id, "The loom stood silent.", 9_000).await;
 
+    // then: it is not listed
     assert!(
         listed(catalog, "project_1").await.is_empty(),
         "a scene named just before it was deleted can have its name arrive after the deletion"
@@ -458,11 +497,14 @@ pub async fn nothing_arriving_after_a_scene_was_forgotten_brings_it_back(
 pub async fn forgetting_what_was_never_remembered_is_harmless(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a scene never remembered
     let id = a_scene(1_000);
 
+    // when: it is forgotten twice
     forgotten(catalog, id).await;
     forgotten(catalog, id).await;
 
+    // then: nothing is listed
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
@@ -545,7 +587,9 @@ fn standing_at(
 pub async fn the_first_change_begins_the_book(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // then: the first change begins
     assert!(begun(tasks, "project_1", 3, 7).await);
+    // and: stands at the start, unfinished
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(3, None, false)
@@ -555,13 +599,17 @@ pub async fn the_first_change_begins_the_book(
 pub async fn a_newer_change_takes_the_book_from_an_older_one(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a begun change
     begun(tasks, "project_1", 3, 7).await;
 
+    // then: a newer change begins
     assert!(begun(tasks, "project_1", 5, 7).await);
+    // and: the older one cannot begin again
     assert!(
         !begun(tasks, "project_1", 3, 7).await,
         "the older change has lost the book for good"
     );
+    // and: the newer one stands
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(5, None, false)
@@ -571,14 +619,18 @@ pub async fn a_newer_change_takes_the_book_from_an_older_one(
 pub async fn the_same_change_begun_again_keeps_how_far_it_got(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a change that got some way
     begun(tasks, "project_1", 5, 7).await;
     progressed(tasks, 5, None, Some("scene_3"), 3, false).await;
 
+    // then: beginning it again begins nothing
     assert!(
         !begun(tasks, "project_1", 5, 7).await,
         "a first message heard again must not start the count over"
     );
+    // and: its progress is kept
     assert_eq!(progress(tasks).await, so_far(5, 7, 3, false));
+    // and: so is where it stands
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(5, Some("scene_3"), false)
@@ -588,28 +640,38 @@ pub async fn the_same_change_begun_again_keeps_how_far_it_got(
 pub async fn another_book_is_begun_on_its_own(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a change begun in one book
     begun(tasks, "project_1", 5, 7).await;
 
+    // then: an older change begins in another
     assert!(begun(tasks, "project_2", 3, 1).await);
 }
 
 pub async fn a_book_never_restyled_has_no_progress(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // then: a book never restyled has no progress
     assert_eq!(progress(tasks).await, None);
+    // and: stands nowhere
     assert_eq!(standing(tasks, "project_1").await, None);
 }
 
 pub async fn a_restyling_counts_its_pages_until_it_is_finished(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a begun change
     assert!(begun(tasks, "project_1", 5, 7).await);
 
+    // when: a first page is counted
     assert!(progressed(tasks, 5, None, Some("scene_4"), 4, false).await);
+    // then: its scenes are done
     assert_eq!(progress(tasks).await, so_far(5, 7, 4, false));
 
+    // when: the last page is counted
     assert!(progressed(tasks, 5, Some("scene_4"), Some("scene_7"), 3, true).await);
+    // then: every scene is done and the restyling finished
     assert_eq!(progress(tasks).await, so_far(5, 7, 7, true));
+    // and: it stands at the last scene
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(5, Some("scene_7"), true)
@@ -619,35 +681,45 @@ pub async fn a_restyling_counts_its_pages_until_it_is_finished(
 pub async fn a_page_counted_twice_is_counted_once(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a change with a page counted
     begun(tasks, "project_1", 5, 7).await;
     progressed(tasks, 5, None, Some("scene_4"), 4, false).await;
 
+    // then: the same page is not counted again
     assert!(
         !progressed(tasks, 5, None, Some("scene_4"), 4, false).await,
         "the page was counted when the cursor stood where it began"
     );
+    // and: the progress is as it was
     assert_eq!(progress(tasks).await, so_far(5, 7, 4, false));
 }
 
 pub async fn a_finished_restyling_counts_no_more(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a finished restyling
     begun(tasks, "project_1", 5, 1).await;
     progressed(tasks, 5, None, None, 0, true).await;
 
+    // then: no more pages are counted
     assert!(!progressed(tasks, 5, None, None, 0, true).await);
+    // and: the progress is as it was
     assert_eq!(progress(tasks).await, so_far(5, 1, 0, true));
 }
 
 pub async fn a_newer_change_begins_counting_afresh(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a finished restyling
     begun(tasks, "project_1", 5, 7).await;
     progressed(tasks, 5, None, Some("scene_7"), 7, true).await;
 
+    // when: a newer change begins
     assert!(begun(tasks, "project_1", 6, 2).await);
 
+    // then: its progress starts at nothing
     assert_eq!(progress(tasks).await, so_far(6, 2, 0, false));
+    // and: it stands at the start
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(6, None, false)
@@ -657,11 +729,15 @@ pub async fn a_newer_change_begins_counting_afresh(
 pub async fn an_older_change_neither_begins_nor_counts(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a begun change
     begun(tasks, "project_1", 5, 7).await;
 
+    // then: an older change does not begin
     assert!(!begun(tasks, "project_1", 3, 9).await);
+    // and: its pages are not counted
     assert!(!progressed(tasks, 3, None, Some("scene_2"), 2, true).await);
 
+    // and: the progress is the newer change's
     assert_eq!(
         progress(tasks).await,
         so_far(5, 7, 0, false),
@@ -672,6 +748,7 @@ pub async fn an_older_change_neither_begins_nor_counts(
 pub async fn a_continuation_nobody_began_counts_from_its_cursor(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // when: a change begins from a cursor nobody began
     assert!(
         tasks
             .begin(&a_project("project_1"), 5, 0, Some("scene_3"))
@@ -679,7 +756,9 @@ pub async fn a_continuation_nobody_began_counts_from_its_cursor(
             .expect("beginning should succeed")
     );
 
+    // then: its progress starts at nothing
     assert_eq!(progress(tasks).await, so_far(5, 0, 0, false));
+    // and: it stands at its cursor
     assert_eq!(
         standing(tasks, "project_1").await,
         standing_at(5, Some("scene_3"), false)
@@ -689,16 +768,21 @@ pub async fn a_continuation_nobody_began_counts_from_its_cursor(
 pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a scene forgotten long ago
     let long_gone = a_scene(1_000);
     let just_gone = a_scene(1_001);
     forgotten_at(catalog, long_gone, 1_000).await;
+    // and: one forgotten at the moment asked about
     forgotten_at(catalog, just_gone, 2_000).await;
 
+    // when: the tombstones laid before that moment are forgotten
     assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
-
+    // and: both scenes are opened after
     for scene in [long_gone, just_gone] {
         opened(catalog, scene, "It was late.", 3_000).await;
     }
+
+    // then: only the one long gone is listed again
     assert_eq!(
         listed(catalog, "project_1")
             .await
@@ -713,10 +797,13 @@ pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
 pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a scene forgotten long ago
     let scene = a_scene(1_000);
     forgotten_at(catalog, scene, 1_000).await;
+    // and: forgotten again lately
     forgotten_at(catalog, scene, 5_000).await;
 
+    // then: its tombstone counts as laid long ago
     assert_eq!(
         forget_long_gone(catalog, 2_000, u64::MAX).await,
         1,
@@ -727,6 +814,7 @@ pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: three scenes forgotten at different moments
     let newest = a_scene(1_000);
     let oldest = a_scene(1_001);
     let older = a_scene(1_002);
@@ -734,11 +822,14 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
         forgotten_at(catalog, scene, seconds).await;
     }
 
+    // when: at most two tombstones are forgotten
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
-
+    // and: all three scenes are opened after
     for scene in [newest, oldest, older] {
         opened(catalog, scene, "It was late.", 9_500).await;
     }
+
+    // then: the two oldest are listed again
     let mut listed_now: Vec<SceneId> = listed(catalog, "project_1")
         .await
         .iter()
@@ -748,6 +839,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     let mut forgotten_first = vec![oldest, older];
     forgotten_first.sort();
     assert_eq!(listed_now, forgotten_first);
+    // and: one tombstone is left to forget
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
@@ -768,24 +860,32 @@ async fn has_tombstone(catalog: &Committing<'_, impl SceneCatalog>, project: &st
 pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // expect: a project has no tombstone before its deletion
     assert!(!has_tombstone(catalog, "project_1").await);
 
+    // when: its deletion is heard twice
     buried(catalog, "project_1", 1_000).await;
     buried(catalog, "project_1", 5_000).await;
 
+    // then: it has a tombstone
     assert!(has_tombstone(catalog, "project_1").await);
+    // and: another project has none
     assert!(!has_tombstone(catalog, "project_2").await);
+
+    // when: the tombstones laid before a later moment are forgotten
     assert_eq!(
         forget_long_gone(catalog, 2_000, u64::MAX).await,
         1,
         "a deletion heard again is the same deletion"
     );
+    // then: it has none
     assert!(!has_tombstone(catalog, "project_1").await);
 }
 
 pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: three projects deleted at different moments
     for (project, seconds) in [
         ("project_newest", 1_002),
         ("project_oldest", 1_000),
@@ -794,22 +894,28 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
         buried(catalog, project, seconds).await;
     }
 
+    // when: at most two tombstones are forgotten
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
 
+    // then: the two oldest projects have none
     assert!(!has_tombstone(catalog, "project_oldest").await);
     assert!(!has_tombstone(catalog, "project_older").await);
+    // and: the newest keeps its own
     assert!(has_tombstone(catalog, "project_newest").await);
+    // and: one tombstone is left to forget
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
 pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl SceneCatalog>,
 ) {
+    // given: a remembered scene
     let kept = a_scene(1_000);
     catalog
         .remember(kept, &a_project("project_1"))
         .await
         .expect("remembering should succeed");
+    // and: a transaction that remembers, retitles and forgets scenes and lays a project's tombstone
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
@@ -835,9 +941,12 @@ pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("laying a project's tombstone should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the project has no tombstone
     assert!(!has_tombstone(catalog, "project_1").await);
+    // and: the scene is listed as it was
     let listed = catalog
         .in_project_after(&a_project("project_1"), None, 10)
         .await
@@ -852,6 +961,7 @@ pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
 pub async fn a_claim_made_in_a_transaction_that_is_dropped_was_never_made(
     tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
+    // given: a transaction that begins a change
     let mut transaction = tasks.begun().await;
     tasks
         .uncommitted()
@@ -859,8 +969,10 @@ pub async fn a_claim_made_in_a_transaction_that_is_dropped_was_never_made(
         .await
         .expect("beginning should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the book has no progress
     assert_eq!(
         tasks
             .progress(&a_project("project_1"))

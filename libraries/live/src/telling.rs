@@ -67,13 +67,16 @@ mod tests {
 
     #[tokio::test]
     async fn each_telling_says_what_it_is_of_and_is_newer_than_the_last() {
+        // given: someone hearing a project
         let broadcaster = Broadcaster::new();
         let mut hearing = broadcaster.hear("project_1");
         let teller = Teller::new(broadcaster);
 
+        // when: two things in it are told
         teller.tell("project_1", "scene_1", json!({ "words": 42 }));
         teller.tell("project_1", "scene_2", json!({ "words": 7 }));
 
+        // then: each says what it is of, at a newer version than the last
         let mut told = Vec::new();
         for _ in 0..2 {
             let frame = time::timeout(Duration::from_millis(100), hearing.next())
@@ -94,11 +97,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn what_is_told_last_is_never_older_than_what_was_told_before() {
+        // given: someone hearing a project
         let broadcaster = Broadcaster::new();
         let mut hearing = broadcaster.hear("project_1");
         let teller = Arc::new(Teller::new(broadcaster));
+        // and: a kept value
         let kept = Arc::new(AtomicU64::new(1));
 
+        // when: a slow reading of it begins
         let slow = tokio::spawn({
             let (teller, kept) = (teller.clone(), kept.clone());
             async move {
@@ -112,6 +118,7 @@ mod tests {
             }
         });
         time::sleep(Duration::from_millis(10)).await;
+        // and: the value changes and is read and told before the slow reading ends
         kept.store(2, Ordering::SeqCst);
         teller
             .tell_latest("project_1", "scene_1", async {
@@ -120,6 +127,7 @@ mod tests {
             .await;
         slow.await.expect("the slow telling finishes");
 
+        // then: the older reading is told before the newer one
         let mut told = Vec::new();
         for _ in 0..2 {
             let frame = time::timeout(Duration::from_millis(100), hearing.next())

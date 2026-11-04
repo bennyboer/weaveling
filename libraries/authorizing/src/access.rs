@@ -77,26 +77,34 @@ mod tests {
 
     #[tokio::test]
     async fn a_watch_hears_a_change_to_its_project_alone() {
+        // given: a watch on one project
         let changes = AccessChanges::new();
         let mut loom = changes.watch("project_loom");
 
+        // when: another project changes
         changes.tell("project_other");
+        // then: the watch hears nothing
         assert!(!heard(&mut loom).await);
 
+        // when: its own project changes
         changes.tell("project_loom");
+        // then: the watch hears it
         assert!(heard(&mut loom).await);
     }
 
     #[tokio::test]
     async fn a_watch_that_fell_behind_takes_it_as_changed() {
+        // given: a watch with room for one change
         let changes = AccessChanges {
             told: broadcast::channel(1).0,
         };
         let mut loom = changes.watch("project_loom");
 
+        // when: more changes come than it can hold
         changes.tell("project_other");
         changes.tell("project_other");
 
+        // then: the watch hears a change
         assert!(
             heard(&mut loom).await,
             "what it missed may have been its own project, so it asks again"
@@ -105,10 +113,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_still_watch_or_one_whose_changes_went_away_hears_nothing() {
+        // given: a watch whose changes went away
         let changes = AccessChanges::new();
         let mut gone = changes.watch("project_loom");
         drop(changes);
 
+        // then: neither it nor a still watch hears anything
         assert!(!heard(&mut AccessWatch::still()).await);
         assert!(!heard(&mut gone).await);
     }

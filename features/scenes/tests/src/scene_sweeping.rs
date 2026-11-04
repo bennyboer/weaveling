@@ -217,7 +217,7 @@ impl Wired {
             .expect("listing should succeed")
     }
 
-    fn carried_on(&self) -> Vec<Message> {
+    fn continuations(&self) -> Vec<Message> {
         self.overheard
             .heard()
             .into_iter()
@@ -229,10 +229,10 @@ impl Wired {
         let mut asked = asked;
 
         loop {
-            let before = self.carried_on().len();
+            let before = self.continuations().len();
             self.sweep.handle(&asked).await.expect("sweeping succeeds");
 
-            let carried = self.carried_on();
+            let carried = self.continuations();
             if carried.len() == before {
                 break;
             }
@@ -257,15 +257,18 @@ fn deleted(project: &str) -> Message {
 
 #[tokio::test]
 async fn deleting_a_project_takes_its_prose_with_it() {
+    // given: a project holding scenes
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 3).await;
 
+    // when: its deletion is heard
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("sweeping succeeds");
 
+    // then: none of its scenes is left
     assert!(
         wired.still_there(A_PROJECT).await.is_empty(),
         "the CRDT store is the only copy of the prose, so a deleted project has to reach it \
@@ -275,26 +278,33 @@ async fn deleting_a_project_takes_its_prose_with_it() {
 
 #[tokio::test]
 async fn a_scene_gone_before_the_sweep_reaches_it_is_passed_over() {
+    // given: a project holding scenes
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 2).await;
+    // and: one of them gone before the sweep reaches it
     *wired.store.gone_meanwhile.lock().expect("never poisoned") = Some(SceneId::generate(at(500)));
 
+    // when: the project's deletion is heard
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("a scene deleted by someone else meanwhile is no reason to fail");
 
+    // then: the rest are gone too
     *wired.store.gone_meanwhile.lock().expect("never poisoned") = None;
     assert!(wired.still_there(A_PROJECT).await.is_empty());
 }
 
 #[tokio::test]
 async fn a_store_failing_while_sweeping_fails_the_sweep_so_it_is_tried_again() {
+    // given: a project holding scenes
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 2).await;
+    // and: a store failing to delete
     wired.store.failing.store(true, Ordering::Release);
 
+    // then: hearing the project's deletion fails
     assert!(
         wired.sweep.handle(&deleted(A_PROJECT)).await.is_err(),
         "a sweep that quietly skipped what it could not delete would leave prose behind for good"
@@ -303,35 +313,42 @@ async fn a_store_failing_while_sweeping_fails_the_sweep_so_it_is_tried_again() {
 
 #[tokio::test]
 async fn a_project_smaller_than_one_batch_does_not_carry_on() {
+    // given: a project holding fewer scenes than a batch
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 3).await;
 
+    // when: its deletion is heard
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("sweeping succeeds");
 
+    // then: the sweep does not carry on
     assert!(
-        wired.carried_on().is_empty(),
+        wired.continuations().is_empty(),
         "a batch that did not fill is the last one, and carrying on would never end"
     );
 }
 
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
+    // given: a project holding several batches of scenes
     let wired = a_workbench(2);
     wired.holding(A_PROJECT, 7).await;
 
+    // when: its deletion is swept through
     wired.sweep_through(deleted(A_PROJECT)).await;
 
+    // then: none of its scenes is left
     assert!(
         wired.still_there(A_PROJECT).await.is_empty(),
         "a sweep bounded at two scenes must carry itself on until the project is empty, \
          or a book of thousands is swept only as far as its first batch"
     );
+    // and: it carried on once per full batch
     assert_eq!(
-        wired.carried_on().len(),
+        wired.continuations().len(),
         3,
         "seven scenes in batches of two is three continuations and a short fourth batch"
     );
@@ -339,34 +356,41 @@ async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
 
 #[tokio::test]
 async fn a_continuation_stays_in_the_conversation_the_deletion_opened() {
+    // given: a project holding more than a batch
     let wired = a_workbench(2);
     wired.holding(A_PROJECT, 4).await;
     let asked = deleted(A_PROJECT);
 
+    // when: its deletion is heard
     wired.sweep.handle(&asked).await.expect("sweeping succeeds");
 
-    let carried = wired.carried_on();
+    // then: the sweep carries on in the deletion's conversation
+    let carried = wired.continuations();
     assert_eq!(carried.len(), 1);
     assert_eq!(
         carried[0].conversation, asked.conversation,
         "the whole sweep has to be followable as one thing, however many batches it takes"
     );
+    // and: caused by the deletion
     assert_eq!(carried[0].caused_by, Some(asked.id));
 }
 
 #[tokio::test]
 async fn a_continuation_starts_after_the_scene_it_names() {
+    // given: a project holding more than a batch
     let wired = a_workbench(2);
     let written = wired.holding(A_PROJECT, 4).await;
 
+    // when: its deletion is heard
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("sweeping succeeds");
 
+    // then: the sweep carries on after the last scene of the batch
     let asked: MoreToSweepDTO =
-        serde_json::from_value(wired.carried_on()[0].payload.clone()).expect("readable");
+        serde_json::from_value(wired.continuations()[0].payload.clone()).expect("readable");
     assert_eq!(asked.project, A_PROJECT);
     assert_eq!(
         asked.after,
@@ -377,16 +401,19 @@ async fn a_continuation_starts_after_the_scene_it_names() {
 
 #[tokio::test]
 async fn another_project_keeps_its_prose() {
+    // given: two projects holding scenes
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 2).await;
     let theirs = wired.holding(ANOTHER_PROJECT, 2).await;
 
+    // when: one project's deletion is heard
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("sweeping succeeds");
 
+    // then: the other keeps its scenes
     assert_eq!(
         wired.still_there(ANOTHER_PROJECT).await,
         theirs,
@@ -396,9 +423,11 @@ async fn another_project_keeps_its_prose() {
 
 #[tokio::test]
 async fn hearing_the_same_deletion_twice_is_harmless() {
+    // given: a project holding scenes
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 3).await;
 
+    // when: its deletion is heard twice
     for _ in 0..2 {
         wired
             .sweep
@@ -407,26 +436,32 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
             .expect("a redelivery is not a failure");
     }
 
+    // then: none of its scenes is left
     assert!(wired.still_there(A_PROJECT).await.is_empty());
 }
 
 #[tokio::test]
 async fn a_deleted_project_takes_no_new_scene() {
+    // given: a deleted project
     let wired = a_workbench(4);
-
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
         .await
         .expect("sweeping succeeds");
+
+    // when: a scene is created in it
     let refused = wired.scenes.create(A_PROJECT, &ada()).await;
 
+    // then: it is refused as not there
     assert!(matches!(refused, Err(ScenesError::ProjectNotThere)));
+    // and: nothing is written
     assert_eq!(
         wired.store.created.load(Ordering::Acquire),
         0,
         "a project known to be gone is not written to at all"
     );
+    // and: another project still takes one
     assert!(
         wired.scenes.create(ANOTHER_PROJECT, &ada()).await.is_ok(),
         "another project's tombstone keeps nothing out"
@@ -435,8 +470,10 @@ async fn a_deleted_project_takes_no_new_scene() {
 
 #[tokio::test]
 async fn a_continuation_of_the_sweep_lays_no_tombstone() {
+    // given: a project never deleted
     let wired = a_workbench(4);
 
+    // when: a continuation of a sweep of it is heard
     wired
         .sweep
         .handle(&Message::opening(
@@ -447,6 +484,7 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
         .await
         .expect("sweeping succeeds");
 
+    // then: the project still takes a new scene
     assert!(
         wired.scenes.create(A_PROJECT, &ada()).await.is_ok(),
         "only the deletion itself buries the project"
@@ -455,6 +493,7 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
 
 #[tokio::test]
 async fn a_message_about_no_project_at_all_is_refused() {
+    // given: a message about no project at all
     let wired = a_workbench(4);
     let nonsense = Message::opening(
         RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
@@ -462,6 +501,7 @@ async fn a_message_about_no_project_at_all_is_refused() {
         at(1_000),
     );
 
+    // then: hearing it fails
     assert!(
         wired.sweep.handle(&nonsense).await.is_err(),
         "a message the listener cannot act on belongs in dead letters, not silently dropped"

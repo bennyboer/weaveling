@@ -155,11 +155,13 @@ mod tests {
 
     #[test]
     fn nothing_is_shown_until_the_server_has_said_who_is_signed_in() {
+        // expect: a blank screen while it is unknown who is signed in
         assert_eq!(screen_for(&SignInState::Unknown), Screen::Blank);
     }
 
     #[test]
     fn a_server_that_cannot_be_reached_says_so() {
+        // expect: an unreachable server shows as unreachable
         assert_eq!(
             screen_for(&SignInState::Unreachable),
             Screen::Unreachable,
@@ -169,12 +171,15 @@ mod tests {
 
     #[test]
     fn signed_out_on_a_server_asks_to_sign_in() {
+        // expect: signed out shows the sign in
         assert_eq!(screen_for(&SignInState::SignedOut), Screen::SignIn);
     }
 
     #[test]
     fn signed_in_or_without_accounts_shows_the_work() {
+        // expect: without accounts the work shows
         assert_eq!(screen_for(&SignInState::NoAccounts), Screen::Work);
+        // and: signed in it does too
         assert_eq!(
             screen_for(&SignInState::SignedIn(SignedInAccount {
                 account: "account_1".to_owned(),
@@ -188,9 +193,12 @@ mod tests {
 
     #[test]
     fn signing_up_is_open_unless_the_server_says_otherwise_and_closed_for_anything_unknown() {
+        // expect: signing up is open when told so or told nothing
         assert_eq!(SigningUp::told(None), SigningUp::Open);
         assert_eq!(SigningUp::told(Some("open")), SigningUp::Open);
+        // and: by invitation when told so
         assert_eq!(SigningUp::told(Some("invitation")), SigningUp::ByInvitation);
+        // and: by invitation when told anything unknown
         assert_eq!(
             SigningUp::told(Some("by-application")),
             SigningUp::ByInvitation,

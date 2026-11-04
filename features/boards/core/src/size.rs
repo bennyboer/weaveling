@@ -30,14 +30,17 @@ mod tests {
 
     #[test]
     fn a_size_keeps_the_extent_it_was_given() {
+        // when: a size is made
         let wide = Size::of(400, 90);
 
+        // then: it keeps the extent it was given
         assert_eq!(wide.width, 400);
         assert_eq!(wide.height, 90);
     }
 
     #[test]
     fn a_card_with_no_extent_in_either_direction_is_not_a_card() {
+        // expect: only a size reaching out both ways has an extent
         assert!(Size::of(1, 1).has_extent());
         assert!(!Size::of(0, 84).has_extent());
         assert!(!Size::of(168, 0).has_extent());
@@ -47,6 +50,7 @@ mod tests {
 
     #[test]
     fn a_size_reads_as_an_extent() {
+        // expect: a size reads as width by height
         assert_eq!(Size::of(168, 84).to_string(), "168\u{00d7}84");
     }
 }

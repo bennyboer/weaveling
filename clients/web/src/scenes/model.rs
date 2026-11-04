@@ -95,10 +95,13 @@ mod tests {
 
     #[test]
     fn a_scene_not_held_is_added() {
+        // given: a scene held
         let mut held = vec![a_summary("scene_1", "The arrival")];
 
+        // when: another is held
         hold(&mut held, a_summary("scene_2", "The loom"));
 
+        // then: both are held, the new one last
         assert_eq!(
             held,
             vec![
@@ -110,10 +113,13 @@ mod tests {
 
     #[test]
     fn a_scene_held_already_is_replaced_and_not_held_twice() {
+        // given: a scene held
         let mut held = vec![a_summary("scene_1", "The arrival")];
 
+        // when: it is held again, retitled
         hold(&mut held, a_summary("scene_1", "The departure"));
 
+        // then: only the retitled one is held
         assert_eq!(held, vec![a_summary("scene_1", "The departure")]);
     }
 }

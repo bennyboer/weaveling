@@ -138,6 +138,7 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_its_declared_key_telling_who_and_as_what() {
+        // expect: each event published lands on its declared key, under every members, telling what the contract says of which project
         for (event, declared, told) in everything_worth_publishing() {
             assert_eq!(
                 eventpublishing::routing_for(KIND, event.name()).to_string(),
@@ -162,11 +163,13 @@ mod tests {
                 ProjectLink::from("project_1")
             );
         }
+        // and: the declared subscription is the derived one
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_MEMBERS);
     }
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // expect: no message is made of a snapshot
         assert!(
             message_for(&recorded(MembersEvent::Snapshotted {
                 members: vec![Member {

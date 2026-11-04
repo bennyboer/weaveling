@@ -34,7 +34,7 @@ async fn signed_up(wired: &Wired, email: &str, verified: bool) -> AccountId {
         .expect("the address should be held")
 }
 
-async fn drawn(wired: &Wired) -> String {
+async fn an_operator_code(wired: &Wired) -> String {
     wired
         .accounts
         .draw_operator_code()
@@ -56,17 +56,22 @@ async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
 
 #[tokio::test]
 async fn the_code_drawn_while_there_is_no_operator_makes_a_verified_account_one() {
+    // given: a verified account
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
-    let code = drawn(&wired).await;
+    // and: an operator code drawn
+    let code = an_operator_code(&wired).await;
 
+    // when: the account becomes operator by the code
     wired
         .accounts
         .become_operator(&ada, &code)
         .await
         .expect("the code drawn makes an operator");
 
+    // then: it is an operator
     assert!(is_operator(&wired, &ada).await);
+    // and: the instance knows someone is appointed
     assert!(
         wired
             .secrets
@@ -79,15 +84,17 @@ async fn the_code_drawn_while_there_is_no_operator_makes_a_verified_account_one(
 
 #[tokio::test]
 async fn once_there_is_an_operator_no_code_is_drawn() {
+    // given: an operator
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
-    let code = drawn(&wired).await;
+    let code = an_operator_code(&wired).await;
     wired
         .accounts
         .become_operator(&ada, &code)
         .await
         .expect("the code drawn makes an operator");
 
+    // then: no code is drawn
     assert!(
         wired
             .accounts
@@ -100,30 +107,38 @@ async fn once_there_is_an_operator_no_code_is_drawn() {
 
 #[tokio::test]
 async fn a_code_makes_one_operator_only() {
+    // given: two verified accounts
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let grace = signed_up(&wired, "grace@example.com", true).await;
-    let code = drawn(&wired).await;
+    // and: one made operator by a code
+    let code = an_operator_code(&wired).await;
     wired
         .accounts
         .become_operator(&ada, &code)
         .await
         .expect("the code drawn makes an operator");
 
+    // then: the code is wrong for the other
     assert!(matches!(
         wired.accounts.become_operator(&grace, &code).await,
         Err(AccountsError::OperatorCodeWrong)
     ));
+    // and: the other is no operator
     assert!(!is_operator(&wired, &grace).await);
 }
 
 #[tokio::test]
 async fn a_code_drawn_at_an_earlier_start_is_good_no_longer() {
+    // given: a verified account
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
-    let earlier = drawn(&wired).await;
-    let _later = drawn(&wired).await;
+    // and: an operator code drawn
+    let earlier = an_operator_code(&wired).await;
+    // and: another drawn after it
+    let _later = an_operator_code(&wired).await;
 
+    // then: the earlier code is wrong
     assert!(matches!(
         wired.accounts.become_operator(&ada, &earlier).await,
         Err(AccountsError::OperatorCodeWrong)
@@ -132,10 +147,13 @@ async fn a_code_drawn_at_an_earlier_start_is_good_no_longer() {
 
 #[tokio::test]
 async fn a_wrong_code_makes_no_operator() {
+    // given: a verified account
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
-    let _code = drawn(&wired).await;
+    // and: an operator code drawn
+    let _code = an_operator_code(&wired).await;
 
+    // then: another code is wrong
     assert!(matches!(
         wired
             .accounts
@@ -143,20 +161,25 @@ async fn a_wrong_code_makes_no_operator() {
             .await,
         Err(AccountsError::OperatorCodeWrong)
     ));
+    // and: the account is no operator
     assert!(!is_operator(&wired, &ada).await);
 }
 
 #[tokio::test]
 async fn an_unverified_address_is_refused_and_leaves_the_code_for_after_it_is_verified() {
+    // given: an unverified account
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", false).await;
-    let code = drawn(&wired).await;
+    // and: an operator code drawn
+    let code = an_operator_code(&wired).await;
 
+    // then: becoming operator by the code is refused
     assert!(matches!(
         wired.accounts.become_operator(&ada, &code).await,
         Err(AccountsError::NotVerifiedYet)
     ));
 
+    // when: the account is verified
     wired
         .accounts
         .verify(
@@ -165,11 +188,14 @@ async fn an_unverified_address_is_refused_and_leaves_the_code_for_after_it_is_ve
         )
         .await
         .expect("the code sent should verify");
+    // and: it becomes operator by the same code
     wired
         .accounts
         .become_operator(&ada, &code)
         .await
         .expect("the code is still good, being refused for the address and not for itself");
+
+    // then: it is an operator
     assert!(is_operator(&wired, &ada).await);
 }
 
@@ -235,8 +261,10 @@ impl Operators for FailingToAppointOnce {
 
 #[tokio::test]
 async fn an_appointment_that_fails_records_nothing_and_leaves_the_code_to_be_used() {
+    // given: a verified account
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
+    // and: an instance whose first appointment fails
     let accounts = AccountsCore::new(
         wired.store.clone(),
         Arc::new(InMemoryTransactions::new()),
@@ -251,18 +279,26 @@ async fn an_appointment_that_fails_records_nothing_and_leaves_the_code_to_be_use
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
-    let code = drawn(&wired).await;
+    // and: an operator code drawn
+    let code = an_operator_code(&wired).await;
 
+    // then: becoming operator fails
     assert!(accounts.become_operator(&ada, &code).await.is_err());
+    // and: the account is no operator
     assert!(
         !is_operator(&wired, &ada).await,
         "the event, the code's take and the appointment commit together or not at all"
     );
+
+    // when: it becomes operator by the same code again
     accounts
         .become_operator(&ada, &code)
         .await
         .expect("the code was never used up, so it still makes her an operator");
+
+    // then: it is an operator
     assert!(is_operator(&wired, &ada).await);
+    // and: no code is drawn any more
     assert!(
         accounts
             .draw_operator_code()

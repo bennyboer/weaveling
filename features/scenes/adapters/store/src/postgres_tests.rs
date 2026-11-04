@@ -164,6 +164,7 @@ mod compacting {
 
 #[tokio::test]
 async fn walking_a_project_comes_out_of_the_index() {
+    // given: many scenes across several projects
     let bench = OnPostgres::setup().await;
     let mut written = Vec::new();
     for nth in 1..=2_000 {
@@ -185,6 +186,7 @@ async fn walking_a_project_comes_out_of_the_index() {
         .await
         .expect("analysing should succeed");
 
+    // when: walking one project after a cursor is planned
     let plan: Vec<String> = sqlx::query_scalar(
         "EXPLAIN SELECT scene
          FROM scenes
@@ -200,15 +202,18 @@ async fn walking_a_project_comes_out_of_the_index() {
     .expect("explaining should succeed");
     let plan = plan.join("\n");
 
+    // then: the walk comes out of the project's index
     assert!(
         plan.contains("scenes_by_project"),
         "deleting a project sweeps its prose one batch at a time, so the batch must come out \
          of the index rather than a scan that grows with every book ever written: {plan}"
     );
+    // and: never from a scan
     assert!(
         !plan.contains("Seq Scan"),
         "a plan change here is silent — the sweep keeps working and only gets slower: {plan}"
     );
+    // and: reads no row it throws away
     assert!(
         !plan.contains("Filter:"),
         "both halves belong in the index condition — a filter means rows are read and then \
@@ -220,6 +225,7 @@ async fn walking_a_project_comes_out_of_the_index() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
+    // given: a stored scene in a store that compacts after two updates
     let (fixture, pool) = a_migrated_schema().await;
     let transactions = Arc::new(PostgresTransactions::new(pool.clone()));
     let store = Arc::new(PostgresSceneStore::compacting_after(pool, 2));
@@ -237,6 +243,7 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
         .await
         .expect("finishing should succeed");
 
+    // when: it is edited and compacted at once, again and again
     let mut writing: JoinSet<Result<(), StoreError>> = JoinSet::new();
     let (editing, edits_in) = (store.clone(), transactions.clone());
     writing.spawn(async move {
@@ -266,6 +273,7 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
             .expect("writing should succeed");
     }
 
+    // then: every edit is in its prose
     let text = store.load(id).await.expect("loading should succeed").text();
     let lost: Vec<usize> = (0..200)
         .filter(|nth| !text.contains(&format!("[{nth}]")))
@@ -279,6 +287,7 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
 
 #[tokio::test]
 async fn a_create_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_commits() {
+    // given: a create in a project that found no tombstone, not yet committed
     let (fixture, pool) = a_migrated_schema().await;
     scenes_catalog::postgres::migrations()
         .run(&pool)
@@ -306,6 +315,7 @@ async fn a_create_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_
         .await
         .expect("creating should succeed");
 
+    // when: the project's tombstone is laid
     transacting::retrying!(&transactions, |burying| {
         catalog
             .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
@@ -313,15 +323,18 @@ async fn a_create_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_
             .map_err(Tried::Refused)
     })
     .expect("laying a tombstone should succeed");
+    // and: the project is swept
     let swept = store
         .in_project(&project, None, 10)
         .await
         .expect("the sweep should read the scenes");
 
+    // then: the sweep finds no scene
     assert!(
         swept.is_empty(),
         "the sweep cannot see a scene not committed yet"
     );
+    // and: the create loses the race
     assert!(
         matches!(creating.finish().await, Err(Failure::LostRace)),
         "the create read no tombstone and the sweep read no scene, so the create, between the two, \

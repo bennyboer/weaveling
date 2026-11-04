@@ -129,7 +129,9 @@ mod ledger_tests {
 
     #[test]
     fn the_catalog_keeps_a_ledger_of_its_own_beside_the_secrets_one() {
+        // expect: the catalog's migrations keep their own ledger
         assert_eq!(migrations().table_name, LEDGER);
+        // and: not the default one
         assert_ne!(
             migrations().table_name,
             Migrator::DEFAULT.table_name,

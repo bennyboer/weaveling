@@ -123,6 +123,7 @@ mod tests {
 
     #[test]
     fn the_names_a_message_asks_for_are_found_in_its_choices_too() {
+        // given: a message asking for one name in its selector and others in its choices
         let parsed = parser::parse(
             "chosen = { $count ->
     [one] { $name }
@@ -136,8 +137,10 @@ mod tests {
         };
         let mut asked_for = BTreeSet::new();
 
+        // when: the names it asks for are gathered
         gather(message.value.as_ref().unwrap(), &mut asked_for);
 
+        // then: all of them are found
         assert_eq!(
             asked_for,
             BTreeSet::from(["count".to_owned(), "name".to_owned(), "place".to_owned()])
@@ -146,6 +149,7 @@ mod tests {
 
     #[test]
     fn no_language_words_a_message_twice() {
+        // expect: each message once in every language's catalogue
         for language in Language::EVERY {
             let mut seen = BTreeSet::new();
 
@@ -160,17 +164,21 @@ mod tests {
 
     #[test]
     fn every_language_words_every_message_english_does_asking_for_the_same() {
+        // given: the messages english words and the names each asks for
         let english: BTreeSet<_> = messages_of(Language::English).into_iter().collect();
 
+        // when: each language's messages are read
         for language in Language::EVERY {
             let worded: BTreeSet<_> = messages_of(language).into_iter().collect();
 
+            // then: they are the same messages asking for the same names
             assert_eq!(worded, english, "{language:?} differs from English");
         }
     }
 
     #[test]
     fn a_message_is_worded_in_the_language_asked_for() {
+        // expect: one message worded in german and in english
         assert_eq!(
             worded(Language::German, "workspace-heading", None),
             "Deine Projekte"
@@ -183,9 +191,11 @@ mod tests {
 
     #[test]
     fn a_name_is_set_into_its_message_without_marks_around_it() {
+        // given: a name
         let mut args = FluentArgs::new();
         args.set("name", "The loom");
 
+        // then: the message asking for it carries it with no marks set around it
         assert_eq!(
             worded(Language::German, "trash-project-fate", Some(&args)),
             "„The loom“ lässt sich 30 Tage lang aus dem Papierkorb wiederherstellen. Danach ist es für immer weg."
@@ -194,8 +204,10 @@ mod tests {
 
     #[test]
     fn only_the_language_spoken_is_read() {
+        // when: a message is worded in german
         worded(Language::German, "workspace-heading", None);
 
+        // then: only german's catalogue has been read
         CATALOGUES.with(|catalogues| {
             for language in Language::EVERY {
                 assert_eq!(
@@ -209,6 +221,7 @@ mod tests {
 
     #[test]
     fn a_count_takes_the_form_its_language_gives_it() {
+        // given: a message about a count in german
         let rewriting = |done: u32, total: u32| {
             let mut args = FluentArgs::new();
             args.set("done", done);
@@ -217,6 +230,7 @@ mod tests {
             worded(Language::German, "restyling-running", Some(&args))
         };
 
+        // then: one takes the singular and more the plural
         assert_eq!(
             rewriting(0, 1),
             "Die Anführungszeichen werden neu gesetzt: 0 von 1 Szene."
@@ -229,6 +243,7 @@ mod tests {
 
     #[test]
     fn the_trash_is_named_with_how_many_projects_it_holds() {
+        // given: the trash's name for a count
         let named = |language: Language, count: u32| {
             let mut args = FluentArgs::new();
             args.set("count", count);
@@ -236,6 +251,7 @@ mod tests {
             worded(language, "workspace-trash-link", Some(&args))
         };
 
+        // then: it tells how many projects, in each language's form
         assert_eq!(named(Language::English, 1), "Trash, 1 project");
         assert_eq!(named(Language::English, 4), "Trash, 4 projects");
         assert_eq!(named(Language::German, 4), "Papierkorb, 4 Projekte");
@@ -243,6 +259,7 @@ mod tests {
 
     #[test]
     fn every_refusal_the_server_names_is_worded() {
+        // given: every refusal any feature names
         let every = projects_contract::refused::EVERY
             .into_iter()
             .chain(accounts_contract::refused::EVERY)
@@ -254,6 +271,7 @@ mod tests {
             .chain(scenes_contract::refused::EVERY)
             .chain(messaging_contract::refused::EVERY);
 
+        // then: english words each of them
         for kind in every {
             assert!(
                 knows(Language::English, &format!("refused-{kind}")),
@@ -264,12 +282,14 @@ mod tests {
 
     #[test]
     fn a_message_no_catalogue_has_is_not_known() {
+        // expect: a message worded is known and one never worded is not
         assert!(knows(Language::German, "workspace-heading"));
         assert!(!knows(Language::German, "nowhere-worded"));
     }
 
     #[test]
     fn a_moment_is_told_in_each_language_s_own_order() {
+        // given: a moment
         let mut args = FluentArgs::new();
         args.set("day", 10);
         args.set("month", 10);
@@ -278,6 +298,7 @@ mod tests {
         args.set("minute", "01");
         let told = |language| worded(language, "moment", Some(&args));
 
+        // then: each language tells it in its own order and marks
         assert_eq!(told(Language::English), "10 Oct 2026, 09:01");
         assert_eq!(told(Language::German), "10. Okt. 2026, 09:01");
         assert_eq!(told(Language::Spanish), "10 oct 2026, 09:01");
@@ -287,6 +308,7 @@ mod tests {
 
     #[test]
     fn a_message_no_catalogue_knows_shows_its_name() {
+        // expect: a message never worded is shown by its name
         assert_eq!(
             worded(Language::German, "nowhere-worded", None),
             "nowhere-worded"

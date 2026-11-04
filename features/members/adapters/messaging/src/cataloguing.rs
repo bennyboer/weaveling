@@ -112,6 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn whatever_message_comes_the_list_takes_the_project_s_members_as_they_stand_now() {
+        // given: a project's members founded
         let bench = bench();
         let id = AggregateId::from(&project());
         let mut transaction = begun().await;
@@ -129,6 +130,7 @@ mod tests {
             .finish()
             .await
             .expect("finishing should succeed");
+        // and: someone joined since
         let mut transaction = begun().await;
         bench
             .events
@@ -148,12 +150,14 @@ mod tests {
             .await
             .expect("finishing should succeed");
 
+        // when: the founding is heard
         bench
             .listener
             .handle(&told(&founded.events[0]))
             .await
             .expect("taken in");
 
+        // then: the list holds whoever joined since
         assert_eq!(
             bench
                 .catalog
@@ -163,6 +167,7 @@ mod tests {
             Some(Role::Reader),
             "the founding message comes late, yet the list holds who joined since"
         );
+        // and: the owner
         assert_eq!(
             bench
                 .catalog
@@ -172,6 +177,7 @@ mod tests {
             Some(Role::Owner)
         );
 
+        // when: the one who joined leaves and that is heard
         let mut transaction = begun().await;
 
         let left = bench
@@ -195,6 +201,7 @@ mod tests {
             .await
             .expect("taken in");
 
+        // then: the list no longer holds them
         assert_eq!(
             bench
                 .catalog
@@ -208,8 +215,10 @@ mod tests {
 
     #[tokio::test]
     async fn every_change_to_members_is_heard() {
+        // given: the listener
         let listener = bench().listener;
 
+        // expect: it hears every change to members
         for key in [
             members_contract::FOUNDED,
             members_contract::JOINED,
@@ -219,12 +228,15 @@ mod tests {
         ] {
             assert!(listener.hears(&RoutingKey::parse(key).expect("a declared key")));
         }
+        // and: nothing else
         assert!(!listener.hears(&RoutingKey::parse("project.started").expect("a key")));
     }
 
     #[tokio::test]
     async fn a_message_about_members_never_founded_belongs_in_dead_letters() {
+        // given: the listener
         let listener = bench().listener;
+        // and: a joining of members never founded
         let unheard_of = Message::opening(
             RoutingKey::parse(members_contract::JOINED).expect("a declared key"),
             json!({
@@ -236,6 +248,7 @@ mod tests {
             OffsetDateTime::UNIX_EPOCH,
         );
 
+        // expect: hearing it fails
         assert!(listener.handle(&unheard_of).await.is_err());
     }
 }

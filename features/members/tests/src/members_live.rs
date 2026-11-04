@@ -27,7 +27,7 @@ impl Followed {
         served(&self.core, &self.broadcaster, account)
     }
 
-    fn told(&self, project: &str, event: serde_json::Value) {
+    fn telling(&self, project: &str, event: serde_json::Value) {
         self.broadcaster.tell(
             MembershipChanges,
             json!({ "of": project, "version": 2, "at": "1970-01-01T00:00:00Z", "event": event })
@@ -86,18 +86,21 @@ async fn following(server: &TestServer) -> Subscriber {
 
 #[tokio::test]
 async fn a_member_following_a_project_s_members_hears_its_changes_and_no_other_project_s() {
+    // given: a member following a project's members
     let followed = a_project_of_two().await;
     let mut bo_s = following(&followed.as_account("account_bo")).await;
 
-    followed.told(
+    // when: a joining of another project is told, and then one of theirs
+    followed.telling(
         "project_2",
         json!({ "name": "JOINED", "account": "account_cy", "role": "reader" }),
     );
-    followed.told(
+    followed.telling(
         PROJECT,
         json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
     );
 
+    // then: the first they hear of is the joining of theirs
     let frame = bo_s.frame().await;
     assert_eq!(frame["of"], PROJECT, "nothing of another project");
     assert_eq!(frame["event"]["account"], "account_grace");
@@ -105,8 +108,10 @@ async fn a_member_following_a_project_s_members_hears_its_changes_and_no_other_p
 
 #[tokio::test]
 async fn a_project_s_members_are_not_there_for_whoever_may_not_read_it() {
+    // given: a project of two
     let followed = a_project_of_two().await;
 
+    // expect: a stranger's following of its members ends as not there
     assert_eq!(
         following(&followed.as_account("account_cy"))
             .await
@@ -118,9 +123,11 @@ async fn a_project_s_members_are_not_there_for_whoever_may_not_read_it() {
 
 #[tokio::test]
 async fn a_member_removed_hears_no_more_of_the_project_s_members() {
+    // given: a member following a project's members
     let followed = a_project_of_two().await;
     let mut bo_s = following(&followed.as_account("account_bo")).await;
 
+    // when: they are removed from it
     followed
         .core
         .remove(
@@ -136,6 +143,7 @@ async fn a_member_removed_hears_no_more_of_the_project_s_members() {
         .await
         .expect("cataloguing should succeed");
 
+    // then: their following ends as access lost
     assert_eq!(bo_s.ended().await, "access-lost");
 }
 
@@ -165,6 +173,7 @@ impl Authorizer for Unreachable {
 
 #[tokio::test]
 async fn whom_to_let_follow_not_being_known_is_a_failure_not_a_no() {
+    // given: who may read what cannot be learned
     let core = MembersCore::new(
         Arc::new(InMemoryEventStore::new()),
         Arc::new(InMemoryTransactions::new()),
@@ -173,6 +182,7 @@ async fn whom_to_let_follow_not_being_known_is_a_failure_not_a_no() {
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
+    // expect: following a project's members ends as failed
     assert_eq!(
         following(&served(&core, &Broadcaster::new(), "account_bo"))
             .await

@@ -336,13 +336,17 @@ mod tests {
 
     #[test]
     fn a_change_leaving_attachments_out_fits_only_the_outline_it_was_decided_from() {
+        // given: an outline held
         let held = an_outline(vec![a_section("kept", None)]);
 
+        // then: a change leaving attachments out fits it when decided from it
         assert!(held.fits(&a_change_since(1, None)));
+        // and: not when decided from a later one
         assert!(
             !held.fits(&a_change_since(2, None)),
             "decided over a change this copy has not seen, the attachments it leaves out may have changed"
         );
+        // and: a change telling attachments fits it either way
         assert!(
             held.fits(&a_change_since(2, Some(Vec::new()))),
             "a change telling every section's attachments fits whatever was held"
@@ -351,12 +355,14 @@ mod tests {
 
     #[test]
     fn a_change_takes_the_scenes_it_sends_and_keeps_the_scenes_it_does_not() {
+        // given: an outline of sections with scenes and one without
         let mut kept = a_section("kept", None);
         kept.attachments = vec![a_scene("scene_1")];
         let mut moved = a_section("moved", None);
         moved.attachments = vec![a_scene("scene_2")];
         let held = an_outline(vec![kept, moved, a_section("removed", None)]);
 
+        // when: a change sends the scenes of one section, leaves another's out and the last one away
         let now = held.changed_by(OutlineChange {
             id: OutlineId::from("outline_1".to_owned()),
             since: 6,
@@ -368,7 +374,9 @@ mod tests {
             ],
         });
 
+        // then: the outline is at the change's version
         assert_eq!(now.version, 7);
+        // and: it holds the change's sections with the scenes sent or kept
         assert_eq!(
             now.sections
                 .iter()
@@ -385,6 +393,7 @@ mod tests {
 
     #[test]
     fn a_book_is_read_depth_first_with_each_section_before_its_children() {
+        // given: an outline with children stored after the next part
         let outline = an_outline(vec![
             a_section("part_1", None),
             a_section("part_2", None),
@@ -394,6 +403,7 @@ mod tests {
             a_section("chapter_3", Some("part_2")),
         ]);
 
+        // then: it reads each section followed by its own, deeper by one
         assert_eq!(
             read(&outline),
             vec![
@@ -410,6 +420,7 @@ mod tests {
 
     #[test]
     fn an_empty_book_has_nothing_to_read() {
+        // expect: an empty outline reads as nothing
         assert!(an_outline(Vec::new()).in_reading_order().is_empty());
     }
 }
@@ -732,6 +743,7 @@ mod taken_in_tests {
 
     #[test]
     fn a_section_added_after_another_lands_beside_it_and_the_version_moves_on() {
+        // when: a section is added after another
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionAdded {
                 section: "one_ab".to_owned(),
@@ -741,6 +753,7 @@ mod taken_in_tests {
             })
             .expect("its place is known");
 
+        // then: it lies right after that one under the same parent, titled as added
         assert_eq!(
             shape(&outline),
             vec![
@@ -753,11 +766,13 @@ mod taken_in_tests {
             ]
         );
         assert_eq!(outline.sections[2].title, "Between");
+        // and: the outline is a version further
         assert_eq!(outline.version, 8);
     }
 
     #[test]
     fn a_section_added_with_no_neighbour_comes_first_among_its_siblings() {
+        // when: a section is added at the top with nothing before it
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionAdded {
                 section: "zero".to_owned(),
@@ -767,11 +782,13 @@ mod taken_in_tests {
             })
             .expect("the top of the book is known");
 
+        // then: it comes first
         assert_eq!(shape(&outline)[0], "zero");
     }
 
     #[test]
     fn a_section_added_twice_or_beside_one_not_there_does_not_fit() {
+        // given: a book
         let added = |section: &str, under: Option<&str>, after: Option<&str>| {
             a_book().taken_in(OutlineEventDTO::SectionAdded {
                 section: section.to_owned(),
@@ -781,13 +798,16 @@ mod taken_in_tests {
             })
         };
 
+        // expect: adding a section there already does not fit
         assert_eq!(added("two", None, None), None);
+        // and: neither does adding one under a section not there nor after one not among its siblings
         assert_eq!(added("new", Some("nowhere"), None), None);
         assert_eq!(added("new", None, Some("one_a")), None);
     }
 
     #[test]
     fn a_section_retitled_keeps_its_place() {
+        // when: a section is retitled
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionRetitled {
                 section: "one_b".to_owned(),
@@ -795,12 +815,14 @@ mod taken_in_tests {
             })
             .expect("the section is there");
 
+        // then: it carries the new title where it was
         assert_eq!(outline.sections[2].title, "The middle");
         assert_eq!(shape(&outline), shape(&a_book()));
     }
 
     #[test]
     fn a_section_moved_takes_what_is_inside_it_along() {
+        // when: a section with sections inside is moved after the next
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionMoved {
                 section: "one".to_owned(),
@@ -809,6 +831,7 @@ mod taken_in_tests {
             })
             .expect("its place is known");
 
+        // then: what was inside it moved along
         assert_eq!(
             shape(&outline),
             vec!["two", "one", "one_a in one", "one_b in one", "one_c in one"]
@@ -817,6 +840,7 @@ mod taken_in_tests {
 
     #[test]
     fn a_section_moved_inside_itself_or_after_itself_does_not_fit() {
+        // given: a book
         let moved = |under: Option<&str>, after: Option<&str>| {
             a_book().taken_in(OutlineEventDTO::SectionMoved {
                 section: "one".to_owned(),
@@ -825,18 +849,22 @@ mod taken_in_tests {
             })
         };
 
+        // expect: moving a section under one inside it does not fit
         assert_eq!(moved(Some("one_a"), None), None);
+        // and: neither does moving it after itself
         assert_eq!(moved(None, Some("one")), None);
     }
 
     #[test]
     fn a_section_promoted_adopts_the_siblings_after_it() {
+        // when: a middle child is promoted
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionPromoted {
                 section: "one_b".to_owned(),
             })
             .expect("it has a parent to step out of");
 
+        // then: it follows its parent and holds the siblings that were after it
         assert_eq!(
             shape(&outline),
             vec!["one", "one_a in one", "one_b", "one_c in one_b", "two"]
@@ -845,12 +873,14 @@ mod taken_in_tests {
 
     #[test]
     fn a_section_demoted_goes_last_into_the_one_before_it() {
+        // when: a section is demoted
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionDemoted {
                 section: "two".to_owned(),
             })
             .expect("it has a section before it");
 
+        // then: it is the last inside the one before it
         assert_eq!(
             shape(&outline),
             vec![
@@ -865,12 +895,14 @@ mod taken_in_tests {
 
     #[test]
     fn a_section_with_nowhere_to_step_does_not_fit() {
+        // expect: the first top section can neither be promoted
         assert_eq!(
             a_book().taken_in(OutlineEventDTO::SectionPromoted {
                 section: "one".to_owned()
             }),
             None
         );
+        // and: nor demoted
         assert_eq!(
             a_book().taken_in(OutlineEventDTO::SectionDemoted {
                 section: "one".to_owned()
@@ -881,17 +913,20 @@ mod taken_in_tests {
 
     #[test]
     fn a_section_removed_leaves_what_was_inside_it_in_its_place() {
+        // when: a top section with sections inside is removed
         let outline = a_book()
             .taken_in(OutlineEventDTO::SectionRemoved {
                 section: "one".to_owned(),
             })
             .expect("the section is there");
 
+        // then: they take its place at the top
         assert_eq!(shape(&outline), vec!["one_a", "one_b", "one_c", "two"]);
     }
 
     #[test]
     fn a_section_removed_from_among_its_siblings_leaves_its_own_in_its_place_there() {
+        // when: a middle child with children of its own is removed
         let outline = an_outline(vec![
             a_section("one", None),
             a_section("one_a", Some("one")),
@@ -905,6 +940,7 @@ mod taken_in_tests {
         })
         .expect("the section is there");
 
+        // then: its children take its place between its siblings
         assert_eq!(
             shape(&outline),
             vec![
@@ -919,6 +955,7 @@ mod taken_in_tests {
 
     #[test]
     fn something_attached_leaves_where_it_was_and_lands_after_its_neighbour() {
+        // given: a book with two scenes in one section and one in another
         let mut book = a_book();
         book.sections[1].attachments = vec![
             Attachment::Scene(SceneId::from("scene_1".to_owned())),
@@ -926,6 +963,7 @@ mod taken_in_tests {
         ];
         book.sections[4].attachments = vec![Attachment::Scene(SceneId::from("scene_3".to_owned()))];
 
+        // when: a scene of the first is attached after the one in the other
         let outline = book
             .taken_in(OutlineEventDTO::Attached {
                 attachment: scene("scene_1"),
@@ -934,10 +972,12 @@ mod taken_in_tests {
             })
             .expect("the section is there");
 
+        // then: it has left the first
         assert_eq!(
             outline.sections[1].attachments,
             vec![Attachment::Scene(SceneId::from("scene_2".to_owned()))]
         );
+        // and: lies after its neighbour in the other
         assert_eq!(
             outline.sections[4].attachments,
             vec![
@@ -949,9 +989,11 @@ mod taken_in_tests {
 
     #[test]
     fn something_detached_leaves_and_what_is_not_there_does_not_fit() {
+        // given: a book with a scene attached
         let mut book = a_book();
         book.sections[0].attachments = vec![Attachment::Scene(SceneId::from("scene_1".to_owned()))];
 
+        // when: it is detached
         let outline = book
             .clone()
             .taken_in(OutlineEventDTO::Detached {
@@ -960,7 +1002,9 @@ mod taken_in_tests {
             })
             .expect("it is there");
 
+        // then: it has left
         assert!(outline.sections[0].attachments.is_empty());
+        // and: detaching a scene not there does not fit
         assert_eq!(
             book.taken_in(OutlineEventDTO::Detached {
                 attachment: scene("scene_9"),
@@ -972,6 +1016,7 @@ mod taken_in_tests {
 
     #[test]
     fn a_change_to_a_section_not_there_or_an_outline_started_or_discarded_does_not_fit() {
+        // expect: retitling, removing or attaching to a section not there does not fit
         assert_eq!(
             a_book().taken_in(OutlineEventDTO::SectionRetitled {
                 section: "nowhere".to_owned(),
@@ -993,6 +1038,7 @@ mod taken_in_tests {
             }),
             None
         );
+        // and: neither does a start nor a discarding of an open outline
         assert_eq!(
             a_book().taken_in(OutlineEventDTO::Started {
                 project: "project_1".to_owned()

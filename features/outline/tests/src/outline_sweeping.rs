@@ -48,6 +48,7 @@ fn asked_to_sweep(project: &str) -> Message {
 
 #[tokio::test]
 async fn an_outline_is_discarded_in_the_system_s_name() {
+    // given: an outline an author opened
     let (wired, sweep) = a_workbench();
     let opened = wired
         .outlines
@@ -56,11 +57,13 @@ async fn an_outline_is_discarded_in_the_system_s_name() {
         .expect("opening should succeed")
         .id;
 
+    // when: its project is swept
     sweep
         .handle(&asked_to_sweep("project_1"))
         .await
         .expect("sweeping should succeed");
 
+    // then: it is discarded in the system's name
     let recorded = wired
         .store
         .read_from(&AggregateId::from(&opened), KIND, Version::ZERO)
@@ -79,6 +82,7 @@ async fn an_outline_is_discarded_in_the_system_s_name() {
 
 #[tokio::test]
 async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
+    // given: an outline the catalog has not heard of yet
     let (wired, sweep) = a_workbench();
     let opened = wired
         .outlines
@@ -96,11 +100,13 @@ async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
         "nothing has relayed the start yet, so the catalog cannot know this outline"
     );
 
+    // when: its project is swept
     sweep
         .handle(&asked_to_sweep("project_1"))
         .await
         .expect("the sweep should take the deletion");
 
+    // then: it is discarded
     let standing = wired
         .outlines
         .read(&opened.to_string(), &an_author())
@@ -114,8 +120,10 @@ async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
 
 #[tokio::test]
 async fn a_project_that_never_opened_an_outline_is_swept_without_complaint() {
+    // given: a project that never opened an outline
     let (_wired, sweep) = a_workbench();
 
+    // then: sweeping it succeeds
     sweep
         .handle(&asked_to_sweep("project_1"))
         .await
@@ -124,6 +132,7 @@ async fn a_project_that_never_opened_an_outline_is_swept_without_complaint() {
 
 #[tokio::test]
 async fn hearing_the_same_deletion_twice_is_harmless() {
+    // given: an outline of a project
     let (wired, sweep) = a_workbench();
     wired
         .outlines
@@ -131,6 +140,7 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
         .await
         .expect("opening should succeed");
 
+    // then: sweeping the project twice succeeds each time
     for _ in 0..2 {
         sweep
             .handle(&asked_to_sweep("project_1"))
@@ -141,6 +151,7 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
 
 #[tokio::test]
 async fn only_the_deleted_project_loses_its_outline() {
+    // given: an outline of another project
     let (wired, sweep) = a_workbench();
     let kept = wired
         .outlines
@@ -149,11 +160,13 @@ async fn only_the_deleted_project_loses_its_outline() {
         .expect("opening should succeed")
         .id;
 
+    // when: a project is swept
     sweep
         .handle(&asked_to_sweep("project_1"))
         .await
         .expect("the sweep should take the deletion");
 
+    // then: the other outline is not discarded
     assert!(
         !wired
             .outlines
@@ -167,6 +180,7 @@ async fn only_the_deleted_project_loses_its_outline() {
 
 #[tokio::test]
 async fn a_swept_outline_leaves_the_catalog() {
+    // given: an outline the catalog lists
     let (wired, sweep) = a_workbench();
     wired
         .outlines
@@ -188,12 +202,14 @@ async fn a_swept_outline_leaves_the_catalog() {
         "the start should have reached the catalog"
     );
 
+    // when: its project is swept
     sweep
         .handle(&asked_to_sweep("project_1"))
         .await
         .expect("the sweep should take the deletion");
     wired.settle().await;
 
+    // then: the catalog no longer lists it
     assert_eq!(
         listed().await,
         0,
@@ -239,14 +255,18 @@ async fn buried(wired: &Wired, project: &str) -> bool {
 
 #[tokio::test]
 async fn a_deletion_lays_the_project_s_tombstone_and_asks_for_the_sweep() {
+    // given: a project
     let (wired, _sweep) = a_workbench();
 
+    // when: its deletion is heard
     remembering(&wired, InMemoryTransactions::new())
         .handle(&deleted("project_1"))
         .await
         .expect("the deletion should be heard");
 
+    // then: its tombstone is laid
     assert!(buried(&wired, "project_1").await);
+    // and: its sweep is asked for
     assert_eq!(
         wired.outbox.waiting_to_be_published(),
         1,
@@ -256,19 +276,24 @@ async fn a_deletion_lays_the_project_s_tombstone_and_asks_for_the_sweep() {
 
 #[tokio::test]
 async fn a_deletion_heard_in_a_hearing_that_does_not_commit_lays_nothing_and_asks_nothing() {
+    // given: a project
     let (wired, _sweep) = a_workbench();
 
+    // when: its deletion is heard in a hearing that does not commit
     remembering(&wired, InMemoryTransactions::refusing_commits())
         .handle(&deleted("project_1"))
         .await
         .expect_err("a hearing that does not commit is not handled");
 
+    // then: no tombstone is laid
     assert!(!buried(&wired, "project_1").await);
+    // and: no sweep is asked for
     assert_eq!(wired.outbox.waiting_to_be_published(), 0);
 }
 
 #[tokio::test]
 async fn a_deleted_project_opens_no_outline() {
+    // given: a deleted project
     let (wired, _sweep) = a_workbench();
     wired
         .outlines
@@ -276,9 +301,12 @@ async fn a_deleted_project_opens_no_outline() {
         .await
         .expect("laying a project's tombstone should succeed");
 
+    // when: its outline is opened
     let refused = wired.outlines.open("project_1", &an_author()).await;
 
+    // then: it is refused as not there
     assert!(matches!(refused, Err(OutlinesError::ProjectNotThere)));
+    // and: nothing is claimed for it
     assert_eq!(
         wired
             .registry
@@ -292,6 +320,7 @@ async fn a_deleted_project_opens_no_outline() {
 
 #[tokio::test]
 async fn a_outline_opened_before_the_deletion_is_discarded_once_the_sweep_it_asks_for_comes() {
+    // given: an outline of a project
     let (wired, _sweep) = a_workbench();
     let opened = wired
         .outlines
@@ -301,12 +330,14 @@ async fn a_outline_opened_before_the_deletion_is_discarded_once_the_sweep_it_ask
         .id;
     wired.settle().await;
 
+    // when: the project's deletion is heard
     remembering(&wired, InMemoryTransactions::new())
         .handle(&deleted("project_1"))
         .await
         .expect("the deletion should be heard");
     wired.settle().await;
 
+    // then: the outline is discarded
     assert!(
         wired
             .outlines

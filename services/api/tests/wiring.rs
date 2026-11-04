@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, SignUp, Storage};
 
-async fn new_app() -> Router {
+async fn an_app() -> Router {
     weaveling_service_api::app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
 }
 
@@ -47,7 +47,7 @@ async fn post_json(path: &str, body: &str) -> (StatusCode, String) {
 }
 
 async fn reply(request: Request<Body>) -> (StatusCode, String) {
-    let response = new_app()
+    let response = an_app()
         .await
         .oneshot(request)
         .await
@@ -62,16 +62,20 @@ async fn reply(request: Request<Body>) -> (StatusCode, String) {
 
 #[tokio::test]
 async fn the_health_check_answers_ok() {
+    // when: the health check is asked
     let (status, body) = get("/api/service/health").await;
 
+    // then: it answers ok
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "ok");
 }
 
 #[tokio::test]
 async fn the_projects_feature_is_mounted_under_api() {
+    // when: the projects are listed under api
     let (status, body) = get("/api/projects").await;
 
+    // then: an empty list is answered
     assert_eq!(status, StatusCode::OK, "body was {body}");
     assert_eq!(body, "[]");
 }
@@ -90,6 +94,7 @@ async fn signing_up(accounts: Accounts) -> StatusCode {
 
 #[tokio::test]
 async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
+    // given: a server for each setting of accounts and signing up
     for (accounts, sign_up, said) in [
         (
             Accounts::On,
@@ -113,8 +118,10 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
                 .signing_up(sign_up),
         ));
 
+        // when: its mode is asked
         let answered = server.get("/api/service/mode").await;
 
+        // then: it says whether it keeps accounts and who may sign up
         answered.assert_status_ok();
         assert_eq!(
             answered.json::<Value>(),
@@ -126,12 +133,14 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
 
 #[tokio::test]
 async fn a_server_signing_up_by_invitation_refuses_a_plain_sign_up_and_takes_links() {
+    // given: a server signing up by invitation
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::On, Arc::new(SystemClock))
             .await
             .signing_up(SignUp::ByInvitation),
     ));
 
+    // when: one signs up plainly and one by a link
     let plain = server
         .post("/api/accounts")
         .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
@@ -141,11 +150,13 @@ async fn a_server_signing_up_by_invitation_refuses_a_plain_sign_up_and_takes_lin
         .json(&json!({ "token": "a token nobody was given", "name": "Ada", "password": "correct horse battery" }))
         .await;
 
+    // then: the plain sign up is refused
     plain.assert_status(StatusCode::FORBIDDEN);
     assert_eq!(
         plain.json::<Value>()["type"],
         "signing-up-by-invitation-only"
     );
+    // and: a link is weighed for itself
     by_link.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
         by_link.json::<Value>()["type"],
@@ -156,10 +167,12 @@ async fn a_server_signing_up_by_invitation_refuses_a_plain_sign_up_and_takes_lin
 
 #[tokio::test]
 async fn unless_told_otherwise_anyone_may_sign_up() {
+    // given: a server with accounts told nothing about signing up
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
     ));
 
+    // then: anyone may sign up
     assert_eq!(
         server.get("/api/service/mode").await.json::<Value>()["sign_up"],
         "open"
@@ -168,17 +181,22 @@ async fn unless_told_otherwise_anyone_may_sign_up() {
 
 #[tokio::test]
 async fn with_accounts_on_the_work_waits_behind_signing_in() {
+    // given: a server with accounts
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
     ));
 
+    // when: the work is asked for without signing in
     let refused = server.get("/api/projects").await;
+    // then: it is refused as not signed in
     refused.assert_status(StatusCode::UNAUTHORIZED);
     assert_eq!(refused.json::<Value>()["type"], "not-signed-in");
+    // and: the health check still answers
     server
         .get("/api/service/health")
         .await
         .assert_status(StatusCode::OK);
+    // and: neither the session nor the notifications answer
     server
         .get("/api/sessions/current")
         .await
@@ -191,24 +209,29 @@ async fn with_accounts_on_the_work_waits_behind_signing_in() {
 
 #[tokio::test]
 async fn with_accounts_on_becoming_the_operator_waits_behind_signing_in_too() {
+    // given: a server with accounts
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
     ));
 
+    // when: one asks to become the operator without signing in
     let refused = server
         .post("/api/operators")
         .json(&json!({ "code": "a guess" }))
         .await;
 
+    // then: it is refused as not signed in
     refused.assert_status(StatusCode::UNAUTHORIZED);
     assert_eq!(refused.json::<Value>()["type"], "not-signed-in");
 }
 
 #[tokio::test]
 async fn a_code_is_drawn_at_start_only_where_accounts_are_on() {
+    // given: a service with accounts and one without
     let on = Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await;
     let off = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
 
+    // then: only the one with accounts draws a code
     assert!(
         on.draw_operator_code()
             .await
@@ -227,14 +250,17 @@ async fn a_code_is_drawn_at_start_only_where_accounts_are_on() {
 
 #[tokio::test]
 async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
+    // given: a server without accounts
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await,
     ));
 
+    // then: the work answers
     server
         .get("/api/projects")
         .await
         .assert_status(StatusCode::OK);
+    // and: there are no notifications
     server
         .get("/api/notifications")
         .await
@@ -243,6 +269,7 @@ async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
 
 #[tokio::test]
 async fn sign_ups_are_taken_only_where_accounts_are_on() {
+    // expect: a sign up is taken only where accounts are on
     assert_eq!(signing_up(Accounts::On).await, StatusCode::ACCEPTED);
     assert_eq!(
         signing_up(Accounts::Off).await,
@@ -253,38 +280,48 @@ async fn sign_ups_are_taken_only_where_accounts_are_on() {
 
 #[tokio::test]
 async fn feature_routes_are_not_reachable_outside_the_api_prefix() {
+    // when: a feature is asked for outside the api prefix
     let (status, _) = get("/projects").await;
 
+    // then: it is not found
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn an_unknown_path_answers_404() {
+    // when: an unknown path is asked for
     let (status, _) = get("/api/nope").await;
 
+    // then: it is not found
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn the_scenes_feature_is_mounted_under_api() {
+    // when: a scene is started under api
     let (status, body) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
+    // then: it is created
     assert_eq!(status, StatusCode::CREATED, "body was {body}");
     assert!(body.contains("scene_"), "body was {body}");
 }
 
 #[tokio::test]
 async fn the_refusals_are_mounted_under_the_service() {
+    // when: the refusals are listed under the service
     let (status, body) = get("/api/service/refusals").await;
 
+    // then: an empty list is answered
     assert_eq!(status, StatusCode::OK, "body was {body}");
     assert_eq!(body, "[]");
 }
 
 #[tokio::test]
 async fn there_is_no_socket_for_one_scene_any_more() {
+    // when: a socket for one scene is asked for
     let (status, _) = get("/api/scenes/sync/weaveling").await;
 
+    // then: it is not found
     assert_eq!(
         status,
         StatusCode::NOT_FOUND,
@@ -294,8 +331,10 @@ async fn there_is_no_socket_for_one_scene_any_more() {
 
 #[tokio::test]
 async fn the_one_socket_is_under_api() {
+    // when: the one socket is asked for without a socket
     let (status, body) = get("/api/live").await;
 
+    // then: it asks for an upgrade
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
         body.contains("upgrade"),
@@ -305,8 +344,10 @@ async fn the_one_socket_is_under_api() {
 
 #[tokio::test]
 async fn the_socket_is_found_under_the_feature_it_belongs_to() {
+    // when: a socket is asked for outside its feature
     let (status, _) = get("/api/sync").await;
 
+    // then: it is not found
     assert_eq!(
         status,
         StatusCode::NOT_FOUND,
@@ -316,39 +357,47 @@ async fn the_socket_is_found_under_the_feature_it_belongs_to() {
 
 #[tokio::test]
 async fn the_two_features_do_not_shadow_each_other() {
+    // when: the projects are listed and a scene started
     let (projects, _) = get("/api/projects").await;
     let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
+    // then: each answers
     assert_eq!(projects, StatusCode::OK);
     assert_eq!(scenes, StatusCode::CREATED);
 }
 
 #[tokio::test]
 async fn the_ideas_feature_is_mounted_under_api() {
+    // when: an idea is captured under api
     let (status, body) = post_json(
         "/api/ideas",
         r#"{"project":"project_1","title":"The Loom"}"#,
     )
     .await;
 
+    // then: it is created
     assert_eq!(status, StatusCode::CREATED, "body was {body}");
     assert!(body.contains("idea_"), "body was {body}");
 }
 
 #[tokio::test]
 async fn the_ideas_listing_is_mounted_under_api() {
+    // when: the ideas are listed under api
     let (status, body) = get("/api/ideas?project=project_1").await;
 
+    // then: an empty list is answered
     assert_eq!(status, StatusCode::OK, "body was {body}");
     assert_eq!(body, "[]");
 }
 
 #[tokio::test]
 async fn every_feature_answers_without_shadowing_the_others() {
+    // when: each feature is asked
     let (projects, _) = get("/api/projects").await;
     let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
     let (ideas, _) = get("/api/ideas?project=project_1").await;
 
+    // then: each answers
     assert_eq!(projects, StatusCode::OK);
     assert_eq!(scenes, StatusCode::CREATED);
     assert_eq!(ideas, StatusCode::OK);
@@ -356,8 +405,10 @@ async fn every_feature_answers_without_shadowing_the_others() {
 
 #[tokio::test]
 async fn the_live_scenes_are_settled_before_the_service_stops() {
+    // given: a service in memory
     let adapters = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
 
+    // then: its live scenes are settled before it stops
     assert_eq!(
         adapters.settling().len(),
         1,
@@ -367,8 +418,10 @@ async fn the_live_scenes_are_settled_before_the_service_stops() {
 
 #[tokio::test]
 async fn the_socket_for_many_scenes_is_mounted_under_api() {
+    // when: the socket for many scenes is asked for without a socket
     let (status, body) = get("/api/scenes/sync").await;
 
+    // then: it asks for an upgrade
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
         body.contains("upgrade"),
@@ -378,6 +431,7 @@ async fn the_socket_for_many_scenes_is_mounted_under_api() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
+    // given: a project on a relayed server in memory
     let adapters = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
     let relays = Relays::started(
         adapters.outboxes(),
@@ -397,12 +451,14 @@ async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
         .expect("a project is made with an id")
         .to_owned();
 
+    // when: an idea is captured in it
     server
         .post("/api/ideas")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await
         .assert_status(StatusCode::CREATED);
 
+    // then: it reaches the catalog of ideas
     let mut listed = Value::Null;
     for _ in 0..1_000 {
         listed = server
@@ -424,6 +480,7 @@ async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
 
 #[tokio::test]
 async fn a_server_with_a_mail_drop_leaves_each_code_there() {
+    // given: a server with accounts mailing into a drop
     let drop = std::env::temp_dir().join(format!("weaveling-app-mail-drop-{}", std::process::id()));
     let _gone = fs::remove_dir_all(&drop);
     let mailing = Mailing::Dropped { into: drop.clone() };
@@ -438,12 +495,14 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
         .expect("nothing kept in memory needs preparing"),
     ));
 
+    // when: an address signs up
     server
         .post("/api/accounts")
         .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
         .await
         .assert_status(StatusCode::ACCEPTED);
 
+    // then: one mail with a code is left there for it
     let dropped: Vec<Value> = fs::read_dir(&drop)
         .expect("the drop should have been made")
         .map(|entry| {
@@ -548,16 +607,20 @@ async fn an_operator_signed_in_on_a_server_signing_up(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged_code() {
+    // given: an operator signed in on a server signing up by invitation
     let signed_in =
         an_operator_signed_in_on_a_server_signing_up("first-operator", SignUp::ByInvitation).await;
 
+    // when: its mode is asked
     let told: Value = signed_in.server.get("/api/service/mode").await.json();
 
+    // then: no operator is wanted any more
     assert_eq!(
         told,
         json!({ "accounts": true, "sign_up": "invitation" }),
         "with an operator there, nobody is asked to set the instance up any more"
     );
+    // and: an operator code signs nobody up
     signed_in
         .server
         .post("/api/accounts")
@@ -571,9 +634,11 @@ async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("instance").await;
     let server = &signed_in.server;
 
+    // then: her account reaches the list of accounts as operator
     let mut listed = Value::Null;
     for _ in 0..1_000 {
         listed = server.get("/api/instance/accounts").await.json();
@@ -593,8 +658,10 @@ async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_page_it_came_from() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("inviting").await;
 
+    // when: she invites an address from a page
     signed_in
         .server
         .post("/api/invitations")
@@ -603,6 +670,7 @@ async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_pa
         .await
         .assert_status(StatusCode::CREATED);
 
+    // then: one link to that page is mailed to the address
     mail_drop::invitation_token_mailed_to(&signed_in.drop, "grace@example.com")
         .await
         .expect("the link should have been mailed, once the issue was heard");
@@ -623,6 +691,7 @@ async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_pa
 
 #[tokio::test(flavor = "multi_thread")]
 async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
+    // given: an invitation mailed by an operator
     let signed_in = an_operator_signed_in_on_a_server("invited").await;
     signed_in
         .server
@@ -635,6 +704,7 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
         .await
         .expect("the link should have been mailed");
 
+    // when: its link is followed to sign up
     let mut status = StatusCode::IM_A_TEAPOT;
     for _ in 0..1_000 {
         status = signed_in
@@ -650,11 +720,13 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
+    // then: the account is made
     assert_eq!(
         status,
         StatusCode::CREATED,
         "accounts hear of the invitation only through the outbox, its relay and their own listener"
     );
+    // and: it may sign in
     signed_in
         .server
         .post("/api/sessions")
@@ -681,7 +753,9 @@ async fn listed_once(server: &TestServer, settled: impl Fn(&Value) -> bool) -> V
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("listed").await;
+    // when: she invites an address
     signed_in
         .server
         .post("/api/invitations")
@@ -690,6 +764,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
         .await
         .assert_status(StatusCode::CREATED);
 
+    // then: the invitation is listed open
     let open = listed_once(&signed_in.server, |listed| {
         listed["invitations"]
             .as_array()
@@ -699,6 +774,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
     assert_eq!(open["invitations"][0]["email"], "grace@example.com");
     assert_eq!(open["invitations"][0]["status"], "open");
 
+    // when: its link is followed to sign up
     let token = mail_drop::invitation_token_mailed_to(&signed_in.drop, "grace@example.com")
         .await
         .expect("the link should have been mailed");
@@ -710,6 +786,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
         .await
         .assert_status(StatusCode::CREATED);
 
+    // then: it is listed no more
     let taken_up = listed_once(&signed_in.server, |listed| {
         listed["invitations"].as_array().is_some_and(Vec::is_empty)
     })
@@ -725,8 +802,10 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_invitation_to_an_address_that_has_an_account_is_listed_as_declined_and_why() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("declined").await;
 
+    // when: she invites her own address
     signed_in
         .server
         .post("/api/invitations")
@@ -735,6 +814,7 @@ async fn an_invitation_to_an_address_that_has_an_account_is_listed_as_declined_a
         .await
         .assert_status(StatusCode::CREATED);
 
+    // then: the invitation is listed declined, and why
     let declined = listed_once(&signed_in.server, |listed| {
         listed["invitations"][0]["status"] == "declined"
     })
@@ -751,6 +831,7 @@ async fn an_invitation_to_an_address_that_has_an_account_is_listed_as_declined_a
 
 #[tokio::test]
 async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_signing_in() {
+    // given: a server with accounts and one without
     for (accounts, status) in [
         (Accounts::On, StatusCode::UNAUTHORIZED),
         (Accounts::Off, StatusCode::NOT_FOUND),
@@ -759,6 +840,7 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
             Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
         ));
 
+        // then: making an invitation asks for signing in, or is not found without accounts
         server
             .post("/api/invitations")
             .add_header(ORIGIN, "https://weaveling.example.com")
@@ -770,6 +852,7 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
 
 #[tokio::test]
 async fn an_invitation_is_turned_down_by_its_link_without_signing_in_where_there_are_accounts() {
+    // given: a server with accounts and one without
     for (accounts, status) in [
         (Accounts::On, StatusCode::UNPROCESSABLE_ENTITY),
         (Accounts::Off, StatusCode::NOT_FOUND),
@@ -778,6 +861,7 @@ async fn an_invitation_is_turned_down_by_its_link_without_signing_in_where_there
             Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
         ));
 
+        // then: turning down by a link is weighed without signing in, or not found without accounts
         server
             .post("/api/invitations/decline")
             .json(&json!({ "token": "a link nobody was given" }))
@@ -788,18 +872,22 @@ async fn an_invitation_is_turned_down_by_its_link_without_signing_in_where_there
 
 #[tokio::test]
 async fn the_server_does_the_invitations_and_notifications_chores_only_where_there_are_accounts() {
+    // given: a service with accounts and one without
     for (accounts, retiring) in [(Accounts::On, true), (Accounts::Off, false)] {
         let adapters = Adapters::in_memory(accounts, Arc::new(SystemClock)).await;
 
+        // when: its chores are named
         let named: Vec<&str> = adapters
             .chores()
             .iter()
             .map(|chore| chore.named())
             .collect();
 
+        // then: only with accounts does it retire invitations and forget notices and hearings
         assert_eq!(named.contains(&"retire-due-invitations"), retiring);
         assert_eq!(named.contains(&"forget-old-notices"), retiring);
         assert_eq!(named.contains(&"forget-old-account-hearings"), retiring);
+        // and: it forgets appearance tombstones either way
         assert!(
             named.contains(&"forget-old-appearance-tombstones"),
             "tombstones are laid with or without accounts"
@@ -809,10 +897,12 @@ async fn the_server_does_the_invitations_and_notifications_chores_only_where_the
 
 #[tokio::test]
 async fn without_accounts_the_one_local_person_may_do_everything_in_any_project() {
+    // given: the authorizer of a service without accounts
     let authorizer = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock))
         .await
         .authorizer();
 
+    // then: the local person may do anything in any project
     for act in [Act::Read, Act::Write, Act::Manage] {
         assert!(
             authorizer
@@ -825,6 +915,7 @@ async fn without_accounts_the_one_local_person_may_do_everything_in_any_project(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_read_it() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("authorizing").await;
     let ada: Value = signed_in.server.get("/api/sessions/current").await.json();
     let ada = Agent::Account(
@@ -833,6 +924,7 @@ async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_
             .expect("the session names its account")
             .into(),
     );
+    // when: she starts a project
     let started: Value = signed_in
         .server
         .post("/api/projects")
@@ -841,6 +933,7 @@ async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_
         .json();
     let project = started["id"].as_str().expect("a project has an id");
 
+    // then: she may manage it
     let mut managing = false;
     for _ in 0..1_000 {
         managing = signed_in
@@ -858,6 +951,7 @@ async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_
         managing,
         "the start is relayed, its members founded and listed, and the authorizer asks the list"
     );
+    // and: an account not in it may not read it
     assert!(
         !signed_in
             .authorizer
@@ -870,14 +964,17 @@ async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
+    // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("listing").await;
     let server = &signed_in.server;
+    // when: she starts a project
     let started: Value = server
         .post("/api/projects")
         .json(&json!({ "name": "Ada's own" }))
         .await
         .json();
 
+    // then: she lists it alone
     let mut listed = Value::Null;
     for _ in 0..1_000 {
         listed = server.get("/api/projects").await.json();
@@ -889,6 +986,7 @@ async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
     assert_eq!(listed[0]["id"], started["id"]);
     assert_eq!(listed.as_array().map(Vec::len), Some(1));
 
+    // when: another account signs in
     server
         .post("/api/accounts")
         .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password" }))
@@ -905,6 +1003,7 @@ async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
         .await
         .assert_status_ok();
 
+    // then: it lists none
     let theirs: Value = server.get("/api/projects").await.json();
     assert_eq!(
         theirs,
@@ -918,6 +1017,7 @@ async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address_and_of_its_project()
  {
+    // given: an operator following the invitations to her address
     let signed_in = an_operator_signed_in_on_a_server("one-socket").await;
     let server = &signed_in.server;
     let ada: Value = server.get("/api/sessions/current").await.json();
@@ -943,6 +1043,7 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
         known,
         "invitations hear her sign-up through the outbox, and know her address"
     );
+    // and: following her projects
     socket
         .send_json(&json!({ "do": "subscribe", "id": "projects", "topic": "members", "about": { "mine": "true" } }))
         .await;
@@ -951,11 +1052,13 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
         .expect("told it is followed");
     assert_eq!(followed, json!({ "told": "following", "id": "projects" }));
 
+    // when: she starts a project
     let started: Value = server
         .post("/api/projects")
         .json(&json!({ "name": "Shared on one socket" }))
         .await
         .json();
+    // then: its founding is told on the socket
     let founded: Value = serde_json::from_str(
         &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
             .await
@@ -966,6 +1069,7 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
     assert_eq!(founded["frame"]["of"], started["id"]);
     assert_eq!(founded["frame"]["event"]["name"], "FOUNDED");
 
+    // when: she is invited into it
     let issued: Value = server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -975,6 +1079,7 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
         }))
         .await
         .json();
+    // then: the invitation is told on the same socket
     let invited: Value = serde_json::from_str(
         &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
             .await
@@ -989,6 +1094,7 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
 
 #[tokio::test]
 async fn the_one_socket_knows_every_topic_a_project_is_followed_by() {
+    // given: a socket to a server
     let server = TestServer::builder()
         .http_transport()
         .build(weaveling_service_api::app(
@@ -1000,6 +1106,7 @@ async fn the_one_socket_knows_every_topic_a_project_is_followed_by() {
         .into_websocket()
         .await;
 
+    // when: every topic a project is followed by is subscribed to, and one nobody registered
     for (topic, about) in [
         ("projects", json!({ "mine": "true" })),
         ("projects", json!({ "project": "project_1" })),
@@ -1017,6 +1124,7 @@ async fn the_one_socket_knows_every_topic_a_project_is_followed_by() {
             .await;
     }
 
+    // then: only the one nobody registered is unknown
     let mut unknown = Vec::new();
     while let Ok(told) =
         tokio::time::timeout(Duration::from_millis(500), socket.receive_json::<Value>()).await
@@ -1034,6 +1142,7 @@ async fn the_one_socket_knows_every_topic_a_project_is_followed_by() {
 
 #[tokio::test]
 async fn the_one_socket_is_there_only_behind_signing_in_where_there_are_accounts() {
+    // given: a server with accounts and one without
     for (accounts, status) in [
         (Accounts::On, StatusCode::UNAUTHORIZED),
         (Accounts::Off, StatusCode::SWITCHING_PROTOCOLS),
@@ -1044,6 +1153,7 @@ async fn the_one_socket_is_there_only_behind_signing_in_where_there_are_accounts
                 Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
             ));
 
+        // then: the socket asks for signing in where there are accounts and opens where there are none
         assert_eq!(
             server.get_websocket("/api/live").await.status_code(),
             status
@@ -1053,6 +1163,7 @@ async fn the_one_socket_is_there_only_behind_signing_in_where_there_are_accounts
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
+    // given: a project its owner reads
     let signed_in = an_operator_signed_in_on_a_server("guarding").await;
     let server = &signed_in.server;
     let started: Value = server
@@ -1076,6 +1187,7 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         "its owner reads it once the members have heard of her"
     );
 
+    // when: another account signs in
     server
         .post("/api/accounts")
         .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password" }))
@@ -1092,6 +1204,7 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .await
         .assert_status_ok();
 
+    // then: it neither reads, renames nor deletes the project
     server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
     server
         .patch(&at)
@@ -1102,6 +1215,7 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .delete(&at)
         .await
         .assert_status(StatusCode::NOT_FOUND);
+    // and: neither lists nor captures its ideas
     let project = started["id"].as_str().expect("an id");
     server
         .get(&format!("/api/ideas?project={project}"))
@@ -1112,6 +1226,7 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .json(&json!({ "project": project, "title": "Grace's idea" }))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+    // and: neither follows the project nor its ideas
     let mut socket = server
         .get_websocket("/api/live")
         .await
@@ -1134,6 +1249,7 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_signing_out_closes_the_one_socket_and_the_editing_socket_as_ended() {
+    // given: an operator signed in on both sockets
     let signed_in = an_operator_signed_in_on_a_server("signing-out").await;
     let mut live = signed_in
         .server
@@ -1148,12 +1264,14 @@ async fn on_a_server_signing_out_closes_the_one_socket_and_the_editing_socket_as
         .into_websocket()
         .await;
 
+    // when: she signs out
     signed_in
         .server
         .delete("/api/sessions/current")
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: both close as ended
     for socket in [&mut live, &mut editing] {
         assert!(matches!(
             tokio::time::timeout(Duration::from_secs(1), socket.receive_message()).await,
@@ -1165,6 +1283,7 @@ async fn on_a_server_signing_out_closes_the_one_socket_and_the_editing_socket_as
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notifications() {
+    // given: an operator managing a project
     let signed_in = an_operator_signed_in_on_a_server("notified").await;
     let server = &signed_in.server;
     let ada: Value = server.get("/api/sessions/current").await.json();
@@ -1189,6 +1308,7 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    // and: an account that joined it as author
     server
         .post("/api/invitations")
         .add_header(ORIGIN, "https://weaveling.example.com")
@@ -1222,17 +1342,20 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
     }
     let grace = grace.expect("Grace joins the project she was invited into");
 
+    // when: its role is changed to reader
     server
         .patch(&format!("/api/members/{project}/accounts/{grace}"))
         .json(&json!({ "role": "reader" }))
         .await
         .assert_status_ok();
+    // and: it signs in
     server
         .post("/api/sessions")
         .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
         .await
         .assert_status_ok();
 
+    // then: it finds the change in its notifications
     let mut notices = Value::Null;
     for _ in 0..1_000 {
         notices = server.get("/api/notifications").await.json();
@@ -1249,6 +1372,7 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
         json!({ "kind": "role-changed", "project": project, "role": "reader", "by": ada }),
         "the change is relayed, noted for Grace, listed, and found on coming in"
     );
+    // and: the notice names who changed it and the project
     assert_eq!(
         notices[0]["names"],
         json!({ ada: "Ada", project: "Shared" }),
@@ -1260,6 +1384,7 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
 
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_an_account_follows_its_notifications_on_the_one_socket() {
+    // given: a socket of a signed in account
     let signed_in = an_operator_signed_in_on_a_server("notifications-live").await;
     let mut socket = signed_in
         .server
@@ -1268,14 +1393,17 @@ async fn on_a_server_an_account_follows_its_notifications_on_the_one_socket() {
         .into_websocket()
         .await;
 
+    // when: it follows its notifications
     socket
         .send_json(&json!({ "do": "subscribe", "id": "bell", "topic": "notifications", "about": { "mine": "true" } }))
         .await;
 
+    // then: it is told it follows them
     let told: Value = tokio::time::timeout(Duration::from_secs(1), socket.receive_json())
         .await
         .expect("told whether it is followed");
     assert_eq!(told, json!({ "told": "following", "id": "bell" }));
+    // and: nothing else is told yet
     assert!(
         tokio::time::timeout(Duration::from_millis(300), socket.receive_json::<Value>())
             .await

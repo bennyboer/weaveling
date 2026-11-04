@@ -101,10 +101,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_feature_keeps_its_own_file_in_the_data_directory() {
+        // given: a data directory
         let directory = a_directory("file");
 
+        // when: a feature connects
         let pool = connect(&directory, "ideas").await.expect("should connect");
 
+        // then: it has a file of its own there
         assert!(
             directory.join("ideas.sqlite").is_file(),
             "one file per feature, so a feature's data stays unwritable by any other"
@@ -114,30 +117,37 @@ mod tests {
 
     #[tokio::test]
     async fn a_data_directory_that_does_not_exist_yet_is_made() {
+        // given: a data directory that does not exist yet
         let directory = a_directory("nested").join("deeper").join("still");
 
+        // when: a feature connects
         let pool = connect(&directory, "ideas").await.expect("should connect");
 
+        // then: its file is made there
         assert!(directory.join("ideas.sqlite").is_file());
         tidy(pool, &directory).await;
     }
 
     #[tokio::test]
     async fn the_file_is_written_ahead_so_readers_never_wait_for_the_writer() {
+        // given: a feature's database
         let directory = a_directory("wal");
         let pool = connect(&directory, "ideas").await.expect("should connect");
 
+        // when: its journal mode is asked for
         let mode: String = sqlx::query_scalar("PRAGMA journal_mode")
             .fetch_one(&pool)
             .await
             .expect("should ask");
 
+        // then: it is written ahead
         assert_eq!(mode, "wal");
         tidy(pool, &directory).await;
     }
 
     #[tokio::test]
     async fn foreign_keys_are_enforced_on_every_connection() {
+        // given: a feature's database with a table referring to another
         let directory = a_directory("keys");
         let pool = connect(&directory, "scenes").await.expect("should connect");
         sqlx::raw_sql(
@@ -148,10 +158,12 @@ mod tests {
         .await
         .expect("should create");
 
+        // when: a row refers to nothing
         let orphan = sqlx::query("INSERT INTO scene_ideas (scene) VALUES ('nowhere')")
             .execute(&pool)
             .await;
 
+        // then: it is refused
         assert!(
             orphan.is_err(),
             "SQLite ignores foreign keys unless every connection asks for them"
@@ -161,6 +173,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_schema_is_laid_down_once_however_often_it_is_asked_for() {
+        // given: a feature's database and a schema for it
         let directory = a_directory("lay-out");
         let scripts = directory.join("migrations");
         fs::create_dir_all(&scripts).expect("should make the scripts directory");
@@ -171,6 +184,7 @@ mod tests {
         .expect("should write the script");
         let pool = connect(&directory, "notes").await.expect("should connect");
 
+        // when: the schema is laid down twice
         for _ in 0..2 {
             let migrator = Migrator::new(scripts.as_path())
                 .await
@@ -180,6 +194,7 @@ mod tests {
                 .expect("laying out twice should be harmless");
         }
 
+        // then: its table is there once
         let tables: i64 =
             sqlx::query_scalar("SELECT count(*) FROM sqlite_master WHERE name = 'notes'")
                 .fetch_one(&pool)

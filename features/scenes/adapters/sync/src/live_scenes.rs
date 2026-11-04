@@ -526,12 +526,12 @@ mod tests {
             .encode_state_as_update_v1(&StateVector::default())
     }
 
-    fn empty_in(id: SceneId) -> Scene {
+    fn an_empty_scene(id: SceneId) -> Scene {
         Scene::empty(id, ProjectLink::from("project_1"))
     }
 
     fn a_live_scene() -> LiveScene {
-        LiveScene::open(empty_in(an_id(1_000)))
+        LiveScene::open(an_empty_scene(an_id(1_000)))
     }
 
     fn deliver(scene: &LiveScene, message: Message) -> Reaction {
@@ -542,16 +542,19 @@ mod tests {
 
     #[test]
     fn a_greeting_publishes_what_the_scene_already_has() {
+        // given: a live scene with prose
         let scene = a_live_scene();
         deliver(
             &scene,
             Message::JustHappened(a_paragraph("The loom stood silent.")),
         );
 
+        // when: a newcomer is greeted
         let Some(Message::WhatDoYouHave(state_vector)) = scene.greet().to_sender else {
             panic!("a greeting should ask the newcomer for their state");
         };
 
+        // then: the greeting carries what the scene has
         assert!(
             !state_vector.is_empty(),
             "the scene should publish its own state"
@@ -560,29 +563,37 @@ mod tests {
 
     #[test]
     fn a_greeting_also_asks_the_others_to_republish_their_cursors() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // when: a newcomer is greeted
         let reaction = scene.greet();
 
+        // then: the others are asked who is here
         assert_eq!(
             reaction.to_others,
             Some(Message::WhoIsHere),
             "without this a newcomer sees no cursors until someone moves"
         );
+        // and: nothing is stored
         assert_eq!(reaction.to_store, None, "joining is not a write");
     }
 
     #[test]
     fn a_newcomer_asking_what_we_have_is_told_everything() {
+        // given: a live scene with prose
         let scene = a_live_scene();
         deliver(
             &scene,
             Message::JustHappened(a_paragraph("The loom stood silent.")),
         );
-        let newcomer = empty_in(an_id(2_000));
+        // and: a newcomer holding nothing
+        let newcomer = an_empty_scene(an_id(2_000));
 
+        // when: the newcomer asks what the scene has
         let reaction = deliver(&scene, Message::WhatDoYouHave(newcomer.state_vector()));
 
+        // then: what it is told brings it up to date
         let Some(Message::HereIsWhatYouMissed(catch_up)) = reaction.to_sender else {
             panic!("expected a catch-up update, got {:?}", reaction.to_sender);
         };
@@ -592,32 +603,41 @@ mod tests {
 
     #[test]
     fn catching_a_newcomer_up_tells_nobody_else_and_stores_nothing() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // when: a newcomer asks what it has
         let reaction = deliver(
             &scene,
-            Message::WhatDoYouHave(empty_in(an_id(2)).state_vector()),
+            Message::WhatDoYouHave(an_empty_scene(an_id(2)).state_vector()),
         );
 
+        // then: nobody else is told
         assert_eq!(reaction.to_others, None);
+        // and: nothing is stored
         assert_eq!(reaction.to_store, None, "a read must not write");
     }
 
     #[test]
     fn an_edit_reaches_the_other_peers_and_the_store_but_is_not_echoed_back() {
+        // given: a live scene
         let scene = a_live_scene();
         let update = a_paragraph("The loom stood silent.");
 
+        // when: a peer's edit arrives
         let reaction = deliver(&scene, Message::JustHappened(update.clone()));
 
+        // then: it is not sent back to that peer
         assert_eq!(
             reaction.to_sender, None,
             "a peer must not receive its own edit"
         );
+        // and: it reaches the others
         assert_eq!(
             reaction.to_others,
             Some(Message::JustHappened(update.clone()))
         );
+        // and: the store, as it was
         assert_eq!(
             reaction.to_store,
             Some(update),
@@ -627,13 +647,16 @@ mod tests {
 
     #[test]
     fn a_live_scene_holds_the_document_itself_not_just_a_pipe() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // when: an edit arrives
         deliver(
             &scene,
             Message::JustHappened(a_paragraph("The loom stood silent.")),
         );
 
+        // then: the scene holds its prose
         assert_eq!(
             scene.text(),
             "The loom stood silent.",
@@ -643,54 +666,72 @@ mod tests {
 
     #[test]
     fn a_catch_up_from_a_peer_is_absorbed_like_any_other_edit() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // when: a catch-up from a peer arrives
         let reaction = deliver(
             &scene,
             Message::HereIsWhatYouMissed(a_paragraph("The loom stood silent.")),
         );
 
+        // then: the scene holds its prose
         assert_eq!(scene.text(), "The loom stood silent.");
+        // and: it is stored
         assert!(reaction.to_store.is_some(), "it is still durable prose");
     }
 
     #[test]
     fn awareness_is_relayed_without_being_understood_or_stored() {
+        // given: a live scene
         let scene = a_live_scene();
         let nonsense = vec![200, 13, 42, 7];
 
+        // when: awareness it cannot read arrives
         let reaction = deliver(&scene, Message::Awareness(nonsense.clone()));
 
+        // then: it reaches the others as it came
         assert_eq!(reaction.to_others, Some(Message::Awareness(nonsense)));
+        // and: not the sender
         assert_eq!(reaction.to_sender, None);
+        // and: not the store
         assert_eq!(
             reaction.to_store, None,
             "presence must never reach the store"
         );
+        // and: the document is untouched
         assert_eq!(scene.text(), "", "awareness must not touch the document");
     }
 
     #[test]
     fn asking_who_is_here_reaches_the_other_peers() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // when: a peer asks who is here
         let reaction = deliver(&scene, Message::WhoIsHere);
 
+        // then: the others are asked
         assert_eq!(reaction.to_others, Some(Message::WhoIsHere));
+        // and: nothing is stored
         assert_eq!(reaction.to_store, None);
     }
 
     #[test]
     fn an_unusable_update_is_refused_and_changes_nothing() {
+        // given: a live scene with prose
         let scene = a_live_scene();
         deliver(
             &scene,
             Message::JustHappened(a_paragraph("The loom stood silent.")),
         );
 
+        // when: an unusable update arrives
         let outcome = scene.receive(Message::JustHappened(vec![255, 255, 255, 255]));
 
+        // then: it is refused
         assert!(outcome.is_err(), "garbage must not be accepted");
+        // and: the scene is as it was
         assert_eq!(
             scene.text(),
             "The loom stood silent.",
@@ -700,8 +741,10 @@ mod tests {
 
     #[test]
     fn a_corrupt_state_vector_is_refused() {
+        // given: a live scene
         let scene = a_live_scene();
 
+        // then: a corrupt state vector is refused
         assert!(
             scene
                 .receive(Message::WhatDoYouHave(vec![255, 255, 255, 255]))

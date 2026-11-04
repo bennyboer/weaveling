@@ -67,6 +67,7 @@ mod tests {
 
     #[tokio::test]
     async fn where_one_person_does_the_work_they_may_do_everything() {
+        // expect: every agent may do every act and read everything
         for agent in [
             Agent::Local,
             Agent::System,

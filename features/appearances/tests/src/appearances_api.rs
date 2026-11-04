@@ -28,16 +28,20 @@ fn served(catalog: Arc<InMemoryAppearanceCatalog>) -> TestServer {
 
 #[tokio::test]
 async fn an_idea_nobody_placed_answers_with_nothing() {
+    // given: nothing placed anywhere
     let server = served(Arc::new(InMemoryAppearanceCatalog::new()));
 
+    // when: where an idea appears is asked
     let response = server.get("/appearances?idea=idea_1").await;
 
+    // then: nothing is answered
     response.assert_status_ok();
     assert!(response.json::<Vec<PlaceDTO>>().is_empty());
 }
 
 #[tokio::test]
 async fn an_idea_answers_with_every_place_it_appears() {
+    // given: an idea placed in a section and in a scene
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
     for place in [
         Place::Section(SectionLink::from("section_1")),
@@ -50,8 +54,10 @@ async fn an_idea_answers_with_every_place_it_appears() {
     }
     let server = served(catalog);
 
+    // when: where it appears is asked
     let response = server.get("/appearances?idea=idea_1").await;
 
+    // then: both places are answered
     response.assert_status_ok();
     assert_eq!(
         response.json::<Vec<PlaceDTO>>(),
@@ -68,11 +74,13 @@ async fn an_idea_answers_with_every_place_it_appears() {
 
 #[tokio::test]
 async fn a_place_goes_on_the_wire_tagged_with_its_type() {
+    // when: a section goes on the wire
     let wire = serde_json::to_value(PlaceDTO::Section {
         id: "section_1".to_owned(),
     })
     .expect("a place is plain data");
 
+    // then: it is tagged with its type
     assert_eq!(
         wire,
         serde_json::json!({ "type": "section", "id": "section_1" }),

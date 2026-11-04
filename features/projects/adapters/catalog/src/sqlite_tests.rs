@@ -53,6 +53,7 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
+    // given: a remembered project
     let bench = OnSqlite::setup().await;
     bench
         .committing()
@@ -62,13 +63,16 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
         ))
         .await
         .expect("remembering should succeed");
+    // and: its version set below zero by hand
     sqlx::query("UPDATE project_summaries SET version = -3")
         .execute(&bench.pool)
         .await
         .expect("editing the file by hand should succeed");
 
+    // when: the catalog is listed
     let found = bench.store.all().await;
 
+    // then: the listing is refused
     assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
@@ -76,6 +80,7 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
 
 #[tokio::test]
 async fn a_time_nothing_can_read_is_refused_rather_than_guessed() {
+    // given: a remembered project
     let bench = OnSqlite::setup().await;
     bench
         .committing()
@@ -85,13 +90,16 @@ async fn a_time_nothing_can_read_is_refused_rather_than_guessed() {
         ))
         .await
         .expect("remembering should succeed");
+    // and: a moment set by hand that no one can read
     sqlx::query("UPDATE project_summaries SET updated_at = 'last tuesday'")
         .execute(&bench.pool)
         .await
         .expect("editing the file by hand should succeed");
 
+    // when: the catalog is listed
     let found = bench.store.all().await;
 
+    // then: the listing is refused
     assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
@@ -99,9 +107,11 @@ async fn a_time_nothing_can_read_is_refused_rather_than_guessed() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_project_standing() {
+    // given: a catalog
     let bench = OnSqlite::setup().await;
     let catalog = bench.committing();
 
+    // when: each of many projects is remembered and forgotten at once
     for nth in 0..40 {
         let summary =
             suite::a_summary(ProjectId::generate(suite::at(1_000 + nth)), "Working Title");
@@ -113,6 +123,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_project_sta
         forgotten.expect("forgetting should succeed");
     }
 
+    // then: nothing is listed
     assert!(
         catalog
             .all()

@@ -566,6 +566,7 @@ mod ledger_tests {
 
     #[test]
     fn the_list_keeps_a_ledger_of_its_own_beside_the_events_one() {
+        // expect: the list keeps a ledger of its own beside the events' one
         assert_eq!(migrations().table_name, LEDGER);
         assert_ne!(migrations().table_name, Migrator::DEFAULT.table_name);
     }

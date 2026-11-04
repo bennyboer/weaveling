@@ -25,6 +25,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 pub async fn nothing_counted_is_no_tries<S: Throttles>(throttles: &S) {
+    // expect: nothing counted reads as no tries
     assert_eq!(
         throttles
             .tries(SIGNING_IN, ADA)
@@ -47,13 +48,16 @@ async fn admitted<S: Throttles>(
 }
 
 pub async fn each_admitted_try_is_counted_and_keeps_its_moment<S: Throttles>(throttles: &S) {
+    // when: three tries are made
     for second in [1_000, 1_060, 1_200] {
+        // then: each is admitted
         assert_eq!(
             admitted(throttles, SIGNING_IN, ADA, second).await,
             Admission::Admitted
         );
     }
 
+    // and: all three are counted as of the last
     assert_eq!(
         throttles
             .tries(SIGNING_IN, ADA)
@@ -67,18 +71,23 @@ pub async fn each_admitted_try_is_counted_and_keeps_its_moment<S: Throttles>(thr
 }
 
 pub async fn a_try_refused_for_its_wait_is_told_it_and_not_counted<S: Throttles>(throttles: &S) {
+    // given: every free try used
     for _ in 0..5 {
         admitted(throttles, SIGNING_IN, ADA, 1_000).await;
     }
 
+    // when: a try is made before the wait is over
     let refused = admitted(throttles, SIGNING_IN, ADA, 1_010).await;
     let counted_then = throttles
         .tries(SIGNING_IN, ADA)
         .await
         .expect("reading should succeed");
+    // and: another once it is over
     let once_waited = admitted(throttles, SIGNING_IN, ADA, 1_060).await;
 
+    // then: the early one is told its wait
     assert_eq!(refused, Admission::Wait(Duration::seconds(50)));
+    // and: is not counted
     assert_eq!(
         counted_then,
         Some(Tries {
@@ -87,10 +96,12 @@ pub async fn a_try_refused_for_its_wait_is_told_it_and_not_counted<S: Throttles>
         }),
         "a try refused for waiting must not count, or impatience alone would lengthen the wait"
     );
+    // and: the one after the wait is admitted
     assert_eq!(once_waited, Admission::Admitted);
 }
 
 pub async fn tries_a_day_old_are_forgotten_when_the_next_is_admitted<S: Throttles>(throttles: &S) {
+    // given: three tries each for two people
     for about in [ADA, BEA] {
         for _ in 0..3 {
             admitted(throttles, SIGNING_IN, about, 1_000).await;
@@ -98,9 +109,11 @@ pub async fn tries_a_day_old_are_forgotten_when_the_next_is_admitted<S: Throttle
     }
     let a_day_on = 1_000 + Tries::FORGOTTEN_AFTER.whole_seconds();
 
+    // when: one tries again just short of a day on and the other a day on
     admitted(throttles, SIGNING_IN, ADA, a_day_on - 1).await;
     admitted(throttles, SIGNING_IN, BEA, a_day_on).await;
 
+    // then: the first counts on and the second starts over
     let counted = |about| async move {
         throttles
             .tries(SIGNING_IN, about)
@@ -117,16 +130,20 @@ pub async fn tries_a_day_old_are_forgotten_when_the_next_is_admitted<S: Throttle
 }
 
 pub async fn clearing_the_tries_starts_them_over<S: Throttles>(throttles: &S) {
+    // given: three tries counted
     for _ in 0..3 {
         admitted(throttles, SIGNING_IN, ADA, 1_000).await;
     }
 
+    // when: they are cleared
     throttles
         .clear(SIGNING_IN, ADA)
         .await
         .expect("clearing should succeed");
+    // and: another try is made
     admitted(throttles, SIGNING_IN, ADA, 2_000).await;
 
+    // then: only that one is counted
     assert_eq!(
         throttles
             .tries(SIGNING_IN, ADA)
@@ -138,15 +155,18 @@ pub async fn clearing_the_tries_starts_them_over<S: Throttles>(throttles: &S) {
 }
 
 pub async fn clearing_one_count_leaves_the_others<S: Throttles>(throttles: &S) {
+    // given: tries counted for two people and two guards
     for (guarded, about) in [(SIGNING_IN, ADA), (SIGNING_IN, BEA), (SENDING_CODES, ADA)] {
         admitted(throttles, guarded, about, 1_000).await;
     }
 
+    // when: one count is cleared
     throttles
         .clear(SIGNING_IN, ADA)
         .await
         .expect("clearing should succeed");
 
+    // then: the others are still counted
     for (guarded, about) in [(SIGNING_IN, BEA), (SENDING_CODES, ADA)] {
         assert!(
             throttles
@@ -160,11 +180,14 @@ pub async fn clearing_one_count_leaves_the_others<S: Throttles>(throttles: &S) {
 }
 
 pub async fn tries_are_counted_apart_by_whom_and_by_what_they_guard<S: Throttles>(throttles: &S) {
+    // given: one person's free tries at one guard used
     for _ in 0..5 {
         admitted(throttles, SIGNING_IN, ADA, 1_000).await;
     }
 
+    // when: another person tries, and the same person at another guard
     for (guarded, about) in [(SIGNING_IN, BEA), (SENDING_CODES, ADA)] {
+        // then: each is admitted
         assert_eq!(
             admitted(throttles, guarded, about, 1_000).await,
             Admission::Admitted,
@@ -176,10 +199,12 @@ pub async fn tries_are_counted_apart_by_whom_and_by_what_they_guard<S: Throttles
 pub async fn tries_sent_at_once_are_admitted_no_more_than_the_rule_lets<S: Throttles>(
     throttles: &S,
 ) {
+    // when: twenty tries are sent at once
     let told =
         future::join_all((0..20).map(|_| throttles.admit(SIGNING_IN, ADA, FIVE_FREE, at(1_000))))
             .await;
 
+    // then: only the free ones are admitted
     let admitted = told
         .into_iter()
         .map(|told| told.expect("admitting should succeed"))
@@ -189,6 +214,7 @@ pub async fn tries_sent_at_once_are_admitted_no_more_than_the_rule_lets<S: Throt
         admitted, 5,
         "tries sent together must not all read a count under the limit before any is counted"
     );
+    // and: only they are counted
     assert_eq!(
         throttles
             .tries(SIGNING_IN, ADA)

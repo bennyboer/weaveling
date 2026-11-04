@@ -21,7 +21,7 @@ use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
-fn told(routing: &str, invitation: &InvitationId) -> Message {
+fn a_message(routing: &str, invitation: &InvitationId) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key is fine"),
         json!({
@@ -42,7 +42,7 @@ struct Listing {
 }
 
 fn listing() -> Listing {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let catalog = Arc::new(InMemoryInvitationCatalog::new());
     let invitations = InvitationsCore::new(
         wired.store.clone(),
@@ -68,7 +68,7 @@ fn listing() -> Listing {
 }
 
 impl Listing {
-    async fn invited(&self, to: &str) -> InvitationId {
+    async fn an_open_invitation_to(&self, to: &str) -> InvitationId {
         self.wired
             .invitations
             .invite_to_instance(&wiring::an_operator(), to, ORIGIN)
@@ -87,15 +87,18 @@ impl Listing {
 
 #[tokio::test]
 async fn an_invitation_issued_is_listed_as_it_stands() {
+    // given: an issued invitation
     let listing = listing();
-    let id = listing.invited(ADA).await;
+    let id = listing.an_open_invitation_to(ADA).await;
 
+    // when: its issue is heard
     listing
         .listener
-        .handle(&told(ISSUED, &id))
+        .handle(&a_message(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
 
+    // then: it is listed as it stands
     let listed = listing.listed().await;
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, id);
@@ -110,8 +113,9 @@ async fn an_invitation_issued_is_listed_as_it_stands() {
 
 #[tokio::test]
 async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
+    // given: an invitation taken up
     let listing = listing();
-    let id = listing.invited(ADA).await;
+    let id = listing.an_open_invitation_to(ADA).await;
     listing
         .wired
         .invitations
@@ -119,12 +123,14 @@ async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
         .await
         .expect("an open invitation is accepted");
 
+    // when: its issue is heard
     listing
         .listener
-        .handle(&told(ISSUED, &id))
+        .handle(&a_message(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
 
+    // then: nothing is listed
     assert!(
         listing.listed().await.is_empty(),
         "the list reads how the invitation stands now, not what the message was about"
@@ -133,8 +139,9 @@ async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
 
 #[tokio::test]
 async fn a_declined_invitation_stays_listed_and_says_why() {
+    // given: a declined invitation
     let listing = listing();
-    let id = listing.invited(ADA).await;
+    let id = listing.an_open_invitation_to(ADA).await;
     listing
         .wired
         .invitations
@@ -142,12 +149,14 @@ async fn a_declined_invitation_stays_listed_and_says_why() {
         .await
         .expect("an open invitation is declined");
 
+    // when: its declining is heard
     listing
         .listener
-        .handle(&told(DECLINED, &id))
+        .handle(&a_message(DECLINED, &id))
         .await
         .expect("cataloguing should succeed");
 
+    // then: it is listed with why it was declined
     assert_eq!(
         listing.listed().await[0].outcome,
         Outcome::Declined(DeclineReason::AddressHasAccount)
@@ -156,8 +165,10 @@ async fn a_declined_invitation_stays_listed_and_says_why() {
 
 #[tokio::test]
 async fn every_change_to_an_invitation_is_heard() {
+    // given: the listener cataloguing invitations
     let listing = listing();
 
+    // then: it hears every change to an invitation
     for routing in [ISSUED, ACCEPTED, WITHDRAWN, DECLINED] {
         assert!(
             listing
@@ -166,6 +177,7 @@ async fn every_change_to_an_invitation_is_heard() {
             "{routing}"
         );
     }
+    // and: nothing else
     assert!(
         !listing
             .listener
@@ -175,12 +187,17 @@ async fn every_change_to_an_invitation_is_heard() {
 
 #[tokio::test]
 async fn a_message_about_no_invitation_is_refused() {
+    // given: the listener cataloguing invitations
     let listing = listing();
 
+    // then: a message about no invitation is refused
     assert!(
         listing
             .listener
-            .handle(&told(ISSUED, &InvitationId::generate(wiring::at(1_000))))
+            .handle(&a_message(
+                ISSUED,
+                &InvitationId::generate(wiring::at(1_000))
+            ))
             .await
             .is_err(),
         "a message the listener cannot act on belongs in dead letters"
@@ -189,13 +206,15 @@ async fn a_message_about_no_invitation_is_refused() {
 
 #[tokio::test]
 async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_comes() {
+    // given: a catalogued invitation
     let listing = listing();
-    let id = listing.invited(ADA).await;
+    let id = listing.an_open_invitation_to(ADA).await;
     listing
         .listener
-        .handle(&told(ISSUED, &id))
+        .handle(&a_message(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
+    // and: it retired once listed long enough
     listing.wired.clock.set(
         wiring::at(1_700_000_000)
             + Duration::days(7)
@@ -211,16 +230,19 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
         1
     );
 
+    // when: its retiring and then its issue are heard
     for routing in [RETIRED, ISSUED] {
         listing
             .listener
-            .handle(&told(routing, &id))
+            .handle(&a_message(routing, &id))
             .await
             .expect("cataloguing should succeed");
     }
+    // then: it is listed no more
     let retired_at = listing.wired.clock.now();
 
     assert!(listing.listed().await.is_empty());
+    // and: its tombstone is laid as it is catalogued
     assert_eq!(
         listing
             .invitations
@@ -243,7 +265,8 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
 
 #[tokio::test]
 async fn a_catalogued_invitation_is_found_by_the_digest_of_the_token_mailed_for_it() {
-    let wired = wiring::wired();
+    // given: a catalogued invitation
+    let wired = wiring::a_workbench();
     let issued = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
@@ -255,11 +278,13 @@ async fn a_catalogued_invitation_is_found_by_the_digest_of_the_token_mailed_for_
         .await
         .expect("cataloguing should succeed");
 
+    // when: it is looked up by the digest of the token mailed for it
     let found = wired
         .catalog
         .with_digest(&wired.token_mailed_to(ADA).await.digest())
         .await
         .expect("finding should succeed");
 
+    // then: it is found
     assert_eq!(found.map(|summary| summary.id), Some(issued.id));
 }

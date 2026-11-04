@@ -28,7 +28,9 @@ mod tests {
 
     #[test]
     fn signing_in_forgives_more_than_sending_codes() {
+        // expect: signing in is free five times
         assert_eq!(Guarded::SigningIn.rule(), Rule { free: 5 });
+        // and: sending codes three times
         assert_eq!(
             Guarded::SendingCodes.rule(),
             Rule { free: 3 },
@@ -38,6 +40,7 @@ mod tests {
 
     #[test]
     fn each_guarded_thing_is_counted_under_a_name_of_its_own() {
+        // expect: signing in and sending codes have different names
         assert_ne!(Guarded::SigningIn.as_str(), Guarded::SendingCodes.as_str());
     }
 }

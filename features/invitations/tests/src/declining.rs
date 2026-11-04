@@ -12,17 +12,17 @@ use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
-fn declined(invitation: &InvitationId) -> Message {
-    declined_for(invitation, "address-has-account")
+fn a_declining(invitation: &InvitationId) -> Message {
+    a_declining_for(invitation, "address-has-account")
 }
 
-fn declined_for(invitation: &InvitationId, reason: &str) -> Message {
-    told(
+fn a_declining_for(invitation: &InvitationId, reason: &str) -> Message {
+    a_message(
         json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": invitation.to_string(), "reason": reason }),
     )
 }
 
-fn told(event: Value) -> Message {
+fn a_message(event: Value) -> Message {
     Message::opening(
         RoutingKey::parse(INVITATION_DECLINED).expect("a declared routing key is fine"),
         json!({
@@ -35,7 +35,7 @@ fn told(event: Value) -> Message {
     )
 }
 
-async fn invited(wired: &Wired) -> InvitationId {
+async fn an_open_invitation(wired: &Wired) -> InvitationId {
     wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
@@ -44,7 +44,7 @@ async fn invited(wired: &Wired) -> InvitationId {
         .id
 }
 
-async fn happened(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
+async fn events_of(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
     wired
         .store
         .read_from(&AggregateId::from(id), KIND, Version::of(1))
@@ -61,14 +61,17 @@ fn listener(wired: &Wired) -> Inboxed<DeclineInvitationListener> {
 
 #[tokio::test]
 async fn an_invitation_is_declined_in_the_system_s_name() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
 
+    // when: its declining is heard
     listener(&wired)
-        .handle(&declined(&id))
+        .handle(&a_declining(&id))
         .await
         .expect("declining should succeed");
 
+    // then: it is declined in the system's name
     let recorded = wired
         .store
         .read_from(&AggregateId::from(&id), KIND, Version::of(1))
@@ -82,20 +85,23 @@ async fn an_invitation_is_declined_in_the_system_s_name() {
 
 #[tokio::test]
 async fn a_declining_whose_hearing_does_not_commit_is_undone_with_it() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
 
+    // when: its declining is heard in a hearing that does not commit
     wiring::inboxed_in(
         DeclineInvitationListener::new(wired.invitations.clone()),
         InMemoryTransactions::refusing_commits(),
     )
-    .handle(&declined(&id))
+    .handle(&a_declining(&id))
     .await
     .expect_err("a hearing that does not commit is not handled");
 
+    // then: it stays open
     assert!(
         matches!(
-            happened(&wired, &id).await.as_slice(),
+            events_of(&wired, &id).await.as_slice(),
             [InvitationEvent::Issued { .. }]
         ),
         "the declining is written in the hearing's transaction"
@@ -104,19 +110,22 @@ async fn a_declining_whose_hearing_does_not_commit_is_undone_with_it() {
 
 #[tokio::test]
 async fn an_invitation_declined_by_an_account_is_declined_once() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
     let listener = listener(&wired);
 
+    // when: its declining is heard twice
     for _ in 0..2 {
         listener
-            .handle(&declined(&id))
+            .handle(&a_declining(&id))
             .await
             .expect("messages come at least once");
     }
 
+    // then: it is declined once
     assert!(matches!(
-        happened(&wired, &id).await.as_slice(),
+        events_of(&wired, &id).await.as_slice(),
         [
             InvitationEvent::Issued { .. },
             InvitationEvent::Declined {
@@ -128,16 +137,19 @@ async fn an_invitation_declined_by_an_account_is_declined_once() {
 
 #[tokio::test]
 async fn an_invitation_turned_down_by_whom_it_was_for_is_declined_so() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
 
+    // when: its turning down by whom it was for is heard
     listener(&wired)
-        .handle(&declined_for(&id, "turned-down"))
+        .handle(&a_declining_for(&id, "turned-down"))
         .await
         .expect("declining should succeed");
 
+    // then: it is declined as turned down
     assert!(matches!(
-        happened(&wired, &id).await.as_slice(),
+        events_of(&wired, &id).await.as_slice(),
         [
             InvitationEvent::Issued { .. },
             InvitationEvent::Declined {
@@ -149,9 +161,11 @@ async fn an_invitation_turned_down_by_whom_it_was_for_is_declined_so() {
 
 #[tokio::test]
 async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
-    let wired = wiring::wired();
-    let withdrawn = invited(&wired).await;
-    let accepted = invited(&wired).await;
+    // given: a withdrawn invitation
+    let wired = wiring::a_workbench();
+    let withdrawn = an_open_invitation(&wired).await;
+    // and: an accepted one
+    let accepted = an_open_invitation(&wired).await;
     wired
         .invitations
         .withdraw(&wiring::an_operator(), &withdrawn)
@@ -164,60 +178,70 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
         .expect("an open invitation is accepted");
     let listener = listener(&wired);
 
+    // when: a declining of each is heard
     for id in [&withdrawn, &accepted] {
         listener
-            .handle(&declined(id))
+            .handle(&a_declining(id))
             .await
             .expect("what is settled already is no failure");
     }
 
+    // then: the withdrawn one stays withdrawn
     assert!(matches!(
-        happened(&wired, &withdrawn).await.as_slice(),
+        events_of(&wired, &withdrawn).await.as_slice(),
         [_, InvitationEvent::Withdrawn]
     ));
+    // and: the accepted one stays accepted
     assert!(matches!(
-        happened(&wired, &accepted).await.as_slice(),
+        events_of(&wired, &accepted).await.as_slice(),
         [_, InvitationEvent::Accepted { .. }]
     ));
 }
 
 #[tokio::test]
 async fn only_a_declined_invitation_is_heard() {
-    let wired = wiring::wired();
+    // given: the listener declining invitations
+    let wired = wiring::a_workbench();
     let listener = listener(&wired);
 
+    // then: it hears a declined invitation
     assert!(listener.hears(&RoutingKey::parse(INVITATION_DECLINED).expect("a declared key")));
+    // and: not a sign-up by invitation
     assert!(!listener.hears(&RoutingKey::parse(SIGNED_UP_BY_INVITATION).expect("a declared key")));
 }
 
 #[tokio::test]
 async fn a_decline_naming_no_invitation_or_no_reason_is_refused() {
-    let wired = wiring::wired();
-    let open = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let open = an_open_invitation(&wired).await;
     let listener = listener(&wired);
 
+    // when: a declining it cannot act on is heard
     for unreadable in [
-        told(
+        a_message(
             json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": "not-an-id", "reason": "address-has-account" }),
         ),
-        told(
+        a_message(
             json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": open.to_string(), "reason": "had a bad day" }),
         ),
-        told(
+        a_message(
             json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": open.to_string() }),
         ),
-        told(
+        a_message(
             json!({ "version": 0, "name": "SIGNED_UP", "personal": { "name": "Ada", "email": "ada@example.com" } }),
         ),
-        declined(&InvitationId::generate(wiring::at(1_000))),
+        a_declining(&InvitationId::generate(wiring::at(1_000))),
     ] {
+        // then: it is refused
         assert!(
             listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }
+    // and: the invitation stays open
     assert_eq!(
-        happened(&wired, &open).await.len(),
+        events_of(&wired, &open).await.len(),
         1,
         "a reason nobody declared declines nothing"
     );

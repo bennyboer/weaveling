@@ -239,6 +239,7 @@ mod ledger_tests {
 
     #[test]
     fn the_read_model_keeps_a_ledger_of_its_own_beside_the_events_one() {
+        // expect: its migrations are kept in a ledger of their own
         assert_eq!(migrations().table_name, LEDGER);
         assert_ne!(migrations().table_name, Migrator::DEFAULT.table_name);
     }

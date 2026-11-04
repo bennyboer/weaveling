@@ -38,7 +38,7 @@ async fn captured(server: &TestServer, project: &str, title: &str) -> IdeaDTO {
     response.json()
 }
 
-async fn following(server: &TestServer, project: &str) -> Subscriber {
+async fn a_follower_of(server: &TestServer, project: &str) -> Subscriber {
     let mut socket = Subscriber::on(server).await;
     socket
         .subscribe("ideas", "ideas", &[("project", project)])
@@ -53,11 +53,13 @@ async fn told(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
+    // given: a broadcast of changes to ideas
     let (wired, _server) = served();
     let broadcast =
         BroadcastIdeaChangesListener::new(wired.ideas.clone(), Broadcaster::new(), |project| {
             project
         });
+    // and: a change naming no idea
     let naming_no_idea = Message::opening(
         RoutingKey::parse(CAPTURED).expect("a declared routing key is fine"),
         json!({
@@ -69,6 +71,7 @@ async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
         OffsetDateTime::UNIX_EPOCH,
     );
 
+    // then: it is passed over without failing
     broadcast
         .handle(&naming_no_idea)
         .await
@@ -77,9 +80,11 @@ async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
 
 #[tokio::test]
 async fn whoever_follows_a_project_is_told_each_change_to_its_ideas_by_the_idea_and_its_version() {
+    // given: a follower of a project
     let (wired, server) = served();
-    let mut socket = following(&server, "project_1").await;
+    let mut socket = a_follower_of(&server, "project_1").await;
 
+    // when: an idea of the project is captured, retitled and discarded
     let idea = captured(&server, "project_1", "The Loom").await;
     server
         .patch(&format!("/ideas/{}", idea.id))
@@ -94,14 +99,17 @@ async fn whoever_follows_a_project_is_told_each_change_to_its_ideas_by_the_idea_
         .assert_status(StatusCode::NO_CONTENT);
     wired.settle().await;
 
+    // then: the follower is told the capture
     assert_eq!(
         told(&mut socket).await,
         json!({ "of": idea.id, "version": 1, "at": "1970-01-01T00:00:00Z", "event": { "name": "CAPTURED", "project": "project_1", "title": "The Loom" } })
     );
+    // and: the retitling
     assert_eq!(
         told(&mut socket).await,
         json!({ "of": idea.id, "version": 2, "at": "1970-01-01T00:00:00Z", "event": { "name": "RETITLED", "title": "The Weft" } })
     );
+    // and: the discarding
     assert_eq!(
         told(&mut socket).await,
         json!({ "of": idea.id, "version": 3, "at": "1970-01-01T00:00:00Z", "event": { "name": "DISCARDED" } }),
@@ -111,13 +119,17 @@ async fn whoever_follows_a_project_is_told_each_change_to_its_ideas_by_the_idea_
 
 #[tokio::test]
 async fn another_project_s_ideas_are_not_told() {
+    // given: a follower of a project
     let (wired, server) = served();
-    let mut socket = following(&server, "project_1").await;
+    let mut socket = a_follower_of(&server, "project_1").await;
 
+    // when: an idea of another project is captured
     captured(&server, "project_2", "Theirs").await;
+    // and: then one of the followed project
     let mine = captured(&server, "project_1", "Mine").await;
     wired.settle().await;
 
+    // then: the follower is told only of its own project's idea
     assert_eq!(
         told(&mut socket).await["of"],
         mine.id,

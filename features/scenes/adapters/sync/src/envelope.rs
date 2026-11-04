@@ -72,6 +72,7 @@ mod tests {
 
     #[test]
     fn every_envelope_survives_a_round_trip() {
+        // expect: every kind of envelope decodes to what was encoded
         round_trip(Envelope::Join("scene_1".to_owned()));
         round_trip(Envelope::Leave("scene_1".to_owned()));
         round_trip(Envelope::Carry {
@@ -83,6 +84,7 @@ mod tests {
 
     #[test]
     fn an_envelope_is_a_kind_a_scene_and_maybe_a_frame_in_lib0_encoding() {
+        // then: an envelope with a frame is its kind, its scene and its frame
         assert_eq!(
             Envelope::Carry {
                 scene: "ab".to_owned(),
@@ -92,6 +94,7 @@ mod tests {
             vec![2, 2, b'a', b'b', 2, 7, 7],
             "the browser writes these with lib0, so the bytes are the contract"
         );
+        // and: one without a frame is its kind and its scene
         assert_eq!(
             Envelope::Join("ab".to_owned()).encode(),
             vec![0, 2, b'a', b'b']
@@ -100,6 +103,7 @@ mod tests {
 
     #[test]
     fn a_truncated_or_unknown_envelope_is_an_error_not_a_panic() {
+        // expect: truncated and unknown envelopes are refused
         assert!(Envelope::decode(&[]).is_err());
         assert!(Envelope::decode(&[2]).is_err());
         assert!(Envelope::decode(&[2, 2, b'a', b'b']).is_err());

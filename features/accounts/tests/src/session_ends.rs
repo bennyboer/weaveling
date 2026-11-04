@@ -62,32 +62,41 @@ pub(crate) async fn still_running(waiting: &mut JoinHandle<()>) -> bool {
 
 #[tokio::test]
 async fn signing_out_reaches_the_session_s_end_at_once() {
+    // given: a session
     let wired = wiring::wired();
     let (token, end) = ada_signed_in(&wired).await;
+    // and: its end awaited
     let waiting = awaited(end).await;
 
+    // when: she signs out
     wired
         .accounts
         .end_session(&token)
         .await
         .expect("signing out should succeed");
 
+    // then: the end is reached
     assert!(reached(waiting).await);
 }
 
 #[tokio::test]
 async fn signing_out_elsewhere_leaves_this_session_running() {
+    // given: a session
     let wired = wiring::wired();
     let (_, end) = ada_signed_in(&wired).await;
+    // and: another one of hers elsewhere
     let (elsewhere, _) = a_session(&wired).await;
+    // and: the first one's end awaited
     let mut waiting = awaited(end).await;
 
+    // when: she signs out elsewhere
     wired
         .accounts
         .end_session(&elsewhere)
         .await
         .expect("signing out should succeed");
 
+    // then: this session runs on
     assert!(
         still_running(&mut waiting).await,
         "asked again, this session still counts"
@@ -96,20 +105,25 @@ async fn signing_out_elsewhere_leaves_this_session_running() {
 
 #[tokio::test]
 async fn a_session_s_end_is_reached_at_its_last_moment() {
+    // given: a session
     let wired = wiring::wired();
     let (token, _) = ada_signed_in(&wired).await;
+    // and: its end awaited with a last moment soon
     let until = wired.clock.now() + time::Duration::milliseconds(300);
     let mut waiting = awaited(wired.accounts.session_end(&token, until)).await;
 
+    // then: the end is not reached before its last moment
     assert!(
         still_running(&mut waiting).await,
         "not before its last moment"
     );
+    // and: it is reached at it
     assert!(reached(waiting).await);
 }
 
 #[tokio::test]
 async fn a_session_already_over_is_ended_from_the_start() {
+    // given: a session signed out of
     let wired = wiring::wired();
     let (token, end) = ada_signed_in(&wired).await;
     wired
@@ -118,6 +132,7 @@ async fn a_session_already_over_is_ended_from_the_start() {
         .await
         .expect("signing out should succeed");
 
+    // then: its end is reached as soon as it is awaited
     assert!(reached(tokio::spawn(async move { end.reached().await })).await);
 }
 
@@ -158,6 +173,7 @@ impl Sessions for Unreachable {
 
 #[tokio::test]
 async fn a_session_that_cannot_be_asked_about_is_not_taken_for_ended() {
+    // given: sessions that can go out of reach
     let wired = wiring::wired();
     ada_signed_in(&wired).await;
     let sessions = Arc::new(Unreachable {
@@ -175,22 +191,26 @@ async fn a_session_that_cannot_be_asked_about_is_not_taken_for_ended() {
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
+    // and: a session with its end awaited
     let (token, signed_in) = accounts
         .begin_session(ADA, HER_PASSWORD)
         .await
         .expect("she signs in");
+    // and: another one of hers elsewhere
     let (elsewhere, _) = accounts
         .begin_session(ADA, HER_PASSWORD)
         .await
         .expect("she signs in elsewhere");
     let mut waiting = awaited(accounts.session_end(&token, signed_in.session.until)).await;
 
+    // when: the sessions go out of reach as she signs out elsewhere
     sessions.down.store(true, Ordering::SeqCst);
     accounts
         .end_session(&elsewhere)
         .await
         .expect("signing out should succeed");
 
+    // then: this session runs on
     assert!(
         still_running(&mut waiting).await,
         "a store out of reach for a moment signs nobody out"

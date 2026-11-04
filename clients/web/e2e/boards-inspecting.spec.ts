@@ -22,31 +22,40 @@ async function aBoardWith(page: Page, named: string, ideas: string[]) {
 }
 
 test("nothing is inspected until a card is selected", async ({ page }) => {
+  // given: a board with a card, none selected
   await aBoardWith(page, "Unselected", ["The loom remembers"]);
 
+  // then: nothing is inspected
   await expect(inspector(page)).toHaveCount(0);
 });
 
 test("selecting a card inspects its idea", async ({ page }) => {
+  // given: a board with a card
   await aBoardWith(page, "Inspecting", ["The loom remembers"]);
 
+  // when: the card is selected
   await select(page, "The loom remembers");
 
+  // then: its idea is inspected
   await expect(nameField(page)).toHaveValue("The loom remembers");
   await expect(inspector(page).getByText("Not in the book yet")).toBeVisible();
 });
 
 test("the bare board puts the inspector away", async ({ page }) => {
+  // given: a selected card, inspected
   await aBoardWith(page, "PutAway", ["The loom remembers"]);
   await select(page, "The loom remembers");
   await expect(inspector(page)).toBeVisible();
 
+  // when: the bare board is clicked
   await corkboard(page).click({ position: { x: 5, y: 5 } });
 
+  // then: the inspector goes
   await expect(inspector(page)).toHaveCount(0);
 });
 
 test("selecting another card inspects that one instead", async ({ page }) => {
+  // given: two cards, the first selected
   await aBoardWith(page, "Switching", [
     "The loom remembers",
     "She never returned",
@@ -54,18 +63,23 @@ test("selecting another card inspects that one instead", async ({ page }) => {
   await select(page, "The loom remembers");
   await expect(nameField(page)).toHaveValue("The loom remembers");
 
+  // when: the other is selected
   await select(page, "She never returned");
 
+  // then: that one is inspected
   await expect(nameField(page)).toHaveValue("She never returned");
 });
 
 test("renaming in the inspector renames the card", async ({ page }) => {
+  // given: a selected card
   await aBoardWith(page, "RenameDocked", ["The loom remembers"]);
   await select(page, "The loom remembers");
 
+  // when: it is renamed in the inspector
   await nameField(page).fill("The loom forgets");
   await nameField(page).press("Enter");
 
+  // then: the card carries the new name
   await expect(cardNamed(page, "The loom forgets")).toBeVisible();
   await expect(nameField(page)).toHaveValue("The loom forgets");
 });
@@ -73,10 +87,12 @@ test("renaming in the inspector renames the card", async ({ page }) => {
 test("renaming the card in place renames it in the inspector", async ({
   page,
 }) => {
+  // given: a selected card, inspected
   await aBoardWith(page, "RenameCard", ["The loom remembers"]);
   await select(page, "The loom remembers");
   await expect(nameField(page)).toHaveValue("The loom remembers");
 
+  // when: the card is renamed in place
   await page.getByRole("button", { name: "Rename The loom remembers" }).click();
   const field = page.getByRole("textbox", {
     name: "Rename The loom remembers",
@@ -84,6 +100,7 @@ test("renaming the card in place renames it in the inspector", async ({
   await field.fill("The loom forgets");
   await field.press("Enter");
 
+  // then: the inspector carries the new name
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
   await expect(nameField(page)).toHaveValue("The loom forgets");
 });
@@ -91,6 +108,7 @@ test("renaming the card in place renames it in the inspector", async ({
 test("the inspector shows where the selected idea appears", async ({
   page,
 }) => {
+  // given: a card whose idea a scene draws on
   await aBoardWith(page, "Appears", ["The loom remembers"]);
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
   const ideas = await (
@@ -107,9 +125,11 @@ test("the inspector shows where the selected idea appears", async ({
     data: { idea: ideas[0].id },
   });
 
+  // when: the card is selected
   await expect(async () => {
     await page.reload();
     await select(page, "The loom remembers");
+    // then: the scene shows in the inspector
     await expect(
       inspector(page).getByRole("link", { name: "The clearing" }),
     ).toBeVisible({ timeout: 1_000 });
@@ -119,6 +139,7 @@ test("the inspector shows where the selected idea appears", async ({
 test("selecting another card does not show the last one's places while its own are on their way", async ({
   page,
 }) => {
+  // given: two cards, the first's idea drawn on by a scene and inspected
   await aBoardWith(page, "AppearsSwitching", ["The loom remembers", "The shuttle"]);
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
   const ideas: { id: string; title: string }[] = await (
@@ -137,13 +158,16 @@ test("selecting another card does not show the last one's places while its own a
       timeout: 1_000,
     });
   }).toPass();
+  // and: the second's places slow to come
   await page.route(
     (url) => url.pathname === "/api/appearances" && url.searchParams.get("idea") === shuttle,
     () => {},
   );
 
+  // when: the second is selected
   await select(page, "The shuttle");
 
+  // then: it is inspected without the first one's places
   await expect(nameField(page)).toHaveValue("The shuttle");
   await expect(
     inspector(page).getByRole("link", { name: "The clearing" }),

@@ -89,27 +89,30 @@ impl Display for Subscription {
 mod tests {
     use super::*;
 
-    fn key(of: &str) -> RoutingKey {
+    fn a_key(of: &str) -> RoutingKey {
         RoutingKey::parse(of).expect("a plain key is fine")
     }
 
-    fn listening(to: &str) -> Subscription {
+    fn a_subscription(to: &str) -> Subscription {
         Subscription::parse(to).expect("a plain pattern is fine")
     }
 
     #[test]
     fn a_key_reads_back_as_it_was_written() {
-        assert_eq!(key("idea.captured").to_string(), "idea.captured");
-        assert_eq!(key("idea.captured").parts(), ["idea", "captured"]);
+        // expect: a key reads back as it was written, part by part
+        assert_eq!(a_key("idea.captured").to_string(), "idea.captured");
+        assert_eq!(a_key("idea.captured").parts(), ["idea", "captured"]);
     }
 
     #[test]
     fn an_empty_key_is_refused() {
+        // expect: an empty key is refused
         assert_eq!(RoutingKey::parse(""), Err(InvalidRoutingKey::Empty));
     }
 
     #[test]
     fn a_key_with_a_hole_in_it_is_refused() {
+        // expect: a key with an empty part is refused
         assert_eq!(
             RoutingKey::parse("idea..captured"),
             Err(InvalidRoutingKey::EmptyPart)
@@ -122,6 +125,7 @@ mod tests {
 
     #[test]
     fn a_published_key_may_not_carry_wildcards() {
+        // expect: a key with a wildcard is refused
         assert_eq!(
             RoutingKey::parse("idea.*"),
             Err(InvalidRoutingKey::Wildcard)
@@ -134,76 +138,90 @@ mod tests {
 
     #[test]
     fn a_subscription_may_carry_wildcards() {
+        // expect: a subscription with wildcards is taken
         assert!(Subscription::parse("idea.*").is_ok());
         assert!(Subscription::parse("#").is_ok());
     }
 
     #[test]
     fn an_exact_subscription_covers_only_that_key() {
-        let listening = listening("idea.captured");
+        // given: a subscription to one key
+        let listening = a_subscription("idea.captured");
 
-        assert!(listening.covers(&key("idea.captured")));
-        assert!(!listening.covers(&key("idea.retitled")));
-        assert!(!listening.covers(&key("idea.captured.late")));
-        assert!(!listening.covers(&key("idea")));
+        // then: it covers that key alone
+        assert!(listening.covers(&a_key("idea.captured")));
+        assert!(!listening.covers(&a_key("idea.retitled")));
+        assert!(!listening.covers(&a_key("idea.captured.late")));
+        assert!(!listening.covers(&a_key("idea")));
     }
 
     #[test]
     fn a_single_wildcard_stands_for_exactly_one_part() {
-        let listening = listening("idea.*");
+        // given: a subscription ending in a single wildcard
+        let listening = a_subscription("idea.*");
 
-        assert!(listening.covers(&key("idea.captured")));
-        assert!(listening.covers(&key("idea.retitled")));
+        // then: it covers keys with exactly one part there
+        assert!(listening.covers(&a_key("idea.captured")));
+        assert!(listening.covers(&a_key("idea.retitled")));
         assert!(
-            !listening.covers(&key("idea.captured.late")),
+            !listening.covers(&a_key("idea.captured.late")),
             "one wildcard must not swallow two parts"
         );
-        assert!(!listening.covers(&key("board.captured")));
+        assert!(!listening.covers(&a_key("board.captured")));
     }
 
     #[test]
     fn a_wildcard_may_sit_anywhere() {
-        let listening = listening("*.captured");
+        // given: a subscription starting with a single wildcard
+        let listening = a_subscription("*.captured");
 
-        assert!(listening.covers(&key("idea.captured")));
-        assert!(listening.covers(&key("board.captured")));
-        assert!(!listening.covers(&key("idea.retitled")));
+        // then: it covers keys with any one part there
+        assert!(listening.covers(&a_key("idea.captured")));
+        assert!(listening.covers(&a_key("board.captured")));
+        assert!(!listening.covers(&a_key("idea.retitled")));
     }
 
     #[test]
     fn the_open_wildcard_stands_for_any_number_of_parts() {
-        let listening = listening("idea.#");
+        // given: a subscription ending in the open wildcard
+        let listening = a_subscription("idea.#");
 
-        assert!(listening.covers(&key("idea.captured")));
-        assert!(listening.covers(&key("idea.captured.late")));
+        // then: it covers keys with any number of parts there, none too
+        assert!(listening.covers(&a_key("idea.captured")));
+        assert!(listening.covers(&a_key("idea.captured.late")));
         assert!(
-            listening.covers(&key("idea")),
+            listening.covers(&a_key("idea")),
             "the open wildcard also stands for nothing at all"
         );
-        assert!(!listening.covers(&key("board.captured")));
+        assert!(!listening.covers(&a_key("board.captured")));
     }
 
     #[test]
     fn everything_is_covered_by_the_open_wildcard_alone() {
-        let listening = listening("#");
+        // given: a subscription of the open wildcard alone
+        let listening = a_subscription("#");
 
-        assert!(listening.covers(&key("idea.captured")));
-        assert!(listening.covers(&key("board")));
-        assert!(listening.covers(&key("a.very.deeply.nested.key")));
+        // then: it covers every key
+        assert!(listening.covers(&a_key("idea.captured")));
+        assert!(listening.covers(&a_key("board")));
+        assert!(listening.covers(&a_key("a.very.deeply.nested.key")));
     }
 
     #[test]
     fn the_open_wildcard_works_in_the_middle_too() {
-        let listening = listening("idea.#.late");
+        // given: a subscription with the open wildcard in its middle
+        let listening = a_subscription("idea.#.late");
 
-        assert!(listening.covers(&key("idea.captured.late")));
-        assert!(listening.covers(&key("idea.captured.very.late")));
-        assert!(listening.covers(&key("idea.late")));
-        assert!(!listening.covers(&key("idea.captured")));
+        // then: it covers keys with any number of parts there, none too
+        assert!(listening.covers(&a_key("idea.captured.late")));
+        assert!(listening.covers(&a_key("idea.captured.very.late")));
+        assert!(listening.covers(&a_key("idea.late")));
+        assert!(!listening.covers(&a_key("idea.captured")));
     }
 
     #[test]
     fn a_subscription_reads_back_as_it_was_written() {
-        assert_eq!(listening("idea.#").to_string(), "idea.#");
+        // expect: a subscription reads back as it was written
+        assert_eq!(a_subscription("idea.#").to_string(), "idea.#");
     }
 }

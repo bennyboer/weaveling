@@ -72,7 +72,7 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
     )
 }
 
-async fn guarded() -> (Guarded, String) {
+async fn a_project_ada_owns() -> (Guarded, String) {
     let roles = Arc::new(Roles::default());
     let wired = wiring::wired_guarded_by(
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
@@ -99,7 +99,7 @@ async fn guarded() -> (Guarded, String) {
     (guarded, project)
 }
 
-async fn named(server: &TestServer, project: &str) -> Value {
+async fn name_of(server: &TestServer, project: &str) -> Value {
     server
         .get(&format!("/projects/{project}"))
         .await
@@ -109,9 +109,11 @@ async fn named(server: &TestServer, project: &str) -> Value {
 
 #[tokio::test]
 async fn a_project_is_not_there_for_whoever_may_not_read_it_whatever_they_try() {
-    let (guarded, project) = guarded().await;
+    // given: a project ada owns and grace may not read
+    let (guarded, project) = a_project_ada_owns().await;
     let at = format!("/projects/{project}");
 
+    // when: grace reads, renames, describes and deletes it
     let read = guarded.grace.get(&at).await;
     let renamed = guarded
         .grace
@@ -125,9 +127,11 @@ async fn a_project_is_not_there_for_whoever_may_not_read_it_whatever_they_try() 
         .await;
     let deleted = guarded.grace.delete(&at).await;
 
+    // then: each is answered as not found
     for answered in [&read, &renamed, &described, &deleted] {
         answered.assert_status(StatusCode::NOT_FOUND);
     }
+    // and: the same way a project that is not there is
     let missing = guarded
         .ada
         .get("/projects/project_0000000000000000000000")
@@ -138,16 +142,21 @@ async fn a_project_is_not_there_for_whoever_may_not_read_it_whatever_they_try() 
         missing.json::<Value>()["type"],
         "a project kept from someone answers as one that is not there, so its being is not told"
     );
-    assert_eq!(named(&guarded.ada, &project).await, "The Loom");
+    // and: the project is unchanged
+    assert_eq!(name_of(&guarded.ada, &project).await, "The Loom");
 }
 
 #[tokio::test]
 async fn whoever_may_read_but_not_manage_reads_and_is_told_only_an_owner_may_change_it() {
-    let (guarded, project) = guarded().await;
+    // given: a project ada owns
+    let (guarded, project) = a_project_ada_owns().await;
+    // and: grace an author of it
     guarded.roles.give("account_grace", &project, &AUTHOR);
     let at = format!("/projects/{project}");
 
+    // expect: grace reads it
     guarded.grace.get(&at).await.assert_status_ok();
+    // and: grace is told only an owner may rename, describe or delete it
     for refused in [
         guarded
             .grace
@@ -164,14 +173,18 @@ async fn whoever_may_read_but_not_manage_reads_and_is_told_only_an_owner_may_cha
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-owner");
     }
-    assert_eq!(named(&guarded.ada, &project).await, "The Loom");
+    // and: the project is unchanged
+    assert_eq!(name_of(&guarded.ada, &project).await, "The Loom");
 }
 
 #[tokio::test]
 async fn whoever_may_only_read_reads_the_project() {
-    let (guarded, project) = guarded().await;
+    // given: a project ada owns
+    let (guarded, project) = a_project_ada_owns().await;
+    // and: grace a reader of it
     guarded.roles.give("account_grace", &project, &READER);
 
+    // expect: grace reads it
     guarded
         .grace
         .get(&format!("/projects/{project}"))
@@ -181,27 +194,33 @@ async fn whoever_may_only_read_reads_the_project() {
 
 #[tokio::test]
 async fn an_owner_reads_renames_describes_and_deletes() {
-    let (guarded, project) = guarded().await;
+    // given: a project ada owns
+    let (guarded, project) = a_project_ada_owns().await;
     let at = format!("/projects/{project}");
 
+    // expect: ada renames it
     guarded
         .ada
         .patch(&at)
         .json(&json!({ "name": "The Heddle" }))
         .await
         .assert_status_ok();
+    // and: ada describes it
     guarded
         .ada
         .put(&format!("{at}/details"))
         .json(&json!({ "language": "de", "description": "Ein Webstuhl" }))
         .await
         .assert_status_ok();
-    assert_eq!(named(&guarded.ada, &project).await, "The Heddle");
+    // and: ada reads it renamed
+    assert_eq!(name_of(&guarded.ada, &project).await, "The Heddle");
+    // and: ada deletes it
     guarded
         .ada
         .delete(&at)
         .await
         .assert_status(StatusCode::NO_CONTENT);
+    // and: it is gone
     guarded
         .ada
         .get(&at)
@@ -211,9 +230,12 @@ async fn an_owner_reads_renames_describes_and_deletes() {
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let (guarded, project) = guarded().await;
+    // given: a project ada owns
+    let (guarded, project) = a_project_ada_owns().await;
+    // and: who may do what cannot be learned
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
+    // expect: reading it fails
     guarded
         .ada
         .get(&format!("/projects/{project}"))

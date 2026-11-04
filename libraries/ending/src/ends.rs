@@ -105,36 +105,45 @@ mod tests {
 
     #[tokio::test]
     async fn the_session_coming_to_its_end_is_told_as_such() {
+        // given: a request carrying a session end
         let signing = Arc::new(Signing::default());
         let ends = ends_of(Some(SessionEnd::of(signing.clone())), None).await;
 
+        // when: the session comes to its end
         let reached = tokio::spawn(async move { ends.reached().await });
         tokio::time::sleep(A_MOMENT).await;
         signing.0.notify_waiters();
 
+        // then: the end told is the session's
         assert_eq!(reached.await.expect("it ends"), End::SessionEnded);
     }
 
     #[tokio::test]
     async fn the_server_closing_is_told_as_such() {
+        // given: a request carrying the server's shutdown
         let shutdown = Shutdown::new();
         let ends = ends_of(None, Some(&shutdown)).await;
 
+        // when: the server closes
         let before = tokio::time::timeout(A_MOMENT, ends.reached()).await;
         shutdown.close();
         let after = tokio::time::timeout(A_MOMENT, ends.reached()).await;
 
+        // then: nothing ended before
         assert!(
             before.is_err(),
             "nothing ends before the server is told to close"
         );
+        // and: the end told after is the server's
         assert_eq!(after.ok(), Some(End::ServerClosing));
     }
 
     #[tokio::test]
     async fn a_request_carrying_neither_never_ends() {
+        // given: a request carrying neither
         let ends = ends_of(None, None).await;
 
+        // then: it never ends
         assert!(
             tokio::time::timeout(A_MOMENT, ends.reached())
                 .await
@@ -144,24 +153,30 @@ mod tests {
 
     #[tokio::test]
     async fn the_server_waits_until_the_last_socket_has_gone() {
+        // given: two sockets of a closed server
         let shutdown = Shutdown::new();
         let first = ends_of(None, Some(&shutdown)).await;
         let second = ends_of(None, Some(&shutdown)).await;
         shutdown.close();
 
+        // when: they go one by one
         drop(first);
         let waiting = tokio::time::timeout(A_MOMENT, shutdown.drained()).await;
         drop(second);
         let drained = tokio::time::timeout(A_MOMENT, shutdown.drained()).await;
 
+        // then: the server waits while one is still open
         assert!(waiting.is_err(), "one socket is still open");
+        // and: is drained once the last has gone
         assert!(drained.is_ok());
     }
 
     #[tokio::test]
     async fn the_server_is_not_drained_before_it_closes() {
+        // given: a server not yet closed
         let shutdown = Shutdown::new();
 
+        // then: it is not drained
         assert!(
             tokio::time::timeout(A_MOMENT, shutdown.drained())
                 .await

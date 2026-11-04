@@ -69,14 +69,14 @@ impl Authorizer for Roles {
     }
 }
 
-struct Guarded {
+struct Wired {
     roles: Arc<Roles>,
     ada: TestServer,
     grace: TestServer,
     scene: String,
 }
 
-async fn guarded() -> Guarded {
+async fn a_workbench() -> Wired {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     let scenes = ScenesCore::new(
@@ -115,7 +115,7 @@ async fn guarded() -> Guarded {
         .await
         .assert_status_ok();
 
-    Guarded {
+    Wired {
         grace: as_account("account_grace"),
         ada,
         roles,
@@ -123,17 +123,17 @@ async fn guarded() -> Guarded {
     }
 }
 
-async fn titled(guarded: &Guarded) -> Value {
-    guarded
+async fn the_title(wired: &Wired) -> Value {
+    wired
         .ada
-        .get(&format!("/scenes/{}", guarded.scene))
+        .get(&format!("/scenes/{}", wired.scene))
         .await
         .json::<Value>()["title"]
         .clone()
 }
 
-async fn changes_by(guarded: &Guarded, account: &TestServer) -> [TestResponse; 5] {
-    let at = format!("/scenes/{}", guarded.scene);
+async fn changes_by(wired: &Wired, account: &TestServer) -> [TestResponse; 5] {
+    let at = format!("/scenes/{}", wired.scene);
 
     [
         account
@@ -150,10 +150,10 @@ async fn changes_by(guarded: &Guarded, account: &TestServer) -> [TestResponse; 5
     ]
 }
 
-async fn reads_by(guarded: &Guarded, account: &TestServer) -> [TestResponse; 3] {
+async fn reads_by(wired: &Wired, account: &TestServer) -> [TestResponse; 3] {
     [
         account.get(&format!("/scenes?project={PROJECT}")).await,
-        account.get(&format!("/scenes/{}", guarded.scene)).await,
+        account.get(&format!("/scenes/{}", wired.scene)).await,
         account
             .get(&format!("/scenes/quotation-restylings/{PROJECT}"))
             .await,
@@ -175,29 +175,37 @@ async fn following(account: &TestServer) -> Subscriber {
 
 #[tokio::test]
 async fn a_project_s_scenes_are_not_there_for_whoever_may_not_read_it() {
-    let guarded = guarded().await;
+    // given: a project with a scene, and an account with no role in it
+    let wired = a_workbench().await;
 
-    let mut answered = Vec::from(reads_by(&guarded, &guarded.grace).await);
-    answered.extend(changes_by(&guarded, &guarded.grace).await);
+    // when: the account reads and changes its scenes
+    let mut answered = Vec::from(reads_by(&wired, &wired.grace).await);
+    answered.extend(changes_by(&wired, &wired.grace).await);
 
+    // then: every answer is that they are not there
     for answer in answered {
         answer.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answer.json::<Value>()["type"], "not-found");
     }
-    let mut hers = following(&guarded.grace).await;
+    // and: following them ends as not there
+    let mut hers = following(&wired.grace).await;
     for _ in FOLLOWED {
         assert_eq!(hers.ended().await, "not-there");
     }
-    assert_eq!(titled(&guarded).await, "");
+    // and: the scene is unchanged
+    assert_eq!(the_title(&wired).await, "");
 }
 
 #[tokio::test]
 async fn a_reader_reads_and_follows_the_scenes_and_is_told_only_an_author_may_change_them() {
-    let guarded = guarded().await;
-    guarded.roles.give("account_grace", &READER);
+    // given: a project with a scene, and a reader of it
+    let wired = a_workbench().await;
+    wired.roles.give("account_grace", &READER);
 
-    let [listed, read, restyled] = reads_by(&guarded, &guarded.grace).await;
+    // when: the reader reads its scenes
+    let [listed, read, restyled] = reads_by(&wired, &wired.grace).await;
 
+    // then: each is answered
     listed.assert_status_ok();
     assert_eq!(
         listed.json::<Value>()["scenes"].as_array().map(Vec::len),
@@ -211,44 +219,56 @@ async fn a_reader_reads_and_follows_the_scenes_and_is_told_only_an_author_may_ch
         "quotation-never-restyled",
         "a reader is told what there is, not that the project is not there"
     );
-    following(&guarded.grace).await.nothing().await;
-    for refused in changes_by(&guarded, &guarded.grace).await {
+    // and: following them is not refused
+    following(&wired.grace).await.nothing().await;
+
+    // when: the reader changes them
+    let refusals = changes_by(&wired, &wired.grace).await;
+
+    // then: each change is refused as needing an author
+    for refused in refusals {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-author");
     }
-    assert_eq!(titled(&guarded).await, "");
+    // and: the scene is unchanged
+    assert_eq!(the_title(&wired).await, "");
 }
 
 #[tokio::test]
 async fn an_author_creates_retitles_links_unlinks_and_deletes() {
-    let guarded = guarded().await;
-    guarded
-        .roles
-        .give("account_grace", &[Act::Read, Act::Write]);
+    // given: a project with a scene, and an author of it
+    let wired = a_workbench().await;
+    wired.roles.give("account_grace", &[Act::Read, Act::Write]);
 
-    let [created, retitled, linked, unlinked, deleted] = changes_by(&guarded, &guarded.grace).await;
+    // when: the author changes its scenes
+    let [created, retitled, linked, unlinked, deleted] = changes_by(&wired, &wired.grace).await;
 
+    // then: every change goes through
     created.assert_status(StatusCode::CREATED);
     retitled.assert_status_ok();
     linked.assert_status_ok();
     unlinked.assert_status_ok();
     deleted.assert_status(StatusCode::NO_CONTENT);
-    guarded
+    // and: the scene is gone
+    wired
         .ada
-        .get(&format!("/scenes/{}", guarded.scene))
+        .get(&format!("/scenes/{}", wired.scene))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let guarded = guarded().await;
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    // given: a project whose roles cannot be learned
+    let wired = a_workbench().await;
+    *wired.roles.down.lock().expect("never poisoned") = true;
 
-    for answered in reads_by(&guarded, &guarded.ada).await {
+    // then: its owner's reads fail
+    for answered in reads_by(&wired, &wired.ada).await {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    let mut ada_s = following(&guarded.ada).await;
+    // and: following its scenes ends as failed
+    let mut ada_s = following(&wired.ada).await;
     for _ in FOLLOWED {
         assert_eq!(ada_s.ended().await, "failed");
     }
@@ -256,13 +276,16 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
 
 #[tokio::test]
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
-    let guarded = guarded().await;
-    guarded.roles.give("account_grace", &READER);
-    let mut hers = following(&guarded.grace).await;
+    // given: a reader following a project's scenes
+    let wired = a_workbench().await;
+    wired.roles.give("account_grace", &READER);
+    let mut hers = following(&wired.grace).await;
 
-    guarded.roles.give("account_grace", &[]);
-    guarded.roles.access_changed(PROJECT);
+    // when: her role is taken away
+    wired.roles.give("account_grace", &[]);
+    wired.roles.access_changed(PROJECT);
 
+    // then: each following ends as access lost
     for _ in FOLLOWED {
         assert_eq!(hers.ended().await, "access-lost");
     }

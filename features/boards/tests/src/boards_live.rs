@@ -71,14 +71,17 @@ async fn told(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn whoever_follows_a_board_is_told_each_change_by_its_version() {
+    // given: a followed board
     let (wired, server) = served();
     let board = an_open_board(&server, "project_1").await;
     wired.settle().await;
     let mut socket = following(&server, &board).await;
 
+    // when: an idea is pinned to it
     an_idea_pinned(&server, &board, "idea_1").await;
     wired.settle().await;
 
+    // then: the follower is told the pin with the board's new version
     let frame = told(&mut socket).await;
     let now: BoardDTO = server.get(&format!("/boards/{board}")).await.json();
     assert_eq!(frame["version"], now.version);
@@ -87,16 +90,20 @@ async fn whoever_follows_a_board_is_told_each_change_by_its_version() {
 
 #[tokio::test]
 async fn another_board_changing_is_not_told() {
+    // given: two boards, one of them followed
     let (wired, server) = served();
     let mine = an_open_board(&server, "project_1").await;
     let theirs = an_open_board(&server, "project_2").await;
     wired.settle().await;
     let mut socket = following(&server, &mine).await;
 
+    // when: an idea is pinned to the other
     an_idea_pinned(&server, &theirs, "idea_theirs").await;
+    // and: one to the followed board
     an_idea_pinned(&server, &mine, "idea_mine").await;
     wired.settle().await;
 
+    // then: the follower is first told of its own board
     let frame = told(&mut socket).await;
     assert_eq!(
         frame["event"]["idea"], "idea_mine",
@@ -106,13 +113,16 @@ async fn another_board_changing_is_not_told() {
 
 #[tokio::test]
 async fn whoever_follows_a_board_is_first_told_the_version_it_stands_at() {
+    // given: an open board
     let (wired, server) = served();
     let board = an_open_board(&server, "project_1").await;
     wired.settle().await;
     let now: BoardDTO = server.get(&format!("/boards/{board}")).await.json();
 
+    // when: it is followed
     let mut socket = connected(&server, &board).await;
 
+    // then: the follower is first told the version it stands at
     assert_eq!(
         told(&mut socket).await,
         json!({ "version": now.version }),
@@ -135,31 +145,38 @@ async fn told_on_one_socket(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn on_the_one_socket_a_board_is_told_where_it_stands_then_each_change() {
+    // given: an open board
     let (wired, server) = served();
     let board = an_open_board(&server, "project_1").await;
     wired.settle().await;
     let (_live, mut socket) = on_one_socket(&wired).await;
 
+    // when: it is followed on the one socket
     socket
         .subscribe("board", "boards", &[("board", &board)])
         .await;
     let standing = told_on_one_socket(&mut socket).await;
+    // and: an idea is pinned to it
     an_idea_pinned(&server, &board, "idea_1").await;
     wired.settle().await;
     let pinned = told_on_one_socket(&mut socket).await;
+    // and: a board nobody opened is followed
     socket
         .subscribe("nowhere", "boards", &[("board", "board_nobody_opened")])
         .await;
     let nowhere = told_on_one_socket(&mut socket).await;
 
+    // then: the board is first told where it stands
     assert_eq!(standing["id"], "board");
     assert_eq!(
         standing["frame"],
         json!({ "version": 1 }),
         "told first where it stands"
     );
+    // and: then the pin
     assert_eq!(pinned["frame"]["of"], board);
     assert_eq!(pinned["frame"]["version"], 2);
+    // and: the board nobody opened is not there
     assert_eq!(
         nowhere,
         json!({ "told": "ended", "id": "nowhere", "why": "not-there" })

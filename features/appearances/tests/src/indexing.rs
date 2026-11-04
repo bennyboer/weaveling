@@ -203,12 +203,15 @@ fn discarded(idea: &str) -> Message {
 
 #[tokio::test]
 async fn an_idea_noted_in_a_section_appears_there() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: an idea is noted in a section
     wired
         .hears(&wired.outline, noted("idea_1", "section_1"))
         .await;
 
+    // then: it appears there
     assert_eq!(
         wired.places_of("idea_1").await,
         vec![a_section("section_1")]
@@ -217,11 +220,13 @@ async fn an_idea_noted_in_a_section_appears_there() {
 
 #[tokio::test]
 async fn a_note_moved_between_sections_appears_only_where_it_went() {
+    // given: an idea noted in a section
     let wired = a_workbench();
     wired
         .hears(&wired.outline, noted("idea_1", "section_1"))
         .await;
 
+    // when: it is moved to another section
     wired
         .hears(&wired.outline, unnoted("idea_1", "section_1"))
         .await;
@@ -229,6 +234,7 @@ async fn a_note_moved_between_sections_appears_only_where_it_went() {
         .hears(&wired.outline, noted("idea_1", "section_2"))
         .await;
 
+    // then: it appears only in the other
     assert_eq!(
         wired.places_of("idea_1").await,
         vec![a_section("section_2")],
@@ -238,8 +244,10 @@ async fn a_note_moved_between_sections_appears_only_where_it_went() {
 
 #[tokio::test]
 async fn a_scene_attached_in_the_outline_is_not_an_appearance() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: a scene is attached to a section
     wired
         .hears(
             &wired.outline,
@@ -256,6 +264,7 @@ async fn a_scene_attached_in_the_outline_is_not_an_appearance() {
         )
         .await;
 
+    // then: nothing appears there
     assert!(
         wired.places_of("idea_1").await.is_empty(),
         "only ideas are subjects; a scene placed in a section is the book, not a note about it"
@@ -264,6 +273,7 @@ async fn a_scene_attached_in_the_outline_is_not_an_appearance() {
 
 #[tokio::test]
 async fn a_removed_section_takes_its_notes_with_it() {
+    // given: two ideas noted in a section
     let wired = a_workbench();
     wired
         .hears(&wired.outline, noted("idea_1", "section_1"))
@@ -272,6 +282,7 @@ async fn a_removed_section_takes_its_notes_with_it() {
         .hears(&wired.outline, noted("idea_2", "section_1"))
         .await;
 
+    // when: the section is removed
     wired
         .hears(
             &wired.outline,
@@ -284,27 +295,34 @@ async fn a_removed_section_takes_its_notes_with_it() {
         )
         .await;
 
+    // then: neither appears anywhere
     assert!(wired.places_of("idea_1").await.is_empty());
     assert!(wired.places_of("idea_2").await.is_empty());
 }
 
 #[tokio::test]
 async fn an_idea_linked_from_a_scene_appears_there_until_unlinked() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: an idea is linked from a scene
     wired
         .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
         .await;
+    // then: it appears there
     assert_eq!(wired.places_of("idea_1").await, vec![a_scene("scene_1")]);
 
+    // when: it is unlinked
     wired
         .hears(&wired.scenes, unlinked("idea_1", "scene_1", 2))
         .await;
+    // then: it appears nowhere
     assert!(wired.places_of("idea_1").await.is_empty());
 }
 
 #[tokio::test]
 async fn a_deleted_scene_takes_every_link_with_it() {
+    // given: two ideas linked from a scene
     let wired = a_workbench();
     wired
         .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
@@ -313,14 +331,17 @@ async fn a_deleted_scene_takes_every_link_with_it() {
         .hears(&wired.scenes, linked("idea_2", "scene_1", 2))
         .await;
 
+    // when: the scene is deleted
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
+    // then: neither appears anywhere
     assert!(wired.places_of("idea_1").await.is_empty());
     assert!(wired.places_of("idea_2").await.is_empty());
 }
 
 #[tokio::test]
 async fn a_discarded_idea_appears_nowhere() {
+    // given: an idea noted in a section and linked from a scene
     let wired = a_workbench();
     wired
         .hears(&wired.outline, noted("idea_1", "section_1"))
@@ -328,13 +349,17 @@ async fn a_discarded_idea_appears_nowhere() {
     wired
         .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
         .await;
+    // and: another noted in the same section
     wired
         .hears(&wired.outline, noted("idea_2", "section_1"))
         .await;
 
+    // when: the first is discarded
     wired.hears(&wired.ideas, discarded("idea_1")).await;
 
+    // then: it appears nowhere
     assert!(wired.places_of("idea_1").await.is_empty());
+    // and: the other stays where it was
     assert_eq!(
         wired.places_of("idea_2").await,
         vec![a_section("section_1")],
@@ -344,8 +369,10 @@ async fn a_discarded_idea_appears_nowhere() {
 
 #[tokio::test]
 async fn hearing_the_same_message_twice_is_harmless() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: a note and a link are each heard twice
     for _ in 0..2 {
         wired
             .hears(&wired.outline, noted("idea_1", "section_1"))
@@ -355,6 +382,7 @@ async fn hearing_the_same_message_twice_is_harmless() {
             .await;
     }
 
+    // then: the idea appears once in each place
     assert_eq!(
         wired.places_of("idea_1").await,
         vec![a_scene("scene_1"), a_section("section_1")],
@@ -364,6 +392,7 @@ async fn hearing_the_same_message_twice_is_harmless() {
 
 #[tokio::test]
 async fn a_note_tried_again_after_it_was_taken_out_stays_out() {
+    // given: an idea taken out of a section after a note that failed
     let wired = a_workbench();
     let late = at_version(noted("idea_1", "section_1"), 2);
     wired
@@ -373,8 +402,10 @@ async fn a_note_tried_again_after_it_was_taken_out_stays_out() {
         )
         .await;
 
+    // when: the note is tried again
     wired.hears(&wired.outline, late).await;
 
+    // then: the idea stays out
     assert!(
         wired.places_of("idea_1").await.is_empty(),
         "an attachment that failed and was tried again after its detachment is older news"
@@ -383,6 +414,7 @@ async fn a_note_tried_again_after_it_was_taken_out_stays_out() {
 
 #[tokio::test]
 async fn a_removal_tried_again_after_a_new_note_leaves_the_note() {
+    // given: an idea noted in a section, taken out, and noted again, with the taking out failing
     let wired = a_workbench();
     let late = at_version(unnoted("idea_1", "section_1"), 3);
     wired
@@ -392,8 +424,10 @@ async fn a_removal_tried_again_after_a_new_note_leaves_the_note() {
         .hears(&wired.outline, at_version(noted("idea_1", "section_1"), 4))
         .await;
 
+    // when: the taking out is tried again
     wired.hears(&wired.outline, late).await;
 
+    // then: the idea stays noted
     assert_eq!(
         wired.places_of("idea_1").await,
         vec![a_section("section_1")]
@@ -402,25 +436,31 @@ async fn a_removal_tried_again_after_a_new_note_leaves_the_note() {
 
 #[tokio::test]
 async fn a_note_tried_again_after_its_section_was_removed_stays_gone() {
+    // given: a section removed after a note in it failed
     let wired = a_workbench();
     let late = at_version(noted("idea_1", "section_1"), 2);
     wired
         .hears(&wired.outline, at_version(removed("section_1"), 3))
         .await;
 
+    // when: the note is tried again
     wired.hears(&wired.outline, late).await;
 
+    // then: the idea appears nowhere
     assert!(wired.places_of("idea_1").await.is_empty());
 }
 
 #[tokio::test]
 async fn a_note_tried_again_after_its_idea_was_discarded_stays_gone() {
+    // given: an idea discarded after a note of it failed
     let wired = a_workbench();
     let late = noted("idea_1", "section_1");
     wired.hears(&wired.ideas, discarded("idea_1")).await;
 
+    // when: the note is tried again
     wired.hears(&wired.outline, late).await;
 
+    // then: the idea appears nowhere
     assert!(
         wired.places_of("idea_1").await.is_empty(),
         "the discard comes from the idea's stream, so no outline version can outrank it"
@@ -429,30 +469,37 @@ async fn a_note_tried_again_after_its_idea_was_discarded_stays_gone() {
 
 #[tokio::test]
 async fn a_link_tried_again_after_its_scene_was_deleted_stays_gone() {
+    // given: a scene deleted after a link from it failed
     let wired = a_workbench();
     let late = linked("idea_1", "scene_1", 1);
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
+    // when: the link is tried again
     wired.hears(&wired.scenes, late).await;
 
+    // then: the idea appears nowhere
     assert!(wired.places_of("idea_1").await.is_empty());
 }
 
 #[tokio::test]
 async fn a_link_tried_again_after_it_was_unlinked_stays_unlinked() {
+    // given: an idea unlinked from a scene after its link failed
     let wired = a_workbench();
     let late = linked("idea_1", "scene_1", 1);
     wired
         .hears(&wired.scenes, unlinked("idea_1", "scene_1", 2))
         .await;
 
+    // when: the link is tried again
     wired.hears(&wired.scenes, late).await;
 
+    // then: the idea stays unlinked
     assert!(wired.places_of("idea_1").await.is_empty());
 }
 
 #[tokio::test]
 async fn an_unlink_tried_again_after_a_new_link_leaves_the_link() {
+    // given: an idea linked from a scene, unlinked, and linked again, with the unlinking failing
     let wired = a_workbench();
     let late = unlinked("idea_1", "scene_1", 2);
     wired
@@ -462,13 +509,16 @@ async fn an_unlink_tried_again_after_a_new_link_leaves_the_link() {
         .hears(&wired.scenes, linked("idea_1", "scene_1", 3))
         .await;
 
+    // when: the unlinking is tried again
     wired.hears(&wired.scenes, late).await;
 
+    // then: the idea stays linked
     assert_eq!(wired.places_of("idea_1").await, vec![a_scene("scene_1")]);
 }
 
 #[tokio::test]
 async fn a_message_no_listener_can_read_is_refused() {
+    // given: messages no listener can read
     let wired = a_workbench();
     let nonsense = |routing: &str| {
         Message::opening(
@@ -478,6 +528,7 @@ async fn a_message_no_listener_can_read_is_refused() {
         )
     };
 
+    // then: each listener refuses them
     assert!(wired.outline.handle(&nonsense(ATTACHED)).await.is_err());
     assert!(wired.scenes.handle(&nonsense(IDEA_LINKED)).await.is_err());
     assert!(
@@ -507,8 +558,10 @@ impl Wired {
 
 #[tokio::test]
 async fn an_idea_noted_in_a_section_or_linked_to_a_scene_is_known_in_its_project() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: an idea is noted in a section of one project and another linked from a scene of another
     wired
         .hears(
             &wired.outline,
@@ -522,6 +575,7 @@ async fn an_idea_noted_in_a_section_or_linked_to_a_scene_is_known_in_its_project
         )
         .await;
 
+    // then: each is known in its project
     assert_eq!(
         wired.project_of("idea_1").await,
         Some(ProjectLink::from("project_1"))
@@ -534,26 +588,32 @@ async fn an_idea_noted_in_a_section_or_linked_to_a_scene_is_known_in_its_project
 
 #[tokio::test]
 async fn a_message_in_no_project_still_places_its_idea_and_names_no_project() {
+    // given: no idea placed anywhere
     let wired = a_workbench();
 
+    // when: an idea is noted in a section in no project
     wired
         .hears(&wired.outline, noted("idea_1", "section_1"))
         .await;
 
+    // then: it appears there
     assert_eq!(
         wired.places_of("idea_1").await,
         vec![a_section("section_1")]
     );
+    // and: it is known in no project
     assert_eq!(wired.project_of("idea_1").await, None);
 }
 
 #[tokio::test]
 async fn a_tombstone_is_laid_when_what_it_marks_went() {
+    // given: an idea discarded, a section removed and a scene deleted, all at one moment
     let wired = a_workbench();
     wired.hears(&wired.ideas, discarded("idea_1")).await;
     wired.hears(&wired.outline, removed("section_1")).await;
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
+    // when: tombstones are forgotten before that moment, after it, and after it again
     let appearances = AppearancesCore::new(
         Arc::new(InMemoryTransactions::new()),
         wired.catalog.clone(),
@@ -569,6 +629,7 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
         );
     }
 
+    // then: all three go after it and only once
     assert_eq!(
         forgotten,
         [0, 3, 0],

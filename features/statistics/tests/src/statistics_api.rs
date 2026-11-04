@@ -12,6 +12,7 @@ use transacting::{InMemoryTransactions, Transactions};
 
 #[tokio::test]
 async fn a_project_nobody_counted_answers_with_nothing() {
+    // given: nothing counted
     let server = TestServer::new(
         statistics_rest::router(StatisticsCore::new(
             Arc::new(InMemoryTransactions::new()),
@@ -21,16 +22,19 @@ async fn a_project_nobody_counted_answers_with_nothing() {
         .layer(Extension(Agent::Local)),
     );
 
+    // when: a project's counts are asked for
     let response = server
         .get("/statistics/word-counts?project=project_1")
         .await;
 
+    // then: the answer is empty
     response.assert_status_ok();
     assert!(response.json::<Vec<WordCountDTO>>().is_empty());
 }
 
 #[tokio::test]
 async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
+    // given: counts of scenes in two projects
     let catalog = Arc::new(InMemoryWordCountCatalog::new());
     for (scene, project, words) in [
         ("scene_1", "project_1", 42),
@@ -65,10 +69,12 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
         .layer(Extension(Agent::Local)),
     );
 
+    // when: one project's counts are asked for
     let response = server
         .get("/statistics/word-counts?project=project_1")
         .await;
 
+    // then: the answer is the count of each of its scenes
     response.assert_status_ok();
     assert_eq!(
         response.json::<Vec<WordCountDTO>>(),
@@ -87,6 +93,7 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
 
 #[tokio::test]
 async fn asking_without_a_project_is_a_bad_request() {
+    // given: the statistics
     let server = TestServer::new(
         statistics_rest::router(StatisticsCore::new(
             Arc::new(InMemoryTransactions::new()),
@@ -96,7 +103,9 @@ async fn asking_without_a_project_is_a_bad_request() {
         .layer(Extension(Agent::Local)),
     );
 
+    // when: counts are asked for without a project
     let response = server.get("/statistics/word-counts").expect_failure().await;
 
+    // then: it is a bad request
     response.assert_status_bad_request();
 }

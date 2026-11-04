@@ -16,6 +16,7 @@ async function aProject(page: import("@playwright/test").Page): Promise<string> 
 test("a project's members are listed by name and role, with whoever is me marked", async ({
   page,
 }) => {
+  // given: a project with an owner, an author and a reader not known by name
   await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
@@ -41,9 +42,11 @@ test("a project's members are listed by name and role, with whoever is me marked
     },
   );
 
+  // when: its owner opens its members
   await page.goto(`/projects/${project}/write`);
   await page.getByRole("link", { name: "Members" }).click();
 
+  // then: they are listed by name and role, the owner marked as them
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
   const people = page.locator(".members li");
   await expect(people).toHaveCount(3);
@@ -55,16 +58,20 @@ test("a project's members are listed by name and role, with whoever is me marked
   await expect(people.nth(1)).not.toContainText("(you)");
   await expect(people.nth(2)).toContainText("Not known by name yet");
   await expect(page.getByLabel("Role of Not known by name yet")).toHaveValue("reader");
+  // and: only that project's members were asked for
   expect(asked.length).toBeGreaterThan(0);
   expect(asked.every((one) => one === project)).toBe(true);
 });
 
 test("without accounts a project has no members to show", async ({ page }) => {
+  // given: a project on a server without accounts
   test.skip(withAccounts, "the server these tests run against keeps accounts");
   const project = await aProject(page);
 
+  // when: it is opened
   await page.goto(`/projects/${project}/write`);
 
+  // then: no members are offered
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Members" })).toHaveCount(0);
 });
@@ -130,6 +137,7 @@ const HEDY = { account: "account_3", name: "Hedy Lamarr", email: "hedy@example.c
 test("an owner changes a member's role and removes another, and the list follows", async ({
   page,
 }) => {
+  // given: an owner on the members page with an author and a reader
   const asked = await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
@@ -137,7 +145,9 @@ test("an owner changes a member's role and removes another, and the list follows
   ]);
   const people = page.locator(".members li");
 
+  // when: the author is made an owner
   await page.getByLabel("Role of Grace Hopper").selectOption("Owner");
+  // then: they are an owner, and the first may now step down
   await expect.poll(() => asked.patched).toEqual([{ account: GRACE.account, role: "owner" }]);
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("owner");
   await expect(
@@ -145,26 +155,33 @@ test("an owner changes a member's role and removes another, and the list follows
     "with another owner, one may step down",
   ).toHaveValue("owner");
 
+  // when: the reader is removed
   await people.filter({ hasText: "Hedy Lamarr" }).getByRole("button", { name: "Remove" }).click();
+  // then: they leave the list
   await expect(people).toHaveCount(2);
   expect(asked.deleted).toEqual([HEDY.account]);
+  // and: the owner is offered no removing of themselves
   await expect(people.filter({ hasText: "Ada Lovelace" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
 });
 
 test("an author sees the roles plainly and may only leave, which leads back to the projects", async ({
   page,
 }) => {
+  // given: an author on the members page
   const asked = await onTheMembersPage(page, [
     { ...GRACE, role: "owner" },
     { account: ADA.account, role: "author", name: ADA.name },
   ]);
 
+  // then: the roles show plainly, with no removing
   await expect(page.getByRole("combobox", { name: /Role of/ })).toHaveCount(0);
   await expect(page.locator(".members li").nth(0)).toContainText("Owner");
   await expect(page.locator(".members li").nth(1)).toContainText("Author");
   await expect(page.getByRole("button", { name: "Remove" })).toHaveCount(0);
+  // when: they leave
   await page.getByRole("button", { name: "Leave" }).click();
 
+  // then: their projects show
   await expect(page).toHaveURL(/\/$/);
   expect(asked.deleted).toEqual([ADA.account]);
 });
@@ -172,53 +189,66 @@ test("an author sees the roles plainly and may only leave, which leads back to t
 test("the only owner is shown as such, may stay, and leaves by handing the project over", async ({
   page,
 }) => {
+  // given: the only owner on the members page, with others
   const asked = await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
     { ...HEDY, role: "reader" },
   ]);
   const own = page.locator(".members li").filter({ hasText: "(you)" });
+  // then: they are shown as the only owner, their role fixed
   await expect(own).toContainText("Owner, the only one");
   await expect(page.getByLabel("Role of Ada Lovelace")).toHaveCount(0);
 
+  // when: they leave and choose to stay
   await page.getByRole("button", { name: "Leave" }).click();
   const dialog = page.getByRole("dialog", { name: "You are its only owner" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Stay" }).click();
+  // then: nothing changes
   await expect(dialog).toHaveCount(0);
   expect(asked.patched).toEqual([]);
   expect(asked.deleted).toEqual([]);
 
+  // when: they leave, handing the project to another
   await page.getByRole("button", { name: "Leave" }).click();
   await dialog.getByLabel("New owner").selectOption({ label: "Hedy Lamarr (Reader)" });
   await dialog.getByRole("button", { name: "Hand over and leave" }).click();
 
+  // then: the other owns it and they are gone
   await expect(page).toHaveURL(/\/$/);
   expect(asked.patched).toEqual([{ account: HEDY.account, role: "owner" }]);
   expect(asked.deleted).toEqual([ADA.account]);
 });
 
 test("the only member, leaving, is offered to move the project to the trash instead", async ({ page }) => {
+  // given: the only member of a project
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
   ]);
   const project = new URL(page.url()).pathname.split("/")[2];
 
+  // when: they leave
   await page.getByRole("button", { name: "Leave" }).click();
+  // then: they are offered to move it to the trash
   const dialog = page.getByRole("dialog", { name: "Nobody else is in it" });
   await expect(dialog).toContainText("where it can be restored for 30 days");
+  // when: they take that
   await dialog.getByRole("button", { name: "Move the project to the trash" }).click();
 
+  // then: the project is gone
   await expect(page).toHaveURL(/\/$/);
   expect((await page.request.get(`${API}/projects/${project}`)).status()).toBe(404);
 });
 
 test("a change refused is told, and the members are asked for again", async ({ page }) => {
+  // given: an owner on the members page
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
     { ...HEDY, role: "reader" },
   ]);
+  // and: changes to members refused
   await page.route(
     (url) => url.pathname.startsWith("/api/members/"),
     (route) =>
@@ -230,11 +260,15 @@ test("a change refused is told, and the members are asked for again", async ({ p
   );
   const told = "Only an owner of this project may do this.";
 
+  // when: a role is changed
   await page.getByLabel("Role of Grace Hopper").selectOption("Reader");
+  // then: the refusal is told and the role is as it was
   await expect(page.getByRole("alert")).toHaveText(told);
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("author");
 
+  // when: a member is removed
   await page.locator(".members li").filter({ hasText: "Hedy Lamarr" }).getByRole("button", { name: "Remove" }).click();
+  // then: the refusal is told and the member stays
   await expect(page.getByRole("alert")).toHaveText(told);
   await expect(page.locator(".members li")).toHaveCount(3);
 });
@@ -280,6 +314,7 @@ async function projectInvitationsServed(page: Page, held: ProjectInvitation[]) {
 test("an owner invites into the project as a role and invites a lapsed invitation again as it was", async ({
   page,
 }) => {
+  // given: an owner on the members page, with a lapsed invitation
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
   ]);
@@ -295,7 +330,9 @@ test("an owner invites into the project as a role and invites a lapsed invitatio
     },
   ]);
 
+  // when: the invited are opened
   await page.getByRole("link", { name: "Invited" }).click();
+  // then: the project's invitations are listed with their roles
   await expect(page).toHaveURL(new RegExp(`/projects/${project}/members/invited$`));
   const invitations = page.locator(".invitations li");
   await expect(invitations).toHaveCount(1);
@@ -303,14 +340,18 @@ test("an owner invites into the project as a role and invites a lapsed invitatio
   await expect(invitations.nth(0)).toContainText("Reader");
   expect(asked.listed).toEqual([project]);
 
+  // when: an address is invited as an owner
   await page.getByLabel("Email address").fill("ken@example.com");
   await page.getByLabel("As").selectOption("Owner");
   await page.getByRole("button", { name: "Invite", exact: true }).click();
 
+  // then: it is listed first, as an owner
   await expect(invitations).toHaveCount(2);
   await expect(invitations.nth(0)).toContainText("ken@example.com");
   await expect(invitations.nth(0)).toContainText("Owner");
+  // when: the lapsed invitation is invited again
   await page.getByRole("button", { name: "Invite again" }).click();
+  // then: it is sent again as it was
   await expect(invitations).toHaveCount(3);
   expect(asked.sent).toEqual([
     { email: "ken@example.com", scope: { kind: "project", project, role: "owner" } },
@@ -319,11 +360,13 @@ test("an owner invites into the project as a role and invites a lapsed invitatio
 });
 
 test("whoever is no owner finds no Invited tab", async ({ page }) => {
+  // given: an author on the members page
   await onTheMembersPage(page, [
     { ...GRACE, role: "owner" },
     { account: ADA.account, role: "author", name: ADA.name },
   ]);
 
+  // then: no invited tab is offered
   await expect(page.getByRole("link", { name: "People" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Invited" })).toHaveCount(0);
 });
@@ -331,10 +374,12 @@ test("whoever is no owner finds no Invited tab", async ({ page }) => {
 test("a hand-over half done is told, and the members are shown as they now are", async ({
   page,
 }) => {
+  // given: the only owner on the members page, with an author
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
   ]);
+  // and: their leaving refused after the hand-over
   await page.route(
     (url) => url.pathname.startsWith("/api/members/"),
     (route) =>
@@ -347,10 +392,13 @@ test("a hand-over half done is told, and the members are shown as they now are",
         : route.fallback(),
   );
 
+  // when: they hand the project over and leave
   await page.getByRole("button", { name: "Leave" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Hand over and leave" }).click();
 
+  // then: the refusal is told
   await expect(page.getByRole("alert")).toHaveText("This person is not a member of this project.");
+  // and: the members show as they now are
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("owner");
   await expect(page.getByLabel("Role of Ada Lovelace")).toHaveValue("owner");
@@ -359,6 +407,7 @@ test("a hand-over half done is told, and the members are shown as they now are",
 test("the masthead shows a project's members as a stack of initials, three and how many more", async ({
   page,
 }) => {
+  // given: a project of four members, one not known by name
   await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
@@ -371,20 +420,25 @@ test("the masthead shows a project's members as a stack of initials, three and h
     { account: "account_4", role: "reader", name: "Hedy Lamarr" },
   ]);
 
+  // when: it is opened
   await page.goto(`/projects/${project}/write`);
 
+  // then: the masthead shows three initials and how many more
   const members = page.getByRole("link", {
     name: "Members: Ada Lovelace, Grace Hopper, Not known by name yet, Hedy Lamarr",
   });
   await expect(members).toBeVisible();
   await expect(members.locator(".avatar:visible")).toHaveText(["A", "G", "?", "+1"]);
+  // when: they are clicked
   await members.click();
+  // then: the members page opens
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
 });
 
 test("one's own initial wears the same tint in the stack as on the account's button", async ({
   page,
 }) => {
+  // given: a project of mine alone
   await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
@@ -394,8 +448,10 @@ test("one's own initial wears the same tint in the stack as on the account's but
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
   ]);
 
+  // when: it is opened
   await page.goto(`/projects/${project}/write`);
 
+  // then: my initial wears the same tint as my account's button
   const mine = page.locator(".masthead .stack .avatar").first();
   await expect(mine).toHaveText("A");
   const tinted = (locator: import("@playwright/test").Locator) =>
@@ -408,7 +464,9 @@ test("one's own initial wears the same tint in the stack as on the account's but
 test("on a phone the members are in the More menu, not beside the project's name", async ({
   page,
 }) => {
+  // given: a phone
   await page.setViewportSize({ width: 360, height: 700 });
+  // and: a project with two members
   await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
@@ -419,20 +477,24 @@ test("on a phone the members are in the More menu, not beside the project's name
     { account: "account_2", role: "author", name: "Grace Hopper" },
   ]);
 
+  // when: it is opened
   await page.goto(`/projects/${project}/write`);
   await expect(page.getByRole("button", { name: "More" })).toBeVisible();
 
+  // then: no members or sharing show beside its name
   await expect(page.locator(".masthead .stack")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  // when: the more menu is opened and members chosen
   await page.getByRole("button", { name: "More" }).click();
   const menu = page.getByRole("dialog", { name: "More" });
   await expect(menu.getByRole("heading", { name: "This project" })).toBeVisible();
   await menu.getByRole("link", { name: "Members" }).click();
+  // then: the members page opens and the menu closes
   await expect(page).toHaveURL(new RegExp(`/projects/${project}/members$`));
   await expect(menu).toHaveCount(0);
 });
 
-async function sharing(page: Page, listed: Listed[]) {
+async function aProjectToShare(page: Page, listed: Listed[]) {
   const server = await aServerWithAccounts(page);
   server.operator = true;
   server.invited = [
@@ -465,13 +527,16 @@ const shareDialog = (page: Page) => page.getByRole("dialog", { name: /^Share “
 test("Share opens a dialog to invite, with who has access and who is invited", async ({
   page,
 }) => {
-  const { server } = await sharing(page, [
+  // given: an owner of a project with an author and an invitation
+  const { server } = await aProjectToShare(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { account: "account_2", role: "author", name: "Grace Hopper", email: "grace@example.com" },
   ]);
 
+  // when: share is chosen
   await page.getByRole("button", { name: "Share", exact: true }).click();
 
+  // then: it shows who has access and who is invited
   const dialog = shareDialog(page);
   await expect(dialog.getByRole("heading", { name: "People with access" })).toBeVisible();
   await expect(dialog.locator(".members li")).toHaveCount(2);
@@ -479,65 +544,83 @@ test("Share opens a dialog to invite, with who has access and who is invited", a
   await expect(dialog.getByRole("heading", { name: "Invited" })).toBeVisible();
   await expect(dialog.locator(".invitations")).toContainText("ken@example.com");
 
+  // when: an address is invited as a reader
   await dialog.getByLabel("Email address").fill("mary@example.com");
   await dialog.getByLabel("As").selectOption("reader");
   await dialog.getByRole("button", { name: "Invite", exact: true }).click();
 
+  // then: it is listed invited
   await expect(dialog.locator(".invitations")).toContainText("mary@example.com");
   expect(server.invited[0].email).toBe("mary@example.com");
+  // when: escape is pressed
   await page.keyboard.press("Escape");
+  // then: the dialog closes
   await expect(shareDialog(page)).toHaveCount(0);
 });
 
 test("someone who does not own the project sees who has access, and asks for no invitations", async ({
   page,
 }) => {
-  const { invitationsAsked } = await sharing(page, [
+  // given: an author of a project
+  const { invitationsAsked } = await aProjectToShare(page, [
     { account: "account_2", role: "owner", name: "Grace Hopper" },
     { account: ADA.account, role: "author", name: ADA.name, email: ADA.email },
   ]);
 
+  // when: share is chosen
   await page.getByRole("button", { name: "Share", exact: true }).click();
 
+  // then: it shows who has access
   const dialog = shareDialog(page);
   await expect(dialog.locator(".members li")).toHaveCount(2);
+  // and: offers no inviting and asks for no invitations
   await expect(dialog.getByLabel("Email address")).toHaveCount(0);
   await expect(dialog.getByRole("heading", { name: "Invited" })).toHaveCount(0);
   expect(invitationsAsked).toEqual([]);
 });
 
 test("from the Share dialog the Members page is one step away", async ({ page }) => {
-  const { project } = await sharing(page, [
+  // given: the share dialog open
+  const { project } = await aProjectToShare(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
   ]);
   await page.getByRole("button", { name: "Share", exact: true }).click();
 
+  // when: all members and invitations is followed
   await shareDialog(page).getByRole("link", { name: "All members and invitations" }).click();
 
+  // then: the members page opens
   await expect(page).toHaveURL(new RegExp(`/projects/${project}/members$`));
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
 });
 
 test("without accounts there is nothing to share", async ({ page }) => {
+  // given: a project on a server without accounts
   test.skip(withAccounts, "the server these tests run against keeps accounts");
   const project = await aProject(page);
 
+  // when: it is opened
   await page.goto(`/projects/${project}/write`);
 
+  // then: nothing is offered to share
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
 });
 
 test("on a phone, Share is in the More menu and the dialog fits the screen", async ({ page }) => {
+  // given: a phone
   await page.setViewportSize({ width: 360, height: 700 });
-  await sharing(page, [
+  // and: an owner of a project with an author
+  await aProjectToShare(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { account: "account_2", role: "author", name: "Grace Hopper", email: "grace@example.com" },
   ]);
 
+  // when: share is chosen from the more menu
   await page.getByRole("button", { name: "More" }).click();
   await page.getByRole("dialog", { name: "More" }).getByRole("button", { name: "Share" }).click();
 
+  // then: the menu closes and the dialog fits the screen
   await expect(page.getByRole("dialog", { name: "More" })).toHaveCount(0);
   await expect(shareDialog(page).getByRole("heading", { name: "People with access" })).toBeVisible();
   const shown = await shareDialog(page).boundingBox();

@@ -51,8 +51,10 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
+    // given: a catalog
     let bench = OnPostgres::setup().await;
 
+    // when: the collations of its id columns are read
     let collations: Vec<(String, Option<String>)> = sqlx::query_as(
         "SELECT table_name::text || '.' || column_name::text, collation_name::text
          FROM information_schema.columns
@@ -64,6 +66,7 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
     .await
     .expect("reading the columns should succeed");
 
+    // then: each sorts bytewise
     assert_eq!(
         collations,
         vec![

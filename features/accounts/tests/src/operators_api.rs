@@ -46,7 +46,7 @@ async fn served_with_ada_signed_in() -> (Wired, TestServer, String) {
     (wired, server, cookie)
 }
 
-async fn drawn(wired: &Wired) -> String {
+async fn an_operator_code(wired: &Wired) -> String {
     wired
         .accounts
         .draw_operator_code()
@@ -69,10 +69,15 @@ async fn is_operator(server: &TestServer, cookie: &str) -> bool {
 
 #[tokio::test]
 async fn the_code_makes_whoever_is_signed_in_an_operator() {
+    // given: a signed in account
     let (wired, server, cookie) = served_with_ada_signed_in().await;
-    let code = drawn(&wired).await;
+    // and: an operator code drawn
+    let code = an_operator_code(&wired).await;
+
+    // then: the account is no operator yet
     assert!(!is_operator(&server, &cookie).await);
 
+    // when: the account presents the code
     server
         .post("/operators")
         .add_header(COOKIE, &cookie)
@@ -80,14 +85,18 @@ async fn the_code_makes_whoever_is_signed_in_an_operator() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: it is an operator
     assert!(is_operator(&server, &cookie).await);
 }
 
 #[tokio::test]
 async fn a_wrong_code_is_refused_as_such() {
+    // given: a signed in account
     let (wired, server, cookie) = served_with_ada_signed_in().await;
-    let _code = drawn(&wired).await;
+    // and: an operator code drawn
+    let _code = an_operator_code(&wired).await;
 
+    // when: the account presents another code
     let refused = server
         .post("/operators")
         .add_header(COOKIE, &cookie)
@@ -96,24 +105,29 @@ async fn a_wrong_code_is_refused_as_such() {
         })
         .await;
 
+    // then: it is refused as a wrong code
     refused.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
         refused.json::<Value>()["type"],
         refused::OPERATOR_CODE_WRONG
     );
+    // and: the account is no operator
     assert!(!is_operator(&server, &cookie).await);
 }
 
 #[tokio::test]
 async fn nobody_becomes_an_operator_without_signing_in() {
+    // given: an operator code drawn
     let (wired, server, _cookie) = served_with_ada_signed_in().await;
-    let code = drawn(&wired).await;
+    let code = an_operator_code(&wired).await;
 
+    // when: the code is presented without a session
     let refused = server
         .post("/operators")
         .json(&BecomeOperatorRequest { code })
         .await;
 
+    // then: it is refused as not signed in
     refused.assert_status(StatusCode::UNAUTHORIZED);
     assert_eq!(refused.json::<Value>()["type"], refused::NOT_SIGNED_IN);
 }

@@ -48,14 +48,17 @@ mod tests {
 
     #[test]
     fn an_event_name_is_nameable_at_compile_time() {
+        // given: a name declared as a constant
         const CAPTURED: EventName = EventName::of("IDEA_CAPTURED");
 
+        // then: it reads as itself
         assert_eq!(CAPTURED.as_str(), "IDEA_CAPTURED");
         assert_eq!(CAPTURED.to_string(), "IDEA_CAPTURED");
     }
 
     #[test]
     fn two_event_names_are_distinct() {
+        // expect: names that differ are distinct
         assert_ne!(
             EventName::of("IDEA_CAPTURED"),
             EventName::of("IDEA_RETITLED")

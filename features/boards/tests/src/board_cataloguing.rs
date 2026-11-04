@@ -91,24 +91,30 @@ async fn catalogued(wired: &Wired, project: &str) -> Vec<BoardId> {
 
 #[tokio::test]
 async fn hearing_that_a_board_started_catalogues_it() {
+    // given: a stored board
     let wired = a_workbench();
     let id = a_stored_board(&wired, "project_1").await;
 
+    // when: its start is heard
     wired
         .projector
         .handle(&told_of(&a_start(&id, "project_1")))
         .await
         .expect("cataloguing should succeed");
 
+    // then: it is catalogued in its project
     assert_eq!(catalogued(&wired, "project_1").await, vec![id]);
 }
 
 #[tokio::test]
 async fn hearing_the_same_start_twice_catalogues_one_board() {
+    // given: a stored board
     let wired = a_workbench();
     let id = a_stored_board(&wired, "project_1").await;
+    // and: its start
     let told = told_of(&a_start(&id, "project_1"));
 
+    // when: the start is heard twice
     wired
         .projector
         .handle(&told)
@@ -120,6 +126,7 @@ async fn hearing_the_same_start_twice_catalogues_one_board() {
         .await
         .expect("a redelivery is not a failure");
 
+    // then: the board is catalogued once
     assert_eq!(
         catalogued(&wired, "project_1").await,
         vec![id],
@@ -129,10 +136,12 @@ async fn hearing_the_same_start_twice_catalogues_one_board() {
 
 #[tokio::test]
 async fn each_project_is_catalogued_apart_from_the_others() {
+    // given: boards of two projects
     let wired = a_workbench();
     let mine = a_stored_board(&wired, "project_mine").await;
     let theirs = a_stored_board(&wired, "project_theirs").await;
 
+    // when: both starts are heard
     for (id, project) in [(mine, "project_mine"), (theirs, "project_theirs")] {
         wired
             .projector
@@ -141,20 +150,24 @@ async fn each_project_is_catalogued_apart_from_the_others() {
             .expect("cataloguing should succeed");
     }
 
+    // then: each project catalogues its own board
     assert_eq!(catalogued(&wired, "project_mine").await, vec![mine]);
     assert_eq!(catalogued(&wired, "project_theirs").await, vec![theirs]);
 }
 
 #[tokio::test]
 async fn a_start_for_a_board_that_was_never_stored_is_refused() {
+    // given: a board that was never stored
     let wired = a_workbench();
     let never_stored = BoardId::generate(at(1_000));
 
+    // when: its start is heard
     let refused = wired
         .projector
         .handle(&told_of(&a_start(&never_stored, "project_1")))
         .await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a refusal reaches dead letters and can be retried, while acknowledging it would leave the \

@@ -49,13 +49,17 @@ mod tests {
 
     #[test]
     fn an_account_is_locked_for_a_reason() {
+        // expect: a blank reason is refused
         assert_eq!(LockReason::new("  "), Err(InvalidLockReason::Blank));
     }
 
     #[test]
     fn a_reason_may_take_a_few_lines_up_to_its_limit() {
+        // expect: a reason of a few lines is fine
         assert!(LockReason::new("Sent spam.\nAsked to be locked out for now.").is_ok());
+        // and: one at its limit is fine
         assert!(LockReason::new(&"a".repeat(LockReason::MAX_CHARS)).is_ok());
+        // and: one past its limit is refused
         assert_eq!(
             LockReason::new(&"a".repeat(LockReason::MAX_CHARS + 1)),
             Err(InvalidLockReason::TooLong {

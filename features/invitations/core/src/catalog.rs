@@ -240,6 +240,7 @@ mod tests {
 
     #[test]
     fn a_summary_tells_to_whom_by_whom_since_when_until_when_and_how_it_stands() {
+        // given: an invitation issued by an account
         let invitation = Invitation::from_first(
             &InvitationEvent::Issued {
                 to: ada(),
@@ -257,6 +258,7 @@ mod tests {
         .expect("issuing gives birth");
         let id = InvitationId::generate(at(1_000));
 
+        // then: its summary tells to whom, by whom, since when, until when and that it is open
         assert_eq!(
             InvitationSummary::of(id, Version::of(3), &invitation),
             InvitationSummary {
@@ -273,6 +275,7 @@ mod tests {
             }
         );
 
+        // when: it is declined
         let mut declined = invitation;
         declined.apply(
             &InvitationEvent::Declined {
@@ -280,6 +283,7 @@ mod tests {
             },
             &stamped(2, 1_100),
         );
+        // then: its summary tells why
         assert_eq!(
             InvitationSummary::of(id, Version::of(4), &declined).outcome,
             Outcome::Declined(DeclineReason::AddressHasAccount)
@@ -288,6 +292,7 @@ mod tests {
 
     #[test]
     fn only_an_invitation_open_or_declined_stays_on_the_list() {
+        // given: a summary for each way an invitation stands
         let summary = |outcome| InvitationSummary {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
@@ -301,14 +306,17 @@ mod tests {
             scope: Scope::Instance,
         };
 
+        // then: the open and the declined stay listed
         assert!(summary(Outcome::Open).stays_listed());
         assert!(summary(Outcome::Declined(DeclineReason::AddressHasAccount)).stays_listed());
+        // and: the accepted and the withdrawn do not
         assert!(!summary(Outcome::Accepted).stays_listed());
         assert!(!summary(Outcome::Withdrawn).stays_listed());
     }
 
     #[test]
     fn an_open_invitation_is_listed_open_to_its_last_moment_and_expired_after() {
+        // given: the summary of an open invitation
         let summary = InvitationSummary {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
@@ -322,12 +330,15 @@ mod tests {
             scope: Scope::Instance,
         };
 
+        // then: it is open to its last moment
         assert_eq!(summary.status(at(5_000)), Some(Status::Open));
+        // and: expired after
         assert_eq!(summary.status(at(5_001)), Some(Status::Expired));
     }
 
     #[test]
     fn a_declined_invitation_is_listed_declined_whenever_and_the_settled_not_at_all() {
+        // given: summaries of a declined, an accepted and a withdrawn invitation
         let summary = |outcome| InvitationSummary {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
@@ -342,6 +353,7 @@ mod tests {
         };
         let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
 
+        // then: before and after its last moment the declined is listed declined and the settled not at all
         for now in [at(2_000), at(9_000)] {
             assert_eq!(
                 summary(declined).status(now),
@@ -356,6 +368,7 @@ mod tests {
     #[test]
     fn an_invitation_retires_a_month_after_running_out_or_being_declined_and_a_day_after_settling_but_never_before_running_out()
      {
+        // given: an issued invitation
         let issued = || {
             Invitation::from_first(
                 &InvitationEvent::Issued {
@@ -370,6 +383,7 @@ mod tests {
             )
             .expect("issuing gives birth")
         };
+        // and: one settled
         let settled = |event: InvitationEvent| {
             let mut invitation = issued();
             invitation.apply(&event, &stamped(2, 2_000));
@@ -381,12 +395,14 @@ mod tests {
             .retire_after
         };
 
+        // then: one left open retires a month after running out
         assert_eq!(
             InvitationSummary::of(InvitationId::generate(at(1_000)), Version::of(1), &issued())
                 .retire_after,
             at(5_000) + Duration::days(30),
             "an operator sees for a month that an invitation ran out"
         );
+        // and: one declined, a month after its declining
         assert_eq!(
             settled(InvitationEvent::Declined {
                 reason: DeclineReason::AddressHasAccount
@@ -394,6 +410,7 @@ mod tests {
             at(2_000) + Duration::days(30),
             "and for a month why one was declined"
         );
+        // and: one taken up or withdrawn, a day after but never before it runs out
         for gone in [
             InvitationEvent::Accepted {
                 scope: Scope::Instance,
@@ -425,6 +442,7 @@ mod tests {
             );
             assert_eq!(settled(gone), at(2_000) + Duration::days(1));
         }
+        // and: one withdrawn after running out, a day after
         let mut long_after = issued();
         long_after.apply(&InvitationEvent::Withdrawn, &stamped(2, 9_000));
         assert_eq!(

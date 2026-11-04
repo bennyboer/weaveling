@@ -48,12 +48,14 @@ mod tests {
 
     #[test]
     fn nothing_set_writes_mails_to_the_log() {
+        // expect: nothing set writes mails to the log
         assert_eq!(Mailing::chosen(None), Mailing::Logged);
         assert_eq!(Mailing::chosen(Some("  ".to_owned())), Mailing::Logged);
     }
 
     #[test]
     fn a_drop_named_keeps_each_mail_there() {
+        // expect: a named drop keeps each mail there
         assert_eq!(
             Mailing::chosen(Some("target/mails".to_owned())),
             Mailing::Dropped {

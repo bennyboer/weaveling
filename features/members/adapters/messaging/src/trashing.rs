@@ -155,15 +155,15 @@ mod tests {
         )
     }
 
-    fn trashed(version: u64) -> Message {
+    fn a_trashing(version: u64) -> Message {
         told(TRASHED, "TRASHED", version)
     }
 
-    fn restored(version: u64) -> Message {
+    fn a_restoring(version: u64) -> Message {
         told(RESTORED, "RESTORED", version)
     }
 
-    fn deleted(version: u64) -> Message {
+    fn a_deletion(version: u64) -> Message {
         told(DELETED, "DELETED", version)
     }
 
@@ -175,7 +175,7 @@ mod tests {
                 .expect("asking should succeed")
         }
 
-        fn told(&self) -> Vec<String> {
+        fn access_changes_told(&self) -> Vec<String> {
             self.authorizer
                 .told
                 .lock()
@@ -186,7 +186,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_project_trashed_is_kept_in_the_trash_until_it_is_restored() {
+        // given: the listener
         let bench = bench();
+        // expect: it hears trashings and restorings
         assert!(
             bench
                 .listener
@@ -198,22 +200,27 @@ mod tests {
                 .hears(&RoutingKey::parse(RESTORED).expect("a declared key"))
         );
 
+        // when: a project's trashing is heard
         bench
             .listener
-            .handle(&trashed(5))
+            .handle(&a_trashing(5))
             .await
             .expect("hearing should succeed");
         let then = bench.in_the_trash().await;
+        // and: then its restoring
         bench
             .listener
-            .handle(&restored(6))
+            .handle(&a_restoring(6))
             .await
             .expect("hearing should succeed");
 
+        // then: it was in the trash in between
         assert!(then);
+        // and: it is out of it now
         assert!(!bench.in_the_trash().await);
+        // and: its access changed each time
         assert_eq!(
-            bench.told(),
+            bench.access_changes_told(),
             ["project_1", "project_1"],
             "access changed each time, so open sockets ask again"
         );
@@ -221,14 +228,17 @@ mod tests {
 
     #[tokio::test]
     async fn a_project_deleted_once_its_time_in_the_trash_is_over_leaves_nothing_behind() {
+        // given: the listener
         let bench = bench();
+        // expect: it hears deletions
         assert!(
             bench
                 .listener
                 .hears(&RoutingKey::parse(DELETED).expect("a declared key"))
         );
 
-        for message in [trashed(5), deleted(6)] {
+        // when: a project's trashing and then its deletion are heard
+        for message in [a_trashing(5), a_deletion(6)] {
             bench
                 .listener
                 .handle(&message)
@@ -236,6 +246,7 @@ mod tests {
                 .expect("hearing should succeed");
         }
 
+        // then: it is not in the trash
         assert!(
             !bench.in_the_trash().await,
             "a deleted project's trash is forgotten, so the table holds only what is in it"
@@ -244,9 +255,11 @@ mod tests {
 
     #[tokio::test]
     async fn an_older_trashing_heard_after_its_restoring_leaves_the_project_out_of_the_trash() {
+        // given: the listener
         let bench = bench();
 
-        for message in [restored(6), trashed(5)] {
+        // when: a project's restoring and then its older trashing are heard
+        for message in [a_restoring(6), a_trashing(5)] {
             bench
                 .listener
                 .handle(&message)
@@ -254,31 +267,37 @@ mod tests {
                 .expect("hearing should succeed");
         }
 
+        // then: it is not in the trash
         assert!(!bench.in_the_trash().await);
     }
 
     #[tokio::test]
     async fn a_hearing_that_does_not_commit_leaves_no_trace_and_tells_nobody() {
+        // given: a listener whose hearings do not commit
         let bench = bench_hearing_in(InMemoryTransactions::refusing_commits());
 
+        // when: a project's trashing is heard
         bench
             .listener
-            .handle(&trashed(5))
+            .handle(&a_trashing(5))
             .await
             .expect_err("a hearing that does not commit is not handled");
 
+        // then: it is not in the trash
         assert!(
             !bench.in_the_trash().await,
             "written in the hearing's transaction"
         );
+        // and: no change of access is told
         assert!(
-            bench.told().is_empty(),
+            bench.access_changes_told().is_empty(),
             "access is told only once committed"
         );
     }
 
     #[tokio::test]
     async fn an_author_loses_a_project_to_the_trash_and_its_owner_may_only_restore_it() {
+        // given: a project ada owns
         let bench = bench();
         let ada = Agent::Account(AccountId::from("account_ada"));
         let mut transaction = InMemoryTransactions::new()
@@ -305,12 +324,14 @@ mod tests {
             .await
             .expect("finishing should succeed");
 
+        // when: its trashing is heard
         bench
             .listener
-            .handle(&trashed(5))
+            .handle(&a_trashing(5))
             .await
             .expect("hearing should succeed");
 
+        // then: ada may not read it
         let authorizer = &bench.authorizer.inner;
         assert!(
             !authorizer
@@ -318,6 +339,7 @@ mod tests {
                 .await
                 .expect("asking")
         );
+        // and: may not manage it
         assert!(
             !authorizer
                 .may(&ada, Act::Manage, "project_1")
@@ -325,6 +347,7 @@ mod tests {
                 .expect("asking"),
             "an owner manages nothing in a project in the trash, its members and invitations as they were"
         );
+        // and: may change no role in it
         assert!(
             bench
                 .members
@@ -333,6 +356,7 @@ mod tests {
                 .is_err(),
             "no role changes in a project in the trash"
         );
+        // and: may remove nobody from it
         assert!(
             bench
                 .members
@@ -341,6 +365,7 @@ mod tests {
                 .is_err(),
             "nor is anyone removed from it"
         );
+        // and: may restore it
         assert!(
             authorizer
                 .may(&ada, Act::Restore, "project_1")

@@ -92,18 +92,23 @@ async function aWorkspaceHearingOnly(
 test("a project another author starts joins the list without the list asked for again", async ({
   page,
 }) => {
+  // given: the workspace followed live
   const title = aTitle("Started");
   const { asks } = await aWorkspaceHearingOnly(page, title);
 
+  // when: another author starts a project
   await aProject(page, title);
 
+  // then: it joins the list
   await expect(rowFor(page, title)).toBeVisible();
+  // and: the list is not asked for again
   expect(asks()).toBe(1);
 });
 
 test("a project another author renames or deletes changes in the list as it happens", async ({
   page,
 }) => {
+  // given: the workspace followed live, a project listed
   const title = aTitle("Changed");
   const renamed = aTitle("Rewoven");
   const project = await aProject(page, title);
@@ -111,17 +116,23 @@ test("a project another author renames or deletes changes in the list as it happ
   mine.add(project);
   await expect(rowFor(page, title)).toBeVisible();
 
+  // when: another author renames it
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
+  // then: it is renamed in the list
   await expect(rowFor(page, renamed)).toBeVisible();
+  // when: they delete it
   await anotherAuthor(page, "delete", `/projects/${project}`);
 
+  // then: it leaves the list
   await expect(rowFor(page, renamed)).toHaveCount(0);
+  // and: the list was not asked for again
   expect(asks()).toBe(1);
 });
 
 test("a change missed on the way asks for the list again, and the list comes out right", async ({
   page,
 }) => {
+  // given: the workspace followed live, missing the next change
   test.skip(
     withAccounts,
     "with accounts a project's start is not told on this channel, its owner not listed yet; the members' channel tells it",
@@ -132,26 +143,31 @@ test("a change missed on the way asks for the list again, and the list comes out
     dropping: 1,
   });
 
+  // when: another author starts a project and renames it
   const project = await aProject(page, title);
   await expect.poll(passed).toBeGreaterThanOrEqual(1);
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
 
+  // then: it is listed under its new name
   await expect(
     rowFor(page, renamed),
     "the start that was missed is there too, so the list was asked for again",
   ).toBeVisible();
+  // and: the list was asked for again
   expect(asks()).toBeGreaterThan(1);
 });
 
 test("a rename answered after a newer one was told leaves the newer name", async ({
   page,
 }) => {
+  // given: the workspace followed live, a project listed
   const title = aTitle("Overtaken");
   const mine = aTitle("Mine");
   const theirs = aTitle("Theirs");
   const project = await aProject(page, title);
   const { passed, mine: heard } = await aWorkspaceHearingOnly(page, title);
   heard.add(project);
+  // and: another author renaming it while my rename is answered
   await page.route(new RegExp(`/api/projects/${project}$`), async (route) => {
     if (route.request().method() !== "PATCH") {
       await route.continue();
@@ -165,6 +181,7 @@ test("a rename answered after a newer one was told leaves the newer name", async
     await route.fulfill({ response });
   });
 
+  // when: it is renamed here
   await rowFor(page, title)
     .getByRole("button", { name: "More actions" })
     .click();
@@ -172,6 +189,7 @@ test("a rename answered after a newer one was told leaves the newer name", async
   await page.getByRole("listitem").getByRole("textbox").fill(mine);
   await page.getByRole("button", { name: "Save" }).click();
 
+  // then: it keeps their newer name
   await expect(rowFor(page, theirs)).toBeVisible();
   await page.waitForTimeout(300);
   await expect(
@@ -183,6 +201,7 @@ test("a rename answered after a newer one was told leaves the newer name", async
 test("a row being renamed keeps what is typed while another project changes", async ({
   page,
 }) => {
+  // given: the workspace followed live, a project of it being renamed
   const title = aTitle("Typing");
   const loom = `${title} Loom`;
   const weft = `${title} Weft`;
@@ -200,13 +219,16 @@ test("a row being renamed keeps what is typed while another project changes", as
   const field = page.getByRole("listitem").getByRole("textbox");
   await field.fill(typed);
 
+  // when: another author renames another project
   await anotherAuthor(page, "patch", `/projects/${other}`, { name: theirs });
   await expect(rowFor(page, theirs)).toBeVisible();
 
+  // then: what is typed stays
   await expect(
     field,
     "another project's change leaves this row as it is",
   ).toHaveValue(typed);
+  // and: is saved
   await page.getByRole("button", { name: "Save" }).click();
   await expect(rowFor(page, typed)).toBeVisible();
 });
@@ -214,9 +236,11 @@ test("a row being renamed keeps what is typed while another project changes", as
 test("a change told while the list is still on its way asks for it again", async ({
   page,
 }) => {
+  // given: a project
   const title = aTitle("InFlight");
   const renamed = aTitle("Rewoven");
   const project = await aProject(page, title);
+  // and: the workspace opened, its list still on its way
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -253,10 +277,12 @@ test("a change told while the list is still on its way asks for it again", async
   await page.goto("/");
   await expect.poll(() => answered).toBe(true);
 
+  // when: another author renames it before the list arrives
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
   await expect.poll(() => passed).toBe(1);
   release();
 
+  // then: it is listed under its new name
   await expect(
     rowFor(page, renamed),
     "the first answer was read before the rename, and the rename was told before it arrived",
@@ -266,6 +292,7 @@ test("a change told while the list is still on its way asks for it again", async
 test("with accounts a project one starts is told on the page's one socket, under its own subscription", async ({
   page,
 }) => {
+  // given: the workspace followed live, its socket watched
   test.skip(!withAccounts, "the members are followed only where there are accounts");
   const told: string[] = [];
   const asked: string[] = [];
@@ -284,11 +311,13 @@ test("with accounts a project one starts is told on the page's one socket, under
     )
     .toBe(true);
 
+  // when: a project is started
   const made = await page.request.post(`${API}/projects`, {
     data: { name: aTitle("One socket"), language: "en" },
   });
   const project = (await made.json()).id;
 
+  // then: its founding is told on that socket
   await expect
     .poll(() =>
       told

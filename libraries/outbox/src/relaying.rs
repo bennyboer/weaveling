@@ -199,6 +199,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_started_relay_delivers_without_being_asked() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("relaying").await;
         crate::postgres::migrations()
@@ -206,6 +207,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: a relay started on it
         let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -216,8 +218,10 @@ mod tests {
             briskly(),
         );
 
+        // when: a message comes to wait
         a_waiting_message(&pool).await;
 
+        // then: the relay publishes it unasked
         assert!(
             until(|| heard.heard().len() == 1).await,
             "nobody called deliver, so the task has to have done it itself"
@@ -229,6 +233,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_stopped_relay_delivers_nothing_more() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("relaying").await;
         crate::postgres::migrations()
@@ -236,6 +241,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: a relay started on it
         let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -246,19 +252,23 @@ mod tests {
             briskly(),
         );
 
+        // and: a message it published
         a_waiting_message(&pool).await;
         assert!(until(|| heard.heard().len() == 1).await);
 
+        // when: the relay is stopped and another message comes to wait
         relay.stop().await;
         a_waiting_message(&pool).await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
+        // then: nothing more is published
         assert_eq!(
             heard.heard().len(),
             1,
             "a stopped relay must let go of the database, or shutdown would never finish"
         );
 
+        // and: the other message stays waiting
         let waiting: i64 =
             sqlx::query_scalar("SELECT count(*) FROM outbox WHERE published_at IS NULL")
                 .fetch_one(&pool)
@@ -274,6 +284,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_sweep_clears_a_backlog_larger_than_one_batch() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("sweeping").await;
         crate::postgres::migrations()
@@ -281,6 +292,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: forty messages published long ago
         for _ in 0..40 {
             a_waiting_message(&pool).await;
         }
@@ -289,6 +301,7 @@ mod tests {
             .await
             .expect("ageing the entries should succeed");
 
+        // when: a sweep taking seven per batch runs
         let outbox = PostgresOutbox::new(
             pool.clone(),
             Arc::new(FakePublisher::default()),
@@ -306,8 +319,10 @@ mod tests {
         )
         .await;
 
+        // then: it deletes all forty
         assert_eq!(gone, 40, "one pass has to clear the backlog, not 7 of it");
 
+        // and: none are left
         let left: i64 = sqlx::query_scalar("SELECT count(*) FROM outbox")
             .fetch_one(&pool)
             .await
@@ -322,6 +337,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_sweep_asked_to_stop_stops_mid_backlog() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("sweeping").await;
         crate::postgres::migrations()
@@ -329,6 +345,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: ten messages published long ago
         for _ in 0..10 {
             a_waiting_message(&pool).await;
         }
@@ -337,6 +354,7 @@ mod tests {
             .await
             .expect("ageing the entries should succeed");
 
+        // and: a stop already asked for
         let outbox = PostgresOutbox::new(
             pool.clone(),
             Arc::new(FakePublisher::default()),
@@ -345,8 +363,10 @@ mod tests {
         let (stopping, mut stopped) = watch::channel(false);
         stopping.send(true).expect("the receiver is still here");
 
+        // when: a sweep runs
         let gone = swept(&outbox, briskly(), &mut stopped).await;
 
+        // then: it deletes nothing
         assert_eq!(
             gone, 0,
             "a draining loop still has to let go when shutdown asks it to"
@@ -357,6 +377,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_sweep_takes_the_few_there_are_without_waiting_for_a_full_batch() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("sweeping").await;
         crate::postgres::migrations()
@@ -364,6 +385,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: three messages published long ago
         for _ in 0..3 {
             a_waiting_message(&pool).await;
         }
@@ -372,6 +394,7 @@ mod tests {
             .await
             .expect("ageing the entries should succeed");
 
+        // when: a sweep taking a thousand per batch runs
         let outbox = PostgresOutbox::new(
             pool.clone(),
             Arc::new(FakePublisher::default()),
@@ -389,11 +412,13 @@ mod tests {
         )
         .await;
 
+        // then: it deletes the three
         assert_eq!(
             gone, 3,
             "a short batch means the backlog is drained, never that we are waiting for a full one"
         );
 
+        // and: none are left
         let left: i64 = sqlx::query_scalar("SELECT count(*) FROM outbox")
             .fetch_one(&pool)
             .await
@@ -412,6 +437,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_notification_delivers_long_before_the_next_poll_would() {
+        // given: an outbox on postgres
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("nudging").await;
         crate::postgres::migrations()
@@ -419,6 +445,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
+        // and: a relay started on it that polls only every five minutes
         let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -429,9 +456,11 @@ mod tests {
             only_when_notified(),
         );
 
+        // when: a message comes to wait a moment later
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         a_waiting_message(&pool).await;
 
+        // then: it is published long before the next poll
         assert!(
             until(|| heard.heard().len() == 1).await,
             "polling is five minutes away, so only the notification can have woken it"

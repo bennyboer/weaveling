@@ -94,19 +94,23 @@ mod tests {
 
     #[test]
     fn an_aggregate_type_is_nameable_at_compile_time() {
+        // expect: a kind reads as its name
         assert_eq!(SAMPLE.as_str(), "sample");
         assert_eq!(SAMPLE.to_string(), "sample");
     }
 
     #[test]
     fn two_kinds_of_aggregate_are_not_the_same() {
+        // expect: kinds of different names differ
         assert_ne!(SAMPLE, AggregateType::of("board"));
     }
 
     #[test]
     fn an_aggregate_id_keeps_whatever_the_feature_gave_it() {
+        // when: an id is made of whatever a feature gave
         let id = AggregateId::from("idea_019a4f2b");
 
+        // then: it reads back as given
         assert_eq!(id.as_str(), "idea_019a4f2b");
         assert_eq!(id.to_string(), "idea_019a4f2b");
     }

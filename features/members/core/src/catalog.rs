@@ -106,6 +106,7 @@ mod tests {
 
     #[test]
     fn a_project_s_members_are_listed_as_of_their_version() {
+        // given: a project's members, an owner and a reader who joined
         let ada = AccountId::from("account_ada");
         let grace = AccountId::from("account_grace");
         let mut members =
@@ -119,6 +120,7 @@ mod tests {
             &stamped(2),
         );
 
+        // expect: they are listed with their roles as of that version
         assert_eq!(
             ProjectMembers::of(ProjectLink::from("project_1"), Version::of(2), &members),
             ProjectMembers {

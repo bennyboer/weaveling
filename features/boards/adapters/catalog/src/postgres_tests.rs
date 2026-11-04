@@ -56,6 +56,7 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn forgetting_a_board_leaves_no_half_of_it_behind() {
+    // given: a board holding an idea
     let bench = OnPostgres::setup().await;
     let board = BoardId::generate(crate::suite::at(1_000));
     bench
@@ -69,12 +70,14 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
         .await
         .expect("indexing should succeed");
 
+    // when: the board is forgotten
     bench
         .committing()
         .forget(&board, suite::at(5_000))
         .await
         .expect("forgetting should succeed");
 
+    // then: neither its summary nor its pins are left
     let summaries: i64 = sqlx::query_scalar("SELECT count(*) FROM board_summaries")
         .fetch_one(&bench.pool)
         .await
@@ -96,9 +99,11 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_board_standing() {
+    // given: a catalog
     let bench = OnPostgres::setup().await;
     let catalog = bench.committing();
 
+    // when: boards are remembered and forgotten at once
     for nth in 0..40 {
         let summary = suite::a_summary(BoardId::generate(suite::at(1_000 + nth)), "project_1");
         let (remembered, forgotten) = tokio::join!(
@@ -109,6 +114,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_board_stand
         forgotten.expect("forgetting should succeed");
     }
 
+    // then: none of them is listed
     assert!(
         catalog
             .in_project(&ProjectLink::from("project_1"))
@@ -122,6 +128,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_board_stand
 
 #[tokio::test]
 async fn an_open_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_commits() {
+    // given: an open that found no tombstone for its project and claimed it
     let bench = OnPostgres::setup().await;
     registry::postgres::migrations()
         .run(&bench.pool)
@@ -152,6 +159,7 @@ async fn an_open_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_c
         .await
         .expect("claiming should succeed");
 
+    // when: the project's tombstone is laid and its claims swept before the open commits
     transacting::retrying!(&bench.transactions, |burying| {
         bench
             .store
@@ -165,10 +173,12 @@ async fn an_open_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_c
         .await
         .expect("the sweep should read the claims");
 
+    // then: the sweep finds no claim
     assert_eq!(
         swept, None,
         "the sweep cannot see a claim not committed yet"
     );
+    // and: the open loses the race
     assert!(
         matches!(opening.finish().await, Err(Failure::LostRace)),
         "the open read no tombstone and the sweep read no claim, so the open, between the two, \

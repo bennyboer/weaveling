@@ -73,7 +73,9 @@ fn not_signed_in(response: &TestResponse) {
 
 #[tokio::test]
 async fn the_work_behind_the_gate_is_done_by_whoever_signed_in() {
+    // given: work behind the gate
     let (wired, accounts, work) = behind_the_gate().await;
+    // and: a session of a signed in account
     let cookie = a_session_cookie(&accounts).await;
     let ada = wired
         .accounts
@@ -81,17 +83,22 @@ async fn the_work_behind_the_gate_is_done_by_whoever_signed_in() {
         .await
         .expect("the right pair should sign in");
 
+    // when: the work is asked for with that session
     let response = work.get("/work").add_header(COOKIE, cookie).await;
 
+    // then: it is done by that account
     response.assert_status_ok();
     assert_eq!(response.text(), ada.acting().to_string());
 }
 
 #[tokio::test]
 async fn without_a_session_the_gate_stays_shut() {
+    // given: work behind the gate
     let (_wired, _accounts, work) = behind_the_gate().await;
 
+    // then: it is refused without a session
     not_signed_in(&work.get("/work").await);
+    // and: with a session nobody opened
     not_signed_in(
         &work
             .get("/work")
@@ -105,7 +112,9 @@ async fn without_a_session_the_gate_stays_shut() {
 
 #[tokio::test]
 async fn a_session_still_owing_its_second_factor_does_not_pass() {
+    // given: work behind the gate
     let (wired, _accounts, work) = behind_the_gate().await;
+    // and: a session still owing its second factor
     let token = SessionToken::drawn();
     let id: AccountId = wired
         .accounts
@@ -120,6 +129,7 @@ async fn a_session_still_owing_its_second_factor_does_not_pass() {
         .await
         .expect("opening should succeed");
 
+    // then: the work refuses it
     not_signed_in(
         &work
             .get("/work")
@@ -130,7 +140,9 @@ async fn a_session_still_owing_its_second_factor_does_not_pass() {
 
 #[tokio::test]
 async fn the_work_is_told_whether_whoever_acts_is_an_operator_as_it_now_stands() {
+    // given: work behind the gate
     let (wired, accounts, work) = behind_the_gate().await;
+    // and: a session of an account that is no operator
     let cookie = a_session_cookie(&accounts).await;
     let ada = wired
         .accounts
@@ -139,11 +151,13 @@ async fn the_work_is_told_whether_whoever_acts_is_an_operator_as_it_now_stands()
         .expect("the right pair should sign in");
     let acting = |operator: bool| format!("{} operator: {operator}", ada.acting());
 
+    // then: the work is told it acts as no operator
     assert_eq!(
         work.get("/acting").add_header(COOKIE, &cookie).await.text(),
         acting(false)
     );
 
+    // when: the account becomes an operator
     let code = wired
         .accounts
         .draw_operator_code()
@@ -156,6 +170,7 @@ async fn the_work_is_told_whether_whoever_acts_is_an_operator_as_it_now_stands()
         .await
         .expect("the code drawn makes an operator");
 
+    // then: the work is told it acts as an operator within the same session
     assert_eq!(
         work.get("/acting").add_header(COOKIE, &cookie).await.text(),
         acting(true),

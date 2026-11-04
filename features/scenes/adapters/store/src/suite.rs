@@ -275,38 +275,48 @@ pub fn a_scene(id: SceneId, saying: &str) -> Scene {
 }
 
 pub async fn create_then_load_returns_the_prose(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene with prose
     let id = an_id(1_000);
 
+    // when: it is created and loaded
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
     let found = store.load(id).await.expect("load should find the scene");
 
+    // then: its prose comes back
     assert_eq!(found.text(), "The loom stood silent.");
+    // and: so does its id
     assert_eq!(found.id(), id);
 }
 
 pub async fn an_empty_scene_can_be_stored(store: &Committing<'_, impl SceneStore>) {
+    // given: an empty scene
     let id = an_id(1_000);
 
+    // when: it is created
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 
+    // then: it loads without prose
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.text(), "");
 }
 
 pub async fn load_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: it is loaded
     let error = store
         .load(missing)
         .await
         .expect_err("load should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -314,17 +324,20 @@ pub async fn load_missing_scene_is_not_found(store: &Committing<'_, impl SceneSt
 }
 
 pub async fn create_rejects_a_duplicate_id(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("first create should succeed");
 
+    // when: another scene of the same id is created
     let error = store
         .create(&a_scene(id, "Something else entirely."))
         .await
         .expect_err("second create should conflict");
 
+    // then: it conflicts
     assert!(
         matches!(&error, StoreError::Conflict(existing) if *existing == id),
         "expected Conflict({id}), got {error:?}"
@@ -334,26 +347,32 @@ pub async fn create_rejects_a_duplicate_id(store: &Committing<'_, impl SceneStor
 pub async fn a_rejected_create_leaves_the_stored_scene_untouched(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("first create should succeed");
 
+    // when: another scene of the same id is created
     let _ = store.create(&a_scene(id, "Something else entirely.")).await;
 
+    // then: the stored scene keeps its prose
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
 pub async fn absorb_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: an update to it is applied
     let error = store
         .apply(missing, &a_paragraph("into the void"))
         .await
         .expect_err("apply should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -361,17 +380,20 @@ pub async fn absorb_missing_scene_is_not_found(store: &Committing<'_, impl Scene
 }
 
 pub async fn absorbed_updates_are_visible_on_load(store: &Committing<'_, impl SceneStore>) {
+    // given: an empty stored scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: an update is applied to it
     store
         .apply(id, &a_paragraph("The loom stood silent."))
         .await
         .expect("apply should succeed");
 
+    // then: it loads with the update's prose
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.text(), "The loom stood silent.");
 }
@@ -379,16 +401,20 @@ pub async fn absorbed_updates_are_visible_on_load(store: &Committing<'_, impl Sc
 pub async fn absorbing_the_same_update_twice_changes_nothing(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: an empty stored scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
+    // and: an update
     let update = a_paragraph("The loom stood silent.");
 
+    // when: the update is applied twice
     store.apply(id, &update).await.expect("first apply");
     store.apply(id, &update).await.expect("second apply");
 
+    // then: its prose is there once
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(
         found.text(),
@@ -398,8 +424,10 @@ pub async fn absorbing_the_same_update_twice_changes_nothing(
 }
 
 pub async fn updates_absorbed_in_either_order_converge(store: &Committing<'_, impl SceneStore>) {
+    // given: two updates
     let ada = a_paragraph("Ada wrote this.");
     let bo = a_paragraph("Bo wrote this.");
+    // and: two empty stored scenes
     let one = an_id(1_000);
     let other = an_id(2_000);
     for id in [one, other] {
@@ -409,14 +437,17 @@ pub async fn updates_absorbed_in_either_order_converge(store: &Committing<'_, im
             .expect("create should succeed");
     }
 
+    // when: each scene takes both updates in a different order
     store.apply(one, &ada).await.expect("apply ada");
     store.apply(one, &bo).await.expect("apply bo");
     store.apply(other, &bo).await.expect("apply bo");
     store.apply(other, &ada).await.expect("apply ada");
 
+    // then: both scenes hold the same prose
     let first = store.load(one).await.expect("load one").text();
     let second = store.load(other).await.expect("load other").text();
     assert_eq!(first, second, "apply order must not matter");
+    // and: it holds both updates
     assert!(first.contains("Ada wrote this."));
     assert!(first.contains("Bo wrote this."));
 }
@@ -424,21 +455,25 @@ pub async fn updates_absorbed_in_either_order_converge(store: &Committing<'_, im
 pub async fn an_unusable_update_is_refused_and_changes_nothing(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a stored scene with prose
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: an unusable update is applied
     let error = store
         .apply(id, &[255, 255, 255, 255])
         .await
         .expect_err("garbage must not be accepted");
 
+    // then: it is refused
     assert!(
         matches!(&error, StoreError::Unusable(bad) if *bad == id),
         "expected Unusable({id}), got {error:?}"
     );
+    // and: the scene is as it was
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(
         found.text(),
@@ -448,14 +483,17 @@ pub async fn an_unusable_update_is_refused_and_changes_nothing(
 }
 
 pub async fn delete_removes_the_scene(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: it is deleted
     store.delete(id).await.expect("delete should succeed");
 
+    // then: it is not found
     let found = store.load(id).await;
     assert!(
         matches!(&found, Err(StoreError::NotFound(gone)) if *gone == id),
@@ -464,13 +502,16 @@ pub async fn delete_removes_the_scene(store: &Committing<'_, impl SceneStore>) {
 }
 
 pub async fn delete_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: it is deleted
     let error = store
         .delete(missing)
         .await
         .expect_err("delete should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -478,18 +519,22 @@ pub async fn delete_missing_scene_is_not_found(store: &Committing<'_, impl Scene
 }
 
 pub async fn a_loaded_scene_still_knows_its_project(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: it is loaded
     let found = store.load(id).await.expect("load should find the scene");
 
+    // then: it knows its project
     assert_eq!(found.project(), &a_project());
 }
 
 pub async fn a_project_lists_its_own_scenes_in_order(store: &Committing<'_, impl SceneStore>) {
+    // given: two scenes created out of order
     let first = an_id(1_000);
     let second = an_id(2_000);
     for id in [second, first] {
@@ -499,26 +544,31 @@ pub async fn a_project_lists_its_own_scenes_in_order(store: &Committing<'_, impl
             .expect("create should succeed");
     }
 
+    // when: the project's scenes are listed
     let found = store
         .in_project(&a_project(), None, 10)
         .await
         .expect("listing should succeed");
 
+    // then: they come in order
     assert_eq!(found, vec![first, second]);
 }
 
 pub async fn another_project_sees_none_of_them(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene in one project
     let mine = an_id(1_000);
     store
         .create(&Scene::empty(mine, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: another project's scenes are listed
     let found = store
         .in_project(&ProjectLink::from("project_2"), None, 10)
         .await
         .expect("listing should succeed");
 
+    // then: there are none
     assert!(
         found.is_empty(),
         "a sweep must never reach into another author's project, got {found:?}"
@@ -526,6 +576,7 @@ pub async fn another_project_sees_none_of_them(store: &Committing<'_, impl Scene
 }
 
 pub async fn listing_resumes_after_the_cursor(store: &Committing<'_, impl SceneStore>) {
+    // given: three scenes in a project
     let first = an_id(1_000);
     let second = an_id(2_000);
     let third = an_id(3_000);
@@ -536,6 +587,7 @@ pub async fn listing_resumes_after_the_cursor(store: &Committing<'_, impl SceneS
             .expect("create should succeed");
     }
 
+    // when: they are listed two at a time, each batch after the last
     let batch = store
         .in_project(&a_project(), None, 2)
         .await
@@ -545,7 +597,9 @@ pub async fn listing_resumes_after_the_cursor(store: &Committing<'_, impl SceneS
         .await
         .expect("second batch should succeed");
 
+    // then: the first batch holds the first two
     assert_eq!(batch, vec![first, second]);
+    // and: the next one the rest
     assert_eq!(
         rest,
         vec![third],
@@ -554,29 +608,35 @@ pub async fn listing_resumes_after_the_cursor(store: &Committing<'_, impl SceneS
 }
 
 pub async fn listing_past_the_last_scene_is_empty(store: &Committing<'_, impl SceneStore>) {
+    // given: a project of one scene
     let only = an_id(1_000);
     store
         .create(&Scene::empty(only, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: its scenes after that one are listed
     let found = store
         .in_project(&a_project(), Some(only), 10)
         .await
         .expect("listing should succeed");
 
+    // then: there are none
     assert!(found.is_empty(), "expected nothing after the last id");
 }
 
 pub async fn a_deleted_scene_leaves_the_listing(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: it is deleted
     store.delete(id).await.expect("delete should succeed");
 
+    // then: its project lists nothing
     let found = store
         .in_project(&a_project(), None, 10)
         .await
@@ -589,41 +649,50 @@ fn a_title(saying: &str) -> SceneTitle {
 }
 
 pub async fn a_new_scene_starts_untitled(store: &Committing<'_, impl SceneStore>) {
+    // given: a new stored scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: it is loaded
     let found = store.load(id).await.expect("load should find the scene");
 
+    // then: it is untitled
     assert!(found.title().is_untitled());
 }
 
 pub async fn a_retitled_scene_keeps_its_title(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 
+    // when: it is retitled
     store
         .retitle(id, &a_title("The loom"))
         .await
         .expect("retitle should succeed");
 
+    // then: it loads with its title
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.title(), &a_title("The loom"));
 }
 
 pub async fn retitling_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: it is retitled
     let error = store
         .retitle(missing, &a_title("Nowhere"))
         .await
         .expect_err("retitle should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -631,22 +700,26 @@ pub async fn retitling_a_missing_scene_is_not_found(store: &Committing<'_, impl 
 }
 
 pub async fn retitling_leaves_the_text_as_it_was(store: &Committing<'_, impl SceneStore>) {
+    // given: a stored scene with prose
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: it is retitled
     store
         .retitle(id, &a_title("The loom"))
         .await
         .expect("retitle should succeed");
 
+    // then: its prose is as it was
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
 pub async fn a_title_survives_further_writing(store: &Committing<'_, impl SceneStore>) {
+    // given: a titled scene
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -657,11 +730,13 @@ pub async fn a_title_survives_further_writing(store: &Committing<'_, impl SceneS
         .await
         .expect("retitle should succeed");
 
+    // when: more is written in it
     store
         .apply(id, &a_paragraph("The loom stood silent."))
         .await
         .expect("apply should succeed");
 
+    // then: it keeps its title
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(
         found.title(),
@@ -674,13 +749,16 @@ pub async fn a_title_survives_further_writing(store: &Committing<'_, impl SceneS
 pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: its word count is announced
     let error = store
         .announce_word_count(missing, 42)
         .await
         .expect_err("announcing should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -697,34 +775,41 @@ async fn uncounted(store: &Committing<'_, impl SceneStore>) -> Vec<SceneId> {
 pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: two empty scenes
     let (written, quiet) = (an_id(1_000), an_id(2_000));
     an_empty_scene(store, written).await;
     an_empty_scene(store, quiet).await;
+    // and: neither owes a count
     assert!(
         uncounted(store).await.is_empty(),
         "a scene only made owes no count"
     );
 
+    // when: one is written in
     store
         .apply(written, &a_paragraph("The loom stood silent."))
         .await
         .expect("writing should succeed");
+    // then: it alone owes a count
     assert_eq!(
         uncounted(store).await,
         vec![written],
         "the prose and the count it owes are kept together, so a crash cannot lose the debt"
     );
 
+    // when: its count is told
     store
         .announce_word_count(written, 4)
         .await
         .expect("announcing should succeed");
+    // then: none owes a count
     assert!(uncounted(store).await.is_empty());
 }
 
 pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a scene written in
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     store
@@ -732,43 +817,54 @@ pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
         .await
         .expect("writing should succeed");
     let counted_as_of = store.version_of(id).await.expect("the scene has a version");
+    // and: written in again since
     store
         .apply(id, &a_paragraph("Then it spoke."))
         .await
         .expect("writing should succeed");
 
+    // when: a count as of the first writing is told
     store
         .announce_word_count_as_of(id, 4, counted_as_of)
         .await
         .expect("announcing should succeed");
 
+    // then: it still owes a count
     assert_eq!(
         uncounted(store).await,
         vec![id],
         "what was written after the words were read is not in the count, so it is still owed"
     );
+
+    // when: a count as of now is told
     store
         .announce_word_count(id, 7)
         .await
         .expect("announcing should succeed");
+    // then: it owes none
     assert!(uncounted(store).await.is_empty());
 }
 
 pub async fn the_version_of_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: its version is asked for
     let error = store
         .version_of(missing)
         .await
         .expect_err("there is no version of what is not there");
 
+    // then: it is not found
     assert!(matches!(&error, StoreError::NotFound(id) if *id == missing));
 }
 
 pub async fn a_write_rolled_back_owes_no_count(store: &Committing<'_, impl SceneStore>) {
+    // given: an empty scene
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: a writing in it is dropped with its transaction
     let mut transaction = store.begun().await.expect("beginning should succeed");
     store
         .uncommitted()
@@ -777,6 +873,7 @@ pub async fn a_write_rolled_back_owes_no_count(store: &Committing<'_, impl Scene
         .expect("writing should succeed");
     drop(transaction);
 
+    // then: it owes no count
     assert!(uncounted(store).await.is_empty());
 }
 
@@ -792,20 +889,25 @@ async fn an_empty_scene(store: &Committing<'_, impl SceneStore>, id: SceneId) {
 }
 
 pub async fn a_new_scene_has_no_linked_ideas(store: &Committing<'_, impl SceneStore>) {
+    // given: a new scene
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: it is loaded
     let found = store.load(id).await.expect("load should find the scene");
 
+    // then: it has no linked ideas
     assert!(found.ideas().is_empty());
 }
 
 pub async fn linked_ideas_come_back_in_the_order_they_were_linked(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a scene
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: ideas are linked to it out of their sort order
     for idea in ["idea_c", "idea_a", "idea_b"] {
         store
             .link(id, &an_idea(idea))
@@ -813,6 +915,7 @@ pub async fn linked_ideas_come_back_in_the_order_they_were_linked(
             .expect("link should succeed");
     }
 
+    // then: they come back in the order they were linked
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(
         found.ideas(),
@@ -823,9 +926,11 @@ pub async fn linked_ideas_come_back_in_the_order_they_were_linked(
 }
 
 pub async fn linking_the_same_idea_twice_is_one_link(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: the same idea is linked to it twice
     for _ in 0..2 {
         store
             .link(id, &an_idea("idea_1"))
@@ -833,11 +938,13 @@ pub async fn linking_the_same_idea_twice_is_one_link(store: &Committing<'_, impl
             .expect("a repeated link is not a failure");
     }
 
+    // then: it is linked once
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.ideas(), &[an_idea("idea_1")]);
 }
 
 pub async fn unlinking_takes_away_only_that_idea(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene with two linked ideas
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     for idea in ["idea_1", "idea_2"] {
@@ -847,19 +954,23 @@ pub async fn unlinking_takes_away_only_that_idea(store: &Committing<'_, impl Sce
             .expect("link should succeed");
     }
 
+    // when: one is unlinked
     store
         .unlink(id, &an_idea("idea_1"))
         .await
         .expect("unlink should succeed");
 
+    // then: only the other is linked
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.ideas(), &[an_idea("idea_2")]);
 }
 
 pub async fn unlinking_an_idea_never_linked_is_harmless(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // then: unlinking an idea it never linked succeeds
     store
         .unlink(id, &an_idea("idea_elsewhere"))
         .await
@@ -867,15 +978,19 @@ pub async fn unlinking_an_idea_never_linked_is_harmless(store: &Committing<'_, i
 }
 
 pub async fn linking_to_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: an idea is linked to it and unlinked from it
     let linked = store.link(missing, &an_idea("idea_1")).await;
     let unlinked = store.unlink(missing, &an_idea("idea_1")).await;
 
+    // then: linking finds no scene
     assert!(
         matches!(&linked, Err(StoreError::NotFound(id)) if *id == missing),
         "expected NotFound({missing}) on link, got {linked:?}"
     );
+    // and: neither does unlinking
     assert!(
         matches!(&unlinked, Err(StoreError::NotFound(id)) if *id == missing),
         "expected NotFound({missing}) on unlink, got {unlinked:?}"
@@ -885,6 +1000,7 @@ pub async fn linking_to_a_missing_scene_is_not_found(store: &Committing<'_, impl
 pub async fn unlinking_an_idea_everywhere_reaches_every_scene(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: two scenes, each linked to the same two ideas
     let one = an_id(1_000);
     let other = an_id(2_000);
     for id in [one, other] {
@@ -897,11 +1013,13 @@ pub async fn unlinking_an_idea_everywhere_reaches_every_scene(
         }
     }
 
+    // when: one idea is unlinked everywhere
     store
         .unlink_everywhere(&an_idea("idea_gone"))
         .await
         .expect("unlinking everywhere should succeed");
 
+    // then: each scene keeps only the other idea
     for id in [one, other] {
         let found = store.load(id).await.expect("load should find the scene");
         assert_eq!(
@@ -913,6 +1031,7 @@ pub async fn unlinking_an_idea_everywhere_reaches_every_scene(
 }
 
 pub async fn links_survive_further_writing(store: &Committing<'_, impl SceneStore>) {
+    // given: a scene with a linked idea
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     store
@@ -920,11 +1039,13 @@ pub async fn links_survive_further_writing(store: &Committing<'_, impl SceneStor
         .await
         .expect("link should succeed");
 
+    // when: more is written in it
     store
         .apply(id, &a_paragraph("The loom stood silent."))
         .await
         .expect("apply should succeed");
 
+    // then: the idea is still linked
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(
         found.ideas(),
@@ -934,6 +1055,7 @@ pub async fn links_survive_further_writing(store: &Committing<'_, impl SceneStor
 }
 
 pub async fn linking_leaves_the_title_and_the_text_alone(store: &Committing<'_, impl SceneStore>) {
+    // given: a titled scene with prose
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -944,21 +1066,26 @@ pub async fn linking_leaves_the_title_and_the_text_alone(store: &Committing<'_, 
         .await
         .expect("retitle should succeed");
 
+    // when: an idea is linked to it
     store
         .link(id, &an_idea("idea_1"))
         .await
         .expect("link should succeed");
 
+    // then: its title is as it was
     let found = store.load(id).await.expect("load should find the scene");
     assert_eq!(found.title(), &a_title("The loom"));
+    // and: so is its prose
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
 pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: the same idea is linked to it twice
     for _ in 0..2 {
         store
             .link(id, &an_idea("idea_1"))
@@ -966,6 +1093,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
             .expect("link should succeed");
     }
 
+    // then: one link is told
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
@@ -977,6 +1105,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
 }
 
 pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Workbench) {
+    // given: a scene with a linked idea
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
@@ -985,15 +1114,18 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
         .await
         .expect("link should succeed");
 
+    // when: that idea is unlinked
     store
         .unlink(id, &an_idea("idea_1"))
         .await
         .expect("unlink should succeed");
+    // and: an idea never linked is unlinked
     store
         .unlink(id, &an_idea("idea_never"))
         .await
         .expect("unlinking nothing should succeed");
 
+    // then: only the link and its unlinking are told, each with the scene's project
     let heard: Vec<(String, Value)> = told_after_creating(bench.enqueued().await)
         .into_iter()
         .map(|(routing, payload)| (routing, payload["project"].clone()))
@@ -1009,12 +1141,14 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
 }
 
 pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
+    // given: two scenes
     let store = &bench.committing();
     let id = an_id(1_000);
     let other = an_id(2_000);
     an_empty_scene(store, id).await;
     an_empty_scene(store, other).await;
 
+    // when: they are linked, unlinked, retitled and written in, some of it changing nothing
     store
         .link(id, &an_idea("idea_1"))
         .await
@@ -1044,6 +1178,7 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
         .await
         .expect("link should succeed");
 
+    // then: each scene's announcements carry its count of real changes
     let versions: Vec<(String, u64)> = told_after_creating(bench.enqueued().await)
         .into_iter()
         .map(|(_, payload)| {
@@ -1067,15 +1202,18 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
 }
 
 pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: its word count is announced
     store
         .announce_word_count(id, 42)
         .await
         .expect("announcing should succeed");
 
+    // then: the count is told with the scene's project
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
@@ -1086,10 +1224,12 @@ pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench:
 }
 
 pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: its word count is announced between two links
     store
         .link(id, &an_idea("idea_1"))
         .await
@@ -1103,6 +1243,7 @@ pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl W
         .await
         .expect("link should succeed");
 
+    // then: the links follow one another in its count of changes
     let versions: Vec<u64> = told(bench.enqueued().await)
         .into_iter()
         .filter(|(routing, _)| routing == "scene.idea.linked")
@@ -1116,12 +1257,15 @@ pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl W
 }
 
 pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: it is deleted
     store.delete(id).await.expect("delete should succeed");
 
+    // then: its deletion is told with its project
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
@@ -1133,13 +1277,16 @@ pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
 }
 
 pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
+    // given: a scene never created
     let store = &bench.committing();
     let missing = an_id(1_000);
 
+    // when: it is linked, unlinked and deleted
     let _ = store.link(missing, &an_idea("idea_1")).await;
     let _ = store.unlink(missing, &an_idea("idea_1")).await;
     let _ = store.delete(missing).await;
 
+    // then: nothing is told
     assert!(
         bench.enqueued().await.is_empty(),
         "an message_for of something that did not happen sends the listener after a ghost"
@@ -1147,19 +1294,23 @@ pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
 }
 
 pub async fn writing_enqueues_nothing(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: it is written in
     store
         .apply(id, &a_paragraph("The loom stood silent."))
         .await
         .expect("apply should succeed");
+    // and: an idea is unlinked everywhere
     store
         .unlink_everywhere(&an_idea("idea_1"))
         .await
         .expect("unlinking everywhere should succeed");
 
+    // then: nothing is told
     assert!(
         told_after_creating(bench.enqueued().await).is_empty(),
         "every keystroke is an edit, so text is announced by what is counted from it, not edit          by edit; and unlinking a discarded idea everywhere is answered by whoever heard the          discard itself"
@@ -1167,11 +1318,14 @@ pub async fn writing_enqueues_nothing(bench: &impl Workbench) {
 }
 
 pub async fn creating_a_scene_is_announced_with_its_project(bench: &impl Workbench) {
+    // given: a scene id
     let store = &bench.committing();
     let id = an_id(1_000);
 
+    // when: a scene of it is created
     an_empty_scene(store, id).await;
 
+    // then: its creation is told with its project
     assert_eq!(
         told(bench.enqueued().await),
         vec![(
@@ -1183,15 +1337,18 @@ pub async fn creating_a_scene_is_announced_with_its_project(bench: &impl Workben
 }
 
 pub async fn a_retitle_is_announced_with_its_title_and_version(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: it is retitled
     store
         .retitle(id, &a_title("The loom"))
         .await
         .expect("retitle should succeed");
 
+    // then: the retitle is told with its title and version
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
@@ -1208,15 +1365,18 @@ pub async fn a_retitle_is_announced_with_its_title_and_version(bench: &impl Work
 }
 
 pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
+    // given: a scene
     let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
+    // when: its opening is announced
     store
         .announce_opening(id, "The loom stood silent.")
         .await
         .expect("announcing should succeed");
 
+    // then: the opening is told with the scene's project
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
@@ -1233,13 +1393,16 @@ pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &
 pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(
     store: &Committing<'_, impl SceneStore>,
 ) {
+    // given: a scene never created
     let missing = an_id(1_000);
 
+    // when: its opening is announced
     let error = store
         .announce_opening(missing, "Nowhere.")
         .await
         .expect_err("announcing should not find the scene");
 
+    // then: it is not found
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
         "expected NotFound({missing}), got {error:?}"
@@ -1249,6 +1412,7 @@ pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_to_nobody(
     bench: &impl Workbench,
 ) {
+    // given: a stored scene
     let store = &bench.committing();
     let kept = an_id(1_000);
     store
@@ -1256,6 +1420,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_
         .await
         .expect("creating should succeed");
     let told_before = bench.enqueued().await.len();
+    // and: a transaction that creates a scene and writes in, retitles and links the stored one
     let mut transaction = store.begun().await.expect("beginning should succeed");
     let uncommitted = store.uncommitted();
     uncommitted
@@ -1275,15 +1440,19 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_
         .await
         .expect("linking should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the stored scene is as it was
     let scene = store.load(kept).await.expect("the kept scene is there");
     assert_eq!(scene.text(), "The loom stood silent.");
     assert!(scene.ideas().is_empty());
+    // and: the created one is not there
     assert!(matches!(
         store.load(an_id(2_000)).await,
         Err(StoreError::NotFound(_))
     ));
+    // and: nothing more is told
     assert_eq!(
         bench.enqueued().await.len(),
         told_before,
@@ -1418,6 +1587,7 @@ macro_rules! conformance_tests {
 }
 
 pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tables) {
+    // given: a stored scene
     let id = an_id(1_000);
     bench
         .committing()
@@ -1425,12 +1595,14 @@ pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tabl
         .await
         .expect("create should succeed");
 
+    // when: an update is applied to it
     bench
         .committing()
         .apply(id, &a_paragraph("Then it began."))
         .await
         .expect("apply should succeed");
 
+    // then: the snapshot stays and the update is one row after it
     assert_eq!(
         bench.rows().await,
         vec![true, false],
@@ -1439,14 +1611,17 @@ pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tabl
 }
 
 pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &impl Tables) {
+    // given: a store that keeps three updates
     let store_tables = bench.on_the_same_tables(3);
     let store = &bench.committing_to(&store_tables);
+    // and: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: five updates are applied to it
     for nth in 0..5 {
         store
             .apply(id, &a_paragraph(&format!("Line {nth}.")))
@@ -1454,18 +1629,19 @@ pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &imp
             .expect("apply should succeed");
     }
 
+    // then: fewer rows are left than were written
     let parts = bench.rows().await;
-
     assert!(
         parts.len() < 6,
         "six writes should not have left six rows: {parts:?}"
     );
+    // and: they begin with a snapshot
     assert_eq!(
         parts.first(),
         Some(&true),
         "what remains must begin with a snapshot: {parts:?}"
     );
-
+    // and: no prose is lost
     let found = store.load(id).await.expect("load should succeed");
     assert!(
         found.text().contains("The loom stood silent.") && found.text().contains("Line 4."),
@@ -1475,6 +1651,7 @@ pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &imp
 }
 
 pub async fn compacting_a_short_tail_does_nothing(bench: &impl Tables) {
+    // given: a scene with one update
     let id = an_id(1_000);
     bench
         .committing()
@@ -1487,17 +1664,23 @@ pub async fn compacting_a_short_tail_does_nothing(bench: &impl Tables) {
         .await
         .expect("apply should succeed");
 
+    // when: it is compacted
     let collapsed = bench.compact(id).await.expect("compacting should succeed");
 
+    // then: nothing is collapsed
     assert!(!collapsed, "two rows are not worth collapsing");
+    // and: both rows are left
     assert_eq!(bench.rows().await.len(), 2);
 }
 
 pub async fn compacting_a_scene_that_was_never_created_is_not_found(bench: &impl Tables) {
+    // given: a scene never created
     let never_written = an_id(1_000);
 
+    // when: it is compacted
     let refused = bench.compact(never_written).await;
 
+    // then: it is not found
     assert!(
         matches!(refused, Err(StoreError::NotFound(missing)) if missing == never_written),
         "got {refused:?}"
@@ -1505,6 +1688,7 @@ pub async fn compacting_a_scene_that_was_never_created_is_not_found(bench: &impl
 }
 
 pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
+    // given: a stored scene
     let id = an_id(1_000);
     bench
         .committing()
@@ -1512,12 +1696,15 @@ pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
         .await
         .expect("create should succeed");
 
+    // when: an unreadable update is applied to it
     let refused = bench.committing().apply(id, &[255, 255, 255, 255]).await;
 
+    // then: it is refused
     assert!(
         matches!(refused, Err(StoreError::Unusable(_))),
         "got {refused:?}"
     );
+    // and: only the snapshot is there
     assert_eq!(
         bench.rows().await,
         vec![true],
@@ -1526,19 +1713,23 @@ pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
 }
 
 pub async fn an_update_for_a_scene_that_does_not_exist_writes_no_row(bench: &impl Tables) {
+    // when: an update to a scene never created is applied
     let refused = bench
         .committing()
         .apply(an_id(1_000), &a_paragraph("Out of nowhere."))
         .await;
 
+    // then: it is not found
     assert!(
         matches!(refused, Err(StoreError::NotFound(_))),
         "got {refused:?}"
     );
+    // and: no row is written
     assert!(bench.rows().await.is_empty());
 }
 
 pub async fn deleting_a_scene_takes_its_updates_with_it(bench: &impl Tables) {
+    // given: a scene with an update
     let id = an_id(1_000);
     bench
         .committing()
@@ -1551,13 +1742,16 @@ pub async fn deleting_a_scene_takes_its_updates_with_it(bench: &impl Tables) {
         .await
         .expect("apply should succeed");
 
+    // when: it is deleted
     bench
         .committing()
         .delete(id)
         .await
         .expect("delete should succeed");
 
+    // then: no scene is left
     assert_eq!(bench.count("SELECT count(*) FROM scenes").await, 0);
+    // and: no row of it
     assert!(
         bench.rows().await.is_empty(),
         "the parts are the scene — leaving them would leave a scene that load cannot find"
@@ -1567,6 +1761,7 @@ pub async fn deleting_a_scene_takes_its_updates_with_it(bench: &impl Tables) {
 pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_writes(
     bench: &impl Tables,
 ) {
+    // given: a scene with an update
     let id = an_id(1_000);
     bench
         .committing()
@@ -1579,10 +1774,12 @@ pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_write
         .await
         .expect("apply should succeed");
 
+    // when: another store on the same tables loads it
     let elsewhere_tables = bench.on_the_same_tables(COMPACT_AFTER);
     let elsewhere = &bench.committing_to(&elsewhere_tables);
     let found = elsewhere.load(id).await.expect("load should succeed");
 
+    // then: all its prose comes back
     assert!(
         found.text().contains("The loom stood silent.") && found.text().contains("Then it began."),
         "prose has to come back out of the rows, not out of whoever wrote them, got {:?}",
@@ -1591,6 +1788,7 @@ pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_write
 }
 
 pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
+    // given: a scene with a linked idea
     let id = an_id(1_000);
     bench
         .committing()
@@ -1603,12 +1801,14 @@ pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
         .await
         .expect("link should succeed");
 
+    // when: it is deleted
     bench
         .committing()
         .delete(id)
         .await
         .expect("delete should succeed");
 
+    // then: no link is left
     let links = bench.count("SELECT count(*) FROM scene_ideas").await;
     assert_eq!(
         links, 0,
@@ -1617,14 +1817,17 @@ pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
 }
 
 pub async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is(bench: &impl Tables) {
+    // given: a store that keeps three updates
     let store_tables = bench.on_the_same_tables(3);
     let store = &bench.committing_to(&store_tables);
+    // and: a stored scene
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
+    // when: three updates are applied to it
     for nth in 0..3 {
         store
             .apply(id, &a_paragraph(&format!("Line {nth}.")))
@@ -1632,6 +1835,7 @@ pub async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is(bench: &impl Tab
             .expect("apply should succeed");
     }
 
+    // then: the snapshot and all three updates are left
     assert_eq!(
         bench.rows().await,
         vec![true, false, false, false],

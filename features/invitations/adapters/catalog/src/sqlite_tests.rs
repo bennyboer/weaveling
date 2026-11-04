@@ -55,10 +55,12 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_standing() {
+    // given: the list on sqlite
     let bench = OnSqlite::setup().await;
     let catalog = Arc::new(SqliteInvitationCatalog::new(bench.pool.clone()));
     let transactions = Arc::new(SqliteTransactions::new(bench.pool.clone()));
 
+    // when: invitations are remembered and forgotten at once, again and again
     for nth in 0..40 {
         let summary = suite::a_summary(
             InvitationId::generate(suite::at(1_000 + nth)),
@@ -103,6 +105,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
             .expect("forgetting should succeed");
     }
 
+    // then: none of them stands
     assert!(
         catalog
             .listed_after(None, 100)
@@ -116,19 +119,23 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
 
 #[tokio::test]
 async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
+    // given: the token keys on sqlite
     let bench = OnSqlite::setup().await;
     let keys = Arc::new(sqlite::SqliteTokenKeys::new(bench.pool.clone()));
 
+    // when: many ask for the key at once
     let asked: Vec<_> = futures_util::future::join_all((0..8).map(|_| {
         let keys = keys.clone();
         async move { keys.key().await.expect("a key is at hand") }
     }))
     .await;
 
+    // then: all are told the one key
     assert!(
         asked.iter().all(|key| *key == asked[0]),
         "every invitation issued and mailed is derived under the one key"
     );
+    // and: a restart finds it
     assert_eq!(
         sqlite::SqliteTokenKeys::new(bench.pool.clone())
             .key()
@@ -143,19 +150,23 @@ async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
 
 #[tokio::test]
 async fn a_key_once_drawn_is_read_while_another_writer_holds_the_file() {
+    // given: a key drawn
     let bench = OnSqlite::setup().await;
     let keys = sqlite::SqliteTokenKeys::new(bench.pool.clone());
     let drawn = keys.key().await.expect("a key is at hand");
+    // and: another writer holding the file
     let writing = SqliteTransactions::new(bench.pool.clone())
         .begin()
         .await
         .expect("a writer begins");
 
+    // when: the key is asked for
     let read = tokio::time::timeout(std::time::Duration::from_secs(2), keys.key())
         .await
         .expect("a hearing's own writer must not keep its mail from the key")
         .expect("a key is at hand");
 
+    // then: it is the key drawn
     assert_eq!(read, drawn);
     drop(writing);
     bench.cleanup().await;

@@ -266,9 +266,11 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+        // given: a feature whose clock is past how long tombstones are kept
         let context = a_context();
         let ports = OutlineFeature::in_memory(&context);
         let wired = OutlineFeature::wire(&ports, &context);
+        // and: one tombstone laid long ago and one just now
         for (gone, laid) in [
             (Attachment::scene("scene_long_gone"), NOW),
             (Attachment::idea("idea_just_gone"), NOW + Duration::SECOND),
@@ -279,12 +281,15 @@ mod tests {
                 .expect("laying a tombstone should succeed");
         }
 
+        // when: its chores are handed over
         let [chore, hearings] = wired.chores.as_slice() else {
             panic!("the feature hands over two chores");
         };
 
+        // then: one forgets old hearings
         assert_eq!(hearings.named(), "forget-old-outline-hearings");
 
+        // and: the other forgets only the long gone tombstone
         assert_eq!(chore.named(), "forget-old-outline-tombstones");
         assert_eq!(
             chore
@@ -297,6 +302,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        // given: two tombstones laid at the same moment
         let context = a_context();
         let ports = OutlineFeature::in_memory(&context);
         for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
@@ -306,11 +312,13 @@ mod tests {
                 .expect("laying a tombstone should succeed");
         }
 
+        // when: tombstones are forgotten a batch of one at a time
         let forgotten = OutlineTombstones::of(core(&ports, &context))
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
     }
 }

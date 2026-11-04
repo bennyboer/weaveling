@@ -72,7 +72,7 @@ fn a_core() -> ScenesCore {
     a_core_listing(Arc::new(InMemorySceneCatalog::new()))
 }
 
-fn new_server_with(scenes: ScenesCore) -> TestServer {
+fn a_server(scenes: ScenesCore) -> TestServer {
     TestServer::new(scenes_rest::router(scenes).layer(Extension(Agent::Local)))
 }
 
@@ -103,47 +103,60 @@ async fn a_scene(server: &TestServer) -> SceneDTO {
 
 #[tokio::test]
 async fn a_created_scene_is_reported_with_an_id_and_no_prose() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene is created
     let created = a_scene(&server).await;
 
+    // then: it has an id and no prose
     assert!(!created.id.is_empty(), "a scene must be given an id");
     assert_eq!(created.text, "", "a new scene holds no prose");
 }
 
 #[tokio::test]
 async fn two_created_scenes_are_distinct() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: two scenes are created
     let one = a_scene(&server).await;
     let other = a_scene(&server).await;
 
+    // then: their ids differ
     assert_ne!(one.id, other.id);
 }
 
 #[tokio::test]
 async fn a_scene_can_be_read_back_by_its_id() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
+    // when: it is read by its id
     let response = server.get(&format!("/scenes/{}", created.id)).await;
 
+    // then: it is the scene that was created
     response.assert_status_ok();
     assert_eq!(response.json::<SceneDTO>(), created);
 }
 
 #[tokio::test]
 async fn the_read_model_reports_the_prose_that_was_written() {
+    // given: a scene
     let scenes = a_core();
-    let server = new_server_with(scenes.clone());
+    let server = a_server(scenes.clone());
     let created = a_scene(&server).await;
+    // and: prose written into it
     scenes
         .apply(&created.id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
 
+    // when: it is read
     let response = server.get(&format!("/scenes/{}", created.id)).await;
 
+    // then: it shows the prose
     response.assert_status_ok();
     assert_eq!(
         response.json::<SceneDTO>().text,
@@ -154,32 +167,41 @@ async fn the_read_model_reports_the_prose_that_was_written() {
 
 #[tokio::test]
 async fn a_malformed_id_is_a_bad_request() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene is read by a malformed id
     let response = server.get("/scenes/weaveling").await;
 
+    // then: it is refused as invalid
     refused_as(response, StatusCode::BAD_REQUEST, refused::ID_INVALID);
 }
 
 #[tokio::test]
 async fn an_unknown_scene_is_not_found() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene nobody created is read
     let response = server.get(&format!("/scenes/{UNKNOWN_ID}")).await;
 
+    // then: it is not found
     refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
 #[tokio::test]
 async fn a_deleted_scene_is_gone() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
+    // when: it is deleted
     server
         .delete(&format!("/scenes/{}", created.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: it is not found
     refused_as(
         server.get(&format!("/scenes/{}", created.id)).await,
         StatusCode::NOT_FOUND,
@@ -189,14 +211,17 @@ async fn a_deleted_scene_is_gone() {
 
 #[tokio::test]
 async fn deleting_an_unknown_scene_is_not_found() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene nobody created is deleted
     let response = server.delete(&format!("/scenes/{UNKNOWN_ID}")).await;
 
+    // then: it is not found
     refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
-async fn retitled(server: &TestServer, id: &str, title: &str) -> TestResponse {
+async fn retitling(server: &TestServer, id: &str, title: &str) -> TestResponse {
     server
         .patch(&format!("/scenes/{id}"))
         .json(&RetitleSceneRequest {
@@ -207,10 +232,13 @@ async fn retitled(server: &TestServer, id: &str, title: &str) -> TestResponse {
 
 #[tokio::test]
 async fn a_new_scene_is_reported_untitled() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene is created
     let created = a_scene(&server).await;
 
+    // then: it has no title
     assert_eq!(
         created.title, "",
         "an untitled scene is named by its opening words"
@@ -219,24 +247,31 @@ async fn a_new_scene_is_reported_untitled() {
 
 #[tokio::test]
 async fn a_scene_can_be_retitled_and_read_back() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
-    let response = retitled(&server, &created.id, "  The loom  ").await;
+    // when: it is retitled with a title padded by spaces
+    let response = retitling(&server, &created.id, "  The loom  ").await;
 
+    // then: it answers with the trimmed title
     response.assert_status_ok();
     assert_eq!(response.json::<SceneDTO>().title, "The loom");
+    // and: reads back with it
     let found: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
     assert_eq!(found.title, "The loom");
 }
 
 #[tokio::test]
 async fn a_title_the_domain_refuses_is_unprocessable() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
-    let response = retitled(&server, &created.id, "The\u{7}loom").await;
+    // when: it is retitled with a control character
+    let response = retitling(&server, &created.id, "The\u{7}loom").await;
 
+    // then: the title is refused as unprocessable
     refused_as(
         response,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -246,10 +281,13 @@ async fn a_title_the_domain_refuses_is_unprocessable() {
 
 #[tokio::test]
 async fn retitling_a_scene_nobody_created_is_not_found() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
-    let response = retitled(&server, UNKNOWN_ID, "Nowhere").await;
+    // when: a scene nobody created is retitled
+    let response = retitling(&server, UNKNOWN_ID, "Nowhere").await;
 
+    // then: it is not found
     refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
@@ -277,6 +315,7 @@ async fn page_after(server: &TestServer, after: Option<&str>) -> ScenePageDTO {
 
 #[tokio::test]
 async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
+    // given: a catalog holding a titled scene with an opening
     let catalog = a_catalog_holding(0).await;
     let scene = SceneId::generate(at(1_000));
     catalog
@@ -297,10 +336,12 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
         )
         .await
         .expect("noting an opening should succeed");
-    let server = new_server_with(a_core_listing(catalog));
+    let server = a_server(a_core_listing(catalog));
 
+    // when: the scenes are listed
     let listed = page_after(&server, None).await;
 
+    // then: the scene is named by its title and opening, without its text
     assert_eq!(
         listed,
         ScenePageDTO {
@@ -318,43 +359,54 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
 
 #[tokio::test]
 async fn a_long_listing_comes_a_page_at_a_time() {
-    let server = new_server_with(a_core_listing(a_catalog_holding(PAGE as i64 + 1).await));
+    // given: one scene more than a page holds
+    let server = a_server(a_core_listing(a_catalog_holding(PAGE as i64 + 1).await));
 
+    // when: the scenes are listed
     let first = page_after(&server, None).await;
+    // and: listed again after the first page
     let rest = page_after(&server, first.next.as_deref()).await;
 
+    // then: the first page is full and points past its last scene
     assert_eq!(first.scenes.len(), PAGE);
     assert_eq!(
         first.next.as_deref(),
         first.scenes.last().map(|scene| scene.id.as_str()),
         "the next page is asked for after the last scene of this one"
     );
+    // and: the rest holds the one scene left, and no more
     assert_eq!(rest.scenes.len(), 1);
     assert_eq!(rest.next, None, "the last page says there is no more");
 }
 
 #[tokio::test]
 async fn a_listing_exactly_one_page_long_says_there_is_no_more() {
-    let server = new_server_with(a_core_listing(a_catalog_holding(PAGE as i64).await));
+    // given: exactly as many scenes as a page holds
+    let server = a_server(a_core_listing(a_catalog_holding(PAGE as i64).await));
 
+    // when: the scenes are listed
     let listed = page_after(&server, None).await;
 
+    // then: they all come on one page that says there is no more
     assert_eq!(listed.scenes.len(), PAGE);
     assert_eq!(listed.next, None);
 }
 
 #[tokio::test]
 async fn a_listing_after_something_that_is_no_scene_is_a_bad_request() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: the scenes after something that is no scene are listed
     let response = server
         .get(&format!("/scenes?project={A_PROJECT}&after=idea_1"))
         .await;
 
+    // then: it is refused as invalid
     refused_as(response, StatusCode::BAD_REQUEST, refused::ID_INVALID);
 }
 
-async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestResponse {
+async fn linking(server: &TestServer, id: &str, idea: &str) -> axum_test::TestResponse {
     server
         .post(&format!("/scenes/{id}/ideas"))
         .json(&LinkIdeaRequest {
@@ -365,38 +417,49 @@ async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestRes
 
 #[tokio::test]
 async fn a_new_scene_has_no_linked_ideas() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // when: a scene is created
     let created = a_scene(&server).await;
 
+    // then: it has no ideas linked
     assert!(created.ideas.is_empty());
 }
 
 #[tokio::test]
 async fn an_idea_can_be_linked_and_unlinked() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
-    let after_linking = linked(&server, &created.id, "idea_1").await;
+    // when: an idea is linked to it
+    let after_linking = linking(&server, &created.id, "idea_1").await;
+    // then: it holds the idea
     after_linking.assert_status_ok();
     assert_eq!(after_linking.json::<SceneDTO>().ideas, vec!["idea_1"]);
 
+    // when: the idea is unlinked
     let after_unlinking = server
         .delete(&format!("/scenes/{}/ideas/idea_1", created.id))
         .await;
+    // then: it holds no ideas
     after_unlinking.assert_status_ok();
     assert!(after_unlinking.json::<SceneDTO>().ideas.is_empty());
 }
 
 #[tokio::test]
 async fn linking_to_a_scene_nobody_created_is_not_found() {
-    let server = new_server_with(a_core());
+    // given: scenes
+    let server = a_server(a_core());
 
+    // then: linking an idea to a scene nobody created is not found
     refused_as(
-        linked(&server, UNKNOWN_ID, "idea_1").await,
+        linking(&server, UNKNOWN_ID, "idea_1").await,
         StatusCode::NOT_FOUND,
         "not-found",
     );
+    // and: unlinking one is not found either
     refused_as(
         server
             .delete(&format!("/scenes/{UNKNOWN_ID}/ideas/idea_1"))
@@ -406,7 +469,9 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
     );
 }
 
-async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
+async fn asking_how_far_restyled(
+    tasks: InMemoryQuotationRestylingTasks,
+) -> axum_test::TestResponse {
     TestServer::new(
         scenes_rest::quotation_restylings(a_core_of(
             Arc::new(InMemorySceneStore::new()),
@@ -466,15 +531,18 @@ async fn told_progress(socket: &mut Subscriber) -> QuotationRestylingDTO {
 
 #[tokio::test]
 async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes() {
+    // given: a book's restyling followed
     let mut followed = a_restyling_followed(A_PROJECT).await;
     let project = ProjectLink::from(A_PROJECT);
 
+    // when: its restyling begins
     followed
         .tasks
         .begin_committed(&project, 3, 5)
         .await
         .expect("beginning should succeed");
     let begun = told_progress(&mut followed.socket).await;
+    // and: goes all the way
     followed
         .tasks
         .progressed_committed(
@@ -491,6 +559,7 @@ async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes(
         .expect("counting should succeed");
     let finished = told_progress(&mut followed.socket).await;
 
+    // then: the follower is told it has begun with nothing done
     assert_eq!(
         begun,
         QuotationRestylingDTO {
@@ -500,6 +569,7 @@ async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes(
             finished: false,
         }
     );
+    // and: that it has finished with all done
     assert_eq!(
         finished,
         QuotationRestylingDTO {
@@ -513,6 +583,7 @@ async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes(
 
 #[tokio::test]
 async fn an_older_change_that_cannot_begin_and_another_book_tell_nothing() {
+    // given: a book's restyling followed, as it begins
     let mut followed = a_restyling_followed(A_PROJECT).await;
     let project = ProjectLink::from(A_PROJECT);
     followed
@@ -522,22 +593,26 @@ async fn an_older_change_that_cannot_begin_and_another_book_tell_nothing() {
         .expect("beginning should succeed");
     told_progress(&mut followed.socket).await;
 
+    // when: a restyling for an older change begins
     followed
         .tasks
         .begin_committed(&project, 2, 9)
         .await
         .expect("an older change is turned away, not failed");
+    // and: another book's restyling begins
     followed
         .tasks
         .begin_committed(&ProjectLink::from("project_other"), 1, 1)
         .await
         .expect("beginning should succeed");
 
+    // then: the follower is told nothing
     followed.socket.nothing().await;
 }
 
 #[tokio::test]
 async fn how_far_a_book_is_restyled_can_be_asked() {
+    // given: a book's restyling partly done
     let tasks = InMemoryQuotationRestylingTasks::new();
     let project = ProjectLink::from(A_PROJECT);
     tasks
@@ -558,8 +633,10 @@ async fn how_far_a_book_is_restyled_can_be_asked() {
         .await
         .expect("counting should succeed");
 
-    let response = restyling(tasks).await;
+    // when: how far it is restyled is asked
+    let response = asking_how_far_restyled(tasks).await;
 
+    // then: it tells how much is done of how much
     response.assert_status_ok();
     assert_eq!(
         response.json::<QuotationRestylingDTO>(),
@@ -574,8 +651,9 @@ async fn how_far_a_book_is_restyled_can_be_asked() {
 
 #[tokio::test]
 async fn a_book_never_restyled_is_not_found() {
+    // expect: how far a book never restyled is restyled is not found
     refused_as(
-        restyling(InMemoryQuotationRestylingTasks::new()).await,
+        asking_how_far_restyled(InMemoryQuotationRestylingTasks::new()).await,
         StatusCode::NOT_FOUND,
         refused::NEVER_RESTYLED,
     );
@@ -583,6 +661,7 @@ async fn a_book_never_restyled_is_not_found() {
 
 #[tokio::test]
 async fn more_done_than_was_counted_is_told_as_all_of_it() {
+    // given: a book's restyling with more done than was counted
     let tasks = InMemoryQuotationRestylingTasks::new();
     let project = ProjectLink::from(A_PROJECT);
     tasks
@@ -603,8 +682,12 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
         .await
         .expect("counting should succeed");
 
-    let told = restyling(tasks).await.json::<QuotationRestylingDTO>();
+    // when: how far it is restyled is asked
+    let told = asking_how_far_restyled(tasks)
+        .await
+        .json::<QuotationRestylingDTO>();
 
+    // then: all of it is told as done, and no more
     assert_eq!(
         told.done, 2,
         "a scene written while the book was restyled, or a batch delivered twice, \
@@ -614,11 +697,14 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
 
 #[tokio::test]
 async fn a_title_too_long_is_refused_telling_how_long_it_may_be() {
-    let server = new_server_with(a_core());
+    // given: a scene
+    let server = a_server(a_core());
     let created = a_scene(&server).await;
 
-    let response = retitled(&server, &created.id, &"a".repeat(SceneTitle::MAX_CHARS + 1)).await;
+    // when: it is retitled one character too long
+    let response = retitling(&server, &created.id, &"a".repeat(SceneTitle::MAX_CHARS + 1)).await;
 
+    // then: the title is refused, telling the most it may be and what it was
     let told = refused_as(
         response,
         StatusCode::UNPROCESSABLE_ENTITY,

@@ -143,13 +143,16 @@ pub fn a_summary(id: IdeaId, project: &str, title: &str) -> IdeaSummary {
 pub async fn a_remembered_idea_is_listed_in_its_project(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a summary of an idea
     let summary = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
 
+    // when: it is remembered
     catalog
         .remember(&summary)
         .await
         .expect("remembering should succeed");
 
+    // then: its project lists it
     let found = catalog
         .in_project(&ProjectLink::from("project_1"))
         .await
@@ -159,15 +162,18 @@ pub async fn a_remembered_idea_is_listed_in_its_project(
 }
 
 pub async fn a_project_nobody_wrote_in_lists_nothing(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // when: a project nobody wrote in is listed
     let found = catalog
         .in_project(&ProjectLink::from("project_empty"))
         .await
         .expect("listing an unknown project should not fail");
 
+    // then: nothing is found
     assert!(found.is_empty());
 }
 
 pub async fn ideas_of_other_projects_are_not_listed(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: an idea remembered in one project
     catalog
         .remember(&a_summary(
             IdeaId::generate(at(1_000)),
@@ -176,6 +182,7 @@ pub async fn ideas_of_other_projects_are_not_listed(catalog: &Committing<'_, imp
         ))
         .await
         .expect("remembering should succeed");
+    // and: one in another
     catalog
         .remember(&a_summary(
             IdeaId::generate(at(1_000)),
@@ -185,11 +192,13 @@ pub async fn ideas_of_other_projects_are_not_listed(catalog: &Committing<'_, imp
         .await
         .expect("remembering should succeed");
 
+    // when: the first project is listed
     let found = catalog
         .in_project(&ProjectLink::from("project_mine"))
         .await
         .expect("listing should succeed");
 
+    // then: only its own idea is found
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].title.as_str(), "Mine");
 }
@@ -197,12 +206,14 @@ pub async fn ideas_of_other_projects_are_not_listed(catalog: &Committing<'_, imp
 pub async fn remembering_the_same_idea_again_replaces_what_was_there(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a remembered idea
     let id = IdeaId::generate(at(1_000));
     catalog
         .remember(&a_summary(id, "project_1", "The Loom"))
         .await
         .expect("remembering should succeed");
 
+    // when: a later summary of it is remembered
     let mut later = a_summary(id, "project_1", "The Silent Loom");
     later.version = Version::of(2);
     catalog
@@ -210,6 +221,7 @@ pub async fn remembering_the_same_idea_again_replaces_what_was_there(
         .await
         .expect("remembering should succeed");
 
+    // then: only the later summary is listed
     let found = catalog
         .in_project(&ProjectLink::from("project_1"))
         .await
@@ -219,17 +231,20 @@ pub async fn remembering_the_same_idea_again_replaces_what_was_there(
 }
 
 pub async fn a_forgotten_idea_is_no_longer_listed(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: a remembered idea
     let id = IdeaId::generate(at(1_000));
     catalog
         .remember(&a_summary(id, "project_1", "The Loom"))
         .await
         .expect("remembering should succeed");
 
+    // when: it is forgotten
     catalog
         .forget(&id, at(5_000))
         .await
         .expect("forgetting should succeed");
 
+    // then: it is no longer listed
     assert!(
         catalog
             .in_project(&ProjectLink::from("project_1"))
@@ -242,6 +257,7 @@ pub async fn a_forgotten_idea_is_no_longer_listed(catalog: &Committing<'_, impl 
 pub async fn forgetting_something_never_remembered_is_harmless(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // expect: forgetting an idea never remembered is no failure
     catalog
         .forget(&IdeaId::generate(at(1_000)), at(5_000))
         .await
@@ -249,6 +265,7 @@ pub async fn forgetting_something_never_remembered_is_harmless(
 }
 
 pub async fn the_newest_idea_is_listed_first(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: ideas captured one after another
     let captured: Vec<IdeaId> = (1..=6)
         .map(|nth| IdeaId::generate(at(nth * 1_000)))
         .collect();
@@ -260,11 +277,13 @@ pub async fn the_newest_idea_is_listed_first(catalog: &Committing<'_, impl IdeaC
             .expect("remembering should succeed");
     }
 
+    // when: their project is listed
     let found = catalog
         .in_project(&ProjectLink::from("project_1"))
         .await
         .expect("listing should succeed");
 
+    // then: the newest comes first
     assert_eq!(
         found.iter().map(|summary| summary.id).collect::<Vec<_>>(),
         captured.into_iter().rev().collect::<Vec<_>>(),
@@ -273,6 +292,7 @@ pub async fn the_newest_idea_is_listed_first(catalog: &Committing<'_, impl IdeaC
 }
 
 pub async fn a_batch_starts_at_the_oldest_idea(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: ideas captured one after another
     let captured: Vec<IdeaId> = (1..=5)
         .map(|nth| IdeaId::generate(at(nth * 1_000)))
         .collect();
@@ -283,11 +303,13 @@ pub async fn a_batch_starts_at_the_oldest_idea(catalog: &Committing<'_, impl Ide
             .expect("remembering should succeed");
     }
 
+    // when: a first batch is taken
     let batch = catalog
         .in_project_after(&ProjectLink::from("project_1"), None, 2)
         .await
         .expect("listing should succeed");
 
+    // then: it starts at the oldest
     assert_eq!(
         batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
         captured[..2].to_vec(),
@@ -298,6 +320,7 @@ pub async fn a_batch_starts_at_the_oldest_idea(catalog: &Committing<'_, impl Ide
 pub async fn a_batch_after_a_cursor_takes_what_comes_next(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: ideas captured one after another
     let captured: Vec<IdeaId> = (1..=5)
         .map(|nth| IdeaId::generate(at(nth * 1_000)))
         .collect();
@@ -308,11 +331,13 @@ pub async fn a_batch_after_a_cursor_takes_what_comes_next(
             .expect("remembering should succeed");
     }
 
+    // when: a batch is taken after one of them
     let batch = catalog
         .in_project_after(&ProjectLink::from("project_1"), Some(captured[1]), 2)
         .await
         .expect("listing should succeed");
 
+    // then: it holds the ones that come next
     assert_eq!(
         batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
         captured[2..4].to_vec()
@@ -320,17 +345,20 @@ pub async fn a_batch_after_a_cursor_takes_what_comes_next(
 }
 
 pub async fn a_batch_past_the_end_is_empty(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: a single remembered idea
     let only = IdeaId::generate(at(1_000));
     catalog
         .remember(&a_summary(only, "project_1", "An idea"))
         .await
         .expect("remembering should succeed");
 
+    // when: a batch is taken after it
     let batch = catalog
         .in_project_after(&ProjectLink::from("project_1"), Some(only), 8)
         .await
         .expect("listing should succeed");
 
+    // then: the batch is empty
     assert!(
         batch.is_empty(),
         "an empty batch is how a sweep learns it is finished, so it must not wrap around"
@@ -338,6 +366,7 @@ pub async fn a_batch_past_the_end_is_empty(catalog: &Committing<'_, impl IdeaCat
 }
 
 pub async fn a_batch_stays_inside_its_project(catalog: &Committing<'_, impl IdeaCatalog>) {
+    // given: an idea in one project and one in another
     let mine = IdeaId::generate(at(1_000));
     let theirs = IdeaId::generate(at(2_000));
     catalog
@@ -349,11 +378,13 @@ pub async fn a_batch_stays_inside_its_project(catalog: &Committing<'_, impl Idea
         .await
         .expect("remembering should succeed");
 
+    // when: a batch of the first project is taken
     let batch = catalog
         .in_project_after(&ProjectLink::from("project_mine"), None, 8)
         .await
         .expect("listing should succeed");
 
+    // then: it holds only that project's idea
     assert_eq!(
         batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
         vec![mine],
@@ -371,6 +402,7 @@ async fn listed(catalog: &Committing<'_, impl IdeaCatalog>) -> Vec<IdeaSummary> 
 pub async fn a_forgotten_idea_heard_of_late_is_not_remembered_again(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a forgotten idea
     let gone = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
     catalog
         .remember(&gone)
@@ -381,10 +413,12 @@ pub async fn a_forgotten_idea_heard_of_late_is_not_remembered_again(
         .await
         .expect("forgetting should succeed");
 
+    // when: the same summary of it is remembered again
     catalog
         .remember(&gone)
         .await
         .expect("remembering should succeed");
+    // and: a newer one
     let mut newer = gone.clone();
     newer.version = Version::of(newer.version.count() + 1);
     catalog
@@ -392,6 +426,7 @@ pub async fn a_forgotten_idea_heard_of_late_is_not_remembered_again(
         .await
         .expect("remembering should succeed");
 
+    // then: it stays forgotten
     assert!(
         listed(catalog).await.is_empty(),
         "what was forgotten stays forgotten, however late or new a summary of it comes"
@@ -401,6 +436,7 @@ pub async fn a_forgotten_idea_heard_of_late_is_not_remembered_again(
 pub async fn idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: three ideas forgotten at different times
     let (older, newer, latest) = (
         a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom"),
         a_summary(IdeaId::generate(at(2_000)), "project_1", "The Loom"),
@@ -413,10 +449,12 @@ pub async fn idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
             .expect("forgetting should succeed");
     }
 
+    // when: one tombstone laid before a moment is forgotten
     let forgotten = catalog
         .forget_tombstones_laid_before(at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
+    // and: all three are remembered again
     for summary in [&older, &newer, &latest] {
         catalog
             .remember(summary)
@@ -424,7 +462,9 @@ pub async fn idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
             .expect("remembering should succeed");
     }
 
+    // then: one tombstone is gone
     assert_eq!(forgotten, 1);
+    // and: only the oldest idea is remembered
     assert_eq!(
         listed(catalog).await,
         vec![older],
@@ -435,6 +475,7 @@ pub async fn idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
 pub async fn an_older_idea_summary_heard_late_changes_nothing(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a remembered idea at its later version
     let summary = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
     let mut newer = summary.clone();
     newer.version = Version::of(2);
@@ -443,17 +484,20 @@ pub async fn an_older_idea_summary_heard_late_changes_nothing(
         .await
         .expect("remembering should succeed");
 
+    // when: an older summary of it is remembered
     catalog
         .remember(&summary)
         .await
         .expect("remembering should succeed");
 
+    // then: the later summary stands
     assert_eq!(listed(catalog).await, vec![newer]);
 }
 
 pub async fn an_idea_remembered_in_a_transaction_that_is_dropped_was_never_remembered(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: an idea remembered in a transaction
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -464,19 +508,23 @@ pub async fn an_idea_remembered_in_a_transaction_that_is_dropped_was_never_remem
         .await
         .expect("remembering should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: nothing is listed
     assert!(listed(catalog).await.is_empty());
 }
 
 pub async fn an_idea_forgotten_in_a_transaction_that_is_dropped_is_still_there_and_can_be_remembered(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a remembered idea
     let mut kept = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
     catalog
         .remember(&kept)
         .await
         .expect("remembering should succeed");
+    // and: a transaction that forgot it
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -484,13 +532,16 @@ pub async fn an_idea_forgotten_in_a_transaction_that_is_dropped_is_still_there_a
         .await
         .expect("forgetting should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
+    // and: a newer summary of the idea is remembered
     kept.version = Version::of(kept.version.count() + 1);
     catalog
         .remember(&kept)
         .await
         .expect("remembering should succeed");
 
+    // then: the newer summary is listed
     assert_eq!(
         listed(catalog).await,
         vec![kept],
@@ -501,8 +552,10 @@ pub async fn an_idea_forgotten_in_a_transaction_that_is_dropped_is_still_there_a
 pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a project nobody deleted, without a tombstone
     assert!(!catalog.has_project_tombstone("project_1").await);
 
+    // when: its deletion is heard twice
     for seconds in [1_000, 5_000] {
         catalog
             .lay_project_tombstone("project_1", at(seconds))
@@ -510,8 +563,11 @@ pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
             .expect("laying a tombstone should succeed");
     }
 
+    // then: it has a tombstone
     assert!(catalog.has_project_tombstone("project_1").await);
+    // and: another project has none
     assert!(!catalog.has_project_tombstone("project_2").await);
+    // when: tombstones laid before its second deletion are forgotten
     assert_eq!(
         catalog
             .forget_tombstones_laid_before(at(2_000), u64::MAX)
@@ -520,12 +576,14 @@ pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
         1,
         "a deletion heard again is the same deletion"
     );
+    // then: its tombstone is gone
     assert!(!catalog.has_project_tombstone("project_1").await);
 }
 
 pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: three projects deleted one after another
     for (project, seconds) in [
         ("project_newest", 1_002),
         ("project_oldest", 1_000),
@@ -537,6 +595,7 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
             .expect("laying a tombstone should succeed");
     }
 
+    // when: at most two tombstones are forgotten
     assert_eq!(
         catalog
             .forget_tombstones_laid_before(at(9_000), 2)
@@ -544,14 +603,17 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
             .expect("forgetting should succeed"),
         2
     );
+    // then: the two oldest are gone
     assert!(!catalog.has_project_tombstone("project_oldest").await);
     assert!(!catalog.has_project_tombstone("project_older").await);
+    // and: the newest stands
     assert!(catalog.has_project_tombstone("project_newest").await);
 }
 
 pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_was_never_laid(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a project tombstone laid in a transaction
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -559,19 +621,23 @@ pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_was_never
         .await
         .expect("laying a tombstone should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the project has no tombstone
     assert!(!catalog.has_project_tombstone("project_1").await);
 }
 
 pub async fn idea_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl IdeaCatalog>,
 ) {
+    // given: a forgotten idea
     let gone = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
     catalog
         .forget(&gone.id, at(5_000))
         .await
         .expect("forgetting should succeed");
+    // and: a transaction that forgot its tombstone
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -579,12 +645,15 @@ pub async fn idea_tombstones_forgotten_in_a_transaction_that_is_dropped_still_st
         .await
         .expect("forgetting tombstones should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
+    // and: the idea is remembered again
     catalog
         .remember(&gone)
         .await
         .expect("remembering should succeed");
 
+    // then: it stays forgotten
     assert!(listed(catalog).await.is_empty());
 }
 

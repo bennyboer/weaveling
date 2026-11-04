@@ -131,6 +131,7 @@ mod ledger_tests {
 
     #[test]
     fn the_throttles_keep_a_ledger_of_their_own() {
+        // expect: the ledger is the throttles' own, not the default one
         assert_eq!(migrations().table_name, LEDGER);
         assert_ne!(
             migrations().table_name,

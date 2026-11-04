@@ -62,6 +62,7 @@ async function signedIn(page: Page) {
 test("a project one is let into joins the list, though it is not found at first", async ({
   page,
 }) => {
+  // given: a project not yet listed, nor found at first
   const { id, title } = await aProject(page, "Let in");
   await listedWithout(page, id);
   let missing = 2;
@@ -80,18 +81,21 @@ test("a project one is let into joins the list, though it is not found at first"
           })
         : route.fallback(),
   );
+  // and: an author signed in, looking at their projects
   const server = await signedIn(page);
   await expect(
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
   await expect(rowFor(page, title)).toHaveCount(0);
 
+  // when: they are told they were let into it
   toldOfMembers(server, id, {
     name: "JOINED",
     account: ADA.account,
     role: "author",
   });
 
+  // then: it joins the list
   await expect(
     rowFor(page, title),
     "asked again until the project answers, as the list of members may be a moment behind",
@@ -99,22 +103,27 @@ test("a project one is let into joins the list, though it is not found at first"
 });
 
 test("a project one is let out of leaves the list", async ({ page }) => {
+  // given: an author signed in, a project of theirs listed
   const { id, title } = await aProject(page, "Let out");
   const server = await signedIn(page);
   await expect(rowFor(page, title)).toBeVisible();
 
+  // when: they are told they were let out of it
   toldOfMembers(server, id, { name: "REMOVED", account: ADA.account });
 
+  // then: it leaves the list
   await expect(rowFor(page, title)).toHaveCount(0);
 });
 
 test("a new role changes nothing in the list", async ({ page }) => {
+  // given: an author signed in, two projects of theirs listed
   const kept = await aProject(page, "Kept");
   const gone = await aProject(page, "Gone");
   const server = await signedIn(page);
   await expect(rowFor(page, kept.title)).toBeVisible();
   await expect(rowFor(page, gone.title)).toBeVisible();
 
+  // when: they are told of a new role in one, of leaving one unheard of, and of leaving the other
   toldOfMembers(server, kept.id, {
     name: "ROLE_CHANGED",
     account: ADA.account,
@@ -126,21 +135,26 @@ test("a new role changes nothing in the list", async ({ page }) => {
   });
   toldOfMembers(server, gone.id, { name: "LEFT", account: ADA.account });
 
+  // then: the one left leaves the list
   await expect(
     rowFor(page, gone.title),
     "what came after was taken in",
   ).toHaveCount(0);
+  // and: the one with a new role stays
   await expect(rowFor(page, kept.title)).toBeVisible();
 });
 
 test("without accounts nobody follows the members", async ({ page }) => {
+  // given: a server without accounts
   test.skip(withAccounts, "the server these tests run against keeps accounts");
   const followed = watchingLive(page);
 
+  // when: the app is opened
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
+  // then: projects are followed, but not members
   await expect.poll(() => followed.topics()).toContain("projects");
 
   expect(followed.topics()).not.toContain("members");
@@ -149,6 +163,7 @@ test("without accounts nobody follows the members", async ({ page }) => {
 test("the list is asked for once on coming in, and again when the members' channel comes back", async ({
   page,
 }) => {
+  // given: the projects asked for watched
   let asked = 0;
   page.on("request", (request) => {
     if (
@@ -158,7 +173,9 @@ test("the list is asked for once on coming in, and again when the members' chann
       asked += 1;
     }
   });
+  // when: an author signs in
   const server = await signedIn(page);
+  // then: the projects are asked for once
   await expect.poll(() => asked).toBe(1);
   await page.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
   expect(
@@ -166,9 +183,11 @@ test("the list is asked for once on coming in, and again when the members' chann
     "the members' channel opening the first time asks for nothing",
   ).toBe(1);
 
+  // when: the members' channel ends and comes back
   const asking = server.subscribing;
   endedOn(server, "members", "behind");
 
+  // then: the projects are asked for again
   await expect
     .poll(() => server.subscribing, {
       message: "the list and one's roles follow the members again",

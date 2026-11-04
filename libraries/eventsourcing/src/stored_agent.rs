@@ -32,6 +32,7 @@ mod tests {
 
     #[test]
     fn every_kind_of_agent_survives_a_round_trip() {
+        // expect: every kind of agent reads back as it was written
         assert_eq!(round_trip(Agent::Local), Agent::Local);
         assert_eq!(round_trip(Agent::System), Agent::System);
         assert_eq!(
@@ -42,6 +43,7 @@ mod tests {
 
     #[test]
     fn an_agent_is_written_as_something_a_person_can_read_in_the_table() {
+        // expect: an agent is written as plain text
         assert_eq!(encode(&Agent::Local), "local");
         assert_eq!(encode(&Agent::System), "system");
         assert_eq!(
@@ -52,6 +54,7 @@ mod tests {
 
     #[test]
     fn an_account_named_like_the_others_is_still_an_account() {
+        // expect: an account named like another kind of agent reads back as an account
         assert_eq!(
             round_trip(Agent::Account(AccountId::from("system"))),
             Agent::Account(AccountId::from("system"))
@@ -60,11 +63,13 @@ mod tests {
 
     #[test]
     fn text_from_nowhere_names_nobody() {
+        // expect: text naming no agent reads as the instance itself
         assert_eq!(decode("scribbled by hand"), Agent::Local);
     }
 
     #[test]
     fn what_was_written_as_anonymous_before_accounts_reads_as_local() {
+        // expect: what was written as anonymous reads as the instance itself
         assert_eq!(decode("anonymous"), Agent::Local);
     }
 }

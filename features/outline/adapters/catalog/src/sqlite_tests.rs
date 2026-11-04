@@ -54,6 +54,7 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
+    // given: an outline catalogued and indexed
     let bench = OnSqlite::setup().await;
     let outline = OutlineId::generate(crate::suite::at(1_000));
     bench
@@ -67,12 +68,14 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
         .await
         .expect("indexing should succeed");
 
+    // when: it is forgotten
     bench
         .committing()
         .forget(&outline, suite::at(5_000))
         .await
         .expect("forgetting should succeed");
 
+    // then: neither its summary nor its index is left
     let summaries: i64 = sqlx::query_scalar("SELECT count(*) FROM outline_summaries")
         .fetch_one(&bench.pool)
         .await
@@ -94,9 +97,11 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_standing() {
+    // given: a catalog
     let bench = OnSqlite::setup().await;
     let catalog = bench.committing();
 
+    // when: outlines are remembered and forgotten at once
     for nth in 0..40 {
         let summary = suite::a_summary(OutlineId::generate(suite::at(1_000 + nth)), "project_1");
         let (remembered, forgotten) = tokio::join!(
@@ -107,6 +112,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_sta
         forgotten.expect("forgetting should succeed");
     }
 
+    // then: none is left standing
     assert!(
         catalog
             .in_project(&ProjectLink::from("project_1"))

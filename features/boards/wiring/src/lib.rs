@@ -251,6 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+        // given: the wired feature with a tombstone past keeping and one not
         let context = a_context();
         let ports = BoardFeature::in_memory(&context);
         let wired = BoardFeature::wire(&ports, &context);
@@ -264,12 +265,15 @@ mod tests {
                 .expect("laying a tombstone should succeed");
         }
 
+        // when: its chores are taken
         let [chore, hearings] = wired.chores.as_slice() else {
             panic!("the feature hands over two chores");
         };
 
+        // then: one forgets old hearings
         assert_eq!(hearings.named(), "forget-old-board-hearings");
 
+        // and: one forgets the tombstones past keeping
         assert_eq!(chore.named(), "forget-old-board-tombstones");
         assert_eq!(
             chore
@@ -282,6 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        // given: two tombstones past keeping
         let context = a_context();
         let ports = BoardFeature::in_memory(&context);
         for idea in ["idea_1", "idea_2"] {
@@ -291,11 +296,13 @@ mod tests {
                 .expect("laying a tombstone should succeed");
         }
 
+        // when: the tombstones are forgotten a batch of one at a time
         let forgotten = BoardTombstones::of(core(&ports, &context))
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
     }
 }

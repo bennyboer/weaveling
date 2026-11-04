@@ -206,11 +206,14 @@ mod tests {
 
     #[test]
     fn the_feature_notes_lists_names_tells_live_and_forgets_old_notices_tombstones_and_hearings() {
+        // given: what the feature is wired with
         let context = a_context();
 
+        // when: it is wired
         let wired =
             NotificationsFeature::wire(&NotificationsFeature::in_memory(&context), &context);
 
+        // then: it notes, lists and names through its listeners
         let named: Vec<String> = wired
             .listeners
             .iter()
@@ -225,6 +228,7 @@ mod tests {
                 "notifications-remember-project-names"
             ]
         );
+        // and: tells live through its topic
         assert_eq!(
             wired
                 .topics
@@ -233,6 +237,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["notifications"]
         );
+        // and: forgets old notices, tombstones and hearings as chores
         assert_eq!(
             wired
                 .chores
@@ -291,9 +296,11 @@ mod postgres_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_keeps_the_notices() {
+        // given: a database of its own
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("notifications").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in NotificationsFeature::postgres_schema() {
                 schema
@@ -303,9 +310,11 @@ mod postgres_tests {
             }
         }
 
+        // then: the list keeps a noted notice
         let ports = NotificationsFeature::on_postgres(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_a_noted_notice(&ports).await;
+        // and: in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM notices")
             .fetch_one(&pool)
             .await
@@ -327,9 +336,11 @@ mod sqlite_tests {
 
     #[tokio::test]
     async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_keeps_the_notices() {
+        // given: a database of its own
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("notifications").await;
 
+        // when: every part of the schema is laid down twice
         for _ in 0..2 {
             for schema in NotificationsFeature::sqlite_schema() {
                 schema
@@ -339,9 +350,11 @@ mod sqlite_tests {
             }
         }
 
+        // then: the list keeps a noted notice
         let ports = NotificationsFeature::on_sqlite(pool.clone(), &super::tests::a_context())
             .expect("wiring should succeed");
         super::tests::the_list_keeps_a_noted_notice(&ports).await;
+        // and: in the database
         let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM notices")
             .fetch_one(&pool)
             .await

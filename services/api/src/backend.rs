@@ -124,11 +124,13 @@ mod tests {
 
     #[test]
     fn nothing_configured_keeps_the_work_in_memory() {
+        // expect: nothing configured keeps the work in memory
         assert_eq!(Backend::chosen(None, None), Ok(Backend::InMemory));
     }
 
     #[test]
     fn a_database_url_means_postgres() {
+        // expect: a database url chooses postgres
         assert_eq!(
             Backend::chosen(set("postgres://somewhere/weaveling"), None),
             Ok(Backend::Postgres {
@@ -139,6 +141,7 @@ mod tests {
 
     #[test]
     fn a_data_directory_means_local_files() {
+        // expect: a data directory chooses local files
         assert_eq!(
             Backend::chosen(None, set("/home/author/weaveling")),
             Ok(Backend::Sqlite {
@@ -149,6 +152,7 @@ mod tests {
 
     #[test]
     fn both_at_once_is_refused_rather_than_guessed() {
+        // expect: both at once are refused
         assert_eq!(
             Backend::chosen(
                 set("postgres://somewhere/weaveling"),
@@ -161,6 +165,7 @@ mod tests {
 
     #[test]
     fn a_blank_setting_counts_as_unset() {
+        // expect: blank settings count as unset
         assert_eq!(
             Backend::chosen(set(""), set("  ")),
             Ok(Backend::InMemory),
@@ -170,11 +175,13 @@ mod tests {
 
     #[test]
     fn local_files_are_polled_much_more_often_than_the_backstop_elsewhere() {
+        // given: the cadence of local files
         let local = Backend::Sqlite {
             directory: PathBuf::from("data"),
         }
         .cadence();
 
+        // then: they are polled much more often than the backstop elsewhere
         assert_eq!(local.deliver_every, LOCAL_POLLING);
         assert!(
             local.deliver_every < Backend::InMemory.cadence().deliver_every,

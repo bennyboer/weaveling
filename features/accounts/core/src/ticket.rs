@@ -44,6 +44,7 @@ mod tests {
 
     #[test]
     fn a_token_is_known_by_the_sha_256_of_it_as_invitations_keep_it() {
+        // expect: a token's digest is the sha 256 in hex of it trimmed
         assert_eq!(
             InvitationToken::presented(" abc\n").digest(),
             TokenDigest::kept(
@@ -55,6 +56,7 @@ mod tests {
 
     #[test]
     fn a_token_is_never_written_out_by_debug() {
+        // expect: a token's debug form does not hold it
         assert!(!format!("{:?}", InvitationToken::presented("abc")).contains("abc"));
     }
 }

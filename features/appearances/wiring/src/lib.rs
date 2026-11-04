@@ -148,6 +148,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+        // given: a feature whose clock is past how long tombstones are kept
         let context = Context {
             clock: Arc::new(FixedClock::new(
                 NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
@@ -159,6 +160,7 @@ mod tests {
         };
         let ports = AppearanceFeature::in_memory(&context);
         let wired = AppearanceFeature::wire(&ports, &context);
+        // and: one subject forgotten long ago and one just now
         for (idea, laid) in [
             ("idea_long_gone", NOW),
             ("idea_just_gone", NOW + Duration::SECOND),
@@ -179,12 +181,15 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
+        // when: its chores are handed over
         let [tombstones, hearings] = wired.chores.as_slice() else {
             panic!("the feature hands over two chores");
         };
 
+        // then: one forgets old tombstones and one old hearings
         assert_eq!(tombstones.named(), "forget-old-appearance-tombstones");
         assert_eq!(hearings.named(), "forget-old-appearance-hearings");
+        // and: the tombstones chore forgets only the long gone subject
         assert_eq!(
             tombstones
                 .carry_out()
@@ -196,6 +201,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        // given: two discarded ideas
         let appearances = AppearancesCore::new(
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryAppearanceCatalog::new()),
@@ -208,11 +214,13 @@ mod tests {
                 .expect("forgetting should succeed");
         }
 
+        // when: tombstones are forgotten a batch of one at a time
         let forgotten = AppearanceTombstones::of(appearances)
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
     }
 }

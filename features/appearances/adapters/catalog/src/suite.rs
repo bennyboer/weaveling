@@ -196,12 +196,14 @@ async fn places_of(catalog: &Committing<'_, impl AppearanceCatalog>, idea: &str)
 pub async fn an_idea_nobody_placed_appears_nowhere(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // expect: an idea never placed appears nowhere
     assert!(places_of(catalog, "idea_1").await.is_empty());
 }
 
 pub async fn an_idea_appears_wherever_it_was_remembered(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in a scene and a section
     remembered(
         catalog,
         "idea_1",
@@ -209,6 +211,7 @@ pub async fn an_idea_appears_wherever_it_was_remembered(
     )
     .await;
 
+    // then: it appears in both
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![a_scene("scene_1"), a_section("section_1")]
@@ -218,6 +221,7 @@ pub async fn an_idea_appears_wherever_it_was_remembered(
 pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_in(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in places out of order
     remembered(
         catalog,
         "idea_1",
@@ -229,6 +233,7 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
     )
     .await;
 
+    // then: its places come back scenes first, each by id
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![
@@ -244,6 +249,7 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
 pub async fn remembering_the_same_place_twice_is_one_appearance(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in one section twice
     remembered(
         catalog,
         "idea_1",
@@ -251,6 +257,7 @@ pub async fn remembering_the_same_place_twice_is_one_appearance(
     )
     .await;
 
+    // then: it appears there once
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![a_section("section_1")],
@@ -261,6 +268,7 @@ pub async fn remembering_the_same_place_twice_is_one_appearance(
 pub async fn forgetting_one_place_leaves_the_others(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in a section and a scene
     remembered(
         catalog,
         "idea_1",
@@ -268,26 +276,32 @@ pub async fn forgetting_one_place_leaves_the_others(
     )
     .await;
 
+    // when: the section is forgotten for it
     catalog
         .forget(&an_idea("idea_1"), &a_section("section_1"), 2)
         .await
         .expect("forgetting should succeed");
 
+    // then: it appears only in the scene
     assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
 }
 
 pub async fn forgetting_an_idea_leaves_every_other_idea(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: two ideas remembered in one section
     remembered(catalog, "idea_gone", &[a_section("section_1")]).await;
     remembered(catalog, "idea_kept", &[a_section("section_1")]).await;
 
+    // when: one of them is forgotten
     catalog
         .forget_subject(&an_idea("idea_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: it appears nowhere
     assert!(places_of(catalog, "idea_gone").await.is_empty());
+    // and: the other stays in the section
     assert_eq!(
         places_of(catalog, "idea_kept").await,
         vec![a_section("section_1")],
@@ -298,6 +312,7 @@ pub async fn forgetting_an_idea_leaves_every_other_idea(
 pub async fn forgetting_a_place_reaches_every_idea_in_it(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: two ideas remembered in a section to go, one of them also in another
     remembered(
         catalog,
         "idea_1",
@@ -306,15 +321,18 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(
     .await;
     remembered(catalog, "idea_2", &[a_section("section_gone")]).await;
 
+    // when: the section to go is forgotten
     catalog
         .forget_place(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: the first appears only in the other
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![a_section("section_kept")]
     );
+    // and: the second appears nowhere
     assert!(
         places_of(catalog, "idea_2").await.is_empty(),
         "a removed section takes every idea noted in it, not just the first one found"
@@ -324,42 +342,52 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(
 pub async fn forgetting_a_place_says_which_ideas_appeared_there(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: three ideas remembered in a section to go
     remembered(catalog, "idea_2", &[a_section("section_gone")]).await;
     remembered(catalog, "idea_1", &[a_section("section_gone")]).await;
     remembered(catalog, "idea_3", &[a_section("section_gone")]).await;
+    // and: the last of them taken out of it again
     catalog
         .forget(&an_idea("idea_3"), &a_section("section_gone"), 2)
         .await
         .expect("forgetting should succeed");
+    // and: a fourth remembered in another section
     remembered(catalog, "idea_4", &[a_section("section_kept")]).await;
 
+    // when: the section to go is forgotten
     let appeared = catalog
         .forget_place(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
+    // and: a section nobody appeared in is forgotten
     let nobody = catalog
         .forget_place(&a_section("section_empty"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: the ideas still in the first are named, in order
     assert_eq!(
         appeared,
         vec![an_idea("idea_1"), an_idea("idea_2")],
         "an idea already taken out of the place did not appear there"
     );
+    // and: nobody is named for the empty one
     assert!(nobody.is_empty());
 }
 
 pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea in a section and a scene sharing an id
     remembered(catalog, "idea_1", &[a_section("same_1"), a_scene("same_1")]).await;
 
+    // when: the scene is forgotten
     catalog
         .forget_place(&a_scene("same_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: the idea appears only in the section
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![a_section("same_1")],
@@ -370,6 +398,7 @@ pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
 pub async fn forgetting_what_was_never_remembered_is_harmless(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // expect: forgetting an appearance, an idea and a place never remembered all succeed
     catalog
         .forget(&an_idea("idea_1"), &a_section("section_1"), 1)
         .await
@@ -407,6 +436,7 @@ async fn seen(
 pub async fn a_late_remembering_does_not_undo_a_later_forgetting(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // when: an idea is remembered in a section, forgotten, and an older remembering comes late
     seen(
         catalog,
         &a_section("section_1"),
@@ -414,6 +444,7 @@ pub async fn a_late_remembering_does_not_undo_a_later_forgetting(
     )
     .await;
 
+    // then: it appears nowhere
     assert!(
         places_of(catalog, "idea_1").await.is_empty(),
         "an attachment tried again after its detachment must not put the idea back"
@@ -423,6 +454,7 @@ pub async fn a_late_remembering_does_not_undo_a_later_forgetting(
 pub async fn a_late_forgetting_does_not_undo_a_later_remembering(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // when: an idea is remembered, forgotten, remembered again, and an older forgetting comes late
     seen(
         catalog,
         &a_section("section_1"),
@@ -430,6 +462,7 @@ pub async fn a_late_forgetting_does_not_undo_a_later_remembering(
     )
     .await;
 
+    // then: it stays in the section
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![a_section("section_1")],
@@ -440,14 +473,18 @@ pub async fn a_late_forgetting_does_not_undo_a_later_remembering(
 pub async fn nothing_comes_back_to_a_forgotten_place(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in a section
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
+    // and: the section forgotten
     catalog
         .forget_place(&a_section("section_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // when: the idea is remembered there again at a later version
     seen(catalog, &a_section("section_1"), &[(true, 9)]).await;
 
+    // then: it appears nowhere
     assert!(
         places_of(catalog, "idea_1").await.is_empty(),
         "a removed section is gone for good, whatever arrives about it later"
@@ -455,14 +492,18 @@ pub async fn nothing_comes_back_to_a_forgotten_place(
 }
 
 pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &Committing<'_, impl AppearanceCatalog>) {
+    // given: an idea remembered in a section
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
+    // and: the idea forgotten
     catalog
         .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // when: it is remembered in another section at a later version
     seen(catalog, &a_section("section_2"), &[(true, 9)]).await;
 
+    // then: it appears nowhere
     assert!(
         places_of(catalog, "idea_1").await.is_empty(),
         "a discarded idea is gone for good, and its versions come from other streams, so only \
@@ -473,6 +514,7 @@ pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &Committing<'_, impl A
 pub async fn an_idea_s_project_is_kept_and_none_known_is_none(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // when: two ideas have their projects remembered
     catalog
         .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
         .await
@@ -482,6 +524,7 @@ pub async fn an_idea_s_project_is_kept_and_none_known_is_none(
         .await
         .expect("remembering should succeed");
 
+    // then: each is kept in its project, and an idea never remembered in none
     for (idea, project) in [
         ("idea_1", Some(ProjectLink::from("project_1"))),
         ("idea_2", Some(ProjectLink::from("project_2"))),
@@ -501,16 +544,19 @@ pub async fn an_idea_s_project_is_kept_and_none_known_is_none(
 pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea of a project
     catalog
         .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
         .await
         .expect("remembering should succeed");
 
+    // when: the idea is forgotten
     catalog
         .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: its project is still known
     assert_eq!(
         catalog
             .project_of(&an_idea("idea_1"))
@@ -525,6 +571,7 @@ pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
 pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // when: an idea's project is remembered again and then as another
     for project in ["project_1", "project_1", "project_2"] {
         catalog
             .remember_project(&an_idea("idea_1"), &ProjectLink::from(project))
@@ -532,6 +579,7 @@ pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
             .expect("remembering again is no failure");
     }
 
+    // then: the last one is kept
     assert_eq!(
         catalog
             .project_of(&an_idea("idea_1"))
@@ -544,6 +592,7 @@ pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
 pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea and a section forgotten long ago
     let before = LAID + Duration::DAY;
     catalog
         .forget_subject(&an_idea("idea_long_gone"), LAID)
@@ -553,6 +602,7 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
         .forget_place(&a_section("section_long_gone"), LAID)
         .await
         .expect("forgetting should succeed");
+    // and: another idea and section forgotten just now
     catalog
         .forget_subject(&an_idea("idea_just_gone"), before)
         .await
@@ -562,12 +612,15 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
         .await
         .expect("forgetting should succeed");
 
+    // when: tombstones laid before now are forgotten
     let forgotten = catalog
         .forget_tombstones_laid_before(before, ALL_AT_ONCE)
         .await
         .expect("forgetting tombstones should succeed");
 
+    // then: the two long gone are forgotten
     assert_eq!(forgotten, 2);
+    // when: the ideas and sections are remembered again
     for (idea, place) in [
         ("idea_long_gone", a_scene("scene_1")),
         ("idea_just_gone", a_scene("scene_1")),
@@ -576,11 +629,13 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
     ] {
         remembered(catalog, idea, &[place]).await;
     }
+    // then: the long gone ones come back
     assert_eq!(
         places_of(catalog, "idea_long_gone").await,
         vec![a_scene("scene_1")],
         "a tombstone forgotten keeps nothing out"
     );
+    // and: the ones just gone stay out
     assert!(places_of(catalog, "idea_just_gone").await.is_empty());
     assert_eq!(
         places_of(catalog, "idea_1").await,
@@ -591,6 +646,7 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
 pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea and a section forgotten
     catalog
         .forget_subject(&an_idea("idea_1"), LAID)
         .await
@@ -599,6 +655,7 @@ pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
         .forget_place(&a_section("section_1"), LAID)
         .await
         .expect("forgetting should succeed");
+    // and: forgotten again later
     catalog
         .forget_subject(&an_idea("idea_1"), LAID + Duration::DAY * 2)
         .await
@@ -608,6 +665,7 @@ pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
         .await
         .expect("hearing it again is no failure");
 
+    // then: their tombstones were laid the first time, once each
     assert_eq!(
         catalog
             .forget_tombstones_laid_before(LAID + Duration::DAY, ALL_AT_ONCE)
@@ -621,12 +679,14 @@ pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
 pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: three ideas of a project
     for idea in ["idea_long_gone", "idea_just_gone", "idea_here"] {
         catalog
             .remember_project(&an_idea(idea), &ProjectLink::from("project_1"))
             .await
             .expect("remembering should succeed");
     }
+    // and: one forgotten long ago and one just now
     catalog
         .forget_subject(&an_idea("idea_long_gone"), LAID)
         .await
@@ -636,11 +696,13 @@ pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
         .await
         .expect("forgetting should succeed");
 
+    // when: tombstones laid before now are forgotten
     catalog
         .forget_tombstones_laid_before(LAID + Duration::DAY, ALL_AT_ONCE)
         .await
         .expect("forgetting tombstones should succeed");
 
+    // then: only the long gone idea's project is forgotten
     for (idea, project) in [
         ("idea_long_gone", None),
         ("idea_just_gone", Some(ProjectLink::from("project_1"))),
@@ -660,6 +722,7 @@ pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_kind(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: three ideas and sections forgotten at different moments, each idea of a project
     for (idea, section, laid) in [
         ("idea_newest", "section_newest", LAID + Duration::SECOND * 2),
         ("idea_oldest", "section_oldest", LAID),
@@ -678,6 +741,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
             .await
             .expect("forgetting should succeed");
     }
+    // when: tombstones are forgotten at most two of each kind at a time
     let before = LAID + Duration::DAY;
 
     let forgotten = catalog
@@ -685,7 +749,9 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
         .await
         .expect("forgetting tombstones should succeed");
 
+    // then: two of each kind are forgotten
     assert_eq!(forgotten, 4, "two of each kind");
+    // and: the oldest ideas lose their project
     for (idea, project) in [
         ("idea_newest", Some(ProjectLink::from("project_1"))),
         ("idea_oldest", None),
@@ -700,6 +766,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
             "{idea}"
         );
     }
+    // when: the ideas and sections are remembered again
     for idea in ["idea_newest", "idea_oldest", "idea_older"] {
         remembered(catalog, idea, &[a_scene("scene_1")]).await;
     }
@@ -713,6 +780,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
         ],
     )
     .await;
+    // then: the oldest ones come back and the newest stays out
     assert!(places_of(catalog, "idea_newest").await.is_empty());
     assert_eq!(
         places_of(catalog, "idea_oldest").await,
@@ -726,6 +794,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
         places_of(catalog, "idea_here").await,
         vec![a_section("section_older"), a_section("section_oldest")]
     );
+    // and: what is left is forgotten in the next batch
     for left in [2, 0] {
         assert_eq!(
             catalog
@@ -740,12 +809,14 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: an idea remembered in a scene and a section
     remembered(
         catalog,
         "idea_kept",
         &[a_scene("scene_1"), a_section("section_1")],
     )
     .await;
+    // and: a transaction remembering another idea and its project, and forgetting the first idea, its section and the scene
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
@@ -783,12 +854,15 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("forgetting should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the first idea stays where it was
     assert_eq!(
         places_of(catalog, "idea_kept").await,
         vec![a_scene("scene_1"), a_section("section_1")]
     );
+    // and: the other is nowhere and of no project
     assert!(places_of(catalog, "idea_new").await.is_empty());
     assert_eq!(
         catalog
@@ -802,10 +876,12 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
 pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
+    // given: a forgotten idea
     catalog
         .forget_subject(&an_idea("idea_gone"), LAID)
         .await
         .expect("forgetting should succeed");
+    // and: a transaction forgetting its tombstone
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -813,9 +889,12 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
         .await
         .expect("forgetting tombstones should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
+    // and: the idea is remembered again
     remembered(catalog, "idea_gone", &[a_scene("scene_1")]).await;
 
+    // then: it stays out
     assert!(places_of(catalog, "idea_gone").await.is_empty());
 }
 

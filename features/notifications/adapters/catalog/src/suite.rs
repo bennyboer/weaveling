@@ -205,27 +205,34 @@ async fn remembered(catalog: &Committing<'_, impl NoticeCatalog>, summary: &Noti
 pub async fn an_account_s_open_notices_are_listed_for_it_alone(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: an open notice for bo and one for cy
     let bo_s = a_summary("account_bo", 1_000, 1, false);
     remembered(catalog, &bo_s).await;
     remembered(catalog, &a_summary("account_cy", 1_000, 1, false)).await;
 
+    // then: bo's alone are listed for bo
     assert_eq!(open_for(catalog, "account_bo").await, vec![bo_s]);
+    // and: none for an account without any
     assert!(open_for(catalog, "account_dee").await.is_empty());
 }
 
 pub async fn the_newest_notice_comes_first(catalog: &Committing<'_, impl NoticeCatalog>) {
+    // given: an older and a newer notice for bo
     let older = a_summary("account_bo", 1_000, 1, false);
     let newer = a_summary("account_bo", 2_000, 1, false);
     remembered(catalog, &older).await;
     remembered(catalog, &newer).await;
 
+    // then: the newer is listed first
     assert_eq!(open_for(catalog, "account_bo").await, vec![newer, older]);
 }
 
 pub async fn a_dismissed_notice_is_listed_no_more(catalog: &Committing<'_, impl NoticeCatalog>) {
+    // given: a listed notice
     let noted = a_summary("account_bo", 1_000, 1, false);
     remembered(catalog, &noted).await;
 
+    // when: its dismissing is remembered
     remembered(
         catalog,
         &NoticeSummary {
@@ -236,10 +243,12 @@ pub async fn a_dismissed_notice_is_listed_no_more(catalog: &Committing<'_, impl 
     )
     .await;
 
+    // then: it is listed no more
     assert!(open_for(catalog, "account_bo").await.is_empty());
 }
 
 pub async fn a_version_heard_late_changes_nothing(catalog: &Committing<'_, impl NoticeCatalog>) {
+    // given: a dismissed notice
     let noted = a_summary("account_bo", 1_000, 1, false);
     let dismissed = NoticeSummary {
         version: Version::of(2),
@@ -248,8 +257,10 @@ pub async fn a_version_heard_late_changes_nothing(catalog: &Committing<'_, impl 
     };
     remembered(catalog, &dismissed).await;
 
+    // when: its noting is heard late
     remembered(catalog, &noted).await;
 
+    // then: it stays dismissed
     assert!(
         open_for(catalog, "account_bo").await.is_empty(),
         "a notice dismissed stays dismissed, however late its noting is heard"
@@ -259,6 +270,7 @@ pub async fn a_version_heard_late_changes_nothing(catalog: &Committing<'_, impl 
 pub async fn every_role_and_who_changed_it_read_back_as_they_were_kept(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: notices about each role, with and without who changed it
     let mut kept = Vec::new();
     for (at, role, by) in [
         (3_000, Role::Owner, Some("account_ada")),
@@ -277,12 +289,14 @@ pub async fn every_role_and_who_changed_it_read_back_as_they_were_kept(
         kept.push(summary);
     }
 
+    // then: they read back as they were kept
     assert_eq!(open_for(catalog, "account_bo").await, kept);
 }
 
 pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a person told twice
     for name in ["Ada", "Ada Lovelace"] {
         catalog
             .remember_person(&Person {
@@ -293,6 +307,7 @@ pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
             .expect("remembering should succeed");
     }
 
+    // when: they and someone unknown are asked for
     let named = catalog
         .people(&[
             AccountId::from("account_ada"),
@@ -301,6 +316,7 @@ pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
         .await
         .expect("asking should succeed");
 
+    // then: the person alone is named, as last told
     assert_eq!(
         named,
         vec![Person {
@@ -310,7 +326,7 @@ pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
     );
 }
 
-fn named(version: u64, name: &str) -> ProjectName {
+fn a_name(version: u64, name: &str) -> ProjectName {
     ProjectName {
         project: ProjectLink::from("project_1"),
         version: Version::of(version),
@@ -321,10 +337,11 @@ fn named(version: u64, name: &str) -> ProjectName {
 pub async fn a_project_keeps_its_newest_name_however_late_an_older_one_is_heard(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a project's names told out of order
     for told in [
-        named(1, "Shared"),
-        named(3, "Shared Again"),
-        named(2, "Between"),
+        a_name(1, "Shared"),
+        a_name(3, "Shared Again"),
+        a_name(2, "Between"),
     ] {
         catalog
             .remember_project_name(&told)
@@ -332,6 +349,7 @@ pub async fn a_project_keeps_its_newest_name_however_late_an_older_one_is_heard(
             .expect("remembering should succeed");
     }
 
+    // when: its and an unknown project's names are asked for
     let names = catalog
         .project_names(&[
             ProjectLink::from("project_1"),
@@ -340,7 +358,8 @@ pub async fn a_project_keeps_its_newest_name_however_late_an_older_one_is_heard(
         .await
         .expect("asking should succeed");
 
-    assert_eq!(names, vec![named(3, "Shared Again")]);
+    // then: it alone is named, by its newest
+    assert_eq!(names, vec![a_name(3, "Shared Again")]);
 }
 
 fn in_project(summary: NoticeSummary, project: &str) -> NoticeSummary {
@@ -357,6 +376,7 @@ fn in_project(summary: NoticeSummary, project: &str) -> NoticeSummary {
 pub async fn a_deleted_project_s_notices_are_listed_no_more(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: notices for bo about two projects
     let kept = in_project(a_summary("account_bo", 2_000, 1, false), "project_2");
     remembered(
         catalog,
@@ -365,6 +385,7 @@ pub async fn a_deleted_project_s_notices_are_listed_no_more(
     .await;
     remembered(catalog, &kept).await;
 
+    // when: one project's tombstone is laid twice
     for _ in 0..2 {
         catalog
             .lay_project_tombstone(&ProjectLink::from("project_1"), at(3_000))
@@ -372,27 +393,32 @@ pub async fn a_deleted_project_s_notices_are_listed_no_more(
             .expect("laying a tombstone should succeed however often");
     }
 
+    // then: only the other's notice is listed
     assert_eq!(open_for(catalog, "account_bo").await, vec![kept]);
 }
 
 pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kept(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a project's name known
     let project = ProjectLink::from("project_1");
     catalog
-        .remember_project_name(&named(1, "Shared"))
+        .remember_project_name(&a_name(1, "Shared"))
         .await
         .expect("remembering should succeed");
 
+    // when: the project is deleted
     catalog
         .lay_project_tombstone(&project, at(3_000))
         .await
         .expect("laying a tombstone should succeed");
+    // and: a name of it is heard late
     catalog
-        .remember_project_name(&named(2, "Renamed meanwhile"))
+        .remember_project_name(&a_name(2, "Renamed meanwhile"))
         .await
         .expect("a name heard late is no failure");
 
+    // then: it is named no more
     assert!(
         catalog
             .project_names(slice::from_ref(&project))
@@ -400,12 +426,14 @@ pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kep
             .expect("asking should succeed")
             .is_empty()
     );
+    // and: it has a tombstone
     assert!(
         catalog
             .has_project_tombstone(&project)
             .await
             .expect("asking should succeed")
     );
+    // and: another project has none
     assert!(
         !catalog
             .has_project_tombstone(&ProjectLink::from("project_2"))
@@ -417,6 +445,7 @@ pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kep
 pub async fn the_accounts_with_open_notices_about_a_project_are_named_once_each(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: open notices about a project for two accounts, one of them twice
     remembered(
         catalog,
         &in_project(a_summary("account_bo", 1_000, 1, false), "project_1"),
@@ -432,22 +461,26 @@ pub async fn the_accounts_with_open_notices_about_a_project_are_named_once_each(
         &in_project(a_summary("account_cy", 1_000, 1, false), "project_1"),
     )
     .await;
+    // and: one dismissed
     remembered(
         catalog,
         &in_project(a_summary("account_dee", 1_000, 2, true), "project_1"),
     )
     .await;
+    // and: one about another project
     remembered(
         catalog,
         &in_project(a_summary("account_eve", 1_000, 1, false), "project_2"),
     )
     .await;
 
+    // when: the accounts noticed about the project are asked for
     let noticed = catalog
         .accounts_noticed_about(&ProjectLink::from("project_1"))
         .await
         .expect("asking should succeed");
 
+    // then: those with open notices are named once each
     assert_eq!(
         noticed,
         vec![AccountId::from("account_bo"), AccountId::from("account_cy")],
@@ -458,6 +491,7 @@ pub async fn the_accounts_with_open_notices_about_a_project_are_named_once_each(
 pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_and_forgotten(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: notices long and lately dismissed, long and lately noted, and one of a deleted project
     let long_dismissed = NoticeSummary {
         version: Version::of(2),
         dismissed_at: Some(at(1_000)),
@@ -485,14 +519,17 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
         .await
         .expect("laying a tombstone should succeed");
 
+    // when: what is due is asked for
     let mut due = catalog
         .due_for_forgetting(at(2_000), at(2_000), 10)
         .await
         .expect("asking should succeed");
+    // then: the long dismissed, the long noted and the deleted project's are due
     due.sort();
     let mut expected = vec![long_dismissed.id, long_noted.id, of_a_deleted_project.id];
     expected.sort();
     assert_eq!(due, expected);
+    // and: no more at once than asked
     assert_eq!(
         catalog
             .due_for_forgetting(at(2_000), at(2_000), 2)
@@ -503,12 +540,14 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
         "no more at once than asked for"
     );
 
+    // when: they are forgotten
     for notice in &due {
         catalog
             .forget(notice)
             .await
             .expect("forgetting should succeed");
     }
+    // then: nothing is due
     assert!(
         catalog
             .due_for_forgetting(at(2_000), at(2_000), 10)
@@ -516,12 +555,14 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
             .expect("asking should succeed")
             .is_empty()
     );
+    // and: the lately noted alone is listed
     assert_eq!(open_for(catalog, "account_bo").await, vec![lately_noted]);
 }
 
 pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_asked(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: project tombstones laid at different moments
     for (project, laid) in [
         ("project_a", 1_000),
         ("project_b", 2_000),
@@ -533,6 +574,7 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
             .expect("laying a tombstone should succeed");
     }
 
+    // when: at most one laid before a moment is forgotten, and then the rest
     let first = catalog
         .forget_project_tombstones_laid_before(at(5_000), 1)
         .await
@@ -550,8 +592,11 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
         .await
         .expect("forgetting should succeed");
 
+    // then: one is forgotten each time
     assert_eq!((first, rest), (1, 1));
+    // and: the oldest first
     assert!(oldest_gone_first, "the oldest goes first");
+    // and: the one laid after the moment stands
     for (project, kept) in [
         ("project_a", false),
         ("project_b", false),
@@ -571,6 +616,7 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
 pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a forgotten notice
     let notice = a_summary("account_bo", 1_000, 1, false);
     remembered(catalog, &notice).await;
     catalog
@@ -578,6 +624,7 @@ pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
         .await
         .expect("forgetting should succeed");
 
+    // when: a newer version of it is heard late
     remembered(
         catalog,
         &NoticeSummary {
@@ -587,6 +634,7 @@ pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
     )
     .await;
 
+    // then: it is not listed
     assert!(
         open_for(catalog, "account_bo").await.is_empty(),
         "a cataloguing that read the notice before it was forgotten must not bring it back"
@@ -596,6 +644,7 @@ pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
 pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: notices forgotten at different moments
     let notices: Vec<NoticeSummary> = (1..=3)
         .map(|nth| a_summary("account_bo", nth * 1_000, 1, false))
         .collect();
@@ -606,6 +655,7 @@ pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
             .expect("forgetting should succeed");
     }
 
+    // then: forgetting at most two of their tombstones forgets two
     assert_eq!(
         catalog
             .forget_notice_tombstones_laid_before(at(9_000), 2)
@@ -613,9 +663,11 @@ pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
             .expect("forgetting tombstones should succeed"),
         2
     );
+    // when: each notice is heard of late
     for notice in &notices {
         remembered(catalog, notice).await;
     }
+    // then: only those whose tombstones are gone are listed again, the oldest
     let mut open: Vec<NoticeId> = open_for(catalog, "account_bo")
         .await
         .iter()
@@ -630,6 +682,7 @@ pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a listed notice and a project's name
     let kept = a_summary("account_bo", 1_000, 1, false);
     remembered(catalog, &kept).await;
     let named = ProjectName {
@@ -641,6 +694,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .remember_project_name(&named)
         .await
         .expect("remembering should succeed");
+    // when: a transaction remembers, names a person, forgets and lays a tombstone
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
@@ -666,9 +720,12 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("laying a tombstone should succeed");
 
+    // and: it is dropped
     drop(transaction);
 
+    // then: the list is as it was
     assert_eq!(open_for(catalog, "account_bo").await, vec![kept]);
+    // and: nobody is named
     assert!(
         catalog
             .people(&[AccountId::from("account_ada")])
@@ -676,6 +733,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
             .expect("naming should succeed")
             .is_empty()
     );
+    // and: the name stands
     assert_eq!(
         catalog
             .project_names(&[ProjectLink::from("project_1")])
@@ -688,10 +746,12 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
 pub async fn project_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
+    // given: a project's tombstone
     catalog
         .lay_project_tombstone(&ProjectLink::from("project_1"), at(3_000))
         .await
         .expect("laying a tombstone should succeed");
+    // when: a transaction forgets it
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -699,8 +759,10 @@ pub async fn project_tombstones_forgotten_in_a_transaction_that_is_dropped_still
         .await
         .expect("forgetting tombstones should succeed");
 
+    // and: it is dropped
     drop(transaction);
 
+    // then: it still stands to be forgotten
     assert_eq!(
         catalog
             .forget_project_tombstones_laid_before(at(5_000), 10)

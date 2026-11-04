@@ -131,60 +131,77 @@ mod tests {
 
     #[tokio::test]
     async fn a_chore_is_done_at_once_and_again_each_time_round() {
+        // given: a brisk chore
         let chore = Counted::every(BRISKLY);
 
+        // when: the chores run a while and stop
         let chores = Chores::started(vec![chore.clone()]);
         until(|| chore.times() >= 3).await;
         chores.stop().await;
 
+        // then: it was done again and again
         assert!(chore.times() >= 3, "done {} times", chore.times());
     }
 
     #[tokio::test]
     async fn each_chore_comes_round_as_often_as_it_says() {
+        // given: a brisk chore
         let brisk = Counted::every(BRISKLY);
+        // and: an hourly one
         let slow = Counted::every(HOURLY);
 
+        // when: the chores run a while and stop
         let chores = Chores::started(vec![slow.clone(), brisk.clone()]);
         until(|| brisk.times() >= 3).await;
         chores.stop().await;
 
+        // then: the brisk one was done again and again
         assert!(brisk.times() >= 3);
+        // and: the hourly one once
         assert_eq!(slow.times(), 1, "an hour has not passed");
     }
 
     #[tokio::test]
     async fn a_chore_failing_keeps_neither_itself_nor_the_others_from_being_done_again() {
+        // given: a failing chore
         let failing = Counted::failing_every(BRISKLY);
+        // and: another one
         let other = Counted::every(BRISKLY);
 
+        // when: the chores run a while and stop
         let chores = Chores::started(vec![failing.clone(), other.clone()]);
         until(|| failing.times() >= 2 && other.times() >= 2).await;
         chores.stop().await;
 
+        // then: both were done again
         assert!(failing.times() >= 2);
         assert!(other.times() >= 2);
     }
 
     #[tokio::test]
     async fn stopped_chores_are_done_no_more() {
+        // given: running chores
         let chore = Counted::every(BRISKLY);
         let chores = Chores::started(vec![chore.clone()]);
         until(|| chore.times() >= 1).await;
 
+        // when: they are stopped
         chores.stop().await;
         let then = chore.times();
         tokio::time::sleep(Duration::from_millis(50)).await;
 
+        // then: the chore is done no more
         assert_eq!(chore.times(), then);
     }
 
     #[tokio::test]
     async fn stopping_does_not_wait_for_a_slow_chore_to_come_round() {
+        // given: running chores with an hourly one
         let slow = Counted::every(HOURLY);
         let chores = Chores::started(vec![slow.clone()]);
         until(|| slow.times() >= 1).await;
 
+        // then: stopping them ends at once
         tokio::time::timeout(Duration::from_secs(5), chores.stop())
             .await
             .expect("stopping ends the wait at once");

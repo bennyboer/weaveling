@@ -178,28 +178,35 @@ mod tests {
 
     #[test]
     fn a_new_scene_holds_no_prose() {
+        // given: a new scene
         let scene = Scene::empty(an_id(), a_project());
 
+        // then: it holds no prose
         assert_eq!(scene.text(), "");
     }
 
     #[test]
     fn prose_survives_a_trip_through_storage() {
+        // given: a scene with prose
         let written = Scene::empty(an_id(), a_project());
         write(&written, 0, "The loom stood silent.");
 
+        // when: it is reloaded from what was stored
         let reloaded = Scene::rehydrate(an_id(), a_project(), &written.everything())
             .expect("what we stored should reload");
 
+        // then: the prose is still there
         assert_eq!(reloaded.text(), "The loom stood silent.");
     }
 
     #[test]
     fn a_scene_counts_its_words_across_its_paragraphs() {
+        // given: a scene of two paragraphs
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, "The loom stood silent.");
         write(&scene, 1, "— And then?");
 
+        // then: the words of both are counted
         assert_eq!(
             scene.words(),
             6,
@@ -238,6 +245,7 @@ mod tests {
 
     #[test]
     fn a_mark_whose_letters_are_set_apart_is_still_one_mark() {
+        // given: a quotation whose opening mark is half in italics
         let scene = Scene::empty(an_id(), a_project());
         let mut emphasized = quoting("opening");
         emphasized.insert(Arc::from("em"), Any::from(HashMap::<String, Any>::new()));
@@ -251,8 +259,10 @@ mod tests {
             ],
         );
 
+        // when: the scene is restyled
         scene.restyled(QuotationMarks::PointingIn);
 
+        // then: each mark is rewritten whole
         assert_eq!(
             scene.text(),
             "»Oui«",
@@ -262,6 +272,7 @@ mod tests {
 
     #[test]
     fn tagged_marks_are_rewritten_in_the_style_asked_for() {
+        // given: a scene of tagged quotations
         let scene = Scene::empty(an_id(), a_project());
         said(
             &scene,
@@ -281,9 +292,12 @@ mod tests {
             ],
         );
 
+        // when: it is restyled
         let update = scene.restyled(QuotationMarks::LowHigh);
 
+        // then: its marks are in the style asked for
         assert_eq!(scene.text(), "„Komm her,“ sagte sie.\n„Gleich.“");
+        // and: the change is handed back
         assert!(
             update.is_some(),
             "what was rewritten is handed back to be sent on"
@@ -292,6 +306,7 @@ mod tests {
 
     #[test]
     fn the_change_handed_back_brings_another_copy_of_the_scene_up_to_date() {
+        // given: a scene with a tagged quotation
         let scene = Scene::empty(an_id(), a_project());
         said(
             &scene,
@@ -301,19 +316,24 @@ mod tests {
                 ("«", Some("closing")),
             ],
         );
+        // and: a copy of it
         let copy = Scene::rehydrate(an_id(), a_project(), &scene.everything())
             .expect("a copy of the scene");
 
+        // when: the scene is restyled
         let update = scene
             .restyled(QuotationMarks::Curly)
             .expect("something was rewritten");
+        // and: the change handed back is applied to the copy
         copy.apply(&update).expect("the change applies to the copy");
 
+        // then: the copy is restyled too
         assert_eq!(copy.text(), "“Komm”");
     }
 
     #[test]
     fn marks_already_in_the_style_leave_the_scene_as_it_was() {
+        // given: a quotation already in the style
         let scene = Scene::empty(an_id(), a_project());
         said(
             &scene,
@@ -324,12 +344,15 @@ mod tests {
             ],
         );
 
+        // then: restyling it in that style hands back no change
         assert!(scene.restyled(QuotationMarks::LowHigh).is_none());
+        // and: the prose is as it was
         assert_eq!(scene.text(), "„Ja.“");
     }
 
     #[test]
     fn a_mark_typed_without_its_tag_is_left_as_it_was_typed() {
+        // given: an untagged quotation beside a tagged one
         let scene = Scene::empty(an_id(), a_project());
         said(
             &scene,
@@ -341,13 +364,16 @@ mod tests {
             ],
         );
 
+        // when: the scene is restyled
         scene.restyled(QuotationMarks::LowHigh);
 
+        // then: only the tagged one is rewritten
         assert_eq!(scene.text(), "»Zitat« und „Rede“");
     }
 
     #[test]
     fn marks_of_more_than_one_letter_are_rewritten_whole_and_stay_tagged() {
+        // given: a scene of tagged quotations
         let scene = Scene::empty(an_id(), a_project());
         said(
             &scene,
@@ -362,13 +388,17 @@ mod tests {
             ],
         );
 
+        // when: it is restyled with marks of more than one letter
         scene.restyled(QuotationMarks::SpacedOut);
+        // then: the marks are rewritten whole
         assert_eq!(
             scene.text(),
             "«\u{202F}Oui\u{202F}» et «\u{202F}non\u{202F}»"
         );
 
+        // when: it is restyled again
         scene.restyled(QuotationMarks::PointingIn);
+        // then: the longer marks are rewritten too
         assert_eq!(
             scene.text(),
             "»Oui« et »non«",
@@ -378,6 +408,7 @@ mod tests {
 
     #[test]
     fn marks_on_the_prose_are_not_part_of_its_text() {
+        // given: prose marked as speech and emphasis
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, " she asked, ");
         {
@@ -396,16 +427,20 @@ mod tests {
             prose.insert_with_attributes(&mut txn, end, "quietly", marked("em"));
         }
 
+        // then: its text is the prose alone
         assert_eq!(scene.text(), "What am I to do? she asked, quietly");
+        // and: so are its words
         assert_eq!(scene.words(), 8);
     }
 
     #[test]
     fn textblocks_are_separated_by_newlines() {
+        // given: a scene of two paragraphs
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, "The loom stood silent.");
         write(&scene, 1, "She had not touched it since spring.");
 
+        // then: its text has a newline between them
         assert_eq!(
             scene.text(),
             "The loom stood silent.\nShe had not touched it since spring."
@@ -414,46 +449,58 @@ mod tests {
 
     #[test]
     fn two_replicas_editing_apart_converge() {
+        // given: two replicas of one scene
         let ada = Scene::empty(an_id(), a_project());
         write(&ada, 0, "The loom stood silent.");
         let bo =
             Scene::rehydrate(an_id(), a_project(), &ada.everything()).expect("bo should catch up");
 
+        // when: each edits apart
         append(&ada, 0, " Ada wrote this.");
         append(&bo, 0, " Bo wrote this.");
+        // and: each takes the other's edits
         ada.apply(&bo.everything()).expect("bo's edit should apply");
         bo.apply(&ada.everything())
             .expect("ada's edit should apply");
 
+        // then: they agree
         assert_eq!(ada.text(), bo.text(), "replicas must agree");
+        // and: both edits are kept
         assert!(ada.text().contains("Ada wrote this."));
         assert!(ada.text().contains("Bo wrote this."));
     }
 
     #[test]
     fn applying_the_same_update_twice_changes_nothing() {
+        // given: an update of a scene with prose
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, "The loom stood silent.");
         let update = scene.everything();
 
+        // when: a replica applies it twice
         let replica = Scene::empty(an_id(), a_project());
         replica.apply(&update).expect("first apply");
         replica.apply(&update).expect("second apply");
 
+        // then: the prose is there once
         assert_eq!(replica.text(), "The loom stood silent.");
     }
 
     #[test]
     fn changes_since_asks_only_for_what_is_missing() {
+        // given: a long scene a replica has caught up with
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, &"a settled paragraph. ".repeat(200));
         let caught_up = scene.state_vector();
+        // and: one late line since
         write(&scene, 1, "one late line");
 
+        // when: the changes since the catching up are asked for
         let catch_up = scene
             .changes_since(&caught_up)
             .expect("our own state vector should be readable");
 
+        // then: they are a small part of the scene
         assert!(
             catch_up.len() * 10 < scene.everything().len(),
             "catching up cost {} bytes against a {} byte scene",
@@ -464,25 +511,33 @@ mod tests {
 
     #[test]
     fn a_fresh_replica_asks_for_everything() {
+        // given: a scene with prose
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, "The loom stood silent.");
+        // and: a fresh replica
         let newcomer = Scene::empty(an_id(), a_project());
 
+        // when: the changes since the fresh replica are asked for
         let catch_up = scene
             .changes_since(&newcomer.state_vector())
             .expect("an empty state vector should be readable");
 
+        // then: they are everything
         assert_eq!(catch_up, scene.everything());
     }
 
     #[test]
     fn a_corrupt_update_is_refused_rather_than_applied() {
+        // given: a scene with prose
         let scene = Scene::empty(an_id(), a_project());
         write(&scene, 0, "The loom stood silent.");
 
+        // when: a corrupt update is applied
         let outcome = scene.apply(&[255, 255, 255, 255]);
 
+        // then: it is refused
         assert!(outcome.is_err(), "garbage must not be accepted");
+        // and: the scene is untouched
         assert_eq!(
             scene.text(),
             "The loom stood silent.",
@@ -492,8 +547,10 @@ mod tests {
 
     #[test]
     fn a_corrupt_state_vector_is_refused() {
+        // given: a scene
         let scene = Scene::empty(an_id(), a_project());
 
+        // then: changes since a corrupt state vector are refused
         assert!(scene.changes_since(&[255, 255, 255, 255]).is_err());
     }
 }

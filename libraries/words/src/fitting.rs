@@ -77,25 +77,33 @@ mod tests {
 
     #[test]
     fn what_is_written_is_kept_without_its_margins() {
+        // expect: text is kept without its margins
         assert_eq!(TITLE.fitted("  The Loom  "), Ok("The Loom".to_owned()));
     }
 
     #[test]
     fn nothing_but_whitespace_is_blank() {
+        // expect: whitespace alone is blank where blank is allowed
         assert_eq!(TITLE.fitted(" \t "), Ok(String::new()));
+        // and: refused where it is not
         assert_eq!(NAME.fitted(" \t "), Err(Unfit::Blank));
     }
 
     #[test]
     fn control_characters_are_refused_and_line_breaks_only_where_allowed() {
+        // expect: a line break is refused where none is allowed
         assert_eq!(TITLE.fitted("The\nLoom"), Err(Unfit::ControlCharacter));
+        // and: kept where it is
         assert_eq!(DESCRIPTION.fitted("The\nLoom"), Ok("The\nLoom".to_owned()));
+        // and: another control character is refused even there
         assert_eq!(DESCRIPTION.fitted("a\u{7}b"), Err(Unfit::ControlCharacter));
     }
 
     #[test]
     fn length_is_counted_in_characters_up_to_the_limit() {
+        // expect: as many characters as the limit fit, however many bytes they take
         assert!(TITLE.fitted(&"é".repeat(10)).is_ok());
+        // and: one more is too long
         assert_eq!(
             TITLE.fitted(&"a".repeat(11)),
             Err(Unfit::TooLong {
@@ -107,6 +115,7 @@ mod tests {
 
     #[test]
     fn what_is_wrong_is_said_with_its_numbers() {
+        // expect: too long says by how much
         assert_eq!(
             Unfit::TooLong {
                 max: 10,

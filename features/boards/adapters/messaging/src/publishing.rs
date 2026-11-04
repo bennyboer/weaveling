@@ -137,8 +137,10 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: a board
         let id = a_board();
 
+        // then: each of its events is published on the key the contract declares
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
                 eventpublishing::routing_for(KIND, event.name()).to_string(),
@@ -151,7 +153,9 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
+        // expect: the contract declares the subscription to every board
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_BOARD);
+        // and: it covers each event of a board
         assert!(
             everything_worth_publishing()
                 .into_iter()
@@ -164,6 +168,7 @@ mod tests {
 
     #[test]
     fn a_drag_does_not_wake_the_catalog_projector() {
+        // given: what the catalog projector listens to
         let listening = |routing: &RoutingKey| {
             <crate::CatalogueBoardsListener as KeptHandler>::LISTENS_TO
                 .iter()
@@ -174,6 +179,7 @@ mod tests {
                 })
         };
 
+        // then: it hears a board being started
         assert!(listening(&eventpublishing::routing_for(
             KIND,
             BoardEvent::Started {
@@ -181,6 +187,7 @@ mod tests {
             }
             .name()
         )));
+        // and: no pinning, moving or unpinning
         for pinning in [
             a_pin(),
             BoardEvent::IdeaMoved {
@@ -201,11 +208,14 @@ mod tests {
 
     #[test]
     fn a_pin_carries_the_idea_and_where_it_landed() {
+        // given: a board
         let id = a_board();
 
+        // when: a pin of it is published
         let told = eventpublishing::published_in::<BoardEventDTO>(&published(&id, a_pin()))
             .expect("what we wrote must be readable");
 
+        // then: it carries the idea, where it landed and its size
         assert_eq!(
             told.event.body,
             BoardEventDTO::IdeaPinned {
@@ -221,15 +231,19 @@ mod tests {
 
     #[test]
     fn a_resize_carries_the_idea_and_its_new_extent() {
+        // given: a board
         let id = a_board();
+        // and: an idea resized on it
         let stretched = BoardEvent::IdeaResized {
             idea: IdeaLink::from("idea_1"),
             to: Size::of(400, 90),
         };
 
+        // when: the resize is published
         let told = eventpublishing::published_in::<BoardEventDTO>(&published(&id, stretched))
             .expect("what we wrote must be readable");
 
+        // then: it carries the idea and its new extent
         assert_eq!(
             told.event.body,
             BoardEventDTO::IdeaResized {
@@ -244,8 +258,10 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
+        // given: a board
         let id = a_board();
 
+        // then: each of its events is published under its own name
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
 
@@ -259,7 +275,9 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: a board
         let id = a_board();
+        // and: a snapshot of it
         let snapshot = BoardEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             ideas: vec![PositionedIdea {
@@ -270,6 +288,7 @@ mod tests {
             discarded: false,
         };
 
+        // then: the snapshot is not published
         assert!(
             message_for(&recorded(&id, snapshot)).is_none(),
             "collapsing the log is our own housekeeping and no subscriber's business"
@@ -278,8 +297,10 @@ mod tests {
 
     #[test]
     fn the_board_can_be_read_back_out_of_a_message() {
+        // given: a board
         let id = a_board();
 
+        // then: it is read back out of a message about it
         assert_eq!(
             eventpublishing::aggregate_in::<BoardId>(&published(&id, a_pin()))
                 .expect("what we wrote must be readable"),

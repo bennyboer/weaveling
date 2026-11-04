@@ -329,6 +329,7 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // given: every event, however the invitation stands
         for outcome in [
             Outcome::Open,
             Outcome::Accepted,
@@ -394,6 +395,7 @@ mod tests {
                 },
                 InvitationEvent::Retired,
             ] {
+                // then: it survives the journey through the column
                 assert_eq!(round_trip(event.clone()), event);
             }
         }
@@ -401,6 +403,7 @@ mod tests {
 
     #[test]
     fn every_role_survives_and_an_invitation_stored_before_scopes_is_the_instance_s() {
+        // given: an issue into a project as each role
         for role in [Role::Owner, Role::Author, Role::Reader] {
             let issued = InvitationEvent::Issued {
                 to: ada(),
@@ -410,9 +413,11 @@ mod tests {
                 by_an_operator: true,
                 origin: "https://weaveling.example.com".to_owned(),
             };
+            // then: it survives the journey through the column
             assert_eq!(round_trip(issued.clone()), issued);
         }
 
+        // and: an issue stored before scopes reads as the instance's, by no operator
         assert_eq!(
             (codec().event)(
                 json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z" } })
@@ -430,6 +435,7 @@ mod tests {
 
     #[test]
     fn a_project_without_its_role_or_a_scope_of_no_known_kind_reads_as_nothing() {
+        // expect: a project without its role or a scope of no known kind reads as nothing
         for refused in [
             json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z", "scope": { "kind": "project", "project": "project_1" } } }),
             json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z", "scope": { "kind": "shelf" } } }),
@@ -440,6 +446,7 @@ mod tests {
 
     #[test]
     fn a_snapshot_stored_before_its_issuer_was_kept_reads_as_issued_by_nobody_known() {
+        // expect: a snapshot stored before its issuer was kept reads as issued by nobody known
         assert_eq!(
             (codec().event)(json!({ "Snapshotted": {
                 "to": "ada@example.com",
@@ -466,6 +473,7 @@ mod tests {
 
     #[test]
     fn a_stored_address_the_domain_would_refuse_reads_as_nothing() {
+        // expect: a stored address the domain would refuse reads as nothing
         for refused in [
             json!({ "Issued": { "to": "ada", "digest": "ab12", "until": "1970-01-01T00:33:20Z" } }),
             json!({ "Snapshotted": { "to": "ada", "issued_at": "1970-01-01T00:16:40Z", "until": "1970-01-01T00:33:20Z", "outcome": "open" } }),

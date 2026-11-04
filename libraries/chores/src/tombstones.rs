@@ -135,6 +135,7 @@ mod tests {
 
     #[tokio::test]
     async fn tombstones_are_forgotten_a_day_after_a_change_about_them_may_no_longer_be_retried() {
+        // given: tombstones laid around a day past the retry window
         let kept = NOW - RETRIABLE_FOR - time::Duration::DAY;
         let graveyard = Graveyard::laid_at(&[
             kept - time::Duration::seconds(1),
@@ -142,11 +143,13 @@ mod tests {
             NOW - RETRIABLE_FOR - time::Duration::seconds(1),
         ]);
 
+        // when: old tombstones are forgotten
         let cleared = forgetting(&graveyard)
             .carry_out()
             .await
             .expect("forgetting should succeed");
 
+        // then: only the one older than that is forgotten
         assert_eq!(cleared, 1);
         assert_eq!(
             graveyard.left(),
@@ -158,19 +161,23 @@ mod tests {
 
     #[tokio::test]
     async fn a_backlog_is_forgotten_batch_by_batch_until_one_comes_back_short() {
+        // given: a backlog larger than two batches
         let long_gone = NOW - TOMBSTONES_KEPT_FOR - time::Duration::DAY;
         let backlog = usize::try_from(TOMBSTONES_EACH_BATCH * 2 + 1).expect("a small number");
         let mut laid = vec![long_gone; backlog];
         laid.push(NOW);
         let graveyard = Graveyard::laid_at(&laid);
 
+        // when: old tombstones are forgotten
         let cleared = forgetting(&graveyard)
             .carry_out()
             .await
             .expect("forgetting should succeed");
 
+        // then: the whole backlog is forgotten
         assert_eq!(cleared, TOMBSTONES_EACH_BATCH * 2 + 1);
         assert_eq!(graveyard.left(), vec![NOW]);
+        // and: batch by batch until one came back short
         assert_eq!(
             graveyard.batches_asked(),
             vec![TOMBSTONES_EACH_BATCH; 3],
@@ -180,8 +187,10 @@ mod tests {
 
     #[test]
     fn the_chore_goes_by_the_name_its_feature_gives_it_and_comes_round_hourly() {
+        // given: the chore
         let chore = forgetting(&Arc::default());
 
+        // then: it goes by its feature's name and comes round hourly
         assert_eq!(chore.named(), "forget-old-tombstones-of-somewhere");
         assert_eq!(chore.every(), Duration::from_secs(60 * 60));
     }

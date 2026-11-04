@@ -62,6 +62,7 @@ fn a_board_holding(idea: &IdeaLink, at_spot: Spot) -> Board {
 
 #[test]
 fn a_board_begins_by_being_started_for_a_project() {
+    // when: a board is started for a project
     let events = Board::begin(
         BoardCommand::Start {
             project: ProjectLink::from("project_1"),
@@ -70,6 +71,7 @@ fn a_board_begins_by_being_started_for_a_project() {
     )
     .expect("starting should succeed");
 
+    // then: it is started for that project
     assert_eq!(
         events,
         vec![BoardEvent::Started {
@@ -80,6 +82,7 @@ fn a_board_begins_by_being_started_for_a_project() {
 
 #[test]
 fn nothing_can_be_pinned_before_the_board_exists() {
+    // when: an idea is pinned to a board that does not exist
     let refused = Board::begin(
         BoardCommand::Pin {
             idea: an_idea("idea_1"),
@@ -89,13 +92,16 @@ fn nothing_can_be_pinned_before_the_board_exists() {
         &an_author(),
     );
 
+    // then: it is refused as not started yet
     assert_eq!(refused, Err(BoardError::NotStartedYet));
 }
 
 #[test]
 fn a_board_cannot_be_started_twice() {
+    // given: a started board
     let board = a_started_board();
 
+    // when: it is started again
     let refused = board.decide(
         BoardCommand::Start {
             project: ProjectLink::from("project_2"),
@@ -103,19 +109,24 @@ fn a_board_cannot_be_started_twice() {
         &an_author(),
     );
 
+    // then: it is refused as already started
     assert_eq!(refused, Err(BoardError::AlreadyStarted));
 }
 
 #[test]
 fn a_started_board_holds_nothing_yet() {
+    // expect: a started board holds no ideas
     assert!(a_started_board().ideas().is_empty());
 }
 
 #[test]
 fn pinning_an_idea_puts_it_where_it_was_dropped() {
+    // given: a started board
     let board = a_started_board();
+    // and: an idea
     let idea = an_idea("idea_1");
 
+    // when: the idea is pinned at a spot
     let events = board
         .decide(
             BoardCommand::Pin {
@@ -127,6 +138,7 @@ fn pinning_an_idea_puts_it_where_it_was_dropped() {
         )
         .expect("pinning should succeed");
 
+    // then: it is pinned at that spot
     assert_eq!(
         events,
         vec![BoardEvent::IdeaPinned {
@@ -139,10 +151,13 @@ fn pinning_an_idea_puts_it_where_it_was_dropped() {
 
 #[test]
 fn a_pinned_idea_can_be_found_at_its_spot() {
+    // given: an idea
     let idea = an_idea("idea_1");
 
+    // when: a board holds it at a spot
     let board = a_board_holding(&idea, Spot::at(120, -40));
 
+    // then: the idea is found at that spot
     assert_eq!(board.spot_of(&idea), Some(Spot::at(120, -40)));
     assert_eq!(
         board.ideas(),
@@ -156,9 +171,11 @@ fn a_pinned_idea_can_be_found_at_its_spot() {
 
 #[test]
 fn the_same_idea_cannot_be_pinned_twice() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let board = a_board_holding(&idea, Spot::ORIGIN);
 
+    // when: the same idea is pinned again
     let refused = board.decide(
         BoardCommand::Pin {
             idea,
@@ -168,6 +185,7 @@ fn the_same_idea_cannot_be_pinned_twice() {
         &an_author(),
     );
 
+    // then: it is refused as already pinned
     assert_eq!(
         refused,
         Err(BoardError::AlreadyPinned),
@@ -177,9 +195,11 @@ fn the_same_idea_cannot_be_pinned_twice() {
 
 #[test]
 fn moving_an_idea_takes_it_to_the_new_spot() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: the idea is moved to a new spot
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -192,14 +212,17 @@ fn moving_an_idea_takes_it_to_the_new_spot() {
         .expect("moving should succeed");
     board.apply(&events[0], &a_metadata(3));
 
+    // then: it is at the new spot
     assert_eq!(board.spot_of(&idea), Some(Spot::at(300, 20)));
 }
 
 #[test]
 fn moving_an_idea_nowhere_is_not_a_move() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: the idea is moved to where it already is
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -211,6 +234,7 @@ fn moving_an_idea_nowhere_is_not_a_move() {
         )
         .expect("moving should succeed");
 
+    // then: nothing happens
     assert!(
         events.is_empty(),
         "a drag that ends where it began must not fill the log"
@@ -219,8 +243,10 @@ fn moving_an_idea_nowhere_is_not_a_move() {
 
 #[test]
 fn an_idea_that_is_not_on_the_board_cannot_be_moved() {
+    // given: a board without the idea
     let board = a_started_board();
 
+    // when: the idea is moved
     let refused = board.decide(
         BoardCommand::Reshape {
             idea: an_idea("idea_1"),
@@ -230,27 +256,33 @@ fn an_idea_that_is_not_on_the_board_cannot_be_moved() {
         &an_author(),
     );
 
+    // then: it is refused as not pinned
     assert_eq!(refused, Err(BoardError::NotPinned));
 }
 
 #[test]
 fn unpinning_takes_an_idea_off_the_board() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: the idea is unpinned
     let events = board
         .decide(BoardCommand::Unpin { idea: idea.clone() }, &an_author())
         .expect("unpinning should succeed");
     board.apply(&events[0], &a_metadata(3));
 
+    // then: it is off the board
     assert_eq!(board.spot_of(&idea), None);
     assert!(board.ideas().is_empty());
 }
 
 #[test]
 fn an_idea_that_is_not_on_the_board_cannot_be_unpinned() {
+    // given: a board without the idea
     let board = a_started_board();
 
+    // when: the idea is unpinned
     let refused = board.decide(
         BoardCommand::Unpin {
             idea: an_idea("idea_1"),
@@ -258,11 +290,13 @@ fn an_idea_that_is_not_on_the_board_cannot_be_unpinned() {
         &an_author(),
     );
 
+    // then: it is refused as not pinned
     assert_eq!(refused, Err(BoardError::NotPinned));
 }
 
 #[test]
 fn unpinning_one_idea_leaves_the_others_where_they_are() {
+    // given: a board holding two ideas
     let staying = an_idea("idea_1");
     let going = an_idea("idea_2");
     let mut board = a_board_holding(&staying, Spot::at(10, 10));
@@ -275,13 +309,16 @@ fn unpinning_one_idea_leaves_the_others_where_they_are() {
         &a_metadata(3),
     );
 
+    // when: one of them is unpinned
     board.apply(&BoardEvent::IdeaUnpinned { idea: going }, &a_metadata(4));
 
+    // then: the other stays where it was
     assert_eq!(board.spot_of(&staying), Some(Spot::at(10, 10)));
 }
 
 #[test]
 fn ideas_keep_the_order_they_were_pinned_in() {
+    // given: two ideas pinned one after the other
     let first = an_idea("idea_1");
     let second = an_idea("idea_2");
     let mut board = a_board_holding(&first, Spot::at(10, 10));
@@ -294,6 +331,7 @@ fn ideas_keep_the_order_they_were_pinned_in() {
         &a_metadata(3),
     );
 
+    // expect: the board holds them in the order they were pinned
     assert_eq!(
         board
             .ideas()
@@ -307,6 +345,7 @@ fn ideas_keep_the_order_they_were_pinned_in() {
 
 #[test]
 fn moving_an_idea_does_not_restack_the_board() {
+    // given: two ideas pinned one after the other
     let first = an_idea("idea_1");
     let second = an_idea("idea_2");
     let mut board = a_board_holding(&first, Spot::at(10, 10));
@@ -319,6 +358,7 @@ fn moving_an_idea_does_not_restack_the_board() {
         &a_metadata(3),
     );
 
+    // when: the first one is moved
     board.apply(
         &BoardEvent::IdeaMoved {
             idea: first.clone(),
@@ -327,6 +367,7 @@ fn moving_an_idea_does_not_restack_the_board() {
         &a_metadata(4),
     );
 
+    // then: they keep their order
     assert_eq!(
         board
             .ideas()
@@ -340,6 +381,7 @@ fn moving_an_idea_does_not_restack_the_board() {
 
 #[test]
 fn unpinning_an_idea_leaves_the_rest_in_order() {
+    // given: four ideas pinned one after the other
     let first = an_idea("idea_1");
     let going = an_idea("idea_2");
     let third = an_idea("idea_3");
@@ -356,8 +398,10 @@ fn unpinning_an_idea_leaves_the_rest_in_order() {
         );
     }
 
+    // when: the second one is unpinned
     board.apply(&BoardEvent::IdeaUnpinned { idea: going }, &a_metadata(6));
 
+    // then: the rest keep their order
     assert_eq!(
         pinned_order(&board),
         vec![first, third, last],
@@ -368,8 +412,10 @@ fn unpinning_an_idea_leaves_the_rest_in_order() {
 
 #[test]
 fn the_board_does_not_ask_whether_the_idea_exists() {
+    // given: a started board
     let board = a_started_board();
 
+    // when: an idea that may no longer exist is pinned
     let pinned = board.decide(
         BoardCommand::Pin {
             idea: an_idea("idea_that_was_discarded"),
@@ -379,6 +425,7 @@ fn the_board_does_not_ask_whether_the_idea_exists() {
         &an_author(),
     );
 
+    // then: it is pinned
     assert!(
         pinned.is_ok(),
         "a board may not reach into ideas, so a dangling positioned is the client's to tolerate"
@@ -387,26 +434,33 @@ fn the_board_does_not_ask_whether_the_idea_exists() {
 
 #[test]
 fn a_board_survives_on_its_snapshot_alone() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let board = a_board_holding(&idea, Spot::at(7, 8));
 
+    // when: it is raised again from its snapshot alone
     let snapshot = board.snapshot();
     let recovered =
         Board::from_first(&snapshot, &a_metadata(9)).expect("a snapshot should restore");
 
+    // then: it is the same board
     assert_eq!(recovered, board);
 }
 
 #[test]
 fn a_snapshot_says_it_is_one() {
+    // expect: a snapshot says it is one
     assert!(a_started_board().snapshot().is_snapshot());
 }
 
 #[test]
 fn a_pinned_idea_keeps_the_size_it_was_given() {
+    // given: a started board
     let board = a_started_board();
+    // and: an idea
     let idea = an_idea("idea_1");
 
+    // when: the idea is pinned with a size
     let events = board
         .decide(
             BoardCommand::Pin {
@@ -418,6 +472,7 @@ fn a_pinned_idea_keeps_the_size_it_was_given() {
         )
         .expect("pinning should succeed");
 
+    // then: it is pinned with that size
     assert_eq!(
         events,
         vec![BoardEvent::IdeaPinned {
@@ -430,9 +485,12 @@ fn a_pinned_idea_keeps_the_size_it_was_given() {
 
 #[test]
 fn a_card_without_extent_cannot_be_pinned() {
+    // given: a started board
     let board = a_started_board();
 
+    // when: an idea is pinned without extent
     for shapeless in [Size::of(0, 84), Size::of(168, 0), Size::of(-1, -1)] {
+        // then: it is refused as shapeless
         assert_eq!(
             board.decide(
                 BoardCommand::Pin {
@@ -450,9 +508,11 @@ fn a_card_without_extent_cannot_be_pinned() {
 
 #[test]
 fn resizing_an_idea_gives_it_the_new_extent() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: the idea is resized
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -465,6 +525,7 @@ fn resizing_an_idea_gives_it_the_new_extent() {
         .expect("resizing should succeed");
     board.apply(&events[0], &a_metadata(3));
 
+    // then: it has the new size
     assert_eq!(
         events,
         vec![BoardEvent::IdeaResized {
@@ -473,6 +534,7 @@ fn resizing_an_idea_gives_it_the_new_extent() {
         }]
     );
     assert_eq!(board.size_of(&idea), Some(Size::of(400, 90)));
+    // and: it stays at its spot
     assert_eq!(
         board.spot_of(&idea),
         Some(Spot::at(10, 10)),
@@ -482,9 +544,11 @@ fn resizing_an_idea_gives_it_the_new_extent() {
 
 #[test]
 fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let mut board = a_board_holding(&idea, Spot::at(100, 100));
 
+    // when: the idea is moved and resized in one reshape
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -499,6 +563,7 @@ fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
         board.apply(event, &a_metadata(3 + nth as u64));
     }
 
+    // then: it is both moved and resized
     assert_eq!(
         events,
         vec![
@@ -519,9 +584,11 @@ fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
 
 #[test]
 fn reshaping_an_idea_into_the_shape_it_already_has_is_not_a_change() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: it is reshaped into the spot and size it already has
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -533,6 +600,7 @@ fn reshaping_an_idea_into_the_shape_it_already_has_is_not_a_change() {
         )
         .expect("reshaping should succeed");
 
+    // then: nothing happens
     assert!(
         events.is_empty(),
         "a gesture that changes nothing must not fill the log"
@@ -541,9 +609,11 @@ fn reshaping_an_idea_into_the_shape_it_already_has_is_not_a_change() {
 
 #[test]
 fn a_card_cannot_be_resized_into_nothing() {
+    // given: a board holding an idea
     let idea = an_idea("idea_1");
     let board = a_board_holding(&idea, Spot::at(10, 10));
 
+    // when: it is resized to no height
     let refused = board.decide(
         BoardCommand::Reshape {
             idea,
@@ -553,13 +623,16 @@ fn a_card_cannot_be_resized_into_nothing() {
         &an_author(),
     );
 
+    // then: it is refused as shapeless
     assert_eq!(refused, Err(BoardError::Shapeless));
 }
 
 #[test]
 fn an_idea_that_is_not_on_the_board_cannot_be_reshaped() {
+    // given: a board without the idea
     let board = a_started_board();
 
+    // when: the idea is resized
     let refused = board.decide(
         BoardCommand::Reshape {
             idea: an_idea("idea_1"),
@@ -569,11 +642,13 @@ fn an_idea_that_is_not_on_the_board_cannot_be_reshaped() {
         &an_author(),
     );
 
+    // then: it is refused as not pinned
     assert_eq!(refused, Err(BoardError::NotPinned));
 }
 
 #[test]
 fn a_snapshot_remembers_how_big_each_card_was() {
+    // given: a board holding a resized idea
     let idea = an_idea("idea_1");
     let mut board = a_board_holding(&idea, Spot::at(10, 10));
     board.apply(
@@ -584,16 +659,19 @@ fn a_snapshot_remembers_how_big_each_card_was() {
         &a_metadata(3),
     );
 
+    // when: it is raised again from its snapshot
     let taken = board.snapshot();
     let regrown =
         Board::from_first(&taken, &a_metadata(4)).expect("a snapshot should raise a board");
 
+    // then: the idea keeps its size and spot
     assert_eq!(regrown.size_of(&idea), Some(Size::of(400, 90)));
     assert_eq!(regrown.spot_of(&idea), Some(Spot::at(10, 10)));
 }
 
 #[test]
 fn moving_an_idea_brings_it_to_the_front() {
+    // given: a board holding two ideas, one over the other
     let under = an_idea("idea_1");
     let over = an_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
@@ -607,6 +685,7 @@ fn moving_an_idea_brings_it_to_the_front() {
     );
     assert_eq!(pinned_order(&board), vec![under.clone(), over.clone()]);
 
+    // when: the one underneath is moved
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -621,6 +700,7 @@ fn moving_an_idea_brings_it_to_the_front() {
         board.apply(event, &a_metadata(4 + nth as u64));
     }
 
+    // then: it is moved and raised
     assert_eq!(
         events,
         vec![
@@ -633,6 +713,7 @@ fn moving_an_idea_brings_it_to_the_front() {
             },
         ]
     );
+    // and: it is now on top
     assert_eq!(
         pinned_order(&board),
         vec![over, under],
@@ -642,6 +723,7 @@ fn moving_an_idea_brings_it_to_the_front() {
 
 #[test]
 fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
+    // given: a board holding two ideas, one over the other
     let under = an_idea("idea_1");
     let over = an_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
@@ -654,6 +736,7 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
         &a_metadata(3),
     );
 
+    // when: the one on top is moved
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -665,6 +748,7 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
         )
         .expect("moving should succeed");
 
+    // then: it is only moved
     assert_eq!(
         events.len(),
         1,
@@ -675,6 +759,7 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
 
 #[test]
 fn resizing_an_idea_leaves_the_stack_alone() {
+    // given: a board holding two ideas, one over the other
     let under = an_idea("idea_1");
     let over = an_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
@@ -687,6 +772,7 @@ fn resizing_an_idea_leaves_the_stack_alone() {
         &a_metadata(3),
     );
 
+    // when: the one underneath is resized
     let events = board
         .decide(
             BoardCommand::Reshape {
@@ -701,6 +787,7 @@ fn resizing_an_idea_leaves_the_stack_alone() {
         board.apply(event, &a_metadata(4 + nth as u64));
     }
 
+    // then: they keep their order
     assert_eq!(
         pinned_order(&board),
         vec![under, over],
@@ -710,6 +797,7 @@ fn resizing_an_idea_leaves_the_stack_alone() {
 
 #[test]
 fn a_snapshot_remembers_the_order_the_cards_are_stacked_in() {
+    // given: a board whose bottom idea was raised
     let under = an_idea("idea_1");
     let over = an_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
@@ -728,28 +816,35 @@ fn a_snapshot_remembers_the_order_the_cards_are_stacked_in() {
         &a_metadata(4),
     );
 
+    // when: it is raised again from its snapshot
     let regrown = Board::from_first(&board.snapshot(), &a_metadata(5))
         .expect("a snapshot should raise a board");
 
+    // then: its ideas keep their order
     assert_eq!(pinned_order(&regrown), vec![over, under]);
 }
 
 #[test]
 fn a_board_can_be_discarded() {
+    // given: a started board
     let board = a_started_board();
 
+    // when: it is discarded
     let events = board
         .decide(BoardCommand::Discard, &an_author())
         .expect("discarding should succeed");
 
+    // then: it is discarded
     assert_eq!(events, vec![BoardEvent::Discarded]);
 }
 
 #[test]
 fn a_discarded_board_refuses_everything() {
+    // given: a discarded board
     let mut board = a_board_holding(&an_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
+    // when: anything is asked of it
     for command in [
         BoardCommand::Start {
             project: ProjectLink::from("project_1"),
@@ -769,6 +864,7 @@ fn a_discarded_board_refuses_everything() {
         },
         BoardCommand::Discard,
     ] {
+        // then: it is refused as discarded
         assert_eq!(
             board.decide(command, &an_author()),
             Err(BoardError::Discarded),
@@ -780,10 +876,13 @@ fn a_discarded_board_refuses_everything() {
 
 #[test]
 fn a_discarded_board_still_says_what_it_held() {
+    // given: a discarded board that held an idea
     let mut board = a_board_holding(&an_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
+    // then: it says it is discarded
     assert!(board.is_discarded());
+    // and: it still holds the idea
     assert_eq!(
         pinned_order(&board),
         vec![an_idea("idea_1")],
@@ -793,11 +892,14 @@ fn a_discarded_board_still_says_what_it_held() {
 
 #[test]
 fn a_snapshot_remembers_that_the_board_was_discarded() {
+    // given: a discarded board
     let mut board = a_board_holding(&an_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
+    // when: its snapshot is taken
     let snapshot = board.snapshot();
 
+    // then: raising it again gives the discarded board
     assert_eq!(
         Board::from_first(&snapshot, &a_metadata(10)).expect("a snapshot should raise a board"),
         board,
@@ -807,5 +909,6 @@ fn a_snapshot_remembers_that_the_board_was_discarded() {
 
 #[test]
 fn a_board_is_in_the_context_of_its_project() {
+    // expect: a board is in the context of its project
     assert_eq!(a_started_board().context().get(PROJECT), Some("project_1"));
 }

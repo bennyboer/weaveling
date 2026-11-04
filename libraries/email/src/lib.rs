@@ -61,6 +61,7 @@ mod tests {
 
     #[test]
     fn an_address_is_kept_trimmed_and_in_lower_case() {
+        // expect: an address typed loosely is kept trimmed and in lower case
         assert_eq!(
             EmailAddress::new("  Ada@Example.COM ").map(|address| address.to_string()),
             Ok("ada@example.com".to_owned()),
@@ -70,6 +71,7 @@ mod tests {
 
     #[test]
     fn an_address_may_carry_a_tag_after_a_plus() {
+        // expect: a tagged address is kept as it is
         assert_eq!(
             EmailAddress::new("test+test@gmail.com").map(|address| address.to_string()),
             Ok("test+test@gmail.com".to_owned()),
@@ -79,6 +81,7 @@ mod tests {
 
     #[test]
     fn an_address_needs_someone_at_a_domain_with_a_dot() {
+        // expect: every malformed address is refused
         for malformed in [
             "ada",
             "@example.com",
@@ -100,9 +103,12 @@ mod tests {
 
     #[test]
     fn an_address_is_at_most_as_long_as_mail_allows() {
+        // given: the longest address mail allows
         let longest = format!("{}@example.com", "a".repeat(EmailAddress::MAX_CHARS - 12));
 
+        // then: it is an address
         assert!(EmailAddress::new(&longest).is_ok());
+        // and: one character more is too long
         assert_eq!(
             EmailAddress::new(&format!("a{longest}")),
             Err(InvalidEmailAddress::TooLong {

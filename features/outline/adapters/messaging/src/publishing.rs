@@ -112,7 +112,7 @@ mod tests {
         SectionId::generate(at(2_000))
     }
 
-    fn titled(what: &str) -> SectionTitle {
+    fn a_title(what: &str) -> SectionTitle {
         SectionTitle::new(what).expect("the title should be usable")
     }
 
@@ -131,7 +131,7 @@ mod tests {
         }
     }
 
-    fn attaching_to(section: SectionId) -> OutlineEvent {
+    fn an_attachment_to(section: SectionId) -> OutlineEvent {
         OutlineEvent::Attached {
             attachment: Attachment::scene("scene_1"),
             to: section,
@@ -140,7 +140,7 @@ mod tests {
     }
 
     fn an_attachment() -> OutlineEvent {
-        attaching_to(a_section())
+        an_attachment_to(a_section())
     }
 
     fn everything_worth_publishing() -> Vec<(OutlineEvent, &'static str)> {
@@ -156,14 +156,14 @@ mod tests {
                     section: a_section(),
                     under: None,
                     after: None,
-                    title: titled("Part One"),
+                    title: a_title("Part One"),
                 },
                 SECTION_ADDED,
             ),
             (
                 OutlineEvent::SectionRetitled {
                     section: a_section(),
-                    title: titled("Part Two"),
+                    title: a_title("Part Two"),
                 },
                 SECTION_RETITLED,
             ),
@@ -210,8 +210,10 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: an outline
         let id = an_outline();
 
+        // then: every event lands on the key its contract declares
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
                 eventpublishing::routing_for(KIND, event.name()).to_string(),
@@ -224,6 +226,7 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
+        // expect: every outline event is heard by a subscription to every outline
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_OUTLINE);
         assert!(
             everything_worth_publishing()
@@ -238,6 +241,7 @@ mod tests {
 
     #[test]
     fn restructuring_does_not_wake_the_catalog_projector() {
+        // expect: only starting or discarding an outline wakes its catalog
         for (event, _) in everything_worth_publishing() {
             let woken = heard_by(
                 <crate::CatalogueOutlinesListener as KeptHandler>::LISTENS_TO,
@@ -258,6 +262,7 @@ mod tests {
 
     #[test]
     fn removing_a_section_wakes_the_attachment_index_because_it_detaches_scenes() {
+        // given: a section removed
         let removal = eventpublishing::routing_for(
             KIND,
             OutlineEvent::SectionRemoved {
@@ -266,6 +271,7 @@ mod tests {
             .name(),
         );
 
+        // then: the attachment index hears of it
         assert!(
             heard_by(
                 <crate::IndexAttachmentsListener as KeptHandler>::LISTENS_TO,
@@ -278,15 +284,18 @@ mod tests {
 
     #[test]
     fn an_attachment_carries_the_scene_and_the_section_it_landed_in() {
+        // given: an outline and a section
         let id = an_outline();
         let section = a_section();
 
+        // when: a scene attached to the section is published
         let told = eventpublishing::published_in::<OutlineEventDTO>(&published(
             &id,
-            attaching_to(section),
+            an_attachment_to(section),
         ))
         .expect("what we wrote must be readable");
 
+        // then: the message names the scene and the section
         assert_eq!(
             told.event.body,
             OutlineEventDTO::Attached {
@@ -301,13 +310,16 @@ mod tests {
 
     #[test]
     fn an_intent_move_carries_only_the_section_because_where_it_lands_is_derived() {
+        // given: an outline with a section promoted
         let id = an_outline();
         let section = a_section();
         let promoted = OutlineEvent::SectionPromoted { section };
 
+        // when: the promotion is published
         let told = eventpublishing::published_in::<OutlineEventDTO>(&published(&id, promoted))
             .expect("what we wrote must be readable");
 
+        // then: the message names only the section
         assert_eq!(
             told.event.body,
             OutlineEventDTO::SectionPromoted {
@@ -318,8 +330,10 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
+        // given: an outline
         let id = an_outline();
 
+        // then: every message is named as its event
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
 
@@ -333,18 +347,20 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: a snapshot of an outline
         let id = an_outline();
         let snapshot = OutlineEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             sections: vec![PlacedSection {
                 section: a_section(),
                 parent: None,
-                title: titled("Part One"),
+                title: a_title("Part One"),
                 attachments: vec![Attachment::scene("scene_1")],
             }],
             discarded: false,
         };
 
+        // then: it makes no message
         assert!(
             message_for(&recorded(&id, snapshot)).is_none(),
             "collapsing the log is our own housekeeping and no subscriber's business"
@@ -353,8 +369,10 @@ mod tests {
 
     #[test]
     fn the_outline_can_be_read_back_out_of_a_message() {
+        // given: an outline
         let id = an_outline();
 
+        // then: it can be read back from a message of it
         assert_eq!(
             eventpublishing::aggregate_in::<OutlineId>(&published(&id, an_attachment()))
                 .expect("what we wrote must be readable"),
@@ -371,6 +389,7 @@ mod notes {
 
     #[test]
     fn a_note_goes_on_the_wire_tagged_as_an_idea() {
+        // when: an idea attached to a section is published
         let told = body(&OutlineEvent::Attached {
             attachment: Attachment::idea("idea_1"),
             to: SectionId::generate(time::OffsetDateTime::UNIX_EPOCH),
@@ -378,6 +397,7 @@ mod notes {
         })
         .expect("an attachment is published");
 
+        // then: it is tagged as an idea
         let OutlineEventDTO::Attached { attachment, .. } = told else {
             panic!("expected an attachment, got {told:?}");
         };
@@ -393,14 +413,17 @@ mod notes {
 
     #[test]
     fn a_detachment_goes_on_the_wire_with_the_section_it_left() {
+        // given: a section
         let left = SectionId::generate(time::OffsetDateTime::UNIX_EPOCH);
 
+        // when: an idea taken from it is published
         let told = body(&OutlineEvent::Detached {
             attachment: Attachment::idea("idea_1"),
             from: left,
         })
         .expect("a detachment is published");
 
+        // then: the message names the section
         let OutlineEventDTO::Detached { from, .. } = told else {
             panic!("expected a detachment, got {told:?}");
         };

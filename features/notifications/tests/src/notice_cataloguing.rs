@@ -22,7 +22,7 @@ struct Listed {
     listener: Inboxed<CatalogueNoticeListener>,
 }
 
-fn listed() -> Listed {
+fn a_workbench() -> Listed {
     let store = Arc::new(InMemoryEventStore::new());
     let clock = Arc::new(FixedClock::new(NOTED_AT));
     let notifications = NotificationsCore::new(
@@ -56,7 +56,7 @@ fn made_an_author() -> About {
     }
 }
 
-async fn heard_through(listed: &Listed, notice: &NoticeId, version: u64) {
+async fn hearing(listed: &Listed, notice: &NoticeId, version: u64) {
     let recorded = listed
         .store
         .read_from(&AggregateId::from(notice), KIND, Version::of(version))
@@ -76,21 +76,26 @@ async fn heard_through(listed: &Listed, notice: &NoticeId, version: u64) {
 
 #[tokio::test]
 async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() {
-    let listed = listed();
+    // given: a notice noted for bo
+    let listed = a_workbench();
     let notice = listed
         .notifications
         .note(None, AccountId::from("account_bo"), made_an_author())
         .await
         .expect("noting should succeed")
         .expect("its project is not deleted");
+    // and: an hour gone by
     listed.clock.set(NOTED_AT + Duration::hours(1));
 
-    heard_through(&listed, &notice, 1).await;
+    // when: its noting is heard
+    hearing(&listed, &notice, 1).await;
+    // and: bo's open notices are read
     let open = listed
         .notifications
         .open_for(&bo())
         .await
         .expect("listing should succeed");
+    // then: nobody else's hold it
     for agent in [
         Agent::Account(AccountId::from("account_ada")),
         Agent::System,
@@ -105,13 +110,15 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
                 .is_empty()
         );
     }
+    // when: bo dismisses it and that is heard
     listed
         .notifications
         .dismiss(&notice.to_string(), &bo())
         .await
         .expect("dismissing should succeed");
-    heard_through(&listed, &notice, 2).await;
+    hearing(&listed, &notice, 2).await;
 
+    // then: bo's held it, as noted
     assert_eq!(open.len(), 1);
     assert_eq!(open[0].id, notice);
     assert_eq!(open[0].about, made_an_author());
@@ -119,6 +126,7 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
         open[0].noted_at, NOTED_AT,
         "when it was noted, not when it was listed"
     );
+    // and: it is listed no more
     assert!(
         listed
             .notifications
@@ -132,8 +140,10 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
 
 #[test]
 fn the_list_hears_every_change_to_a_notice() {
-    let listener = listed().listener;
+    // given: the list's listener
+    let listener = a_workbench().listener;
 
+    // then: it hears every change to a notice
     for key in [NOTED, DISMISSED] {
         assert!(listener.hears(&RoutingKey::parse(key).expect("a declared key")));
     }

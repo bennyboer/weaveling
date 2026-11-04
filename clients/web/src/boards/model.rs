@@ -144,6 +144,7 @@ mod tests {
 
     #[test]
     fn a_pinned_idea_joins_the_board_on_top_and_the_version_moves_on() {
+        // when: an idea is pinned to a board holding another
         let board = a_board(vec![placed("idea_a", 0)])
             .taken_in(BoardEventDTO::IdeaPinned {
                 idea: "idea_b".to_owned(),
@@ -155,6 +156,7 @@ mod tests {
             })
             .expect("a new idea fits");
 
+        // then: it lies on top where and as large as it was pinned
         assert_eq!(order(&board), vec!["idea_a", "idea_b"]);
         assert_eq!(board.ideas[1].spot, Spot { x: 40, y: 80 });
         assert_eq!(
@@ -164,11 +166,13 @@ mod tests {
                 height: 100
             }
         );
+        // and: the board is a version further
         assert_eq!(board.version, 5);
     }
 
     #[test]
     fn an_idea_already_on_the_board_pinned_again_does_not_fit() {
+        // when: an idea on the board is pinned to it again
         let taken = a_board(vec![placed("idea_a", 0)]).taken_in(BoardEventDTO::IdeaPinned {
             idea: "idea_a".to_owned(),
             at: SpotDTO { x: 40, y: 80 },
@@ -178,11 +182,13 @@ mod tests {
             },
         });
 
+        // then: the change does not fit
         assert_eq!(taken, None);
     }
 
     #[test]
     fn a_moved_or_resized_idea_keeps_the_rest_of_its_place() {
+        // when: one idea is moved and another resized
         let board = a_board(vec![placed("idea_a", 0), placed("idea_b", 10)])
             .taken_in(BoardEventDTO::IdeaMoved {
                 idea: "idea_a".to_owned(),
@@ -199,8 +205,10 @@ mod tests {
             })
             .expect("both ideas are there");
 
+        // then: the moved one keeps its size
         assert_eq!(board.ideas[0].spot, Spot { x: 300, y: 120 });
         assert_eq!(board.ideas[0].size, placed("idea_a", 0).size);
+        // and: the resized one keeps its spot
         assert_eq!(
             board.ideas[1].size,
             Size {
@@ -209,11 +217,13 @@ mod tests {
             }
         );
         assert_eq!(board.ideas[1].spot, Spot { x: 10, y: 0 });
+        // and: the board is a version further for each
         assert_eq!(board.version, 6);
     }
 
     #[test]
     fn a_raised_idea_goes_on_top_and_an_unpinned_one_leaves() {
+        // when: the bottom idea of three is raised and the middle one unpinned
         let board = a_board(vec![
             placed("idea_a", 0),
             placed("idea_b", 10),
@@ -229,14 +239,17 @@ mod tests {
         })
         .expect("both ideas are there");
 
+        // then: the raised one lies on top of the one left
         assert_eq!(order(&board), vec!["idea_c", "idea_a"]);
     }
 
     #[test]
     fn a_change_to_an_idea_not_on_the_board_does_not_fit() {
+        // given: an idea not on a board
         let absent = || "idea_z".to_owned();
         let board = || a_board(vec![placed("idea_a", 0)]);
 
+        // then: moving, resizing, raising or unpinning it does not fit
         assert_eq!(
             board().taken_in(BoardEventDTO::IdeaMoved {
                 idea: absent(),
@@ -266,6 +279,7 @@ mod tests {
 
     #[test]
     fn a_board_started_again_or_discarded_is_opened_again_rather_than_guessed() {
+        // expect: neither a start nor a discarding fits an open board
         assert_eq!(
             a_board(Vec::new()).taken_in(BoardEventDTO::Started {
                 project: "project_1".to_owned(),

@@ -53,9 +53,11 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn a_race_for_one_key_leaves_exactly_one_winner() {
+    // given: a registry
     let bench = OnSqlite::setup().await;
     let registry = std::sync::Arc::new(SqliteRegistry::new(bench.pool.clone()));
 
+    // when: eight claim one key at once
     let racing: Vec<_> = (1..=8)
         .map(|nth| {
             let registry = registry.clone();
@@ -90,6 +92,7 @@ async fn a_race_for_one_key_leaves_exactly_one_winner() {
         held.push(attempt.await.expect("the claim should not panic"));
     }
 
+    // then: all are told the same holder
     let first = held.first().expect("eight claims were made").clone();
     assert!(
         held.iter().all(|held| held == &first),

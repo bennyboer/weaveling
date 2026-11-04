@@ -59,7 +59,8 @@ fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) {
 
 #[tokio::test]
 async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
-    let wired = wiring::wired();
+    // given: an expired, a declined and an open invitation listed
+    let wired = wiring::a_workbench();
     let now = 1_700_000_000;
     let expired = a_summary(now - 8 * 86_400, "old@example.com", Outcome::Open);
     let declined = a_summary(
@@ -71,17 +72,20 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
     for summary in [&expired, &declined, &open] {
         remembered(&wired, summary).await;
     }
+    // and: an accepted one
     remembered(
         &wired,
         &a_summary(now - 120, "hedy@example.com", Outcome::Accepted),
     )
     .await;
 
+    // when: an operator asks for the list
     let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
         .get("/invitations")
         .await
         .json();
 
+    // then: it sees the open, the declined and the expired, newest first
     assert_eq!(
         page,
         InvitationPageDTO {
@@ -121,7 +125,8 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
 
 #[tokio::test]
 async fn a_long_list_comes_in_pages_and_the_next_goes_on_after_the_last() {
-    let wired = wiring::wired();
+    // given: one invitation more than a page holds
+    let wired = wiring::a_workbench();
     let pages = i64::try_from(PAGE).expect("a page fits");
     for n in 0..=pages {
         remembered(
@@ -136,6 +141,7 @@ async fn a_long_list_comes_in_pages_and_the_next_goes_on_after_the_last() {
     }
     let server = served_to(&wired, wiring::an_operator());
 
+    // when: an operator asks for the first page and the next
     let first: InvitationPageDTO = server.get("/invitations").await.json();
     let next: InvitationPageDTO = server
         .get("/invitations")
@@ -143,7 +149,9 @@ async fn a_long_list_comes_in_pages_and_the_next_goes_on_after_the_last() {
         .await
         .json();
 
+    // then: the first page is full
     assert_eq!(first.invitations.len(), PAGE);
+    // and: the next holds the oldest alone and promises no more
     assert_eq!(next.invitations.len(), 1);
     assert_eq!(next.invitations[0].email, "someone0@example.com");
     assert_eq!(next.next, None);
@@ -151,8 +159,10 @@ async fn a_long_list_comes_in_pages_and_the_next_goes_on_after_the_last() {
 
 #[tokio::test]
 async fn only_an_operator_sees_the_list_and_no_page_begins_after_nonsense() {
-    let wired = wiring::wired();
+    // given: an operator and someone who is not
+    let wired = wiring::a_workbench();
 
+    // then: who is not is refused the list
     refused_as(
         &served_to(&wired, wiring::no_operator())
             .get("/invitations")
@@ -160,6 +170,7 @@ async fn only_an_operator_sees_the_list_and_no_page_begins_after_nonsense() {
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
+    // and: the operator is refused a page after nonsense
     refused_as(
         &served_to(&wired, wiring::an_operator())
             .get("/invitations")
@@ -172,7 +183,8 @@ async fn only_an_operator_sees_the_list_and_no_page_begins_after_nonsense() {
 
 #[tokio::test]
 async fn a_list_that_fills_one_page_exactly_promises_no_next() {
-    let wired = wiring::wired();
+    // given: invitations filling one page exactly
+    let wired = wiring::a_workbench();
     let pages = i64::try_from(PAGE).expect("a page fits");
     for n in 0..pages {
         remembered(
@@ -186,18 +198,21 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
         .await;
     }
 
+    // when: an operator asks for the list
     let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
         .get("/invitations")
         .await
         .json();
 
+    // then: it is that page, promising no next
     assert_eq!(page.invitations.len(), PAGE);
     assert_eq!(page.next, None);
 }
 
 #[tokio::test]
 async fn an_operator_sees_why_each_invitation_was_declined() {
-    let wired = wiring::wired();
+    // given: an invitation declined for its address having an account and one turned down
+    let wired = wiring::a_workbench();
     let now = 1_700_000_000;
     let had_an_account = a_summary(
         now - 120,
@@ -213,11 +228,13 @@ async fn an_operator_sees_why_each_invitation_was_declined() {
         remembered(&wired, summary).await;
     }
 
+    // when: an operator asks for the list
     let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
         .get("/invitations")
         .await
         .json();
 
+    // then: it sees why each was declined
     let told: Vec<_> = page
         .invitations
         .iter()

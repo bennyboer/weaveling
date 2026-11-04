@@ -1,5 +1,6 @@
 #[test]
 fn the_server_and_the_client_agree_on_the_fragment_name() {
+    // expect: both name the fragment alike
     assert_eq!(
         scenes_core::FRAGMENT,
         scenes_contract::FRAGMENT,

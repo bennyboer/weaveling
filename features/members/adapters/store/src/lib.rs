@@ -165,6 +165,7 @@ mod tests {
 
     #[test]
     fn every_event_in_every_role_survives_the_journey_through_the_column() {
+        // expect: each event in each role read back after writing is the event written
         for role in [Role::Owner, Role::Author, Role::Reader] {
             for event in [
                 MembersEvent::Founded { owner: grace() },
@@ -204,6 +205,7 @@ mod tests {
 
     #[test]
     fn a_role_is_stored_by_its_name() {
+        // expect: a joining is written with its role by name
         assert_eq!(
             (codec().body)(&MembersEvent::Joined {
                 account: grace(),
@@ -215,6 +217,7 @@ mod tests {
 
     #[test]
     fn a_role_nobody_declared_reads_as_nothing() {
+        // expect: a joining in an undeclared role reads as no event
         assert!(
             (codec().event)(json!({ "Joined": { "account": "account_grace", "role": "editor" } }))
                 .is_none()
@@ -223,6 +226,7 @@ mod tests {
 
     #[test]
     fn a_snapshot_written_before_disbanding_was_kept_reads_as_not_disbanded() {
+        // expect: a snapshot stored without a word about disbanding reads as not disbanded
         assert_eq!(
             (codec().event)(json!({ "Snapshotted": { "members": [] } })),
             Some(MembersEvent::Snapshotted {

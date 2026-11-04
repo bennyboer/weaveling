@@ -68,15 +68,19 @@ async fn told(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn whoever_follows_an_outline_is_told_each_change_by_its_version() {
+    // given: a followed outline
     let (wired, server) = served();
     let outline = an_open_outline(&server, "project_1").await;
     wired.settle().await;
     let mut socket = following(&server, &outline).await;
 
+    // when: a section is added to it
     a_section_added(&server, &outline, "Part One").await;
     wired.settle().await;
 
+    // then: its follower is told the change
     let frame = told(&mut socket).await;
+    // and: the version it stands at now
     let now: OutlineDTO = server.get(&format!("/outlines/{outline}")).await.json();
     assert_eq!(frame["version"], now.version);
     assert_eq!(frame["event"]["name"], "SECTION_ADDED");
@@ -84,16 +88,19 @@ async fn whoever_follows_an_outline_is_told_each_change_by_its_version() {
 
 #[tokio::test]
 async fn another_book_changing_is_not_told() {
+    // given: two outlines, one of them followed
     let (wired, server) = served();
     let mine = an_open_outline(&server, "project_1").await;
     let theirs = an_open_outline(&server, "project_2").await;
     wired.settle().await;
     let mut socket = following(&server, &mine).await;
 
+    // when: a section is added to each, the other first
     a_section_added(&server, &theirs, "Their part").await;
     a_section_added(&server, &mine, "My part").await;
     wired.settle().await;
 
+    // then: its follower is told first of the followed one
     let frame = told(&mut socket).await;
     assert_eq!(
         frame["event"]["title"], "My part",
@@ -103,13 +110,16 @@ async fn another_book_changing_is_not_told() {
 
 #[tokio::test]
 async fn whoever_follows_an_outline_is_first_told_the_version_it_stands_at() {
+    // given: an outline and the version it stands at
     let (wired, server) = served();
     let outline = an_open_outline(&server, "project_1").await;
     wired.settle().await;
     let now: OutlineDTO = server.get(&format!("/outlines/{outline}")).await.json();
 
+    // when: it is followed
     let mut socket = connected(&server, &outline).await;
 
+    // then: its follower is first told that version
     assert_eq!(
         told(&mut socket).await,
         json!({ "version": now.version }),
@@ -132,31 +142,38 @@ async fn told_on_one_socket(socket: &mut Subscriber) -> Value {
 
 #[tokio::test]
 async fn on_the_one_socket_an_outline_is_told_where_it_stands_then_each_change() {
+    // given: an outline and one socket
     let (wired, server) = served();
     let outline = an_open_outline(&server, "project_1").await;
     wired.settle().await;
     let (_live, mut socket) = on_one_socket(&wired).await;
 
+    // when: the outline is followed on the socket
     socket
         .subscribe("outline", "outlines", &[("outline", &outline)])
         .await;
+    // and: a section is added to it
     let standing = told_on_one_socket(&mut socket).await;
     a_section_added(&server, &outline, "Part One").await;
     wired.settle().await;
     let added = told_on_one_socket(&mut socket).await;
+    // and: something that is not an outline is followed on the same socket
     socket
         .subscribe("nowhere", "outlines", &[("outline", "not an outline")])
         .await;
     let nowhere = told_on_one_socket(&mut socket).await;
 
+    // then: the outline is told first where it stands
     assert_eq!(standing["id"], "outline");
     assert_eq!(
         standing["frame"],
         json!({ "version": 1 }),
         "told first where it stands"
     );
+    // and: then the change
     assert_eq!(added["frame"]["of"], outline);
     assert_eq!(added["frame"]["version"], 2);
+    // and: the other following ends as not there
     assert_eq!(
         nowhere,
         json!({ "told": "ended", "id": "nowhere", "why": "not-there" })

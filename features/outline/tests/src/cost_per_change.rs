@@ -45,7 +45,7 @@ fn ms(taken: Duration) -> String {
     format!("{:.1}", taken.as_secs_f64() * 1_000.0)
 }
 
-fn telling(heard: &Arc<FakePublisher>) -> Context {
+fn a_context_telling(heard: &Arc<FakePublisher>) -> Context {
     Context {
         clock: Arc::new(SystemClock) as Arc<dyn Clock>,
         publisher: heard.clone(),
@@ -62,7 +62,7 @@ async fn timed<T>(work: impl IntoFuture<Output = T>) -> (T, Duration) {
 
 impl Bench {
     async fn on(ports: Ports, heard: Arc<FakePublisher>) -> Self {
-        let context = telling(&heard);
+        let context = a_context_telling(&heard);
         let wired = outline_wiring::wire(&ports, &context);
         let outlines = outline_wiring::core(&ports, &context);
         let indexer = wired
@@ -253,18 +253,20 @@ impl Bench {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "a measurement, run on purpose: cargo test -p weaveling-outline-tests --release cost_per_change -- --ignored --nocapture"]
 async fn cost_per_change() {
+    // expect: what each change costs is reported in memory
     let heard = Arc::new(FakePublisher::default());
-    let ports = OutlineFeature::in_memory(&telling(&heard));
+    let ports = OutlineFeature::in_memory(&a_context_telling(&heard));
     Bench::on(ports, heard).await.report("memory").await;
 
+    // and: on sqlite
     let fixture = SqliteFixture::setup();
     let pool = fixture.create_database("outline").await;
     for schema in OutlineFeature::sqlite_schema() {
         schema.run(&pool).await.expect("the schema lays down");
     }
     let heard = Arc::new(FakePublisher::default());
-    let ports =
-        OutlineFeature::on_sqlite(pool, &telling(&heard)).expect("the outline wires on SQLite");
+    let ports = OutlineFeature::on_sqlite(pool, &a_context_telling(&heard))
+        .expect("the outline wires on SQLite");
     Bench::on(ports, heard).await.report("sqlite").await;
     fixture.cleanup().await;
 }

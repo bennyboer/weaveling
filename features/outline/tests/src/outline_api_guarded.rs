@@ -85,7 +85,7 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
     )
 }
 
-async fn guarded() -> Guarded {
+async fn an_outline_ada_owns() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     let wired = wiring::wired_guarded_by(
@@ -164,8 +164,10 @@ async fn changes_by(guarded: &Guarded, account: &TestServer) -> [TestResponse; 4
 
 #[tokio::test]
 async fn a_project_s_outline_is_not_there_for_whoever_may_not_read_it() {
-    let guarded = guarded().await;
+    // given: an outline of a project grace may not read
+    let guarded = an_outline_ada_owns().await;
 
+    // when: she opens it, reads it and changes it
     let opened = guarded
         .grace
         .post("/outlines")
@@ -177,66 +179,84 @@ async fn a_project_s_outline_is_not_there_for_whoever_may_not_read_it() {
         .await;
     let [adding, retitling, attaching, removing] = changes_by(&guarded, &guarded.grace).await;
 
+    // then: each time she is told it is not there
     for answered in [opened, read, adding, retitling, attaching, removing] {
         answered.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answered.json::<Value>()["type"], "not-found");
     }
+    // when: she follows it
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("outline", "outlines", &[("outline", &guarded.outline)])
         .await;
+    // then: the following ends as not there
     assert_eq!(hers.ended().await, "not-there");
+    // and: the outline is unchanged
     assert_eq!(titles(&guarded).await, vec![json!("Chapter one")]);
 }
 
 #[tokio::test]
 async fn a_reader_opens_reads_and_follows_the_outline_and_is_told_only_an_author_may_change_it() {
-    let guarded = guarded().await;
+    // given: an outline of a project grace may read
+    let guarded = an_outline_ada_owns().await;
     guarded.roles.give("account_grace", &READER);
 
+    // when: she opens it
     let opened = guarded
         .grace
         .post("/outlines")
         .json(&json!({ "project": PROJECT }))
         .await;
+    // then: she is given the outline
     opened.assert_status_ok();
     assert_eq!(opened.json::<Value>()["id"], guarded.outline.as_str());
+    // and: she may read it
     guarded
         .grace
         .get(&format!("/outlines/{}", guarded.outline))
         .await
         .assert_status_ok();
+    // and: she may follow it
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("outline", "outlines", &[("outline", &guarded.outline)])
         .await;
     hers.frame().await;
+    // and: every change she makes is refused as not an author's
     for refused in changes_by(&guarded, &guarded.grace).await {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-author");
     }
+    // and: the outline is unchanged
     assert_eq!(titles(&guarded).await, vec![json!("Chapter one")]);
 }
 
 #[tokio::test]
 async fn an_author_adds_retitles_attaches_and_removes() {
-    let guarded = guarded().await;
+    // given: an outline of a project grace may write
+    let guarded = an_outline_ada_owns().await;
     guarded
         .roles
         .give("account_grace", &[Act::Read, Act::Write]);
 
+    // when: she adds, retitles, attaches and removes
     let [adding, retitling, attaching, removing] = changes_by(&guarded, &guarded.grace).await;
 
+    // then: each is done
     adding.assert_status(StatusCode::CREATED);
     retitling.assert_status_ok();
     attaching.assert_status_ok();
     removing.assert_status_ok();
+    // and: the outline shows it
     assert_eq!(titles(&guarded).await, vec![json!("Chapter two")]);
 }
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let guarded = guarded().await;
+    // given: an outline
+    let guarded = an_outline_ada_owns().await;
+    // and: whom to let in cannot be known
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
+    // then: opening and reading it fail
     for answered in [
         guarded
             .ada
@@ -250,24 +270,29 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    // when: it is followed
     let mut ada_s = Subscriber::on(&guarded.ada).await;
     ada_s
         .subscribe("outline", "outlines", &[("outline", &guarded.outline)])
         .await;
+    // then: the following fails
     assert_eq!(ada_s.ended().await, "failed");
 }
 
 #[tokio::test]
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
-    let guarded = guarded().await;
+    // given: an outline grace follows as a reader
+    let guarded = an_outline_ada_owns().await;
     guarded.roles.give("account_grace", &READER);
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("outline", "outlines", &[("outline", &guarded.outline)])
         .await;
     hers.frame().await;
 
+    // when: her role is taken away
     guarded.roles.give("account_grace", &[]);
     guarded.roles.access_changed(PROJECT);
 
+    // then: her following ends as access lost
     assert_eq!(hers.ended().await, "access-lost");
 }

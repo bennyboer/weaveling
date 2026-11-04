@@ -90,7 +90,7 @@ mod tests {
         listener: Inboxed<NoteRoleChangedListener>,
     }
 
-    fn bench() -> Bench {
+    fn a_workbench() -> Bench {
         let clock = Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH));
         let heard = Arc::new(FakePublisher::default());
         let told = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
@@ -166,14 +166,17 @@ mod tests {
 
     #[tokio::test]
     async fn whoever_s_role_changed_is_noted_it_with_who_changed_it_however_often_it_is_told() {
+        // given: each role
         for (named, role) in [
             ("owner", Role::Owner),
             ("author", Role::Author),
             ("reader", Role::Reader),
         ] {
-            let bench = bench();
+            // and: a change of bo's role to it by ada told
+            let bench = a_workbench();
             let message = changed(to(named), ada());
 
+            // when: it is heard twice
             for _ in 0..2 {
                 bench
                     .listener
@@ -182,6 +185,7 @@ mod tests {
                     .expect("messages come at least once");
             }
 
+            // then: bo is noted it once, with who changed it
             assert_eq!(
                 noted(&bench).await,
                 [About::RoleChanged {
@@ -196,8 +200,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_role_changed_by_the_system_names_nobody_who_changed_it() {
-        let bench = bench();
+        // given: the listener noting changed roles
+        let bench = a_workbench();
 
+        // when: a role changed by the system is heard
         bench
             .listener
             .handle(&changed(
@@ -207,6 +213,7 @@ mod tests {
             .await
             .expect("noting should succeed");
 
+        // then: it is noted naming nobody who changed it
         assert_eq!(
             noted(&bench).await,
             [About::RoleChanged {
@@ -219,8 +226,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_change_the_listener_cannot_read_belongs_in_dead_letters() {
-        let bench = bench();
+        // given: the listener noting changed roles
+        let bench = a_workbench();
 
+        // when: a change it cannot read is heard
         for unreadable in [
             changed(to("editor"), ada()),
             changed(
@@ -233,16 +242,21 @@ mod tests {
                 OffsetDateTime::UNIX_EPOCH,
             ),
         ] {
+            // then: it is refused
             assert!(bench.listener.handle(&unreadable).await.is_err());
         }
+        // and: nothing is noted
         assert!(noted(&bench).await.is_empty());
     }
 
     #[tokio::test]
     async fn only_a_changed_role_is_heard() {
-        let listener = bench().listener;
+        // given: the listener noting changed roles
+        let listener = a_workbench().listener;
 
+        // then: it hears a role changed
         assert!(listener.hears(&RoutingKey::parse(ROLE_CHANGED).expect("a declared key")));
+        // and: not a member joining
         assert!(
             !listener.hears(&RoutingKey::parse(members_contract::JOINED).expect("a declared key"))
         );

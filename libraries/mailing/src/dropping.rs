@@ -92,9 +92,11 @@ mod tests {
 
     #[tokio::test]
     async fn each_mail_is_dropped_as_a_file_of_its_own_in_the_order_sent() {
+        // given: a mailer dropping into an empty place
         let drop = a_drop("order");
         let mailer = DroppingMailer::into(&drop);
 
+        // when: three mails are sent
         for body in ["first", "second", "third"] {
             mailer
                 .send(a_mail("ada@example.com", body))
@@ -102,6 +104,7 @@ mod tests {
                 .expect("dropping should succeed");
         }
 
+        // then: each lies in a file of its own in the order sent
         assert_eq!(
             dropped(&drop),
             vec![
@@ -116,13 +119,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_drop_not_there_yet_is_made() {
+        // given: a drop not there yet
         let drop = a_drop("made").join("deeper");
 
+        // when: a mail is sent into it
         DroppingMailer::into(&drop)
             .send(a_mail("ada@example.com", "123456"))
             .await
             .expect("dropping should succeed");
 
+        // then: the drop holds it
         assert_eq!(dropped(&drop).len(), 1);
         let _gone = fs::remove_dir_all(drop.parent().expect("a parent"));
     }

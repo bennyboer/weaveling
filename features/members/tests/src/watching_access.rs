@@ -23,6 +23,7 @@ fn grace() -> Agent {
 
 #[tokio::test]
 async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
+    // given: a project with an owner and an author, as the list shows it
     let catalog = Arc::new(InMemoryMembershipCatalog::new());
     let authorizer = Arc::new(MembersAuthorizer::new(catalog.clone()));
     let members = MembersCore::new(
@@ -45,9 +46,11 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
         .catalogue(None, &project)
         .await
         .expect("cataloguing should succeed");
+    // and: access to it and to another project watched
     let mut watch = authorizer.watch_access(PROJECT);
     let mut elsewhere = authorizer.watch_access("project_other");
 
+    // when: the author is removed
     members
         .remove(
             PROJECT,
@@ -56,16 +59,21 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
         )
         .await
         .expect("an owner may remove an author");
+    // then: no change of access is heard yet
     assert!(
         !heard(&mut watch).await,
         "the list is not told yet, so asking again would still let her in"
     );
+
+    // when: the list shows the removal
     members
         .catalogue(None, &project)
         .await
         .expect("cataloguing should succeed");
 
+    // then: the change of access is heard
     assert!(heard(&mut watch).await);
+    // and: the author may no longer read the project
     assert!(
         !authorizer
             .may(&grace(), Act::Read, PROJECT)
@@ -73,5 +81,6 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
             .expect("asking should succeed"),
         "whoever asks again on hearing it is answered by the list as it is now"
     );
+    // and: nothing is heard of the other project
     assert!(!heard(&mut elsewhere).await);
 }

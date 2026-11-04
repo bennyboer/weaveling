@@ -89,8 +89,10 @@ crate::outbox_conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {
+    // given: an outbox laid down on postgres
     let bench = Bench::<OnPostgres>::setup().await;
 
+    // when: the tables of its namespace are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT tablename::text FROM pg_tables WHERE schemaname = $1 ORDER BY tablename",
     )
@@ -99,6 +101,7 @@ async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are its own ledger and its migrations alone
     assert_eq!(
         found,
         vec!["_sqlx_migrations_outbox", "outbox"],
@@ -110,8 +113,10 @@ async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {
 
 #[tokio::test]
 async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    // given: an outbox laid down on postgres
     let bench = Bench::<OnPostgres>::setup().await;
 
+    // when: the indexes of its namespace are listed
     let found: Vec<String> = sqlx::query_scalar(
         "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 ORDER BY indexname",
     )
@@ -120,6 +125,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are those its queries rely on
     assert_eq!(
         found,
         vec![
@@ -135,7 +141,9 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
 
 #[tokio::test]
 async fn an_event_s_version_is_kept_beside_its_message_and_an_unversioned_one_keeps_none() {
+    // given: an outbox on postgres
     let bench = Bench::<OnPostgres>::setup().await;
+    // when: a message of a versioned event and one of no version are enqueued
     let mut transaction = PostgresTransactions::new(bench.workbench.pool.clone())
         .begin()
         .await
@@ -157,6 +165,7 @@ async fn an_event_s_version_is_kept_beside_its_message_and_an_unversioned_one_ke
     }
     transaction.finish().await.expect("the transaction commits");
 
+    // then: the event's version is kept and the other keeps none
     let kept: Vec<Option<i64>> = sqlx::query_scalar("SELECT version FROM outbox ORDER BY entry")
         .fetch_all(&bench.workbench.pool)
         .await

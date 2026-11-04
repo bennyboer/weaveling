@@ -7,7 +7,7 @@ use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
-async fn told(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
+async fn events_of(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
     wired
         .store
         .read_from(&AggregateId::from(id), KIND, Version::of(1))
@@ -20,8 +20,10 @@ async fn told(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
 
 #[tokio::test]
 async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
 
+    // when: it invites an address however written
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), " Ada@Example.com ", ORIGIN)
@@ -29,6 +31,7 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
         .expect("an operator may invite")
         .id;
 
+    // then: one link to the instance is mailed to it
     let links = wired.links_mailed_to(ADA).await;
     assert_eq!(links.len(), 1);
     assert!(
@@ -36,10 +39,11 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
         "{}",
         links[0]
     );
+    // and: the invitation keeps the token by its digest alone and holds for seven days
     let token = wired.token_mailed_to(ADA).await;
     assert!(
         matches!(
-            told(&wired, &id).await.as_slice(),
+            events_of(&wired, &id).await.as_slice(),
             [InvitationEvent::Issued { to, digest, until, scope, by_an_operator, origin }]
                 if to.as_str() == ADA
                     && *digest == token.digest()
@@ -54,8 +58,10 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
 
 #[tokio::test]
 async fn the_link_is_made_from_the_origin_however_it_ends() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
 
+    // when: it invites from an origin ending in a slash
     wired
         .invitations
         .invite_to_instance(
@@ -66,6 +72,7 @@ async fn the_link_is_made_from_the_origin_however_it_ends() {
         .await
         .expect("an operator may invite");
 
+    // then: the link is made from the origin all the same
     assert!(
         wired.links_mailed_to(ADA).await[0]
             .starts_with("https://weaveling.example.com/invitation#"),
@@ -76,8 +83,10 @@ async fn the_link_is_made_from_the_origin_however_it_ends() {
 
 #[tokio::test]
 async fn only_an_operator_invites_or_withdraws() {
-    let wired = wiring::wired();
+    // given: someone who is no operator
+    let wired = wiring::a_workbench();
 
+    // then: their inviting is refused
     assert!(matches!(
         wired
             .invitations
@@ -85,14 +94,17 @@ async fn only_an_operator_invites_or_withdraws() {
             .await,
         Err(InvitationsError::NotAnOperator)
     ));
+    // and: nothing is mailed
     assert!(wired.sent_to(ADA).await.is_empty());
 
+    // when: an operator invites
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
         .id;
+    // then: their withdrawing is refused
     assert!(matches!(
         wired
             .invitations
@@ -100,13 +112,16 @@ async fn only_an_operator_invites_or_withdraws() {
             .await,
         Err(InvitationsError::NotAnOperator)
     ));
-    assert_eq!(told(&wired, &id).await.len(), 1);
+    // and: the invitation stays open
+    assert_eq!(events_of(&wired, &id).await.len(), 1);
 }
 
 #[tokio::test]
 async fn an_address_that_could_never_be_mailed_is_refused() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
 
+    // then: an address that could never be mailed is refused
     assert!(matches!(
         wired
             .invitations
@@ -118,7 +133,8 @@ async fn an_address_that_could_never_be_mailed_is_refused() {
 
 #[tokio::test]
 async fn an_address_invited_three_times_must_wait_before_the_fourth_while_another_need_not() {
-    let wired = wiring::wired();
+    // given: an address invited three times
+    let wired = wiring::a_workbench();
     for _ in 0..3 {
         wired
             .invitations
@@ -127,24 +143,29 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
             .expect("three invitations to one address are free");
     }
 
+    // then: a fourth time is refused for a minute
     assert!(matches!(
         wired.invitations.invite_to_instance(&wiring::an_operator(), ADA, ORIGIN).await,
         Err(InvitationsError::Throttled { wait }) if wait == Duration::minutes(1)
     ));
+    // and: nothing more is mailed
     assert_eq!(
         wired.sent_to(ADA).await.len(),
         3,
         "or an operator's account taken over could fill a stranger's inbox"
     );
+    // and: another address is still invited
     wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), "grace@example.com", ORIGIN)
         .await
         .expect("another address is counted apart");
 
+    // when: a day passes
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::days(1));
+    // then: the address is invited three times more
     for _ in 0..3 {
         wired
             .invitations
@@ -156,7 +177,8 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
 
 #[tokio::test]
 async fn an_operator_withdraws_an_invitation() {
-    let wired = wiring::wired();
+    // given: an open invitation
+    let wired = wiring::a_workbench();
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
@@ -164,22 +186,26 @@ async fn an_operator_withdraws_an_invitation() {
         .expect("an operator may invite")
         .id;
 
+    // when: an operator withdraws it
     wired
         .invitations
         .withdraw(&wiring::an_operator(), &id)
         .await
         .expect("an operator may withdraw");
 
+    // then: it is withdrawn
     assert_eq!(
-        told(&wired, &id).await.last(),
+        events_of(&wired, &id).await.last(),
         Some(&InvitationEvent::Withdrawn)
     );
 }
 
 #[tokio::test]
 async fn an_invitation_that_is_not_there_is_not_withdrawn() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
 
+    // then: withdrawing an invitation that is not there is refused as not found
     assert!(matches!(
         wired
             .invitations

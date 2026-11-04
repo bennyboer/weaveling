@@ -10,7 +10,7 @@ use time::{Duration, OffsetDateTime};
 use crate::wiring;
 use crate::wiring::Wired;
 
-fn told(routing: &str, version: u64, event: Value, at: OffsetDateTime) -> Message {
+fn a_message(routing: &str, version: u64, event: Value, at: OffsetDateTime) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key is fine"),
         json!({
@@ -23,8 +23,8 @@ fn told(routing: &str, version: u64, event: Value, at: OffsetDateTime) -> Messag
     )
 }
 
-fn started(version: u64, name: &str) -> Message {
-    told(
+fn a_start(version: u64, name: &str) -> Message {
+    a_message(
         STARTED,
         version,
         json!({ "version": 0, "name": "STARTED", "project_name": name }),
@@ -32,8 +32,8 @@ fn started(version: u64, name: &str) -> Message {
     )
 }
 
-fn renamed(version: u64, name: &str) -> Message {
-    told(
+fn a_renaming(version: u64, name: &str) -> Message {
+    a_message(
         RENAMED,
         version,
         json!({ "version": 0, "name": "RENAMED", "project_name": name }),
@@ -41,8 +41,8 @@ fn renamed(version: u64, name: &str) -> Message {
     )
 }
 
-fn deleted(version: u64, at: OffsetDateTime) -> Message {
-    told(
+fn a_deletion(version: u64, at: OffsetDateTime) -> Message {
+    a_message(
         DELETED,
         version,
         json!({ "version": 0, "name": "DELETED" }),
@@ -50,8 +50,8 @@ fn deleted(version: u64, at: OffsetDateTime) -> Message {
     )
 }
 
-fn trashed(version: u64) -> Message {
-    told(
+fn a_trashing(version: u64) -> Message {
+    a_message(
         TRASHED,
         version,
         json!({ "version": 0, "name": "TRASHED", "until": "2023-12-14T22:13:20Z" }),
@@ -59,8 +59,8 @@ fn trashed(version: u64) -> Message {
     )
 }
 
-fn restored(version: u64) -> Message {
-    told(
+fn a_restoring(version: u64) -> Message {
+    a_message(
         RESTORED,
         version,
         json!({ "version": 0, "name": "RESTORED" }),
@@ -84,7 +84,7 @@ async fn named(wired: &Wired) -> Vec<ProjectName> {
         .expect("asking should succeed")
 }
 
-async fn heard(listener: &Inboxed<RememberProjectNamesListener>, messages: &[Message]) {
+async fn hearing(listener: &Inboxed<RememberProjectNamesListener>, messages: &[Message]) {
     for message in messages {
         listener
             .handle(message)
@@ -95,17 +95,21 @@ async fn heard(listener: &Inboxed<RememberProjectNamesListener>, messages: &[Mes
 
 #[tokio::test]
 async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newest() {
-    let wired = wiring::wired();
+    // given: the listener remembering project names
+    let wired = wiring::a_workbench();
     let listener = wiring::inboxed(RememberProjectNamesListener::new(
         wired.invitations.clone(),
         wired.outbox.clone(),
         wired.clock.clone(),
     ));
+    // then: it hears a project started, renamed and deleted
     for routing in [STARTED, RENAMED, DELETED] {
         assert!(listener.hears(&RoutingKey::parse(routing).expect("a declared key")));
     }
 
-    heard(&listener, &[started(1, "The Loom")]).await;
+    // when: a project's start is heard
+    hearing(&listener, &[a_start(1, "The Loom")]).await;
+    // then: it is known by the name it started with
     assert_eq!(
         named(&wired).await,
         vec![ProjectName {
@@ -115,11 +119,16 @@ async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newe
         }]
     );
 
-    heard(
+    // when: a rename and an older one heard late are heard
+    hearing(
         &listener,
-        &[renamed(3, "The Silent Loom"), renamed(2, "The Quiet Loom")],
+        &[
+            a_renaming(3, "The Silent Loom"),
+            a_renaming(2, "The Quiet Loom"),
+        ],
     )
     .await;
+    // then: it is known by the newest
     assert_eq!(
         named(&wired).await,
         vec![ProjectName {
@@ -133,7 +142,8 @@ async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newe
 
 #[tokio::test]
 async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgotten() {
-    let wired = wiring::wired();
+    // given: the listener remembering project names
+    let wired = wiring::a_workbench();
     let listener = wiring::inboxed(RememberProjectNamesListener::new(
         wired.invitations.clone(),
         wired.outbox.clone(),
@@ -141,13 +151,20 @@ async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgott
     ));
     let gone = OffsetDateTime::UNIX_EPOCH + Duration::days(10);
 
-    heard(
+    // when: a project's start, its deletion and a rename heard late are heard
+    hearing(
         &listener,
-        &[started(1, "The Loom"), deleted(4, gone), renamed(3, "Late")],
+        &[
+            a_start(1, "The Loom"),
+            a_deletion(4, gone),
+            a_renaming(3, "Late"),
+        ],
     )
     .await;
 
+    // then: it is named no more
     assert!(named(&wired).await.is_empty());
+    // and: its tombstone is kept from its deletion until forgotten
     assert_eq!(
         wired
             .invitations
@@ -169,52 +186,61 @@ async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgott
 
 #[tokio::test]
 async fn what_tells_no_name_nor_a_deletion_is_refused() {
-    let wired = wiring::wired();
+    // given: the listener remembering project names
+    let wired = wiring::a_workbench();
     let listener = wiring::inboxed(RememberProjectNamesListener::new(
         wired.invitations.clone(),
         wired.outbox.clone(),
         wired.clock.clone(),
     ));
 
+    // when: what tells no name nor a deletion is heard
     for unreadable in [
-        told(
+        a_message(
             DETAILS_CHANGED,
             2,
             json!({ "version": 0, "name": "DETAILS_CHANGED", "description": "" }),
             OffsetDateTime::UNIX_EPOCH,
         ),
-        told(
+        a_message(
             STARTED,
             1,
             json!({ "version": 0, "name": "STARTED" }),
             OffsetDateTime::UNIX_EPOCH,
         ),
     ] {
+        // then: it is refused
         assert!(
             listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }
+    // and: nothing is named
     assert!(named(&wired).await.is_empty());
 }
 
 #[tokio::test]
 async fn a_project_in_the_trash_is_known_so_until_it_is_restored_and_keeps_its_name() {
-    let wired = wiring::wired();
+    // given: the listener remembering project names
+    let wired = wiring::a_workbench();
     let listener = wiring::inboxed(RememberProjectNamesListener::new(
         wired.invitations.clone(),
         wired.outbox.clone(),
         wired.clock.clone(),
     ));
+    // then: it hears a project trashed and restored
     assert!(listener.hears(&RoutingKey::parse(TRASHED).expect("a declared key")));
     assert!(listener.hears(&RoutingKey::parse(RESTORED).expect("a declared key")));
 
-    heard(&listener, &[started(1, "The Loom"), trashed(2)]).await;
+    // when: a project started is trashed and then restored
+    hearing(&listener, &[a_start(1, "The Loom"), a_trashing(2)]).await;
     let then = in_the_trash(&wired).await;
-    heard(&listener, &[restored(3)]).await;
+    hearing(&listener, &[a_restoring(3)]).await;
 
+    // then: it was in the trash until restored
     assert!(then);
     assert!(!in_the_trash(&wired).await);
+    // and: it keeps its name
     assert_eq!(
         named(&wired).await,
         vec![ProjectName {

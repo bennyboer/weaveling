@@ -38,11 +38,11 @@ pub struct Wired {
     handed: AtomicUsize,
 }
 
-pub fn wired() -> Wired {
-    wired_guarded_by(Arc::new(AllowingEverything))
+pub fn a_workbench() -> Wired {
+    a_workbench_guarded_by(Arc::new(AllowingEverything))
 }
 
-pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
+pub fn a_workbench_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
     let told = Arc::new(FakePublisher::default());
     let events = Arc::new(InMemoryOutbox::new(told.clone(), clock.clone()));

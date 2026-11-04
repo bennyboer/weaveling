@@ -25,7 +25,7 @@ const checkedForSpelling = (page: Page) =>
     .locator(".scene .ProseMirror, .heading")
     .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck));
 
-async function quoting(page: Page, named: string, language: string | null) {
+async function aSceneBeingWrittenIn(page: Page, named: string, language: string | null) {
   await aNewProject(page, named);
   const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await theBookIsIn(page, language);
@@ -62,14 +62,17 @@ const howTheTextSits = (page: Page, id: string) =>
 test("scenes are checked for spelling by default, headings never", async ({
   page,
 }) => {
+  // given: a book of two scenes open in the writing view
   await aBookInTheWritingView(page, "Spelling", { "Part One": 2 });
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
 
+  // then: the scenes are checked for spelling
   expect(
     await flow(page)
       .locator(".scene .ProseMirror")
       .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
   ).toEqual([true, true]);
+  // and: the heading is not
   expect(
     await flow(page)
       .locator(".heading")
@@ -80,21 +83,26 @@ test("scenes are checked for spelling by default, headings never", async ({
 test("spelling switched off in the writing settings stays off for every scene, across a reload", async ({
   page,
 }) => {
+  // given: a book of two scenes open in the writing view
   await aBookInTheWritingView(page, "SpellingOff", { "Part One": 2 });
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
 
+  // when: spelling is switched off in the writing settings
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
   await writingSettings(page).getByLabel("Check spelling").uncheck();
   await writingSettings(page).getByRole("button", { name: "Close" }).click();
 
+  // then: no scene is checked for spelling
   await expect(writingSettings(page)).toBeHidden();
   expect(await checkedForSpelling(page)).toEqual([false, false, false]);
+  // and: none is after a reload
   await page.reload();
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
   expect(await checkedForSpelling(page)).toEqual([false, false, false]);
 
+  // when: spelling is switched on again
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
@@ -104,12 +112,14 @@ test("spelling switched off in the writing settings stays off for every scene, a
   await writingSettings(page).getByLabel("Check spelling").check();
   await page.keyboard.press("Escape");
 
+  // then: every scene is checked for spelling
   await expect(writingSettings(page)).toBeHidden();
   expect(
     await flow(page)
       .locator(".scene .ProseMirror")
       .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
   ).toEqual([true, true]);
+  // and: is after a reload
   await page.reload();
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
   expect(
@@ -121,29 +131,36 @@ test("spelling switched off in the writing settings stays off for every scene, a
 test("the book is marked with its language, so the browser checks it in that language", async ({
   page,
 }) => {
+  // given: a book in german
   await aNewProject(page, "Sprache");
   await aBookWithScenes(page, { "Part One": 1 });
   await theBookIsIn(page, "de");
 
+  // when: the writing view is opened
   await openTheWritingView(page);
 
+  // then: the book is marked as german
   await expect(flow(page)).toHaveAttribute("lang", "de");
 });
 
 test("a book without a language leaves the page's own", async ({ page }) => {
+  // given: a book without a language
   await aNewProject(page, "NoLanguage");
   await aBookWithScenes(page, { "Part One": 1 });
   await theBookIsIn(page, null);
 
+  // when: the writing view is opened
   await openTheWritingView(page);
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(1);
 
+  // then: the book is marked with no language of its own
   await expect(flow(page)).not.toHaveAttribute("lang", /.+/);
 });
 
 test("Ctrl+I and Ctrl+B set a word in italics and in bold, and take it off again", async ({
   page,
 }) => {
+  // given: the first word of a scene's text selected
   await aNewProject(page, "Emphasis");
   const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await openTheWritingView(page);
@@ -154,9 +171,13 @@ test("Ctrl+I and Ctrl+B set a word in italics and in bold, and take it off again
     await page.keyboard.press("Shift+ArrowRight");
   }
 
+  // when: Ctrl+I is pressed
   await page.keyboard.press("ControlOrMeta+I");
+  // then: the word is in italics
   await expect(scene(page, only).locator("em")).toHaveText("She");
+  // when: Ctrl+B is pressed
   await page.keyboard.press("ControlOrMeta+B");
+  // then: it is in bold too, standing out from the prose around it
   await expect(scene(page, only).locator("strong")).toHaveText("She");
   const weights = await scene(page, only).evaluate((prose) => [
     Number(getComputedStyle(prose).fontWeight),
@@ -167,7 +188,9 @@ test("Ctrl+I and Ctrl+B set a word in italics and in bold, and take it off again
     "bold stands out from the light prose around it, in every browser",
   ).toBeGreaterThanOrEqual(200);
 
+  // when: Ctrl+I is pressed again
   await page.keyboard.press("ControlOrMeta+I");
+  // then: the italics are off again
   await expect(scene(page, only).locator("em")).toHaveCount(0);
   await expect(scene(page, only)).toHaveText("She never returned.");
 });
@@ -175,6 +198,7 @@ test("Ctrl+I and Ctrl+B set a word in italics and in bold, and take it off again
 test("italics begun by Ctrl+I go on as typed, and are kept", async ({
   page,
 }) => {
+  // given: a scene with a word typed in italics begun and ended by Ctrl+I, saved
   await aNewProject(page, "EmphasisKept");
   const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await openTheWritingView(page);
@@ -187,8 +211,10 @@ test("italics begun by Ctrl+I go on as typed, and are kept", async ({
   await expect(scene(page, only).locator("em")).toHaveText("Endurance");
   await expect(saveState(page)).toHaveText("All saved");
 
+  // when: the page is reloaded
   await page.reload();
 
+  // then: the word is still in italics, and only that word
   await expect(scene(page, only).locator("em")).toHaveText("Endurance");
   await expect(scene(page, only)).toHaveText("A ship called Endurance sailed.");
 });
@@ -196,61 +222,83 @@ test("italics begun by Ctrl+I go on as typed, and are kept", async ({
 test("a typed \" begins what is said and another ends it, drawn in the book's marks", async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingDe", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "QuotingDe", "de");
 
+  // when: something said is typed between plain quotation marks
   await page.keyboard.type('"Komm her," sagte sie. ("Bitte.")');
 
+  // then: it is drawn in the book's marks
   await expect
     .poll(() => shown(page, only))
     .toBe("»Komm her,« sagte sie. (»Bitte.«)");
+  // and: they are quotation marks
   await expect(quotationMarks(page, only)).toHaveText(["»", "«", "»", "«"]);
 });
 
 test('the opening mark is there as soon as " is typed, the closing one once it is typed again', async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingBegun", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "QuotingBegun", "de");
 
+  // when: a quotation mark is typed
   await page.keyboard.type('Sie sagte: "');
 
+  // then: the opening mark is there at once
   await expect(scene(page, only)).toHaveText("Sie sagte: »");
+  // when: what is said is typed
   await page.keyboard.type("Ja.");
+  // then: the opening mark stays
   await expect(scene(page, only)).toHaveText("Sie sagte: »Ja.");
+  // when: a quotation mark is typed again
   await page.keyboard.type('"');
+  // then: the closing mark is there
   await expect.poll(() => shown(page, only)).toBe("Sie sagte: »Ja.«");
 });
 
 test("a book with no language quotes as English does", async ({ page }) => {
-  const only = await quoting(page, "QuotingNone", null);
+  // given: a scene of a book without a language being written in
+  const only = await aSceneBeingWrittenIn(page, "QuotingNone", null);
 
+  // when: something said is typed between plain quotation marks
   await page.keyboard.type('"Come here," she said.');
 
+  // then: it is drawn in english marks
   await expect.poll(() => shown(page, only)).toBe("“Come here,” she said.");
 });
 
 test("French marks are set with narrow spaces inside", async ({ page }) => {
-  const only = await quoting(page, "QuotingFr", "fr");
+  // given: a scene of a book in french being written in
+  const only = await aSceneBeingWrittenIn(page, "QuotingFr", "fr");
 
+  // when: something said is typed between plain quotation marks
   await page.keyboard.type('"Viens"');
 
+  // then: it is drawn in french marks with narrow spaces inside
   await expect.poll(() => shown(page, only)).toBe("« Viens »");
 });
 
 test("a typed ' becomes an apostrophe", async ({ page }) => {
-  const only = await quoting(page, "Apostrophe", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "Apostrophe", "de");
 
+  // when: plain apostrophes are typed
   await page.keyboard.type("Wie geht's? Don't.");
 
+  // then: they are drawn as apostrophes
   await expect(scene(page, only)).toHaveText("Wie geht’s? Don’t.");
 });
 
 test("a quotation style chosen while writing redraws what is already said", async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingChanged", "de");
+  // given: something said in a scene of a book in german
+  const only = await aSceneBeingWrittenIn(page, "QuotingChanged", "de");
   await page.keyboard.type('"Eins" ');
   await expect.poll(() => shown(page, only)).toBe("»Eins« ");
 
+  // when: another quotation style is chosen for the project
   await page.getByRole("button", { name: "Project details" }).click();
   const projectDetails = page.getByRole("dialog", { name: "Project details" });
   await projectDetails
@@ -263,36 +311,44 @@ test("a quotation style chosen while writing redraws what is already said", asyn
   await expect(projectDetails).toContainText("Every scene now quotes „…“.");
   await projectDetails.getByRole("button", { name: "Close" }).click();
   await expect(projectDetails).toBeHidden();
+  // and: more is said in the scene
   await scene(page, only).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type('"Zwei"');
 
+  // then: everything said is drawn in the new style
   await expect.poll(() => shown(page, only)).toBe("„Eins“ „Zwei“");
 });
 
 test("a mark is a letter the cursor steps over like any other", async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingStepped", "de");
+  // given: something said in a scene of a book in german
+  const only = await aSceneBeingWrittenIn(page, "QuotingStepped", "de");
   await page.keyboard.type('"Komm her"');
 
+  // when: the cursor steps left over the closing mark and something is typed
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.type(",");
+  // and: it steps right over the opening mark and something is typed
   await page.keyboard.press("Home");
   await page.keyboard.press("ArrowRight");
   await page.keyboard.type("K");
 
+  // then: each lands beyond the mark
   await expect.poll(() => shown(page, only)).toBe("»KKomm her,«");
 });
 
 test("a style chosen while writing is not taken back by undoing what was typed", async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingUndone", "de");
+  // given: something said in a scene of a book in german, and more typed after a pause
+  const only = await aSceneBeingWrittenIn(page, "QuotingUndone", "de");
   await page.keyboard.type('"Eins" ');
   await page.waitForTimeout(700);
   await page.keyboard.type("zwei");
   await expect.poll(() => shown(page, only)).toBe("»Eins« zwei");
+  // and: another quotation style chosen for the project
   await page.getByRole("button", { name: "Project details" }).click();
   const projectDetails = page.getByRole("dialog", { name: "Project details" });
   await projectDetails
@@ -307,38 +363,47 @@ test("a style chosen while writing is not taken back by undoing what was typed",
   await expect.poll(() => shown(page, only)).toBe("„Eins“ zwei");
   await scene(page, only).click();
 
+  // when: the typing is undone
   await page.keyboard.press("ControlOrMeta+Z");
 
+  // then: the new style stays
   await expect.poll(() => shown(page, only)).toBe("„Eins“ ");
 });
 
 test("what is said stays one pair of marks with emphasis inside it", async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingEmphasis", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "QuotingEmphasis", "de");
 
+  // when: something said is typed with a word in italics inside it
   await page.keyboard.type('"Das ist ');
   await page.keyboard.press("ControlOrMeta+I");
   await page.keyboard.type("meine");
   await page.keyboard.press("ControlOrMeta+I");
   await page.keyboard.type(' Sache."');
 
+  // then: it keeps one pair of marks
   await expect(quotationMarks(page, only)).toHaveText(["»", "«"]);
+  // and: its text is whole
   await expect.poll(() => shown(page, only)).toBe("»Das ist meine Sache.«");
 });
 
 test('selected text becomes what is said when " is typed over it', async ({
   page,
 }) => {
-  const only = await quoting(page, "QuotingSelected", "de");
+  // given: some text selected in a scene of a book in german
+  const only = await aSceneBeingWrittenIn(page, "QuotingSelected", "de");
   await page.keyboard.type("Sie sagte Ja.");
   await page.keyboard.press("End");
   for (let step = 0; step < "Ja.".length; step++) {
     await page.keyboard.press("Shift+ArrowLeft");
   }
 
+  // when: a quotation mark is typed over it
   await page.keyboard.type('"');
 
+  // then: the text becomes what is said
   await expect.poll(() => shown(page, only)).toBe("Sie sagte »Ja.«");
 });
 
@@ -346,15 +411,19 @@ test("copied, what is said comes with the book's marks", async ({
   page,
   context,
 }) => {
+  // given: something said in a scene of a book in german
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const only = await quoting(page, "QuotingCopied", "de");
+  const only = await aSceneBeingWrittenIn(page, "QuotingCopied", "de");
   await page.keyboard.type('"Komm her," sagte sie.');
+  // and: the whole book chosen
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.press("ControlOrMeta+A");
   await expect(flow(page).locator(".scene-slot.chosen")).toHaveCount(1);
 
+  // when: it is copied
   await page.keyboard.press("ControlOrMeta+C");
 
+  // then: what is said comes with the book's marks
   await expect
     .poll(async () =>
       (await page.evaluate(() => navigator.clipboard.readText())).replace(
@@ -369,16 +438,20 @@ test("copied from within a scene, what is said comes with the book's marks", asy
   page,
   context,
 }) => {
+  // given: something said in a scene of a book in german, selected
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await quoting(page, "QuotingCopiedWithin", "de");
+  await aSceneBeingWrittenIn(page, "QuotingCopiedWithin", "de");
   await page.keyboard.type('"Komm her," sagte sie.');
   await page.keyboard.press("Shift+Home");
 
+  // when: it is copied
   await page.keyboard.press("ControlOrMeta+C");
 
+  // then: it comes with the book's marks as plain text
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("»Komm her,« sagte sie.");
+  // and: as rich text
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -396,20 +469,25 @@ test("what is said, pasted back in, stays what is said with one pair of marks", 
   page,
   context,
 }) => {
+  // given: something said in a scene of a book in german, copied
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  const only = await quoting(page, "QuotingPastedBack", "de");
+  const only = await aSceneBeingWrittenIn(page, "QuotingPastedBack", "de");
   await page.keyboard.type('"Komm her," sagte sie.');
   await page.keyboard.press("Shift+Home");
   await page.keyboard.press("ControlOrMeta+C");
+  // and: the cursor on a new line
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
 
+  // when: it is pasted back in
   await page.keyboard.press("ControlOrMeta+V");
 
+  // then: it stays one pair of quotation marks
   await expect(
     quotationMarks(page, only),
     "pasted, the marks stay quotation marks a later style can change",
   ).toHaveCount(4);
+  // and: the text is whole
   expect(await shown(page, only)).toBe(
     "»Komm her,« sagte sie.\n»Komm her,« sagte sie.",
   );
@@ -418,33 +496,42 @@ test("what is said, pasted back in, stays what is said with one pair of marks", 
 test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({
   page,
 }) => {
-  const only = await quoting(page, "DialogueKey", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "DialogueKey", "de");
 
+  // when: Ctrl+Shift+2 begins and ends a line of dialogue
   await page.keyboard.press("ControlOrMeta+Shift+2");
   await page.keyboard.type("Komm her,");
   await page.keyboard.press("ControlOrMeta+Shift+2");
   await page.keyboard.type(" sagte sie.");
 
+  // then: it is drawn in the book's marks
   await expect.poll(() => shown(page, only)).toBe("»Komm her,« sagte sie.");
+  // and: they are quotation marks
   await expect(quotationMarks(page, only)).toHaveText(["»", "«"]);
 });
 
 test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({
   page,
 }) => {
-  const only = await quoting(page, "DialogueKeySelected", "de");
+  // given: some text selected in a scene of a book in german
+  const only = await aSceneBeingWrittenIn(page, "DialogueKeySelected", "de");
   await page.keyboard.type("Sie sagte Ja.");
   await page.keyboard.press("End");
   for (let step = 0; step < "Ja.".length; step++) {
     await page.keyboard.press("Shift+ArrowLeft");
   }
 
+  // when: Ctrl+Shift+2 is pressed
   await page.keyboard.press("ControlOrMeta+Shift+2");
 
+  // then: the text is dialogue
   await expect.poll(() => shown(page, only)).toBe("Sie sagte »Ja.«");
 
+  // when: Ctrl+Shift+2 is pressed again
   await page.keyboard.press("ControlOrMeta+Shift+2");
 
+  // then: it is plain again
   await expect.poll(() => shown(page, only)).toBe("Sie sagte Ja.");
   await expect(quotationMarks(page, only)).toHaveCount(0);
 });
@@ -452,10 +539,13 @@ test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({
 test("the text sits ragged right by default, its paragraphs ending without a lone word", async ({
   page,
 }) => {
-  const only = await quoting(page, "RaggedRight", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "RaggedRight", "de");
 
+  // when: a long paragraph is written
   await page.keyboard.insertText(LONG_PARAGRAPH);
 
+  // then: it sits ragged right, its last line not a lone word
   await expect
     .poll(() => howTheTextSits(page, only))
     .toEqual({
@@ -469,15 +559,18 @@ test("the text sits ragged right by default, its paragraphs ending without a lon
 test("justified text in the writing settings sets lines flush and hyphenated, across a reload", async ({
   page,
 }) => {
-  const only = await quoting(page, "Justified", "de");
+  // given: a long paragraph in a scene of a book in german
+  const only = await aSceneBeingWrittenIn(page, "Justified", "de");
   await page.keyboard.insertText(LONG_PARAGRAPH);
 
+  // when: justified text is switched on in the writing settings
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
   await writingSettings(page).getByLabel("Justified text").check();
   await page.keyboard.press("Escape");
 
+  // then: the lines are flush and hyphenated
   const justified = {
     align: "justify",
     hyphens: "auto",
@@ -485,10 +578,12 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
     flush: true,
   };
   await expect.poll(() => howTheTextSits(page, only)).toEqual(justified);
+  // and: are after a reload
   await page.reload();
   await expect(scene(page, only)).toContainText("Am Morgen");
   await expect.poll(() => howTheTextSits(page, only)).toEqual(justified);
 
+  // when: justified text is switched off again
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
@@ -498,9 +593,11 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
   await writingSettings(page).getByLabel("Justified text").uncheck();
   await page.keyboard.press("Escape");
 
+  // then: the text is ragged again
   await expect
     .poll(() => howTheTextSits(page, only))
     .toMatchObject({ align: "start", flush: false });
+  // and: is after a reload
   await page.reload();
   await expect(scene(page, only)).toContainText("Am Morgen");
   await expect
@@ -514,12 +611,15 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
 test("what is said and set in italics opens a scene's catalogued name with its marks and without tags", async ({
   page,
 }) => {
-  const only = await quoting(page, "PlainOpening", "de");
+  // given: a scene of a book in german being written in
+  const only = await aSceneBeingWrittenIn(page, "PlainOpening", "de");
 
+  // when: it begins with something said and a word in italics
   await page.keyboard.type('"Was soll ich tun?" fragte sie ');
   await page.keyboard.press("ControlOrMeta+I");
   await page.keyboard.type("leise");
 
+  // then: its catalogued opening carries the marks and no tags
   await expect
     .poll(() => cataloguedOpening(page, only))
     .toBe("»Was soll ich tun?« fragte sie leise");

@@ -36,7 +36,7 @@ struct Wired {
     catalogue: Inboxed<CatalogueScenesListener>,
 }
 
-fn catalogued_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<CatalogueScenesListener> {
+fn a_listener_cataloguing_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<CatalogueScenesListener> {
     let transactions = Arc::new(InMemoryTransactions::new());
     let clock = Arc::new(FixedClock::new(at(1_000)));
 
@@ -58,7 +58,7 @@ fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemorySceneCatalog::new());
 
     Wired {
-        catalogue: catalogued_in(catalog.clone()),
+        catalogue: a_listener_cataloguing_in(catalog.clone()),
         catalog,
     }
 }
@@ -210,6 +210,7 @@ fn a_scene() -> SceneId {
 
 #[test]
 fn it_listens_for_what_names_a_scene_and_for_deletions() {
+    // when: what it listens to is asked
     let keys: Vec<String> = a_workbench()
         .catalogue
         .listens_to()
@@ -217,21 +218,26 @@ fn it_listens_for_what_names_a_scene_and_for_deletions() {
         .map(ToString::to_string)
         .collect();
 
+    // then: it is creations, retitlings, openings and deletions
     assert_eq!(keys, vec![CREATED, RETITLED, OPENING_CHANGED, DELETED]);
 }
 
 #[tokio::test]
 async fn a_created_scene_is_catalogued_under_its_project() {
+    // given: an empty catalog
     let bench = a_workbench();
     let scene = a_scene();
 
+    // when: a scene's creation is heard
     bench.hears(created(scene), 1_000).await;
 
+    // then: it is listed under its project
     assert_eq!(bench.listed().await, vec![summary(scene, "", "")]);
 }
 
 #[tokio::test]
 async fn a_title_heard_again_at_the_version_the_catalog_holds_changes_nothing() {
+    // given: a catalogued scene titled at some version
     let bench = a_workbench();
     let scene = a_scene();
     bench.hears(created(scene), 1_000).await;
@@ -241,8 +247,10 @@ async fn a_title_heard_again_at_the_version_the_catalog_holds_changes_nothing() 
         .await
         .expect("retitling should succeed");
 
+    // when: another title at that version is heard
     bench.hears(retitled(scene, "Not the loom", 2), 2_000).await;
 
+    // then: the title stays
     assert_eq!(
         bench.listed().await,
         vec![summary(scene, "The loom", "")],
@@ -252,9 +260,11 @@ async fn a_title_heard_again_at_the_version_the_catalog_holds_changes_nothing() 
 
 #[tokio::test]
 async fn a_catalog_out_of_reach_fails_the_listener_so_the_message_is_tried_again() {
-    let catalogue = catalogued_in(Arc::new(OutOfReach));
+    // given: a catalog out of reach
+    let catalogue = a_listener_cataloguing_in(Arc::new(OutOfReach));
     let scene = a_scene();
 
+    // then: hearing any change of a scene fails
     for change in [
         created(scene),
         retitled(scene, "The loom", 2),
@@ -276,19 +286,23 @@ async fn a_catalog_out_of_reach_fails_the_listener_so_the_message_is_tried_again
 
 #[tokio::test]
 async fn a_scene_is_listed_with_its_newest_title_and_opening() {
+    // given: a catalogued scene
     let bench = a_workbench();
     let scene = a_scene();
     bench.hears(created(scene), 1_000).await;
 
+    // when: a newer title is heard before an older one
     bench
         .hears(retitled(scene, "The loom, again", 3), 3_000)
         .await;
     bench.hears(retitled(scene, "The loom", 2), 4_000).await;
+    // and: a newer opening before an older one
     bench.hears(opened(scene, "Then it spoke."), 3_000).await;
     bench
         .hears(opened(scene, "The loom stood silent."), 2_000)
         .await;
 
+    // then: it is listed with the newer of each
     assert_eq!(
         bench.listed().await,
         vec![summary(scene, "The loom, again", "Then it spoke.")],
@@ -298,10 +312,12 @@ async fn a_scene_is_listed_with_its_newest_title_and_opening() {
 
 #[tokio::test]
 async fn a_deleted_scene_stays_out_of_the_catalog() {
+    // given: a catalogued scene
     let bench = a_workbench();
     let scene = a_scene();
     bench.hears(created(scene), 1_000).await;
 
+    // when: its deletion is heard
     bench
         .hears(
             SceneChange::Deleted {
@@ -311,15 +327,19 @@ async fn a_deleted_scene_stays_out_of_the_catalog() {
             2_000,
         )
         .await;
+    // and: a later title of it
     bench.hears(retitled(scene, "The loom", 9), 3_000).await;
 
+    // then: it is not listed
     assert!(bench.listed().await.is_empty());
 }
 
 #[tokio::test]
 async fn a_message_naming_no_scene_is_refused() {
+    // given: an empty catalog
     let bench = a_workbench();
 
+    // when: a message naming no scene is heard
     let refused = bench
         .catalogue
         .handle(&Message::opening(
@@ -329,15 +349,18 @@ async fn a_message_naming_no_scene_is_refused() {
         ))
         .await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a listener that shrugs off a broken message hides it, so it is kept for a look instead"
     );
+    // and: nothing is listed
     assert!(bench.listed().await.is_empty());
 }
 
 #[tokio::test]
 async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
+    // given: a scene's deletion heard
     let bench = a_workbench();
     let scene = a_scene();
     bench
@@ -349,7 +372,6 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
             5_000,
         )
         .await;
-
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
         Arc::new(InMemoryTransactions::new()),
@@ -358,6 +380,8 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_000))),
     );
+
+    // then: its tombstone was laid at the deletion and is forgotten once
     for (before, forgotten) in [(at(5_000), 0), (at(5_001), 1), (at(5_001), 0)] {
         assert_eq!(
             scenes

@@ -172,7 +172,7 @@ async fn memberships(
         .expect("listing memberships should succeed")
 }
 
-fn person(account: AccountId, name: &str, email: &str) -> Person {
+fn a_person(account: AccountId, name: &str, email: &str) -> Person {
     Person {
         account,
         name: name.to_owned(),
@@ -200,22 +200,31 @@ async fn people(
 pub async fn an_empty_catalog_knows_nobody_in_any_project(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // expect: nobody has a role
     assert_eq!(role(catalog, "project_1", &ada()).await, None);
+    // and: nobody is in any project
     assert!(memberships(catalog, &ada()).await.is_empty());
+    // and: nobody is known
     assert!(people(catalog, &[ada()]).await.is_empty());
 }
 
 pub async fn the_people_asked_for_are_told_by_account_and_no_others(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
-    known(catalog, &person(hedy(), "Hedy Lamarr", "hedy@example.com")).await;
+    // given: three people known
     known(
         catalog,
-        &person(grace(), "Grace Hopper", "grace@example.com"),
+        &a_person(hedy(), "Hedy Lamarr", "hedy@example.com"),
     )
     .await;
-    known(catalog, &person(ada(), "Ada Lovelace", "ada@example.com")).await;
+    known(
+        catalog,
+        &a_person(grace(), "Grace Hopper", "grace@example.com"),
+    )
+    .await;
+    known(catalog, &a_person(ada(), "Ada Lovelace", "ada@example.com")).await;
 
+    // expect: asking for two of them and someone unknown tells the two, by account
     assert_eq!(
         people(
             catalog,
@@ -223,33 +232,38 @@ pub async fn the_people_asked_for_are_told_by_account_and_no_others(
         )
         .await,
         vec![
-            person(ada(), "Ada Lovelace", "ada@example.com"),
-            person(grace(), "Grace Hopper", "grace@example.com"),
+            a_person(ada(), "Ada Lovelace", "ada@example.com"),
+            a_person(grace(), "Grace Hopper", "grace@example.com"),
         ]
     );
+    // and: asking for nobody tells nobody
     assert!(people(catalog, &[]).await.is_empty());
 }
 
 pub async fn a_person_told_again_is_known_as_last_told(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
-    known(catalog, &person(ada(), "Ada", "ada@example.com")).await;
+    // given: a person known
+    known(catalog, &a_person(ada(), "Ada", "ada@example.com")).await;
 
+    // when: they are told again with another name and email
     known(
         catalog,
-        &person(ada(), "Ada Lovelace", "lovelace@example.com"),
+        &a_person(ada(), "Ada Lovelace", "lovelace@example.com"),
     )
     .await;
 
+    // then: they are known as last told
     assert_eq!(
         people(catalog, &[ada()]).await,
-        vec![person(ada(), "Ada Lovelace", "lovelace@example.com")]
+        vec![a_person(ada(), "Ada Lovelace", "lovelace@example.com")]
     );
 }
 
 pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: the members of two projects remembered
     remembered(
         catalog,
         &members_of(
@@ -265,11 +279,13 @@ pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
     )
     .await;
 
+    // expect: each member has their role in their project
     assert_eq!(role(catalog, "project_1", &ada()).await, Some(Role::Owner));
     assert_eq!(
         role(catalog, "project_1", &grace()).await,
         Some(Role::Reader)
     );
+    // and: none elsewhere
     assert_eq!(role(catalog, "project_1", &hedy()).await, None);
     assert_eq!(role(catalog, "project_2", &ada()).await, None);
     assert_eq!(role(catalog, "project_3", &ada()).await, None);
@@ -278,6 +294,7 @@ pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
 pub async fn an_account_s_memberships_are_every_project_it_is_in_by_project(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: the members of three projects remembered, an account in two of them
     remembered(
         catalog,
         &members_of("project_b", 1, &[(ada(), Role::Owner)]),
@@ -298,6 +315,7 @@ pub async fn an_account_s_memberships_are_every_project_it_is_in_by_project(
     )
     .await;
 
+    // expect: its memberships are those two, by project
     assert_eq!(
         memberships(catalog, &ada()).await,
         vec![
@@ -316,6 +334,7 @@ pub async fn an_account_s_memberships_are_every_project_it_is_in_by_project(
 pub async fn newer_members_replace_the_older_whoever_is_gone_with_them(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: a project's members remembered
     remembered(
         catalog,
         &members_of(
@@ -326,6 +345,7 @@ pub async fn newer_members_replace_the_older_whoever_is_gone_with_them(
     )
     .await;
 
+    // when: newer members of it are remembered
     remembered(
         catalog,
         &members_of(
@@ -336,15 +356,19 @@ pub async fn newer_members_replace_the_older_whoever_is_gone_with_them(
     )
     .await;
 
+    // then: whoever stayed has their new role
     assert_eq!(role(catalog, "project_1", &ada()).await, Some(Role::Reader));
+    // and: whoever is gone has none and is in no project
     assert_eq!(role(catalog, "project_1", &grace()).await, None);
     assert!(memberships(catalog, &grace()).await.is_empty());
+    // and: whoever came has theirs
     assert_eq!(role(catalog, "project_1", &hedy()).await, Some(Role::Owner));
 }
 
 pub async fn older_members_arriving_late_change_nothing(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: a project's members remembered
     remembered(
         catalog,
         &members_of(
@@ -355,6 +379,7 @@ pub async fn older_members_arriving_late_change_nothing(
     )
     .await;
 
+    // when: other members of an older or the same version are remembered
     for late in [2, 4] {
         remembered(
             catalog,
@@ -367,6 +392,7 @@ pub async fn older_members_arriving_late_change_nothing(
         .await;
     }
 
+    // then: the members remembered first stand
     assert_eq!(
         role(catalog, "project_1", &grace()).await,
         Some(Role::Author)
@@ -377,11 +403,13 @@ pub async fn older_members_arriving_late_change_nothing(
 pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: a project's members remembered
     let kept = members_of("project_1", 1, &[(ada(), Role::Owner)]);
     catalog
         .remember(&kept)
         .await
         .expect("remembering should succeed");
+    // and: newer members and a person remembered in a transaction
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
@@ -407,8 +435,10 @@ pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: the newer member has no role
     assert_eq!(
         catalog
             .role_of(&a_project("project_1"), &grace())
@@ -416,6 +446,7 @@ pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
             .expect("asking should succeed"),
         None
     );
+    // and: the person is not known
     assert!(
         catalog
             .people(&[hedy()])
@@ -435,23 +466,29 @@ async fn in_the_trash(catalog: &impl MembershipCatalog, project: &str) -> bool {
 pub async fn a_project_is_in_the_trash_once_told_so_and_out_once_told_restored(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // expect: a project nothing was told of is not in the trash
     assert!(
         !in_the_trash(catalog.uncommitted(), "project_1").await,
         "nothing told, nothing trashed"
     );
 
+    // when: it is told trashed
     catalog
         .remember_trash("project_1", 5, true)
         .await
         .expect("remembering should succeed");
     let trashed = in_the_trash(catalog.uncommitted(), "project_1").await;
+    // and: then told restored
     catalog
         .remember_trash("project_1", 6, false)
         .await
         .expect("remembering should succeed");
 
+    // then: it was in the trash in between
     assert!(trashed);
+    // and: it is out of it now
     assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
+    // and: no other project is in it
     assert!(
         !in_the_trash(catalog.uncommitted(), "project_2").await,
         "each project for itself"
@@ -461,16 +498,19 @@ pub async fn a_project_is_in_the_trash_once_told_so_and_out_once_told_restored(
 pub async fn an_older_trashing_heard_after_a_newer_restoring_changes_nothing(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: a project told restored
     catalog
         .remember_trash("project_1", 6, false)
         .await
         .expect("remembering should succeed");
 
+    // when: an older trashing of it is told
     catalog
         .remember_trash("project_1", 5, true)
         .await
         .expect("remembering should succeed");
 
+    // then: it is not in the trash
     assert!(
         !in_the_trash(catalog.uncommitted(), "project_1").await,
         "a restore heard before the trashing it undoes must not leave the project trashed"
@@ -480,6 +520,7 @@ pub async fn an_older_trashing_heard_after_a_newer_restoring_changes_nothing(
 pub async fn a_trashing_in_a_dropped_transaction_was_never_heard(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: a project told trashed in a transaction
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
@@ -492,14 +533,17 @@ pub async fn a_trashing_in_a_dropped_transaction_was_never_heard(
         .await
         .expect("remembering should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: it is not in the trash
     assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
 }
 
 pub async fn a_deleted_project_s_trash_is_forgotten_whole(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
+    // given: two projects told trashed
     catalog
         .remember_trash("project_1", 5, true)
         .await
@@ -509,20 +553,26 @@ pub async fn a_deleted_project_s_trash_is_forgotten_whole(
         .await
         .expect("remembering should succeed");
 
+    // when: the trash of one is forgotten
     catalog
         .forget_trash("project_1")
         .await
         .expect("forgetting should succeed");
 
+    // then: it is not in the trash
     assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
+    // and: the other still is
     assert!(
         in_the_trash(catalog.uncommitted(), "project_2").await,
         "each project for itself"
     );
+
+    // when: the forgotten one is told trashed at its first version
     catalog
         .remember_trash("project_1", 1, true)
         .await
         .expect("remembering should succeed");
+    // then: it is in the trash
     assert!(
         in_the_trash(catalog.uncommitted(), "project_1").await,
         "nothing of it is left, not even the version it reached"

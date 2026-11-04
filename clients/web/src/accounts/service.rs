@@ -278,6 +278,7 @@ mod tests {
 
     #[test]
     fn an_invitation_is_accepted_or_declined_at_its_own_address() {
+        // expect: each answer goes to the invitation's address under its own name
         assert_eq!(
             answered_at("invitation_1", Answer::Accept),
             "/api/accounts/current/invitations/invitation_1/accept"

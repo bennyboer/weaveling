@@ -48,6 +48,7 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn an_enqueued_delivery_wakes_whoever_is_waiting_for_one() {
+    // given: someone waiting for deliveries on sqlite
     let bench = OnSqlite::setup().await;
     let mut notifications = bench
         .store()
@@ -55,6 +56,7 @@ async fn an_enqueued_delivery_wakes_whoever_is_waiting_for_one() {
         .await
         .expect("asking for notifications is not a failure");
 
+    // when: a delivery is enqueued
     bench
         .store()
         .enqueue(
@@ -63,6 +65,7 @@ async fn an_enqueued_delivery_wakes_whoever_is_waiting_for_one() {
         )
         .await
         .expect("enqueuing should succeed");
+    // then: they are woken
     let woken = tokio::time::timeout(Duration::from_secs(1), notifications.wait()).await;
 
     assert!(
@@ -75,6 +78,7 @@ async fn an_enqueued_delivery_wakes_whoever_is_waiting_for_one() {
 
 #[tokio::test]
 async fn giving_up_moves_a_delivery_rather_than_copying_it() {
+    // given: a claimed delivery on sqlite
     let bench = OnSqlite::setup().await;
     bench
         .store()
@@ -90,12 +94,14 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
         .await
         .expect("claiming should succeed");
 
+    // when: it is given up on
     bench
         .store()
         .give_up(&claimed[0], "it refused five times", suite::at(1_001))
         .await
         .expect("giving up should succeed");
 
+    // then: nothing waits
     assert_eq!(
         bench
             .store()
@@ -104,6 +110,7 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
             .expect("counting should succeed"),
         0
     );
+    // and: there is one dead letter
     assert_eq!(
         bench
             .store()
@@ -120,8 +127,10 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
 
 #[tokio::test]
 async fn the_schema_keeps_its_own_ledger_and_the_index_claiming_relies_on() {
+    // given: deliveries laid down on sqlite
     let bench = OnSqlite::setup().await;
 
+    // when: the tables and indexes of its file are listed
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     )
@@ -135,6 +144,7 @@ async fn the_schema_keeps_its_own_ledger_and_the_index_claiming_relies_on() {
     .await
     .expect("reading the catalog should succeed");
 
+    // then: they are its own ledger and the index claiming relies on
     assert_eq!(
         tables,
         vec!["_sqlx_migrations_deliveries", "dead_letters", "deliveries"]

@@ -219,16 +219,20 @@ mod tests {
 
     #[test]
     fn a_fixture_schema_says_when_it_was_made_and_who_owns_it() {
+        // given: a fixture schema
         let named = a_schema(1_000, "outline");
 
+        // then: its name begins with when it was made and ends with its owner
         assert!(named.starts_with("fixture_1000_"));
         assert!(named.ends_with("_outline"));
     }
 
     #[test]
     fn two_features_of_one_fixture_never_share_a_schema() {
+        // given: one fixture
         let stem = stem(at(1_000));
 
+        // then: two features' schemas in it are named apart
         assert_ne!(
             format!("{stem}_{}", sanitized("outline")),
             format!("{stem}_{}", sanitized("ideas"))
@@ -237,11 +241,13 @@ mod tests {
 
     #[test]
     fn two_fixtures_made_together_are_still_distinct() {
+        // expect: two fixtures made at one moment are named apart
         assert_ne!(stem(at(1_000)), stem(at(1_000)));
     }
 
     #[test]
     fn a_feature_name_cannot_carry_anything_but_letters_into_a_statement() {
+        // expect: a feature name keeps only its letters, in lower case
         assert_eq!(
             sanitized(r#"outline"; drop table events; --"#),
             "outlinedroptableevents"
@@ -251,6 +257,7 @@ mod tests {
 
     #[test]
     fn a_schema_from_an_hour_ago_was_is_stale() {
+        // expect: a schema or a bare stem past the stale age is stale
         assert!(is_stale(
             &a_schema(1_000, "outline"),
             at(1_000 + STALE_AFTER + 1)
@@ -260,6 +267,7 @@ mod tests {
 
     #[test]
     fn a_schema_from_a_moment_ago_is_someone_elses_test() {
+        // expect: a schema no older than the stale age is not stale
         assert!(!is_stale(
             &a_schema(1_000, "outline"),
             at(1_000 + STALE_AFTER)
@@ -268,6 +276,7 @@ mod tests {
 
     #[test]
     fn a_schema_that_is_not_ours_is_left_alone() {
+        // expect: no schema not named as a fixture's is stale
         assert!(!is_stale("public", at(9_999)));
         assert!(!is_stale("fixture_nonsense", at(9_999)));
         assert!(!is_stale("fixture_", at(9_999)));

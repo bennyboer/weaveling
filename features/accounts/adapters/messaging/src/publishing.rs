@@ -162,21 +162,26 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: an account
         let id = an_account();
 
         for (event, declared) in everything_worth_publishing() {
+            // expect: each event's key is the declared one
             assert_eq!(
                 eventpublishing::routing_for(KIND, event.name()).to_string(),
                 declared,
                 "the key the library derives and the key subscribers bind to must not drift"
             );
+            // and: it is published on it
             assert_eq!(published(&id, event).routing.to_string(), declared);
         }
     }
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
+        // expect: the declared subscription is the derived one
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_ACCOUNT);
+        // and: it covers every event
         assert!(
             everything_worth_publishing().into_iter().all(|(event, _)| {
                 Subscription::parse(EVERY_ACCOUNT)
@@ -189,26 +194,31 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
+        // given: an account
         let id = an_account();
 
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
 
+            // expect: each event is published under its name
             assert_eq!(published(&id, event).payload["event"]["name"], expected);
         }
     }
 
     #[test]
     fn nothing_personal_travels_outside_what_is_marked_personal() {
+        // given: an account
         let id = an_account();
 
         for (event, _) in everything_worth_publishing() {
+            // when: each event is published and stripped of what is marked personal
             let mut payload = published(&id, event).payload;
             if let Some(body) = payload["event"].as_object_mut() {
                 body.remove("personal");
             }
             let told = payload.to_string();
 
+            // then: nothing personal is left
             for personal in ["ada@example.com", "Ada Lovelace", "Sent spam"] {
                 assert!(
                     !told.contains(personal),
@@ -220,8 +230,10 @@ mod tests {
 
     #[test]
     fn a_lock_and_an_unlock_say_whose_lock_it_is() {
+        // given: an account
         let id = an_account();
 
+        // when: a lock and an unlock are published
         let locked = eventpublishing::published_in::<AccountEventDTO>(&published(&id, a_lock()))
             .expect("what we wrote must be readable");
         let unlocked = eventpublishing::published_in::<AccountEventDTO>(&published(
@@ -232,6 +244,7 @@ mod tests {
         ))
         .expect("what we wrote must be readable");
 
+        // then: each tells the kind of lock
         assert_eq!(
             locked.event.body,
             AccountEventDTO::Locked {
@@ -248,6 +261,7 @@ mod tests {
 
     #[test]
     fn a_sign_up_tells_the_name_and_address_as_personal() {
+        // given: a name and address told as personal
         let ada = PersonalDTO {
             name: "Ada Lovelace".to_owned(),
             email: "ada@example.com".to_owned(),
@@ -267,6 +281,7 @@ mod tests {
                 },
             ),
         ] {
+            // expect: either sign up published tells them
             assert_eq!(
                 eventpublishing::published_in::<AccountEventDTO>(&published(&an_account(), event))
                     .expect("what we wrote must be readable")
@@ -280,6 +295,7 @@ mod tests {
 
     #[test]
     fn a_declined_invitation_says_which_invitation_it_was_and_why() {
+        // when: an invitation declined for each reason is published
         for (reason, why) in [
             (DeclineReason::AddressHasAccount, "address-has-account"),
             (DeclineReason::TurnedDown, "turned-down"),
@@ -293,6 +309,7 @@ mod tests {
             ))
             .expect("what we wrote must be readable");
 
+            // then: it tells the invitation and the reason
             assert_eq!(
                 told.event.body,
                 AccountEventDTO::InvitationDeclined {
@@ -306,6 +323,7 @@ mod tests {
 
     #[test]
     fn an_invitation_taken_up_says_which_invitation_it_was() {
+        // when: an invitation taken up is published
         let told = eventpublishing::published_in::<AccountEventDTO>(&published(
             &an_account(),
             AccountEvent::InvitationTakenUp {
@@ -314,6 +332,7 @@ mod tests {
         ))
         .expect("what we wrote must be readable");
 
+        // then: it tells the invitation
         assert_eq!(
             told.event.body,
             AccountEventDTO::InvitationTakenUp {
@@ -325,6 +344,7 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: a snapshot of an account
         let id = an_account();
         let (email, name) = ada();
         let snapshot = AccountEvent::Snapshotted {
@@ -337,13 +357,16 @@ mod tests {
             locks: BTreeMap::new(),
         };
 
+        // expect: no message is made of it
         assert!(message_for(&recorded(&id, snapshot)).is_none());
     }
 
     #[test]
     fn the_account_can_be_read_back_out_of_a_message() {
+        // given: an account
         let id = an_account();
 
+        // expect: it is read back out of a message about it
         assert_eq!(
             eventpublishing::aggregate_in::<AccountId>(&published(&id, a_sign_up()))
                 .expect("what we wrote must be readable"),

@@ -25,6 +25,7 @@ mod tests {
 
     #[test]
     fn every_role_reads_back_as_written() {
+        // expect: each role reads back as it was written
         for role in [Role::Owner, Role::Author, Role::Reader] {
             assert_eq!(read(written(role)).ok(), Some(role));
         }
@@ -32,6 +33,7 @@ mod tests {
 
     #[test]
     fn a_role_nobody_declared_is_no_role() {
+        // expect: an undeclared role is refused
         assert!(read("editor").is_err());
     }
 }

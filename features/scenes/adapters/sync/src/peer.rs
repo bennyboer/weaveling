@@ -90,6 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_peer_that_fell_behind_is_sent_the_whole_scene_and_hears_on() {
+        // given: a peer in a live scene
         let scene = Arc::new(LiveScene::open(Scene::empty(
             SceneId::generate(OffsetDateTime::UNIX_EPOCH),
             ProjectLink::from("project_1"),
@@ -97,6 +98,7 @@ mod tests {
         let (to_peer, mut heard) = mpsc::unbounded_channel();
         let _peer = Peer::arrive(1, to_peer, Arc::new(|frame| frame), &scene);
 
+        // when: more is broadcast than it can hold
         for _ in 0..BACKLOG + 10 {
             scene.broadcast(Overheard {
                 from: 2,
@@ -107,15 +109,18 @@ mod tests {
             .await
             .expect("a peer behind is told at once")
             .expect("the peer is still heard");
+        // and: something more after
         scene.broadcast(Overheard {
             from: 2,
             frame: vec![9],
         });
 
+        // then: it is sent the whole scene
         assert!(
             matches!(Message::decode(&caught_up), Ok(Message::JustHappened(_))),
             "what it missed is sent whole, as an edit, since the room cannot know what the peer holds"
         );
+        // and: hears what came after
         let mut later = Vec::new();
         while later != vec![9] {
             later = tokio::time::timeout(Duration::from_secs(1), heard.recv())

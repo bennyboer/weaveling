@@ -57,24 +57,31 @@ async function aBoardFollowedLive(page: Page, named: string) {
 test("an idea another author pins appears on the board without a reload", async ({
   page,
 }) => {
+  // given: a board followed live, an idea waiting beside it
   const { board, loom } = await aBoardFollowedLive(page, "BoardLivePinned");
 
+  // when: another author pins the idea
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
 
+  // then: its card shows on the board
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
+  // and: it no longer waits beside it
   await expect(waitingIdeas(page).getByText("The loom remembers")).toHaveCount(0);
 });
 
 test("a card another author moves goes where they put it", async ({ page }) => {
+  // given: a board followed live with a card on it
   const { board, loom } = await aBoardFollowedLive(page, "BoardLiveMoved");
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
   const before = await seenAt(page, "The loom remembers");
 
+  // when: another author moves the card
   await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
     spot: { x: 600, y: 300 },
   });
 
+  // then: it goes where they put it
   await expect
     .poll(async () => {
       const now = await seenAt(page, "The loom remembers");
@@ -86,26 +93,35 @@ test("a card another author moves goes where they put it", async ({ page }) => {
 test("a card another author unpins goes back beside the board", async ({
   page,
 }) => {
+  // given: a board followed live with a card on it
   const { board, loom } = await aBoardFollowedLive(page, "BoardLiveUnpinned");
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
 
+  // when: another author unpins it
   await anotherAuthor(page, "delete", `/boards/${board}/ideas/${loom}`);
 
+  // then: it leaves the board
   await expect(corkboard(page).locator(".pinned")).toHaveCount(0);
+  // and: waits beside it again
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
 });
 
 test("an idea captured and pinned elsewhere shows on the board by its name", async ({
   page,
 }) => {
+  // given: ideas not heard of live
   await routingLive(page, { withheld: ["ideas"] });
+  // and: a board followed live
   const { board } = await aBoardFollowedLive(page, "BoardLiveUnknown");
+  // and: an idea captured elsewhere
   const winter = await anIdea(page, "Winter comes early");
   await catalogued(page, ["The loom remembers", "Winter comes early"]);
 
+  // when: another author pins it
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(winter, 400, 200));
 
+  // then: its card shows by its name
   await expect(
     cardNamed(page, "Winter comes early"),
     "the board hears of the idea only through the pin, so it asks for the ideas again",
@@ -115,8 +131,11 @@ test("an idea captured and pinned elsewhere shows on the board by its name", asy
 test("an idea the list of ideas does not hold yet is asked for once per change, not in a loop", async ({
   page,
 }) => {
+  // given: ideas not heard of live
   await routingLive(page, { withheld: ["ideas"] });
+  // and: a board followed live
   const { board } = await aBoardFollowedLive(page, "BoardLiveLagging");
+  // and: an idea the list of ideas does not hold yet
   const winter = await anIdea(page, "Winter comes early");
   let asked = 0;
   await page.route(/\/api\/ideas\?project=/, async (route) => {
@@ -128,10 +147,12 @@ test("an idea the list of ideas does not hold yet is asked for once per change, 
     await route.fulfill({ response: answer, json: listed });
   });
 
+  // when: another author pins it
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(winter, 400, 200));
   await expect.poll(() => asked).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
 
+  // then: the ideas are asked for once more, not over and over
   expect(
     asked,
     "asked again once for the change that brought it, not over and over while the list lags",
@@ -152,26 +173,31 @@ const openings = (page: Page) => {
 test("a change that follows on the board as held is taken in, without opening the board again", async ({
   page,
 }) => {
+  // given: a board followed live with a card on it
   const { board, loom } = await aBoardFollowedLive(page, "BoardLiveTakenIn");
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
   const opened = openings(page);
   const before = await seenAt(page, "The loom remembers");
 
+  // when: another author moves the card
   await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
     spot: { x: 600, y: 300 },
   });
 
+  // then: the move is taken in
   await expect
     .poll(async () => (await seenAt(page, "The loom remembers")).x - before.x)
     .toBe(200);
   await page.waitForTimeout(500);
+  // and: the board is not opened again
   expect(opened(), "the move was taken in as it came").toBe(0);
 });
 
 test("a change missed on the way opens the board again, and the board comes out right", async ({
   page,
 }) => {
+  // given: a board followed live with a card on it
   await aNewProject(page, "BoardLiveMissed");
   const loom = await anIdea(page, "The loom remembers");
   await catalogued(page, ["The loom remembers"]);
@@ -195,13 +221,16 @@ test("a change missed on the way opens the board again, and the board comes out 
   const before = await seenAt(page, "The loom remembers");
   const opened = openings(page);
 
+  // when: another author moves the card, a change missed on the way
   await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
     spot: { x: 600, y: 300 },
   });
+  // and: then resizes it
   await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
     size: { width: 240, height: 120 },
   });
 
+  // then: the card is both moved and resized
   await expect.poll(() => passed).toBeGreaterThanOrEqual(4);
   await expect
     .poll(async () => {
@@ -209,12 +238,14 @@ test("a change missed on the way opens the board again, and the board comes out 
       return { x: now.x - before.x, width: now.width };
     }, { message: "the move that was missed is there too, so the board was opened again" })
     .toEqual({ x: 200, width: Math.round(before.width * 240 / 168) });
+  // and: the board was opened again
   expect(opened()).toBeGreaterThan(0);
 });
 
 test("a board is opened once, and a change made before it is followed is caught up as it connects", async ({
   page,
 }) => {
+  // given: a board shown but not yet followed
   await aNewProject(page, "BoardLiveHello");
   const loom = await anIdea(page, "The loom remembers");
   await catalogued(page, ["The loom remembers"]);
@@ -226,12 +257,16 @@ test("a board is opened once, and a change made before it is followed is caught 
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
   await expect.poll(opened, { message: "opened once, as the board is shown" }).toBe(1);
 
+  // when: another author pins an idea before it is followed
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
+  // and: the board then connects
   connect();
 
+  // then: the card shows
   await expect(
     cardNamed(page, "The loom remembers"),
     "told where the board stands, a newer version than held, the board is opened again",
   ).toBeVisible();
+  // and: the board was opened once more
   expect(opened()).toBe(2);
 });

@@ -61,13 +61,16 @@ mod tests {
 
     #[test]
     fn an_idea_the_catalog_has_not_heard_of_yet_is_listed_anyway() {
+        // given: an idea written here
         remember(&an_idea("idea_2", "project_a", 1, "Fresh"));
 
+        // when: a catalog without it is caught up
         let listed = caught_up(
             &ProjectId::from("project_a".to_owned()),
             vec![an_idea("idea_1", "project_a", 1, "Old")],
         );
 
+        // then: it is listed beside the catalog's
         assert_eq!(
             titles(&listed),
             vec!["Fresh", "Old"],
@@ -77,29 +80,36 @@ mod tests {
 
     #[test]
     fn a_rename_the_catalog_has_not_caught_up_with_wins() {
+        // given: a rename written here
         remember(&an_idea("idea_1", "project_b", 2, "Renamed"));
 
+        // when: a catalog still holding the idea before it is caught up
         let listed = caught_up(
             &ProjectId::from("project_b".to_owned()),
             vec![an_idea("idea_1", "project_b", 1, "Before")],
         );
 
+        // then: the idea is listed renamed
         assert_eq!(titles(&listed), vec!["Renamed"]);
     }
 
     #[test]
     fn once_the_catalog_has_caught_up_it_is_trusted_again() {
+        // given: a rename written here
         remember(&an_idea("idea_1", "project_c", 2, "Renamed"));
+        // and: a catalog that has caught up with it
         caught_up(
             &ProjectId::from("project_c".to_owned()),
             vec![an_idea("idea_1", "project_c", 2, "Renamed")],
         );
 
+        // when: a catalog with a later rename from elsewhere is caught up
         let later = caught_up(
             &ProjectId::from("project_c".to_owned()),
             vec![an_idea("idea_1", "project_c", 3, "Renamed elsewhere")],
         );
 
+        // then: the catalog's rename is listed
         assert_eq!(
             titles(&later),
             vec!["Renamed elsewhere"],
@@ -109,20 +119,27 @@ mod tests {
 
     #[test]
     fn an_older_write_never_replaces_a_newer_one() {
+        // given: a write of an idea here
         remember(&an_idea("idea_1", "project_d", 3, "Newest"));
+        // and: an older one after it
         remember(&an_idea("idea_1", "project_d", 2, "Older"));
 
+        // when: an empty catalog is caught up
         let listed = caught_up(&ProjectId::from("project_d".to_owned()), Vec::new());
 
+        // then: the newer write is listed
         assert_eq!(titles(&listed), vec!["Newest"]);
     }
 
     #[test]
     fn ideas_of_another_project_stay_out() {
+        // given: an idea of another project written here
         remember(&an_idea("idea_9", "project_elsewhere", 1, "Elsewhere"));
 
+        // when: this project's empty catalog is caught up
         let listed = caught_up(&ProjectId::from("project_e".to_owned()), Vec::new());
 
+        // then: nothing is listed
         assert!(listed.is_empty());
     }
 }

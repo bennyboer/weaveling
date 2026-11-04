@@ -41,10 +41,13 @@ async fn tables_in(pool: &PgPool, schema: &str) -> Vec<String> {
 
 #[tokio::test]
 async fn a_feature_is_handed_an_empty_schema_of_its_own() {
+    // given: a fixture
     let fixture = PostgresFixture::setup().await;
 
+    // when: a feature asks for a schema
     let pool = fixture.create_schema("outline").await;
 
+    // then: it is empty
     assert!(
         tables_in(&pool, &fixture.schema_of("outline"))
             .await
@@ -56,15 +59,20 @@ async fn a_feature_is_handed_an_empty_schema_of_its_own() {
 
 #[tokio::test]
 async fn two_features_of_one_fixture_cannot_reach_each_other() {
+    // given: two features' schemas of one fixture
     let fixture = PostgresFixture::setup().await;
     let outline = fixture.create_schema("outline").await;
     let ideas = fixture.create_schema("ideas").await;
-
+    // and: a table of the same name in each
     a_table_of_notes(&outline).await;
     a_table_of_notes(&ideas).await;
+
+    // when: one writes a note
     note(&outline, "in the book").await;
 
+    // then: it reads its note
     assert_eq!(notes(&outline).await, vec!["in the book".to_owned()]);
+    // and: the other reads none
     assert!(
         notes(&ideas).await.is_empty(),
         "one feature's rows are not another's, which is the whole point of the split"
@@ -75,15 +83,20 @@ async fn two_features_of_one_fixture_cannot_reach_each_other() {
 
 #[tokio::test]
 async fn nothing_written_in_one_fixture_is_visible_in_another() {
+    // given: one feature's schema in each of two fixtures
     let (mine, yours) = PostgresFixture::two().await;
     let ours = mine.create_schema("outline").await;
     let theirs = yours.create_schema("outline").await;
-
+    // and: a table of the same name in each
     a_table_of_notes(&ours).await;
     a_table_of_notes(&theirs).await;
+
+    // when: one writes a note
     note(&ours, "mine alone").await;
 
+    // then: it reads its note
     assert_eq!(notes(&ours).await.len(), 1);
+    // and: the other reads none
     assert!(
         notes(&theirs).await.is_empty(),
         "isolation is what lets the suites run in parallel"
@@ -95,16 +108,19 @@ async fn nothing_written_in_one_fixture_is_visible_in_another() {
 
 #[tokio::test]
 async fn a_cleaned_up_fixture_takes_every_schema_it_made_with_it() {
+    // given: a fixture with two schemas, one holding a table
     let (fixture, looking) = PostgresFixture::two().await;
     let outline = fixture.create_schema("outline").await;
     let _ideas = fixture.create_schema("ideas").await;
     let named = [fixture.schema_of("outline"), fixture.schema_of("ideas")];
-
     a_table_of_notes(&outline).await;
+    // and: another fixture looking on
     let elsewhere = looking.create_schema("watching").await;
 
+    // when: the first is cleaned up
     fixture.cleanup().await;
 
+    // then: none of its schemas is left
     for schema in named {
         assert!(
             tables_in(&elsewhere, &schema).await.is_empty(),
@@ -117,11 +133,14 @@ async fn a_cleaned_up_fixture_takes_every_schema_it_made_with_it() {
 
 #[tokio::test]
 async fn a_schema_keeps_nothing_in_public() {
+    // given: a feature's schema
     let fixture = PostgresFixture::setup().await;
     let pool = fixture.create_schema("outline").await;
 
+    // when: a table is made in it
     a_table_of_notes(&pool).await;
 
+    // then: public does not hold it
     assert!(
         !tables_in(&pool, "public")
             .await

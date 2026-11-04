@@ -50,7 +50,7 @@ fn token_in(set_cookie: &str) -> String {
         .to_owned()
 }
 
-async fn signed_in_token(server: &TestServer) -> String {
+async fn a_session_token(server: &TestServer) -> String {
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
@@ -75,13 +75,16 @@ fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) {
 
 #[tokio::test]
 async fn signing_in_answers_who_signed_in() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
 
+    // when: she signs in
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
         .await;
 
+    // then: the answer names her
     response.assert_status_ok();
     let signed_in: SignedInDTO = response.json();
     assert_eq!(signed_in.name, "Ada");
@@ -91,13 +94,16 @@ async fn signing_in_answers_who_signed_in() {
 
 #[tokio::test]
 async fn the_session_cookie_is_out_of_reach_of_scripts_and_other_sites() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
 
+    // when: she signs in
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
         .await;
 
+    // then: the cookie is kept from scripts and other sites
     let cookie = set_cookie(&response);
     for attribute in [
         "HttpOnly",
@@ -111,25 +117,30 @@ async fn the_session_cookie_is_out_of_reach_of_scripts_and_other_sites() {
             "{attribute} is missing from {cookie}"
         );
     }
+    // and: it carries a long token
     assert_eq!(token_in(&cookie).len(), 64);
 }
 
 #[tokio::test]
 async fn the_cookie_names_who_is_signed_in_later() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
+    // and: a session of hers
     let signed_in: SignedInDTO = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
         .await
         .json();
-    let token = signed_in_token(&server).await;
+    let token = a_session_token(&server).await;
 
+    // when: the current session is asked for with her cookie among others
     let current = current_with(
         &server,
         &format!("theme=dark; {SESSION_COOKIE}={token}; other=1"),
     )
     .await;
 
+    // then: it names her
     current.assert_status_ok();
     let later: SignedInDTO = current.json();
     assert_eq!(later.account, signed_in.account);
@@ -138,13 +149,16 @@ async fn the_cookie_names_who_is_signed_in_later() {
 
 #[tokio::test]
 async fn without_a_session_nobody_is_signed_in() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
 
+    // then: without a cookie nobody is signed in
     refused_as(
         &server.get("/sessions/current").await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );
+    // and: neither does a token no session holds
     refused_as(
         &current_with(
             &server,
@@ -158,23 +172,28 @@ async fn without_a_session_nobody_is_signed_in() {
 
 #[tokio::test]
 async fn a_wrong_password_signs_nobody_in_and_sets_no_cookie() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
 
+    // when: someone signs in with a wrong password
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, "not her password at all"))
         .await;
 
+    // then: signing in is refused
     refused_as(
         &response,
         StatusCode::UNAUTHORIZED,
         refused::SIGN_IN_REFUSED,
     );
+    // and: no cookie is set
     assert!(response.maybe_header(SET_COOKIE).is_none());
 }
 
 #[tokio::test]
 async fn an_unverified_address_is_forbidden_until_verified() {
+    // given: an account whose address is not verified
     let wired = wiring::wired();
     wired
         .accounts
@@ -183,6 +202,7 @@ async fn an_unverified_address_is_forbidden_until_verified() {
         .expect("signing up should succeed");
     let server = TestServer::new(wired.routes.clone());
 
+    // then: signing in with it is forbidden
     refused_as(
         &server
             .post("/sessions")
@@ -195,17 +215,21 @@ async fn an_unverified_address_is_forbidden_until_verified() {
 
 #[tokio::test]
 async fn signing_out_ends_the_session_and_lets_the_cookie_go() {
+    // given: a signed in account
     let (_wired, server) = served_with_ada_verified().await;
-    let token = signed_in_token(&server).await;
+    let token = a_session_token(&server).await;
     let cookie = format!("{SESSION_COOKIE}={token}");
 
+    // when: she signs out
     let response = server
         .delete("/sessions/current")
         .add_header(COOKIE, cookie.clone())
         .await;
 
+    // then: the cookie is let go
     response.assert_status(StatusCode::NO_CONTENT);
     assert!(set_cookie(&response).contains("Max-Age=0"));
+    // and: the session no longer signs her in
     refused_as(
         &current_with(&server, &cookie).await,
         StatusCode::UNAUTHORIZED,
@@ -215,16 +239,19 @@ async fn signing_out_ends_the_session_and_lets_the_cookie_go() {
 
 #[tokio::test]
 async fn signing_out_on_one_device_leaves_another_signed_in() {
+    // given: an account signed in on two devices
     let (_wired, server) = served_with_ada_verified().await;
-    let phone = signed_in_token(&server).await;
-    let laptop = signed_in_token(&server).await;
+    let phone = a_session_token(&server).await;
+    let laptop = a_session_token(&server).await;
 
+    // when: she signs out on one
     server
         .delete("/sessions/current")
         .add_header(COOKIE, format!("{SESSION_COOKIE}={phone}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: the other is still signed in
     current_with(&server, &format!("{SESSION_COOKIE}={laptop}"))
         .await
         .assert_status_ok();
@@ -232,8 +259,10 @@ async fn signing_out_on_one_device_leaves_another_signed_in() {
 
 #[tokio::test]
 async fn signing_out_without_a_session_is_harmless() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
 
+    // then: signing out without a session succeeds
     server
         .delete("/sessions/current")
         .await
@@ -242,23 +271,29 @@ async fn signing_out_without_a_session_is_harmless() {
 
 #[tokio::test]
 async fn a_session_is_over_after_thirty_days_and_ended_once_found_so() {
+    // given: a signed in account
     let (wired, server) = served_with_ada_verified().await;
-    let token = signed_in_token(&server).await;
+    let token = a_session_token(&server).await;
     let cookie = format!("{SESSION_COOKIE}={token}");
 
+    // when: thirty days pass
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::days(30));
+    // then: she is still signed in
     current_with(&server, &cookie).await.assert_status_ok();
 
+    // when: a second more passes
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::days(30) + Duration::seconds(1));
+    // then: she is signed in no longer
     refused_as(
         &current_with(&server, &cookie).await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );
+    // and: the session is ended
     assert_eq!(
         wired
             .secrets
@@ -272,7 +307,9 @@ async fn a_session_is_over_after_thirty_days_and_ended_once_found_so() {
 
 #[tokio::test]
 async fn too_many_wrong_passwords_are_answered_with_how_long_to_wait() {
+    // given: a verified account
     let (_wired, server) = served_with_ada_verified().await;
+    // and: five wrong passwords for it
     for _ in 0..5 {
         refused_as(
             &server
@@ -284,35 +321,43 @@ async fn too_many_wrong_passwords_are_answered_with_how_long_to_wait() {
         );
     }
 
+    // when: she signs in with the right one
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
         .await;
 
+    // then: she is told how long to wait
     refused_as(&response, StatusCode::TOO_MANY_REQUESTS, refused::THROTTLED);
     assert_eq!(response.header(RETRY_AFTER), "60");
     assert_eq!(response.json::<Value>()["minutes"], 1);
+    // and: no cookie is set
     assert!(response.maybe_header(SET_COOKIE).is_none());
 }
 
 #[tokio::test]
 async fn a_wait_part_way_through_a_second_is_rounded_up() {
+    // given: a verified account
     let (wired, server) = served_with_ada_verified().await;
+    // and: five wrong passwords for it
     for _ in 0..5 {
         server
             .post("/sessions")
             .json(&signing_in(ADA, "not her password at all"))
             .await;
     }
-
+    // and: half a second gone since
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::milliseconds(500));
+
+    // when: she signs in again
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))
         .await;
 
+    // then: the wait is told in whole seconds rounded up
     assert_eq!(
         response.header(RETRY_AFTER),
         "60",

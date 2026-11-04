@@ -25,7 +25,7 @@ struct Instance {
     grace_signed_in: String,
 }
 
-async fn signed_up(wired: &Wired, email: &str, name: &str) -> AccountId {
+async fn a_verified_account(wired: &Wired, email: &str, name: &str) -> AccountId {
     wired
         .accounts
         .sign_up(email, name, HER_PASSWORD)
@@ -45,7 +45,7 @@ async fn signed_up(wired: &Wired, email: &str, name: &str) -> AccountId {
         .expect("the address should be held")
 }
 
-async fn signed_in(server: &TestServer, email: &str) -> String {
+async fn a_session_cookie(server: &TestServer, email: &str) -> String {
     server
         .post("/sessions")
         .json(&SignInRequest {
@@ -64,9 +64,9 @@ async fn signed_in(server: &TestServer, email: &str) -> String {
 
 async fn an_instance_with_ada_and_grace_its_operator() -> Instance {
     let wired = wiring::wired();
-    let ada = signed_up(&wired, ADA, "Ada").await;
+    let ada = a_verified_account(&wired, ADA, "Ada").await;
     wired.clock.set(wiring::at(1_700_000_060));
-    let grace = signed_up(&wired, GRACE, "Grace").await;
+    let grace = a_verified_account(&wired, GRACE, "Grace").await;
     let code = wired
         .accounts
         .draw_operator_code()
@@ -85,8 +85,8 @@ async fn an_instance_with_ada_and_grace_its_operator() -> Instance {
             accounts_rest::guarded_router(wired.accounts.clone()),
         ),
     ));
-    let ada_signed_in = signed_in(&server, ADA).await;
-    let grace_signed_in = signed_in(&server, GRACE).await;
+    let ada_signed_in = a_session_cookie(&server, ADA).await;
+    let grace_signed_in = a_session_cookie(&server, GRACE).await;
 
     Instance {
         wired,
@@ -135,10 +135,13 @@ impl Instance {
 
 #[tokio::test]
 async fn the_operator_lists_every_account_newest_first_with_what_it_is() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
 
+    // when: the operator lists the accounts
     let response = instance.listed(&instance.grace_signed_in).await;
 
+    // then: every account is listed newest first with what it is
     response.assert_status_ok();
     let page: AccountPageDTO = response.json();
     assert_eq!(
@@ -158,14 +161,17 @@ async fn the_operator_lists_every_account_newest_first_with_what_it_is() {
 
 #[tokio::test]
 async fn an_operator_locks_an_account_for_a_reason_and_unlocks_it_again() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let ada = instance.ada.to_string();
 
+    // when: the operator locks the other account for a reason
     instance
         .lock(&instance.grace_signed_in, &ada, "Sent spam.")
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    // then: the account is listed with that lock
     let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
     let listed = page
         .accounts
@@ -175,6 +181,7 @@ async fn an_operator_locks_an_account_for_a_reason_and_unlocks_it_again() {
     assert_eq!(listed.locks.len(), 1);
     assert_eq!(listed.locks[0].kind, "operator");
     assert_eq!(listed.locks[0].reason, "Sent spam.");
+    // and: it cannot sign in
     refused_as(
         &instance
             .server
@@ -188,24 +195,30 @@ async fn an_operator_locks_an_account_for_a_reason_and_unlocks_it_again() {
         refused::ACCOUNT_LOCKED,
     );
 
+    // when: the operator unlocks it
     instance
         .unlock(&instance.grace_signed_in, &ada)
         .await
         .assert_status(StatusCode::NO_CONTENT);
+
+    // then: no account is listed locked
     let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
     assert!(page.accounts.iter().all(|account| account.locks.is_empty()));
 }
 
 #[tokio::test]
 async fn anyone_but_the_operator_is_refused() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let ada = instance.ada.to_string();
 
+    // then: the other account may not list the accounts
     refused_as(
         &instance.listed(&instance.ada_signed_in).await,
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
+    // and: may not lock one
     refused_as(
         &instance
             .lock(&instance.ada_signed_in, &ada, "I can, can I?")
@@ -213,6 +226,7 @@ async fn anyone_but_the_operator_is_refused() {
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
+    // and: may not unlock one
     refused_as(
         &instance.unlock(&instance.ada_signed_in, &ada).await,
         StatusCode::FORBIDDEN,
@@ -222,8 +236,10 @@ async fn anyone_but_the_operator_is_refused() {
 
 #[tokio::test]
 async fn nobody_signed_out_reaches_the_instance() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
 
+    // then: the accounts are not listed without a session
     refused_as(
         &instance.server.get("/instance/accounts").await,
         StatusCode::UNAUTHORIZED,
@@ -233,14 +249,17 @@ async fn nobody_signed_out_reaches_the_instance() {
 
 #[tokio::test]
 async fn a_lock_without_a_fitting_reason_is_refused_by_its_kind() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let ada = instance.ada.to_string();
 
+    // then: a lock with a blank reason is refused
     refused_as(
         &instance.lock(&instance.grace_signed_in, &ada, "  ").await,
         StatusCode::UNPROCESSABLE_ENTITY,
         refused::LOCK_REASON_BLANK,
     );
+    // and: one with a control character in its reason
     refused_as(
         &instance
             .lock(&instance.grace_signed_in, &ada, "Sent\u{7}spam.")
@@ -248,6 +267,7 @@ async fn a_lock_without_a_fitting_reason_is_refused_by_its_kind() {
         StatusCode::UNPROCESSABLE_ENTITY,
         refused::LOCK_REASON_CONTROL_CHARACTER,
     );
+    // and: one with too long a reason, telling how long it may be
     let told = refused_as(
         &instance
             .lock(&instance.grace_signed_in, &ada, &"a".repeat(501))
@@ -263,6 +283,7 @@ async fn a_lock_without_a_fitting_reason_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn the_operator_is_not_locked() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
     let grace = page
@@ -273,6 +294,7 @@ async fn the_operator_is_not_locked() {
         .id
         .clone();
 
+    // then: locking the operator is refused
     refused_as(
         &instance
             .lock(&instance.grace_signed_in, &grace, "Testing.")
@@ -284,9 +306,12 @@ async fn the_operator_is_not_locked() {
 
 #[tokio::test]
 async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
+    // and: an account id nobody holds
     let nobody = AccountId::generate(wiring::at(1_000)).to_string();
 
+    // then: locking it is refused as not found
     refused_as(
         &instance
             .lock(&instance.grace_signed_in, &nobody, "Sent spam.")
@@ -294,6 +319,7 @@ async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
         StatusCode::NOT_FOUND,
         refused::ACCOUNT_NOT_FOUND,
     );
+    // and: locking something that is no account id is refused as invalid
     refused_as(
         &instance
             .lock(&instance.grace_signed_in, "not-an-id", "Sent spam.")
@@ -301,6 +327,7 @@ async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
         StatusCode::BAD_REQUEST,
         refused::ACCOUNT_ID_INVALID,
     );
+    // and: so is listing after it
     refused_as(
         &instance
             .server
@@ -332,7 +359,9 @@ async fn remembered(instance: &Instance, summary: &AccountSummary) {
 
 #[tokio::test]
 async fn a_long_list_comes_a_page_at_a_time() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
+    // and: a page more of older accounts
     for seconds in 0..accounts_rest::PAGE as i64 {
         remembered(
             &instance,
@@ -351,6 +380,7 @@ async fn a_long_list_comes_a_page_at_a_time() {
         .await;
     }
 
+    // when: the accounts are listed, and listed again after the first page
     let first: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
     let after = first.next.clone().expect("more than a page means a next");
     let second: AccountPageDTO = instance
@@ -361,6 +391,7 @@ async fn a_long_list_comes_a_page_at_a_time() {
         .await
         .json();
 
+    // then: the first page is full and the second holds the rest with no next
     assert_eq!(first.accounts.len(), accounts_rest::PAGE);
     assert_eq!(second.accounts.len(), 2);
     assert_eq!(second.next, None);
@@ -368,7 +399,9 @@ async fn a_long_list_comes_a_page_at_a_time() {
 
 #[tokio::test]
 async fn a_list_that_fills_one_page_exactly_promises_no_next() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
+    // and: just enough older accounts to fill one page
     for seconds in 0..accounts_rest::PAGE as i64 - 2 {
         remembered(
             &instance,
@@ -387,8 +420,10 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
         .await;
     }
 
+    // when: the accounts are listed
     let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
 
+    // then: the one page is full and promises no next
     assert_eq!(
         page.accounts.len(),
         accounts_rest::PAGE,
@@ -436,45 +471,58 @@ impl Instance {
 
 #[tokio::test]
 async fn the_operator_makes_another_operator_and_takes_the_role_away_again() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let ada = instance.ada.to_string();
 
+    // when: the operator appoints the other account
     instance
         .appoint(&instance.grace_signed_in, &ada)
         .await
         .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is listed as an operator
     assert!(instance.is_listed_as_operator(&ada).await);
 
+    // when: the operator dismisses it again
     instance
         .dismiss(&instance.grace_signed_in, &ada)
         .await
         .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is no longer listed as an operator
     assert!(!instance.is_listed_as_operator(&ada).await);
 }
 
 #[tokio::test]
 async fn the_last_operator_keeps_the_role() {
+    // given: an instance whose only operator is one of two accounts
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let grace = instance.grace().await;
 
+    // then: dismissing the operator is refused
     refused_as(
         &instance.dismiss(&instance.grace_signed_in, &grace).await,
         StatusCode::CONFLICT,
         refused::LAST_OPERATOR,
     );
+    // and: the operator is still listed as one
     assert!(instance.is_listed_as_operator(&grace).await);
 }
 
 #[tokio::test]
 async fn anyone_but_an_operator_is_refused_the_role_of_others() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let (ada, grace) = (instance.ada.to_string(), instance.grace().await);
 
+    // then: the other account may not appoint
     refused_as(
         &instance.appoint(&instance.ada_signed_in, &ada).await,
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
+    // and: may not dismiss
     refused_as(
         &instance.dismiss(&instance.ada_signed_in, &grace).await,
         StatusCode::FORBIDDEN,
@@ -484,8 +532,10 @@ async fn anyone_but_an_operator_is_refused_the_role_of_others() {
 
 #[tokio::test]
 async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
+    // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     let ada = instance.ada.to_string();
+    // and: an account whose address is unconfirmed
     instance
         .wired
         .accounts
@@ -501,20 +551,26 @@ async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
         .expect("the address should be held")
         .to_string();
 
+    // then: the unconfirmed account is not appointed
     refused_as(
         &instance.appoint(&instance.grace_signed_in, &hedy).await,
         StatusCode::CONFLICT,
         refused::OPERATOR_ADDRESS_NOT_VERIFIED,
     );
+
+    // when: another account is locked
     instance
         .lock(&instance.grace_signed_in, &ada, "Sent spam.")
         .await
         .assert_status(StatusCode::NO_CONTENT);
+
+    // then: the locked account is not appointed
     refused_as(
         &instance.appoint(&instance.grace_signed_in, &ada).await,
         StatusCode::CONFLICT,
         refused::LOCKED_CANNOT_BECOME_OPERATOR,
     );
+    // and: an account nobody holds is not found
     refused_as(
         &instance
             .appoint(

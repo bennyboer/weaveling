@@ -19,7 +19,7 @@ struct Told {
     broadcaster: Broadcaster<NoticeChanges>,
 }
 
-fn told() -> Told {
+fn a_workbench() -> Told {
     let broadcaster = Broadcaster::new();
 
     Told {
@@ -74,7 +74,7 @@ impl Told {
     }
 }
 
-fn account(id: &str) -> Agent {
+fn an_account(id: &str) -> Agent {
     Agent::Account(AccountId::from(id))
 }
 
@@ -82,14 +82,16 @@ const MINE: &[(&str, &str)] = &[("mine", "true")];
 
 #[tokio::test]
 async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed() {
-    let told = told();
-    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
-    let (_cy_s, mut cy) = told.following(account("account_cy"), MINE).await;
+    // given: bo and cy following their own notices
+    let told = a_workbench();
+    let (_bo_s, mut bo) = told.following(an_account("account_bo"), MINE).await;
+    let (_cy_s, mut cy) = told.following(an_account("account_cy"), MINE).await;
 
+    // when: a notice for bo is listed, dismissed and listed again
     let notice = told.noted_and_listed("account_bo", "project_1").await;
     let noted = bo.frame().await;
     told.notifications
-        .dismiss(&notice.to_string(), &account("account_bo"))
+        .dismiss(&notice.to_string(), &an_account("account_bo"))
         .await
         .expect("dismissing should succeed");
     told.notifications
@@ -98,19 +100,24 @@ async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed(
         .expect("cataloguing should succeed");
     let dismissed = bo.frame().await;
 
+    // then: bo is told of each change
     assert_eq!(noted["of"], notice.to_string());
     assert_eq!(dismissed["of"], notice.to_string());
+    // and: cy of nothing
     cy.nothing().await;
 }
 
 #[tokio::test]
 async fn a_deleted_project_tells_whoever_had_an_open_notice_about_it() {
-    let told = told();
+    // given: listed notices for bo about one project and for cy about another
+    let told = a_workbench();
     told.noted_and_listed("account_bo", "project_1").await;
     told.noted_and_listed("account_cy", "project_2").await;
-    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
-    let (_cy_s, mut cy) = told.following(account("account_cy"), MINE).await;
+    // and: both following their own notices
+    let (_bo_s, mut bo) = told.following(an_account("account_bo"), MINE).await;
+    let (_cy_s, mut cy) = told.following(an_account("account_cy"), MINE).await;
 
+    // when: bo's project is deleted
     told.notifications
         .lay_project_tombstone(
             None,
@@ -120,30 +127,35 @@ async fn a_deleted_project_tells_whoever_had_an_open_notice_about_it() {
         .await
         .expect("laying a tombstone should succeed");
 
+    // then: bo is told
     assert_eq!(
         bo.frame().await["of"],
         "project_1",
         "Bo's notice about it is listed no more, so Bo's bell asks again"
     );
+    // and: cy is not
     cy.nothing().await;
 }
 
 #[tokio::test]
 async fn only_an_account_follows_and_only_its_own() {
-    let told = told();
+    // given: nothing noted yet
+    let told = a_workbench();
 
+    // when: an account asking for no scope, the local agent or the system follows notices
     for (agent, about) in [
-        (account("account_bo"), &[][..]),
+        (an_account("account_bo"), &[][..]),
         (Agent::Local, MINE),
         (Agent::System, MINE),
     ] {
         let (_server, mut socket) = told.following(agent, about).await;
 
+        // then: it finds nothing there
         assert_eq!(socket.ended().await, "not-there");
     }
 }
 
-fn bo_s_notice() -> NoticeSummary {
+fn a_notice_for_bo() -> NoticeSummary {
     NoticeSummary {
         id: NoticeId::generate(OffsetDateTime::UNIX_EPOCH),
         version: Version::of(1),
@@ -160,30 +172,35 @@ fn bo_s_notice() -> NoticeSummary {
 
 #[tokio::test]
 async fn nobody_is_told_of_a_notice_remembered_in_a_transaction_that_is_dropped() {
-    let told = told();
+    // given: bo following his own notices
+    let told = a_workbench();
     let telling = TellingNotices::around(
         Arc::new(InMemoryNoticeCatalog::new()),
         told.broadcaster.clone(),
     );
-    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
+    let (_bo_s, mut bo) = told.following(an_account("account_bo"), MINE).await;
+    // and: a notice for him remembered in a transaction
     let transactions = InMemoryTransactions::new();
     let mut transaction = transactions
         .begin()
         .await
         .expect("beginning should succeed");
     telling
-        .remember(&mut transaction, &bo_s_notice())
+        .remember(&mut transaction, &a_notice_for_bo())
         .await
         .expect("remembering should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: he is told nothing
     bo.nothing().await;
 }
 
 #[tokio::test]
 async fn nobody_is_told_of_a_project_tombstone_laid_in_a_transaction_that_is_dropped() {
-    let told = told();
+    // given: a notice for bo kept
+    let told = a_workbench();
     let telling = TellingNotices::around(
         Arc::new(InMemoryNoticeCatalog::new()),
         told.broadcaster.clone(),
@@ -194,11 +211,13 @@ async fn nobody_is_told_of_a_project_tombstone_laid_in_a_transaction_that_is_dro
         .await
         .expect("beginning should succeed");
     telling
-        .remember(&mut kept, &bo_s_notice())
+        .remember(&mut kept, &a_notice_for_bo())
         .await
         .expect("remembering should succeed");
     kept.finish().await.expect("finishing should succeed");
-    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
+    // and: bo following his own notices
+    let (_bo_s, mut bo) = told.following(an_account("account_bo"), MINE).await;
+    // and: his notice's project's tombstone laid in a transaction
     let mut transaction = transactions
         .begin()
         .await
@@ -212,7 +231,9 @@ async fn nobody_is_told_of_a_project_tombstone_laid_in_a_transaction_that_is_dro
         .await
         .expect("laying a tombstone should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: he is told nothing
     bo.nothing().await;
 }

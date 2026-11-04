@@ -45,19 +45,24 @@ mod tests {
 
     #[test]
     fn a_section_may_be_unnamed() {
+        // when: a title of nothing but blanks is made
         let title = SectionTitle::new("  ").expect("a section may be unnamed");
 
+        // then: it is the unnamed title
         assert_eq!(title, SectionTitle::unnamed());
         assert!(title.is_unnamed());
     }
 
     #[test]
     fn a_title_is_one_line_up_to_its_limit() {
+        // expect: a title spanning lines is refused
         assert_eq!(
             SectionTitle::new("The\nLoom"),
             Err(InvalidSectionTitle::ControlCharacter)
         );
+        // and: one at its limit is made
         assert!(SectionTitle::new(&"a".repeat(SectionTitle::MAX_CHARS)).is_ok());
+        // and: one past its limit is refused
         assert_eq!(
             SectionTitle::new(&"a".repeat(SectionTitle::MAX_CHARS + 1)),
             Err(InvalidSectionTitle::TooLong {

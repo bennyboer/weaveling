@@ -224,6 +224,7 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // given: every kind of event
         for event in [
             BoardEvent::Started {
                 project: ProjectLink::from("project_1"),
@@ -269,12 +270,14 @@ mod tests {
                 discarded: false,
             },
         ] {
+            // then: each reads back as it was written
             assert_eq!(round_trip(event.clone()), event);
         }
     }
 
     #[test]
     fn a_snapshot_keeps_its_ideas_in_order() {
+        // given: a snapshot of a board holding stacked ideas
         let stacked = BoardEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             ideas: ["idea_3", "idea_1", "idea_2"]
@@ -288,6 +291,7 @@ mod tests {
             discarded: false,
         };
 
+        // then: it reads back with its ideas in order
         assert_eq!(
             round_trip(stacked.clone()),
             stacked,
@@ -297,17 +301,21 @@ mod tests {
 
     #[test]
     fn a_body_written_in_a_shape_we_no_longer_know_reads_as_nothing() {
+        // given: a body in a shape no event has
         let nonsense = serde_json::json!({ "WrittenByAHandFromAnotherAge": { "runes": 3 } });
 
+        // then: it reads as no event
         assert!(((codec().event)(nonsense)).is_none());
     }
 
     #[test]
     fn the_stored_shape_names_its_variant() {
+        // when: an event is written
         let written = (codec().body)(&BoardEvent::IdeaRaised {
             idea: IdeaLink::from("idea_1"),
         });
 
+        // then: its stored shape names its variant
         assert_eq!(
             written,
             serde_json::json!({ "IdeaRaised": { "idea": "idea_1" } })

@@ -50,7 +50,12 @@ async fn listed(wired: &Wired, id: InvitationId) -> InvitationId {
     id
 }
 
-async fn into(wired: &Wired, project: &str, role: Role, to: &str) -> InvitationId {
+async fn a_listed_invitation_into(
+    wired: &Wired,
+    project: &str,
+    role: Role,
+    to: &str,
+) -> InvitationId {
     let id = wired
         .invitations
         .invite_to_project(&grace(), project, role, to, ORIGIN)
@@ -78,7 +83,8 @@ async fn mine(wired: &Wired, acting: Acting) -> Vec<InvitationToYouDTO> {
 
 #[tokio::test]
 async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_newest_first() {
-    let wired = wiring::wired();
+    // given: ada, grace and a project's name known
+    let wired = wiring::a_workbench();
     known(&wired, "account_ada", "Ada Lovelace", ADA).await;
     known(&wired, "account_grace", "Grace Hopper", "grace@example.com").await;
     wired
@@ -94,20 +100,25 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
         .await
         .expect("remembering should succeed");
 
-    let ran_out = into(&wired, "project_old", Role::Author, ADA).await;
+    // and: invitations into projects to ada's address however written, newest last
+    let ran_out = a_listed_invitation_into(&wired, "project_old", Role::Author, ADA).await;
     a_moment_later(&wired, 120);
-    let into_the_loom = into(&wired, "project_loom", Role::Author, ADA).await;
+    let into_the_loom = a_listed_invitation_into(&wired, "project_loom", Role::Author, ADA).await;
     a_moment_later(&wired, 240);
-    let into_the_weft = into(&wired, "project_weft", Role::Reader, "  Ada@Example.com ").await;
+    let into_the_weft =
+        a_listed_invitation_into(&wired, "project_weft", Role::Reader, "  Ada@Example.com ").await;
     a_moment_later(&wired, 360);
-    into(&wired, "project_loom", Role::Reader, "hedy@example.com").await;
-    let withdrawn = into(&wired, "project_shed", Role::Reader, ADA).await;
+    // and: one to another address
+    a_listed_invitation_into(&wired, "project_loom", Role::Reader, "hedy@example.com").await;
+    // and: one withdrawn
+    let withdrawn = a_listed_invitation_into(&wired, "project_shed", Role::Reader, ADA).await;
     wired
         .invitations
         .withdraw(&grace(), &withdrawn)
         .await
         .expect("an owner may withdraw");
     listed(&wired, withdrawn).await;
+    // and: one to the instance
     a_moment_later(&wired, 480);
     let to_the_instance = wired
         .invitations
@@ -116,6 +127,7 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
         .expect("an operator may invite")
         .id;
     listed(&wired, to_the_instance).await;
+    // and: the oldest run out
     let ran_out_until = wired
         .catalog
         .open_to(&EmailAddress::new(ADA).expect("a plain address"))
@@ -127,8 +139,10 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
         .until;
     wired.clock.set(ran_out_until + Duration::SECOND);
 
+    // when: ada asks for hers
     let told = mine(&wired, as_account("account_ada", false)).await;
 
+    // then: she is told the open ones into projects newest first, with who invited her and the project's name where known
     let until_of = |seconds: i64| {
         clock::text::serialize(wiring::at(1_700_000_000 + seconds) + Invitation::LASTS)
     };
@@ -158,14 +172,17 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
 
 #[tokio::test]
 async fn whoever_invitations_know_nothing_of_or_who_is_no_account_is_told_nothing() {
-    let wired = wiring::wired();
-    into(&wired, "project_loom", Role::Author, ADA).await;
+    // given: an invitation into a project to an address no account is known by
+    let wired = wiring::a_workbench();
+    a_listed_invitation_into(&wired, "project_loom", Role::Author, ADA).await;
 
+    // then: an account invitations know nothing of is told nothing
     assert!(
         mine(&wired, as_account("account_ada", false))
             .await
             .is_empty()
     );
+    // and: whoever is no account is told nothing
     assert!(
         mine(
             &wired,
@@ -181,9 +198,10 @@ async fn whoever_invitations_know_nothing_of_or_who_is_no_account_is_told_nothin
 
 #[tokio::test]
 async fn an_invitation_into_a_project_in_the_trash_is_not_told_until_it_is_restored() {
-    let wired = wiring::wired();
+    // given: an invitation into a project to ada
+    let wired = wiring::a_workbench();
     known(&wired, "account_ada", "Ada Lovelace", ADA).await;
-    let into_the_loom = into(&wired, "project_loom", Role::Author, ADA).await;
+    let into_the_loom = a_listed_invitation_into(&wired, "project_loom", Role::Author, ADA).await;
     let trash = |version: u64, in_the_trash: bool| {
         let invitations = wired.invitations.clone();
         async move {
@@ -199,15 +217,18 @@ async fn an_invitation_into_a_project_in_the_trash_is_not_told_until_it_is_resto
         }
     };
 
+    // when: the project is trashed and then restored
     trash(5, true).await;
     let while_trashed = mine(&wired, as_account("account_ada", false)).await;
     trash(6, false).await;
     let restored = mine(&wired, as_account("account_ada", false)).await;
 
+    // then: the invitation is not told while the project is in the trash
     assert!(
         while_trashed.is_empty(),
         "an invitation into a project in the trash waits, as it cannot be taken up"
     );
+    // and: it is told once the project is restored
     assert_eq!(
         restored
             .iter()

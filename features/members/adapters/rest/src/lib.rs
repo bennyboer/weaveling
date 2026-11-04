@@ -293,7 +293,7 @@ mod tests {
         socket
     }
 
-    fn told(broadcaster: &Broadcaster<MembershipChanges>, project: &str, event: Value) {
+    fn telling(broadcaster: &Broadcaster<MembershipChanges>, project: &str, event: Value) {
         broadcaster.tell(
             MembershipChanges,
             json!({ "of": project, "version": 2, "at": "1970-01-01T00:00:00Z", "event": event })
@@ -303,10 +303,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_follower_is_told_every_change_to_members_that_names_them_and_no_other() {
+        // given: ada following her own memberships
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, ada());
         let mut socket = following(&server, &[("mine", "true")]).await;
 
+        // when: changes to members naming her, naming others or naming nobody are told
         for event in [
             json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
             json!({ "name": "DISBANDED" }),
@@ -318,9 +320,10 @@ mod tests {
             json!({ "name": "FOUNDED", "owner": "account_grace" }),
             json!({ "name": "REMOVED", "account": "account_ada" }),
         ] {
-            told(&broadcaster, "project_1", event);
+            telling(&broadcaster, "project_1", event);
         }
 
+        // then: she is told only those naming her
         let mut names = Vec::new();
         for _ in 0..5 {
             let frame = socket.frame().await;
@@ -336,24 +339,29 @@ mod tests {
 
     #[tokio::test]
     async fn nobody_unsigned_is_told_anything() {
+        // given: someone unsigned following their own memberships
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, Agent::Local);
         let mut socket = following(&server, &[("mine", "true")]).await;
 
-        told(
+        // when: a founding is told
+        telling(
             &broadcaster,
             "project_1",
             json!({ "name": "FOUNDED", "owner": "local" }),
         );
 
+        // then: they are told nothing
         socket.nothing().await;
     }
 
     #[tokio::test]
     async fn asking_for_neither_one_s_own_nor_a_project_s_members_finds_nothing_there() {
+        // given: a server
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, ada());
 
+        // expect: following members without saying whose ends as not there
         assert_eq!(
             following(&server, &[]).await.ended().await,
             "not-there",
@@ -363,17 +371,20 @@ mod tests {
 
     #[tokio::test]
     async fn a_frame_that_tells_no_change_to_members_ends_the_subscription() {
+        // given: ada following her own memberships
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, ada());
         let mut socket = following(&server, &[("mine", "true")]).await;
 
-        told(&broadcaster, "project_1", json!({ "name": "RENAMED" }));
-        told(
+        // when: something that is no change to members is told, and then a founding
+        telling(&broadcaster, "project_1", json!({ "name": "RENAMED" }));
+        telling(
             &broadcaster,
             "project_1",
             json!({ "name": "FOUNDED", "owner": "account_ada" }),
         );
 
+        // then: her following ends as failed
         assert_eq!(
             socket.ended().await,
             "failed",

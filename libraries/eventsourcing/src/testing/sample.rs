@@ -326,6 +326,7 @@ mod tests {
 
     #[test]
     fn nothing_becomes_something_only_through_a_creation_command() {
+        // when: nothing is told to create
         let from_first = Sample::begin(
             SampleCommand::Create {
                 title: "The Loom".to_owned(),
@@ -334,6 +335,7 @@ mod tests {
             &Agent::System,
         );
 
+        // then: it is created
         assert_eq!(
             from_first,
             Ok(vec![SampleEvent::Created {
@@ -346,19 +348,24 @@ mod tests {
 
     #[test]
     fn a_command_other_than_creation_cannot_start_a_stream() {
+        // when: nothing is told anything but to create
         let refused = Sample::begin(
             SampleCommand::UpdateTitle("The Silent Loom".to_owned()),
             &Agent::System,
         );
 
+        // then: it is refused as not created yet
         assert_eq!(refused, Err(SampleError::NotCreatedYet));
     }
 
     #[test]
     fn only_a_creation_or_snapshot_event_gives_birth() {
+        // given: a stamp for the first event
         let metadata = stamped(&a_sample(), 0);
 
+        // then: a deletion gives birth to nothing
         assert!(Sample::from_first(&SampleEvent::Deleted, &metadata).is_none());
+        // and: nor does a retitling
         assert!(
             Sample::from_first(
                 &SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
@@ -370,6 +377,7 @@ mod tests {
 
     #[test]
     fn a_stream_replays_into_the_state_it_describes() {
+        // when: a creation and a retitling are replayed
         let sample = replay(&recorded(
             &a_sample(),
             vec![
@@ -383,6 +391,7 @@ mod tests {
         ))
         .expect("the stream begins with a creation event");
 
+        // then: the sample is as they describe
         assert_eq!(sample.title, "The Silent Loom");
         assert_eq!(sample.description, "A silent machine.");
         assert!(!sample.deleted);
@@ -390,16 +399,19 @@ mod tests {
 
     #[test]
     fn a_stream_that_does_not_begin_with_a_creation_event_replays_into_nothing() {
+        // given: a stream beginning with a retitling
         let orphaned = recorded(
             &a_sample(),
             vec![SampleEvent::TitleUpdated("Adrift".to_owned())],
         );
 
+        // then: it replays into nothing
         assert!(replay(&orphaned).is_none());
     }
 
     #[test]
     fn one_command_may_emit_several_events() {
+        // when: a created sample is told to rewrite itself
         let decided = a_created_sample().decide(
             SampleCommand::Rewrite {
                 title: "The Silent Loom".to_owned(),
@@ -408,6 +420,7 @@ mod tests {
             &Agent::System,
         );
 
+        // then: it decides on two events
         assert_eq!(
             decided,
             Ok(vec![
@@ -419,7 +432,9 @@ mod tests {
 
     #[test]
     fn a_description_changes_without_disturbing_the_title() {
+        // given: a created sample
         let mut sample = a_created_sample();
+        // when: it is told a new description and takes what it decided
         let decided = sample
             .decide(
                 SampleCommand::UpdateDescription("It remembers.".to_owned()),
@@ -431,12 +446,15 @@ mod tests {
             sample.apply(event, &stamped(&a_sample(), 1));
         }
 
+        // then: its description is new
         assert_eq!(sample.description, "It remembers.");
+        // and: its title is as it was
         assert_eq!(sample.title, "The Loom");
     }
 
     #[test]
     fn what_exists_cannot_be_created_again() {
+        // when: a created sample is told to create
         let refused = a_created_sample().decide(
             SampleCommand::Create {
                 title: "Another".to_owned(),
@@ -445,14 +463,17 @@ mod tests {
             &Agent::System,
         );
 
+        // then: it is refused as created already
         assert_eq!(refused, Err(SampleError::AlreadyCreated));
     }
 
     #[test]
     fn a_deleted_aggregate_refuses_every_command() {
+        // given: a deleted sample
         let mut sample = a_created_sample();
         sample.apply(&SampleEvent::Deleted, &stamped(&a_sample(), 1));
 
+        // then: it refuses a retitling
         assert_eq!(
             sample.decide(
                 SampleCommand::UpdateTitle("Too late".to_owned()),
@@ -460,6 +481,7 @@ mod tests {
             ),
             Err(SampleError::Deleted)
         );
+        // and: a deletion
         assert_eq!(
             sample.decide(SampleCommand::Delete, &Agent::System),
             Err(SampleError::Deleted)
@@ -468,12 +490,14 @@ mod tests {
 
     #[test]
     fn a_snapshot_event_declares_itself_a_snapshot() {
+        // expect: a sample's snapshot says it is one, by name too
         assert!(a_created_sample().snapshot().is_snapshot());
         assert_eq!(a_created_sample().snapshot().name(), SNAPSHOTTED);
     }
 
     #[test]
     fn a_snapshot_replays_into_exactly_the_state_it_came_from() {
+        // given: a sample retitled and deleted
         let mut sample = a_created_sample();
         sample.apply(
             &SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
@@ -481,16 +505,20 @@ mod tests {
         );
         sample.apply(&SampleEvent::Deleted, &stamped(&a_sample(), 2));
 
+        // when: it is snapshotted and restored from the snapshot
         let snapshot = sample.snapshot();
         let restored = Sample::from_first(&snapshot, &stamped(&a_sample(), 3))
             .expect("a snapshot gives birth");
 
+        // then: it is restored as it was
         assert_eq!(restored, sample);
     }
 
     #[test]
     fn a_snapshot_found_mid_stream_replaces_whatever_came_before() {
+        // given: a created sample
         let mut sample = a_created_sample();
+        // when: a snapshot of another state is applied to it
         sample.apply(
             &SampleEvent::Snapshotted {
                 title: "Elsewhere".to_owned(),
@@ -501,6 +529,7 @@ mod tests {
             &stamped(&a_sample(), 1),
         );
 
+        // then: it is in the snapshot's state
         assert_eq!(sample.title, "Elsewhere");
         assert_eq!(sample.description, "Entirely");
         assert!(sample.deleted);
@@ -508,11 +537,13 @@ mod tests {
 
     #[test]
     fn snapshots_are_taken_by_default() {
+        // expect: a sample is snapshotted every hundred events
         assert_eq!(a_created_sample().snapshot_after(), Some(100));
     }
 
     #[test]
     fn an_event_knows_its_own_name() {
+        // expect: an event names itself
         assert_eq!(SampleEvent::Deleted.name(), DELETED);
         assert_eq!(
             SampleEvent::TitleUpdated("x".to_owned()).name(),
@@ -522,11 +553,13 @@ mod tests {
 
     #[test]
     fn an_ordinary_event_is_not_a_snapshot() {
+        // expect: an ordinary event is no snapshot
         assert!(!SampleEvent::Deleted.is_snapshot());
     }
 
     #[test]
     fn a_recorded_stream_marks_its_snapshots_in_the_metadata() {
+        // when: a creation and a snapshot are recorded
         let stream = recorded(
             &a_sample(),
             vec![
@@ -544,6 +577,7 @@ mod tests {
             ],
         );
 
+        // then: only the snapshot is marked one
         assert!(!stream[0].metadata.is_snapshot);
         assert!(stream[1].metadata.is_snapshot);
     }

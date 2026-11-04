@@ -37,16 +37,20 @@ mod tests {
 
     #[test]
     fn an_account_must_be_named() {
+        // expect: a blank name is refused
         assert_eq!(AccountName::new("  "), Err(InvalidAccountName::Blank));
     }
 
     #[test]
     fn a_name_is_one_line_up_to_its_limit() {
+        // expect: a name of two lines is refused
         assert_eq!(
             AccountName::new("Ada\nLovelace"),
             Err(InvalidAccountName::ControlCharacter)
         );
+        // and: one at its limit is fine
         assert!(AccountName::new(&"a".repeat(AccountName::MAX_CHARS)).is_ok());
+        // and: one past its limit is refused
         assert_eq!(
             AccountName::new(&"a".repeat(AccountName::MAX_CHARS + 1)),
             Err(InvalidAccountName::TooLong {

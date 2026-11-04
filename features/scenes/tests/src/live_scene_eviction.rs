@@ -281,12 +281,15 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn a_scene_stays_live_while_anyone_is_present() {
+    // given: a scene someone is present in
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let _present = bench.live.join(id).await.expect("should join");
 
+    // when: live scenes are swept
     bench.live.sweep(Instant::now()).await;
 
+    // then: it stays live
     assert!(
         bench.live.is_live(id),
         "a scene someone is writing in must never be swept"
@@ -295,13 +298,16 @@ async fn a_scene_stays_live_while_anyone_is_present() {
 
 #[tokio::test]
 async fn a_scene_everyone_left_stays_live_through_the_grace_period() {
+    // given: a scene everyone just left
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let before_leaving = Instant::now();
     drop(bench.live.join(id).await.expect("should join"));
 
+    // when: live scenes are swept within the grace period
     bench.live.sweep(before_leaving).await;
 
+    // then: it stays live
     assert!(
         bench.live.is_live(id),
         "a reload or a flaky connection must find the same copy it left"
@@ -310,48 +316,62 @@ async fn a_scene_everyone_left_stays_live_through_the_grace_period() {
 
 #[tokio::test]
 async fn a_scene_everyone_left_is_let_go_once_the_grace_period_is_over() {
+    // given: a scene everyone left
     let bench = a_workbench();
     let id = bench.a_scene().await;
     drop(bench.live.join(id).await.expect("should join"));
 
+    // when: live scenes are swept after the grace period
     bench.live.sweep(Instant::now()).await;
 
+    // then: it is let go
     assert!(!bench.live.is_live(id));
 }
 
 #[tokio::test]
 async fn a_scene_rejoined_within_the_grace_period_is_the_same_copy_and_stays() {
+    // given: a scene everyone left
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let first = bench.live.join(id).await.expect("should join");
     let copy = first.scene().clone();
     drop(first);
 
+    // when: it is joined again within the grace period
     let again = bench.live.join(id).await.expect("should join again");
+    // and: live scenes are swept
     bench.live.sweep(Instant::now()).await;
 
+    // then: the rejoin holds the same copy
     assert!(Arc::ptr_eq(&copy, again.scene()));
+    // and: it stays live
     assert!(bench.live.is_live(id));
 }
 
 #[tokio::test]
 async fn a_scene_is_let_go_only_when_its_last_peer_leaves() {
+    // given: a scene two peers are present in
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let ada = bench.live.join(id).await.expect("ada should join");
     let bo = bench.live.join(id).await.expect("bo should join");
 
+    // when: one of them leaves before a sweep
     drop(ada);
     bench.live.sweep(Instant::now()).await;
+    // then: it stays live
     assert!(bench.live.is_live(id), "bo is still writing");
 
+    // when: the last one leaves before a sweep
     drop(bo);
     bench.live.sweep(Instant::now()).await;
+    // then: it is let go
     assert!(!bench.live.is_live(id));
 }
 
 #[tokio::test]
 async fn joining_after_a_scene_was_let_go_brings_back_what_was_stored() {
+    // given: a scene with stored prose that was let go
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let first = bench.live.join(id).await.expect("should join");
@@ -363,14 +383,18 @@ async fn joining_after_a_scene_was_let_go_brings_back_what_was_stored() {
     drop(first);
     bench.live.sweep(Instant::now()).await;
 
+    // when: it is joined again
     let afresh = bench.live.join(id).await.expect("should join again");
 
+    // then: the join holds a fresh copy
     assert!(!Arc::ptr_eq(&copy, afresh.scene()), "a fresh copy");
+    // and: it holds the stored prose
     assert_eq!(afresh.text(), "The loom stood silent.");
 }
 
 #[tokio::test]
 async fn an_edit_the_store_refused_is_flushed_before_the_scene_is_let_go() {
+    // given: a scene holding an edit the store refused
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -380,12 +404,17 @@ async fn an_edit_the_store_refused_is_flushed_before_the_scene_is_let_go() {
         .expect("the live copy takes it");
     bench.store.falter(true);
     assert!(present.persist(&update).await.is_err());
+    // and: the store back
     bench.store.falter(false);
+    // and: everyone gone
     drop(present);
 
+    // when: live scenes are swept
     bench.live.sweep(Instant::now()).await;
 
+    // then: it is let go
     assert!(!bench.live.is_live(id));
+    // and: the edit is stored
     assert_eq!(
         bench.stored_text(id).await,
         "The loom stood silent.",
@@ -395,6 +424,7 @@ async fn an_edit_the_store_refused_is_flushed_before_the_scene_is_let_go() {
 
 #[tokio::test]
 async fn a_scene_that_cannot_be_flushed_stays_live() {
+    // given: a scene everyone left holding an edit the store refused
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -406,20 +436,26 @@ async fn a_scene_that_cannot_be_flushed_stays_live() {
     assert!(present.persist(&update).await.is_err());
     drop(present);
 
+    // when: live scenes are swept while the store is down
     bench.live.sweep(Instant::now()).await;
+    // then: it stays live
     assert!(
         bench.live.is_live(id),
         "while the store is down, memory holds the only copy of the edit"
     );
 
+    // when: live scenes are swept once the store is back
     bench.store.falter(false);
     bench.live.sweep(Instant::now()).await;
+    // then: it is let go
     assert!(!bench.live.is_live(id));
+    // and: the edit is stored
     assert_eq!(bench.stored_text(id).await, "The loom stood silent.");
 }
 
 #[tokio::test]
 async fn a_scene_deleted_while_live_is_let_go_even_with_an_unstored_edit() {
+    // given: a scene everyone left holding an edit the store refused
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -431,14 +467,17 @@ async fn a_scene_deleted_while_live_is_let_go_even_with_an_unstored_edit() {
     assert!(present.persist(&update).await.is_err());
     bench.store.falter(false);
     drop(present);
+    // and: the scene deleted
     bench
         .service
         .delete(&id.to_string(), &Agent::Local)
         .await
         .expect("should delete");
 
+    // when: live scenes are swept
     bench.live.sweep(Instant::now()).await;
 
+    // then: it is let go
     assert!(
         !bench.live.is_live(id),
         "a deleted scene has nowhere to be flushed to, and must not linger forever"
@@ -455,30 +494,38 @@ async fn writes(present: &Presence, saying: &str) {
 
 #[tokio::test]
 async fn the_first_edit_stored_is_counted_at_once() {
+    // given: a joined scene
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
 
+    // when: a first edit is stored
     writes(&present, "The loom stood silent.").await;
 
+    // then: its words are counted
     assert_eq!(bench.last_announced(id), Some(4));
 }
 
 #[tokio::test(start_paused = true)]
 async fn edits_close_behind_are_counted_once_a_short_wait_is_over() {
+    // given: a scene with a counted edit
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
     writes(&present, "The loom stood silent.").await;
 
+    // when: another edit is stored close behind
     writes(&present, "Then it spoke.").await;
 
+    // then: it is not counted yet
     assert_eq!(
         bench.last_announced(id),
         Some(4),
         "counting every keystroke would cost a write each, so a count waits a moment"
     );
+    // when: the short wait is over
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    // then: it is counted
     assert_eq!(
         bench.last_announced(id),
         Some(7),
@@ -488,6 +535,7 @@ async fn edits_close_behind_are_counted_once_a_short_wait_is_over() {
 
 #[tokio::test(start_paused = true)]
 async fn a_scene_is_counted_before_it_is_let_go() {
+    // given: a scene everyone left with an edit waiting to be counted
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -495,14 +543,18 @@ async fn a_scene_is_counted_before_it_is_let_go() {
     writes(&present, "Then it spoke.").await;
     drop(present);
 
+    // when: live scenes are swept
     bench.live.sweep(Instant::now()).await;
 
+    // then: it is let go
     assert!(!bench.live.is_live(id));
+    // and: the waiting edit is counted
     assert_eq!(bench.last_announced(id), Some(7));
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_count_that_cannot_be_stored_does_not_keep_a_scene_live() {
+    // given: a scene everyone left with an edit waiting to be counted
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -510,9 +562,11 @@ async fn a_count_that_cannot_be_stored_does_not_keep_a_scene_live() {
     writes(&present, "Then it spoke.").await;
     drop(present);
 
+    // when: live scenes are swept while the store is down
     bench.store.falter(true);
     bench.live.sweep(Instant::now()).await;
 
+    // then: it is let go
     assert!(
         !bench.live.is_live(id),
         "the words are worked out from the text, so a missed count is caught up by the          next edit, while holding the scene in memory would last until the store is back"
@@ -521,6 +575,7 @@ async fn a_count_that_cannot_be_stored_does_not_keep_a_scene_live() {
 
 #[tokio::test(start_paused = true)]
 async fn settling_before_stopping_counts_what_is_still_waiting_to_be_counted() {
+    // given: a scene with an edit waiting to be counted
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -528,13 +583,16 @@ async fn settling_before_stopping_counts_what_is_still_waiting_to_be_counted() {
     writes(&present, "Then it spoke.").await;
     assert_eq!(bench.last_announced(id), Some(4));
 
+    // when: live scenes are settled
     bench.live.settle().await;
 
+    // then: the waiting edit is counted
     assert_eq!(
         bench.last_announced(id),
         Some(7),
         "a count waiting out its moment dies with the process, so stopping counts it first"
     );
+    // and: the scene stays live
     assert!(
         bench.live.is_live(id),
         "settling stores and counts, and lets nothing go"
@@ -543,6 +601,7 @@ async fn settling_before_stopping_counts_what_is_still_waiting_to_be_counted() {
 
 #[tokio::test]
 async fn settling_before_stopping_stores_an_edit_the_store_refused() {
+    // given: a scene holding an edit the store refused
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -552,10 +611,13 @@ async fn settling_before_stopping_stores_an_edit_the_store_refused() {
         .expect("the live copy takes it");
     bench.store.falter(true);
     assert!(present.persist(&update).await.is_err());
+    // and: the store back
     bench.store.falter(false);
 
+    // when: live scenes are settled
     bench.live.settle().await;
 
+    // then: the edit is stored
     assert_eq!(
         bench.stored_text(id).await,
         "The loom stood silent.",
@@ -565,11 +627,13 @@ async fn settling_before_stopping_stores_an_edit_the_store_refused() {
 
 #[tokio::test(start_paused = true)]
 async fn a_scene_s_opening_is_told_when_it_is_counted_and_only_when_it_changed() {
+    // given: a joined scene
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
     let update = a_paragraph("The loom stood silent in the grey light of morning.");
 
+    // when: the same edit is stored and counted twice
     for _ in 0..2 {
         present
             .receive(Message::JustHappened(update.clone()))
@@ -578,6 +642,7 @@ async fn a_scene_s_opening_is_told_when_it_is_counted_and_only_when_it_changed()
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 
+    // then: its opening is told once
     assert_eq!(
         bench.openings_told(id),
         vec!["The loom stood silent in the grey light…".to_owned()],
@@ -587,6 +652,7 @@ async fn a_scene_s_opening_is_told_when_it_is_counted_and_only_when_it_changed()
 
 #[tokio::test(start_paused = true)]
 async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
+    // given: a scene with prose stored but never counted
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -595,18 +661,22 @@ async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
         .await
         .expect("the prose is stored, and then the server stops before counting it");
 
+    // when: the uncounted are counted
     let counted = bench
         .live
         .count_the_uncounted(10)
         .await
         .expect("counting should succeed");
 
+    // then: the scene is counted
     assert_eq!(counted, 1);
     assert_eq!(bench.last_announced(id), Some(4));
+    // and: its opening is told
     assert_eq!(
         bench.openings_told(id),
         vec!["The loom stood silent.".to_owned()]
     );
+    // and: nothing is owed any more
     assert!(
         bench
             .service
@@ -619,6 +689,7 @@ async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
 
 #[tokio::test(start_paused = true)]
 async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
+    // given: a scene with uncounted prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -626,8 +697,10 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
         .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
         .await
         .expect("writing should succeed");
+    // and: the store down
     bench.store.falter(true);
 
+    // when: the uncounted are counted
     let counted = bench
         .live
         .count_the_uncounted(10)
@@ -635,7 +708,9 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
         .expect("a count that fails is no failure of the round");
     bench.store.falter(false);
 
+    // then: nothing is counted
     assert_eq!(counted, 0);
+    // and: the scene is still owed
     assert_eq!(
         bench
             .service
@@ -645,6 +720,7 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
         vec![id],
         "the debt is kept with the prose, so the next round pays it"
     );
+    // and: a round once the store is back counts it
     assert_eq!(
         bench
             .live
@@ -658,6 +734,7 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
 
 #[tokio::test(start_paused = true)]
 async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
+    // given: a scene with uncounted prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -665,16 +742,20 @@ async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
         .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
         .await
         .expect("writing should succeed");
+    // and: an edit that will be stored while it is being counted
     *bench.store.edited_mid_count.lock().expect("never poisoned") =
         Some(a_paragraph("Then it spoke."));
 
+    // when: the uncounted are counted
     bench
         .live
         .count_the_uncounted(10)
         .await
         .expect("counting should succeed");
 
+    // then: the words before the edit are counted
     assert_eq!(bench.last_announced(id), Some(4));
+    // and: the scene is still owed
     assert_eq!(
         bench
             .service
@@ -688,6 +769,7 @@ async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
 
 #[tokio::test(start_paused = true)]
 async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
+    // given: a scene with uncounted prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -695,8 +777,10 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
         .apply(&id.to_string(), &a_paragraph("The loom stood silent."))
         .await
         .expect("writing should succeed");
+    // and: a store refusing openings
     bench.store.refusing_openings.store(true, Ordering::SeqCst);
 
+    // when: the uncounted are counted
     bench
         .live
         .count_the_uncounted(10)
@@ -707,6 +791,7 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
         .uncounted(10)
         .await
         .expect("asking should succeed");
+    // and: counted again once openings are taken
     bench.store.refusing_openings.store(false, Ordering::SeqCst);
     bench
         .live
@@ -714,15 +799,18 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
         .await
         .expect("counting should succeed");
 
+    // then: the scene was still owed after the refused opening
     assert_eq!(
         owed,
         vec![id],
         "the count and the opening land together, or the opening is lost once the mark is gone"
     );
+    // and: the opening is told
     assert_eq!(
         bench.openings_told(id),
         vec!["The loom stood silent.".to_owned()]
     );
+    // and: nothing is owed any more
     assert!(
         bench
             .service
@@ -735,6 +823,7 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
 
 #[tokio::test(start_paused = true)]
 async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
+    // given: a scene with an edit waiting to be counted
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -744,14 +833,17 @@ async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
         .receive(Message::JustHappened(update.clone()))
         .expect("should write");
     present.persist(&update).await.expect("should persist");
+    // and: the next count stalling
     let stall = Arc::new(Notify::new());
     *bench.transactions.stalled.lock().expect("never poisoned") = Some(stall.clone());
 
+    // when: a count starts and stalls
     let older = tokio::spawn({
         let live = bench.live.clone();
         async move { live.settle().await }
     });
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    // and: a newer edit is counted meanwhile
     writes(&present, "And the weavers listened.").await;
     let newer = tokio::spawn({
         let live = bench.live.clone();
@@ -762,6 +854,7 @@ async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
     older.await.expect("the older count ends");
     newer.await.expect("the newer count ends");
 
+    // then: the newest count is the last told
     assert_eq!(
         bench.last_announced(id),
         Some(11),
@@ -771,6 +864,7 @@ async fn a_count_overtaken_while_it_stalls_is_never_told_after_the_newer_one() {
 
 #[tokio::test]
 async fn an_edit_stored_after_one_the_store_refused_stores_the_whole_scene() {
+    // given: a scene holding an edit the store refused
     let bench = a_workbench();
     let id = bench.a_scene().await;
     let present = bench.live.join(id).await.expect("should join");
@@ -780,19 +874,24 @@ async fn an_edit_stored_after_one_the_store_refused_stores_the_whole_scene() {
         .expect("the live copy takes it");
     bench.store.falter(true);
     assert!(present.persist(&refused).await.is_err());
+    // and: the store back
     bench.store.falter(false);
 
+    // when: a next edit is stored
     writes(&present, "Then it spoke.").await;
 
+    // then: the store holds both edits
     let stored = bench.stored_text(id).await;
     assert!(
         stored.contains("The loom stood silent.") && stored.contains("Then it spoke."),
         "the next edit stored carries the one refused before it, so a crash before eviction loses neither, \
          but the store holds {stored:?}"
     );
+    // when: everyone leaves and live scenes are swept while the store is down
     drop(present);
     bench.store.falter(true);
     bench.live.sweep(Instant::now()).await;
+    // then: it is let go
     assert!(
         !bench.live.is_live(id),
         "stored whole, the scene owes the store nothing more, so it is let go even while the store is down"
@@ -801,6 +900,7 @@ async fn an_edit_stored_after_one_the_store_refused_stores_the_whole_scene() {
 
 #[tokio::test]
 async fn a_restyle_the_store_refused_is_stored_when_it_is_asked_for_again() {
+    // given: a scene with dialogue
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -808,6 +908,7 @@ async fn a_restyle_the_store_refused_is_stored_when_it_is_asked_for_again() {
         .apply(&id.to_string(), &crate::live_scenes::a_dialogue())
         .await
         .expect("writing should succeed");
+    // and: a restyle the store refused
     bench.store.falter(true);
     assert!(
         bench
@@ -819,12 +920,14 @@ async fn a_restyle_the_store_refused_is_stored_when_it_is_asked_for_again() {
     );
     bench.store.falter(false);
 
+    // when: the restyle is asked for again
     bench
         .live
         .restyle(id, QuotationMarks::LowHigh)
         .await
         .expect("asked again, it should succeed");
 
+    // then: the stored scene carries the new marks
     assert_eq!(
         bench.stored_text(id).await,
         "„Komm her,“ sagte sie.",

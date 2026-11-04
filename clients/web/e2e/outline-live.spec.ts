@@ -59,36 +59,43 @@ const titleOf = (page: Page, named: string) =>
 test("a section another author adds appears in the outline", async ({
   page,
 }) => {
+  // given: an outline followed live
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineLiveAdded",
   );
 
+  // when: another author adds a section
   await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
     title: "Part Three",
     under: null,
     after: ids["Part Two"],
   });
 
+  // then: it appears in the outline
   await expect(titleOf(page, "Part Three")).toBeVisible();
 });
 
 test("a scene another author attaches is named in the outline", async ({
   page,
 }) => {
+  // given: an outline followed live
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineLiveNamed",
   );
+  // and: a titled scene
   const scene = await aSceneMade(page);
   await titled(page, scene, "The arrival");
 
+  // when: another author attaches it
   await anotherAuthor(page, "post", `/outlines/${outline}/attachments`, {
     attachment: { kind: "scene", id: scene },
     section: ids["Part One"],
     after: null,
   });
 
+  // then: it is named in the outline
   await expect(
     page.locator(".leaf").getByRole("link", { name: "The arrival" }),
   ).toBeVisible();
@@ -97,6 +104,7 @@ test("a scene another author attaches is named in the outline", async ({
 test("a title I am typing is not overwritten by another author's rename", async ({
   page,
 }) => {
+  // given: an outline followed live, a title of it being typed in
   const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveTyping",
@@ -106,6 +114,7 @@ test("a title I am typing is not overwritten by another author's rename", async 
   await page.keyboard.type(", drafted");
   const before = heard();
 
+  // when: another author renames it
   await anotherAuthor(
     page,
     "patch",
@@ -114,6 +123,7 @@ test("a title I am typing is not overwritten by another author's rename", async 
   );
   await expect.poll(() => heard()).toBeGreaterThan(before);
 
+  // then: what I typed stays
   await expect(page.locator("input.title:focus")).toHaveValue(
     "Part One, drafted",
   );
@@ -122,12 +132,14 @@ test("a title I am typing is not overwritten by another author's rename", async 
 test("a title I only sat in takes another author's rename without writing the old one back", async ({
   page,
 }) => {
+  // given: an outline followed live, a title of it sat in
   const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveSatIn",
   );
   await titleOf(page, "Part One").click();
   const before = heard();
+  // and: another author renamed it meanwhile
   await anotherAuthor(
     page,
     "patch",
@@ -136,8 +148,10 @@ test("a title I only sat in takes another author's rename without writing the ol
   );
   await expect.poll(() => heard()).toBeGreaterThan(before);
 
+  // when: the title is left
   await page.keyboard.press("Escape");
 
+  // then: it takes their rename, writing back nothing
   await expect(titleOf(page, "The Beginning")).toHaveValue("The Beginning");
   await page.waitForTimeout(500);
   expect(await savedTitles(page)).toEqual(["The Beginning", "Part Two"]);
@@ -146,11 +160,14 @@ test("a title I only sat in takes another author's rename without writing the ol
 test("a scene the listing does not know yet is asked for once, not over and over", async ({
   page,
 }) => {
+  // given: scenes not heard of live
   await routingLive(page, { withheld: ["scenes"] });
+  // and: an outline followed live
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineLiveLagging",
   );
+  // and: a scene the listing does not hold yet
   const lagging = await aSceneMade(page);
   let listed = 0;
   await page.route(/\/api\/scenes\?project=/, async (route) => {
@@ -163,6 +180,7 @@ test("a scene the listing does not know yet is asked for once, not over and over
     await route.fulfill({ response: answer, json: page_ });
   });
 
+  // when: another author attaches it
   await anotherAuthor(page, "post", `/outlines/${outline}/attachments`, {
     attachment: { kind: "scene", id: lagging },
     section: ids["Part One"],
@@ -171,6 +189,7 @@ test("a scene the listing does not know yet is asked for once, not over and over
   await expect.poll(() => listed).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
 
+  // then: the scenes are asked for once more, not over and over
   expect(
     listed,
     "asked again once for the change that brought it, not in a loop until the listing catches up",
@@ -199,8 +218,10 @@ async function bothRenamed(page: Page, named: string) {
 test("a title renamed elsewhere while I rename it asks which name stays", async ({
   page,
 }) => {
+  // given: a title I renamed while another author renamed it too
   await bothRenamed(page, "OutlineLiveBoth");
 
+  // then: which name stays is asked
   await expect(renamedMeanwhile(page)).toContainText(
     "someone else renamed it to “The Beginning”. Yours is “Part One, drafted”.",
   );
@@ -209,12 +230,15 @@ test("a title renamed elsewhere while I rename it asks which name stays", async 
 test("keeping my title over one given meanwhile keeps mine", async ({
   page,
 }) => {
+  // given: a title I renamed while another author renamed it too
   await bothRenamed(page, "OutlineLiveKept");
 
+  // when: mine is kept
   await renamedMeanwhile(page)
     .getByRole("button", { name: "Keep mine" })
     .click();
 
+  // then: mine stays
   await expect(titleOf(page, "Part One, drafted")).toHaveValue(
     "Part One, drafted",
   );
@@ -224,12 +248,15 @@ test("keeping my title over one given meanwhile keeps mine", async ({
 });
 
 test("taking the title given meanwhile drops mine", async ({ page }) => {
+  // given: a title I renamed while another author renamed it too
   await bothRenamed(page, "OutlineLiveTook");
 
+  // when: theirs is taken
   await renamedMeanwhile(page)
     .getByRole("button", { name: "Take theirs" })
     .click();
 
+  // then: theirs stays
   await expect(titleOf(page, "The Beginning")).toHaveValue("The Beginning");
   await page.waitForTimeout(500);
   expect(await savedTitles(page)).toEqual(["The Beginning", "Part Two"]);
@@ -238,23 +265,30 @@ test("taking the title given meanwhile drops mine", async ({ page }) => {
 test("renaming, nesting with Tab and renaming on in the same field asks nothing", async ({
   page,
 }) => {
+  // given: an outline followed live, a title of it being typed in
   await anOutlineFollowedLive(page, "OutlineLiveTabbed");
   await titleOf(page, "Part Two").click();
   await page.keyboard.press("End");
   await page.keyboard.type(", drafted");
 
+  // when: the section is nested with tab
   await page.keyboard.press("Tab");
+  // then: the title typed so far is saved
   await expect
     .poll(() => savedTitles(page))
     .toEqual(["Part One", "Part Two, drafted"]);
   await page.waitForTimeout(300);
+  // and: the title is still being typed in
   await expect(page.locator("input.title:focus")).toHaveValue(
     "Part Two, drafted",
   );
+  // when: more is typed and the title left
   await page.keyboard.type(" again");
   await page.keyboard.press("Escape");
 
+  // then: nothing is asked
   await expect(renamedMeanwhile(page)).toHaveCount(0);
+  // and: the whole title is saved
   await expect
     .poll(() => savedTitles(page))
     .toEqual(["Part One", "Part Two, drafted again"]);
@@ -263,6 +297,7 @@ test("renaming, nesting with Tab and renaming on in the same field asks nothing"
 test("typing the very title someone else gave meanwhile asks nothing", async ({
   page,
 }) => {
+  // given: an outline followed live, a title of it retyped as another author renames it the same
   const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveSame",
@@ -279,8 +314,10 @@ test("typing the very title someone else gave meanwhile asks nothing", async ({
   );
   await expect.poll(() => heard()).toBeGreaterThan(before);
 
+  // when: the title is left
   await page.keyboard.press("Escape");
 
+  // then: nothing is asked
   await page.waitForTimeout(300);
   await expect(renamedMeanwhile(page)).toHaveCount(0);
 });
@@ -288,12 +325,14 @@ test("typing the very title someone else gave meanwhile asks nothing", async ({
 test("a move made from an outline that is behind is refused gently, and the outline catches up", async ({
   page,
 }) => {
+  // given: an outline that hears nothing
   await routingLive(page, { withheld: ["outlines"] });
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineOvertaken",
     { routed: true },
   );
+  // and: a section removed meanwhile
   await anotherAuthor(
     page,
     "delete",
@@ -304,13 +343,16 @@ test("a move made from an outline that is behind is refused gently, and the outl
     titleOf(page, "Part Two"),
     "this outline hears nothing",
   ).toBeVisible();
+  // when: that section is moved
   await titleOf(page, "Part Two").click();
 
   await page.keyboard.press("Alt+ArrowUp");
 
+  // then: it is refused gently
   await expect(
     page.getByText("Someone else changed this meanwhile"),
   ).toBeVisible();
+  // and: the outline catches up
   await expect(titleOf(page, "Part Two")).toHaveCount(0);
 });
 
@@ -330,6 +372,7 @@ async function anOutlineThatHearsNothing(
 test("a move placed after a section removed meanwhile is refused gently", async ({
   page,
 }) => {
+  // given: an outline that hears nothing
   const { outline, ids } = await anOutlineThatHearsNothing(
     page,
     "OutlineGoneNeighbour",
@@ -339,29 +382,36 @@ test("a move placed after a section removed meanwhile is refused gently", async 
       { title: "Part Three", after: "Part Two" },
     ],
   );
+  // and: a section removed meanwhile
   await anotherAuthor(
     page,
     "delete",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
   );
+  // when: a section is moved to after it
   await titleOf(page, "Part Three").click();
 
   await page.keyboard.press("Alt+ArrowUp");
 
+  // then: it is refused gently
   await expect(
     page.getByText("Someone else changed this meanwhile"),
   ).toBeVisible();
+  // and: the outline catches up
   await expect(titleOf(page, "Part One")).toHaveCount(0);
 });
 
 test("asked which name stays, the question follows the language chosen meanwhile", async ({
   page,
 }) => {
+  // given: asked which name stays
   await bothRenamed(page, "OutlineLiveSpoken");
   await expect(renamedMeanwhile(page)).toBeVisible();
 
+  // when: german is chosen
   await page.getByRole("combobox", { name: "Language" }).selectOption("de");
 
+  // then: the question is asked in german
   const asked = page.getByRole("dialog", { name: "Inzwischen umbenannt" });
   await expect(asked).toContainText(
     "Während du diesen Titel bearbeitet hast, hat jemand anderes ihn in „The Beginning“ umbenannt. Deiner lautet „Part One, drafted“.",
@@ -404,6 +454,7 @@ async function savedShape(page: Page, outline: string) {
 test("a section another author adds is taken in, without opening the outline again", async ({
   page,
 }) => {
+  // given: an outline followed live
   const { outline, ids, reloads, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveTakenIn",
@@ -411,13 +462,16 @@ test("a section another author adds is taken in, without opening the outline aga
   const before = reloads();
   const told = heard();
 
+  // when: another author adds a section
   await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
     title: "Part Three",
     under: null,
     after: ids["Part Two"],
   });
 
+  // then: it appears
   await expect(titleOf(page, "Part Three")).toBeVisible();
+  // and: the outline is not opened again
   await expect.poll(() => heard()).toBeGreaterThan(told);
   await page.waitForTimeout(500);
   expect(reloads(), "the section was taken in as it came").toBe(before);
@@ -426,6 +480,7 @@ test("a section another author adds is taken in, without opening the outline aga
 test("many changes by another author, taken in one by one, leave the outline as the server holds it", async ({
   page,
 }) => {
+  // given: an outline followed live
   const { outline, ids, reloads, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveMany",
@@ -441,6 +496,7 @@ test("many changes by another author, taken in one by one, leave the outline as 
   const before = reloads();
   const told = heard();
 
+  // when: another author changes it many times over
   const chapter = await added("Chapter 1", ids["Part One"], null);
   const second = await added("Chapter 2", ids["Part One"], chapter);
   await added("Chapter 3", ids["Part One"], second);
@@ -455,8 +511,10 @@ test("many changes by another author, taken in one by one, leave the outline as 
     title: "The Second Chapter",
   });
 
+  // then: it is shown as the server holds it
   const saved = await savedShape(page, outline);
   await expect.poll(() => shownShape(page)).toEqual(saved);
+  // and: it was not opened again
   await expect.poll(() => heard()).toBeGreaterThanOrEqual(told + 8);
   expect(reloads(), "every change followed on, so none was opened again").toBe(before);
 });
@@ -465,6 +523,7 @@ test("many changes by another author, taken in one by one, leave the outline as 
 test("a change missed on the way opens the outline again, and the outline comes out right", async ({
   page,
 }) => {
+  // given: an outline followed live that will miss a change
   let passed = 0;
   let connected = false;
   await routingLive(page, {
@@ -490,6 +549,7 @@ test("a change missed on the way opens the outline again, and the outline comes 
   await expect.poll(() => connected).toBe(true);
   await page.waitForTimeout(300);
 
+  // when: another author renames its sections, one change missed on the way
   await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids["Part One"]}`, {
     title: "The Beginning",
   });
@@ -500,6 +560,7 @@ test("a change missed on the way opens the outline again, and the outline comes 
     title: "The Middle",
   });
 
+  // then: every rename shows
   await expect.poll(() => passed).toBeGreaterThanOrEqual(3);
   await expect(titleOf(page, "The Middle")).toHaveValue("The Middle");
   await expect(
@@ -511,43 +572,53 @@ test("a change missed on the way opens the outline again, and the outline comes 
 test("an outline is opened once, and a change made before it is followed is caught up as it connects", async ({
   page,
 }) => {
+  // given: an outline shown but not yet followed
   const live = await routingLive(page, { held: ["outlines"] });
   const connect = () => live.release("outlines");
   const { outline, reloads } = await anOutlineFollowedLive(page, "OutlineHello", {
     routed: true,
   });
 
+  // when: another author adds a section before it is followed
   await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
     title: "Written meanwhile",
     under: null,
     after: null,
   });
+  // and: the outline then connects
   connect();
 
+  // then: the section shows
   await expect(
     titleOf(page, "Written meanwhile"),
     "told where the outline stands, a newer version than held, it is opened again",
   ).toBeVisible();
+  // and: the outline was opened once more
   expect(reloads()).toBe(2);
 });
 
 test("an idea noted elsewhere that the list of ideas does not hold yet is asked for, and named", async ({
   page,
 }) => {
+  // given: ideas not heard of live
   await routingLive(page, { withheld: ["ideas"] });
+  // and: an outline followed live
   const { outline, ids } = await anOutlineFollowedLive(page, "OutlineUnknownIdea");
+  // and: an idea captured elsewhere
   const captured = await anotherAuthor(page, "post", "/ideas", {
     project: projectOf(page),
     title: "Winter comes early",
   });
   const winter = (await captured.json()).id as string;
 
+  // when: another author notes it in the outline
   await anotherAuthor(page, "post", `/outlines/${outline}/attachments`, {
     attachment: { kind: "idea", id: winter },
     section: ids["Part One"],
     after: null,
   });
 
+  // then: it is named
   await expect(
     page.locator(".leaf .name"),
     "the outline hears of the idea only through the note, so it asks for the ideas again",

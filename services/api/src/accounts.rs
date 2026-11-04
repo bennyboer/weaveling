@@ -54,6 +54,7 @@ mod tests {
 
     #[test]
     fn nothing_set_means_no_accounts() {
+        // expect: nothing set leaves accounts off
         assert_eq!(
             Accounts::chosen(None),
             Ok(Accounts::Off),
@@ -63,6 +64,7 @@ mod tests {
 
     #[test]
     fn on_and_off_are_read_however_they_are_written() {
+        // expect: on and off are read whatever their case and spacing
         assert_eq!(Accounts::chosen(set("on")), Ok(Accounts::On));
         assert_eq!(Accounts::chosen(set(" ON ")), Ok(Accounts::On));
         assert_eq!(Accounts::chosen(set("off")), Ok(Accounts::Off));
@@ -71,11 +73,13 @@ mod tests {
 
     #[test]
     fn a_blank_setting_counts_as_unset() {
+        // expect: a blank setting leaves accounts off
         assert_eq!(Accounts::chosen(set("  ")), Ok(Accounts::Off));
     }
 
     #[test]
     fn anything_else_is_refused_rather_than_guessed() {
+        // expect: any other setting is refused
         assert_eq!(
             Accounts::chosen(set("yes")),
             Err(UnreadableAccounts {
@@ -87,6 +91,7 @@ mod tests {
 
     #[test]
     fn a_refusal_says_what_was_given_and_what_would_do() {
+        // expect: a refusal names what was given and what would do
         assert_eq!(
             UnreadableAccounts {
                 given: "yes".to_owned()

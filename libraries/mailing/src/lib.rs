@@ -81,11 +81,14 @@ mod tests {
 
     #[tokio::test]
     async fn the_fake_mailbox_keeps_each_mail_for_whom_it_was_sent() {
+        // given: a fake mailbox
         let mailbox = FakeMailbox::default();
 
+        // when: mail is sent to two people
         mailbox.send(a_mail("ada@example.com")).await.expect("sent");
         mailbox.send(a_mail("bea@example.com")).await.expect("sent");
 
+        // then: each one's mail is kept for them
         assert_eq!(
             mailbox.sent_to("ada@example.com"),
             vec![a_mail("ada@example.com")]
@@ -94,6 +97,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_logging_mailer_never_fails() {
+        // expect: sending through the logging mailer succeeds
         assert!(LoggingMailer.send(a_mail("ada@example.com")).await.is_ok());
     }
 }

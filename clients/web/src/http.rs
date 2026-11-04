@@ -165,6 +165,7 @@ mod tests {
 
     #[test]
     fn a_problem_tells_its_kind_its_detail_and_its_particulars() {
+        // when: a problem with a kind, a detail and particulars is told
         let refusal = told(json!({
             "type": "project-name-too-long",
             "status": 400,
@@ -174,6 +175,7 @@ mod tests {
             "name": "The loom",
         }));
 
+        // then: the refusal carries all three, particulars in order of their names
         assert_eq!(
             refusal,
             Some(Refusal {
@@ -190,19 +192,23 @@ mod tests {
 
     #[test]
     fn a_problem_without_a_kind_still_tells_its_detail() {
+        // when: a problem with a detail and no kind is told
         let refusal = told(json!({ "detail": "refused" })).expect("a refusal");
 
+        // then: it is a refusal of no kind with that detail
         assert_eq!(refusal.kind, None);
         assert_eq!(refusal.detail, "refused");
     }
 
     #[test]
     fn a_problem_without_a_detail_is_no_refusal() {
+        // expect: a problem with a kind and no detail tells no refusal
         assert_eq!(told(json!({ "type": "project-deleted" })), None);
     }
 
     #[test]
     fn what_is_neither_a_count_nor_a_text_is_left_out() {
+        // when: a problem with a fraction, a flag and a list is told
         let refusal = told(json!({
             "type": "kind",
             "detail": "refused",
@@ -212,6 +218,7 @@ mod tests {
         }))
         .expect("a refusal");
 
+        // then: none of them is a particular
         assert_eq!(refusal.particulars, Vec::new());
     }
 }

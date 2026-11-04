@@ -100,9 +100,12 @@ mod tests {
 
     #[test]
     fn a_token_is_256_bits_written_in_hex() {
+        // given: a token derived for an invitation
         let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
+        // then: it is 64 characters long
         assert_eq!(token.as_str().len(), 64);
+        // and: all of them hex
         assert!(
             token
                 .as_str()
@@ -113,8 +116,10 @@ mod tests {
 
     #[test]
     fn a_token_derived_twice_is_the_same_token() {
+        // given: a key and an invitation
         let (key, invitation) = (TokenKey::drawn(), an_invitation());
 
+        // then: deriving twice gives the same token
         assert_eq!(
             InvitationToken::derived(&key, &invitation).as_str(),
             InvitationToken::derived(&key, &invitation).as_str(),
@@ -124,13 +129,16 @@ mod tests {
 
     #[test]
     fn another_invitation_or_another_key_gives_another_token() {
+        // given: a token derived with a key for an invitation
         let (key, invitation) = (TokenKey::drawn(), an_invitation());
         let token = InvitationToken::derived(&key, &invitation);
 
+        // then: another invitation gives another token
         assert_ne!(
             InvitationToken::derived(&key, &an_invitation()).as_str(),
             token.as_str()
         );
+        // and: another key gives another token
         assert_ne!(
             InvitationToken::derived(&TokenKey::drawn(), &invitation).as_str(),
             token.as_str(),
@@ -140,17 +148,23 @@ mod tests {
 
     #[test]
     fn only_a_digest_is_kept_the_same_each_time_and_never_the_token() {
+        // given: a token
         let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
+        // then: its digest is the same each time
         assert_eq!(token.digest(), token.digest());
+        // and: is not the token
         assert_ne!(token.digest().as_str(), token.as_str());
+        // and: is 64 characters long
         assert_eq!(token.digest().as_str().len(), 64);
     }
 
     #[test]
     fn a_token_copied_from_a_mail_with_space_around_it_is_the_same_token() {
+        // given: a token
         let token = InvitationToken::derived(&TokenKey::drawn(), &an_invitation());
 
+        // then: presented with space around it, it has the same digest
         assert_eq!(
             InvitationToken::presented(&format!(" {}\n", token.as_str())).digest(),
             token.digest()
@@ -159,6 +173,7 @@ mod tests {
 
     #[test]
     fn a_token_is_known_by_the_sha_256_of_it_as_accounts_reckon_it() {
+        // expect: a token's digest is its sha-256 as accounts reckon it
         assert_eq!(
             InvitationToken::presented("abc").digest().as_str(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -167,11 +182,14 @@ mod tests {
 
     #[test]
     fn a_key_is_32_bytes_and_neither_it_nor_a_token_is_written_out_by_debug() {
+        // given: a key and a token derived with it
         let key = TokenKey::drawn();
         let token = InvitationToken::derived(&key, &an_invitation());
 
+        // then: a key is 32 bytes and is kept as it was
         assert!(TokenKey::kept(&[0; 31]).is_none());
         assert_eq!(TokenKey::kept(key.as_bytes()), Some(key.clone()));
+        // and: debug writes out neither
         assert!(!format!("{token:?}").contains(token.as_str()));
         assert!(!format!("{key:?}").contains(&hex(key.as_bytes())));
     }

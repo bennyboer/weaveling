@@ -45,6 +45,7 @@ mod tests {
 
     #[test]
     fn an_invitation_to_you_is_read_with_its_project_s_name_its_role_and_who_invited() {
+        // expect: each invitation keeps what it was told, named or not
         assert_eq!(
             read(vec![
                 told("author", Some("Shared"), Some("Ada")),
@@ -69,6 +70,7 @@ mod tests {
 
     #[test]
     fn a_role_nobody_knows_is_unexpected() {
+        // expect: an invitation as an unknown role is unexpected
         assert_eq!(
             read(vec![told("gardener", Some("Shared"), Some("Ada"))]),
             Err(ApiError::Unexpected)

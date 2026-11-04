@@ -45,14 +45,17 @@ mod tests {
 
     #[test]
     fn an_idea_may_arrive_before_its_title() {
+        // when: a title of only blanks is made
         let title = IdeaTitle::new("  ").expect("an idea may be untitled");
 
+        // then: it is the untitled title
         assert_eq!(title, IdeaTitle::untitled());
         assert!(title.is_untitled());
     }
 
     #[test]
     fn a_title_is_one_line_up_to_its_limit() {
+        // expect: a title refuses a line break and anything past its limit
         assert_eq!(
             IdeaTitle::new("The\nLoom"),
             Err(InvalidIdeaTitle::ControlCharacter)

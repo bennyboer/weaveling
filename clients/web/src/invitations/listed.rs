@@ -112,7 +112,7 @@ mod tests {
 
     use super::*;
 
-    fn grace(status: &str, declined_for: Option<&str>) -> InvitationSummaryDTO {
+    fn an_invitation_to_grace(status: &str, declined_for: Option<&str>) -> InvitationSummaryDTO {
         InvitationSummaryDTO {
             id: "invitation_1".to_owned(),
             email: "grace@example.com".to_owned(),
@@ -134,12 +134,14 @@ mod tests {
 
     #[test]
     fn an_invitation_is_listed_as_the_server_told_it() {
+        // when: a page of one open invitation is read
         let page = InvitationPage::of(InvitationPageDTO {
-            invitations: vec![grace("open", None)],
+            invitations: vec![an_invitation_to_grace("open", None)],
             next: Some("invitation_1".to_owned()),
         })
         .expect("a page the server sends is readable");
 
+        // then: it lists the invitation and the next page as told
         assert_eq!(
             page,
             InvitationPage {
@@ -158,19 +160,27 @@ mod tests {
 
     #[test]
     fn every_status_the_server_tells_is_read_with_why_for_a_decline() {
-        assert_eq!(the_status(grace("expired", None)), Ok(Status::Expired));
+        // expect: an expired invitation and either kind of declined one read as such
         assert_eq!(
-            the_status(grace("declined", Some("address-has-account"))),
+            the_status(an_invitation_to_grace("expired", None)),
+            Ok(Status::Expired)
+        );
+        assert_eq!(
+            the_status(an_invitation_to_grace(
+                "declined",
+                Some("address-has-account")
+            )),
             Ok(Status::Declined(DeclineReason::AddressHasAccount))
         );
         assert_eq!(
-            the_status(grace("declined", Some("turned-down"))),
+            the_status(an_invitation_to_grace("declined", Some("turned-down"))),
             Ok(Status::Declined(DeclineReason::TurnedDown))
         );
     }
 
     #[test]
     fn a_scope_sent_is_read_back_as_it_was() {
+        // expect: every scope told and read back is the same
         for scope in [
             Scope::Instance,
             Scope::Project {
@@ -184,6 +194,7 @@ mod tests {
         ] {
             assert_eq!(Scope::read(scope.told()), Ok(scope));
         }
+        // and: a project's scope is told with its role by name
         assert_eq!(
             Scope::Project {
                 project: "project_1".to_owned(),
@@ -199,17 +210,19 @@ mod tests {
 
     #[test]
     fn a_project_s_invitation_tells_the_project_and_the_role_it_invites_as() {
+        // given: an invitation to a project as each role
         for (named, told) in [
             ("owner", Role::Owner),
             ("author", Role::Author),
             ("reader", Role::Reader),
         ] {
-            let mut summary = grace("open", None);
+            let mut summary = an_invitation_to_grace("open", None);
             summary.scope = ScopeDTO::Project {
                 project: "project_1".to_owned(),
                 role: named.to_owned(),
             };
 
+            // then: it is listed with that project and role
             assert_eq!(
                 listed(summary).map(|invitation| invitation.scope),
                 Ok(Scope::Project {
@@ -222,22 +235,24 @@ mod tests {
 
     #[test]
     fn a_status_or_a_moment_nobody_declared_is_unexpected() {
-        let mut broken = grace("open", None);
+        // given: an invitation whose last moment is no moment
+        let mut broken = an_invitation_to_grace("open", None);
         broken.until = "next week".to_owned();
 
+        // expect: it and any undeclared status, reason or role are unexpected
         for unreadable in [
-            grace("pending", None),
-            grace("declined", None),
-            grace("declined", Some("had a bad day")),
-            grace("open", Some("address-has-account")),
-            grace("expired", Some("turned-down")),
+            an_invitation_to_grace("pending", None),
+            an_invitation_to_grace("declined", None),
+            an_invitation_to_grace("declined", Some("had a bad day")),
+            an_invitation_to_grace("open", Some("address-has-account")),
+            an_invitation_to_grace("expired", Some("turned-down")),
             broken,
             InvitationSummaryDTO {
                 scope: ScopeDTO::Project {
                     project: "project_1".to_owned(),
                     role: "editor".to_owned(),
                 },
-                ..grace("open", None)
+                ..an_invitation_to_grace("open", None)
             },
         ] {
             assert_eq!(the_status(unreadable), Err(ApiError::Unexpected));

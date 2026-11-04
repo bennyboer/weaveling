@@ -50,14 +50,17 @@ mod tests {
 
     #[test]
     fn an_account_agent_carries_who_it_is() {
+        // given: an account acting
         let acting = Agent::Account(AccountId::from("author-7"));
 
+        // then: it is that account and no other
         assert_eq!(acting, Agent::Account(AccountId::from("author-7")));
         assert_ne!(acting, Agent::Account(AccountId::from("author-8")));
     }
 
     #[test]
     fn the_placeless_agents_need_no_id() {
+        // expect: the system and the instance itself are agents of their own
         assert_eq!(Agent::System, Agent::System);
         assert_eq!(Agent::Local, Agent::Local);
         assert_ne!(Agent::System, Agent::Local);
@@ -65,6 +68,7 @@ mod tests {
 
     #[test]
     fn an_agent_reads_well_in_an_audit_line() {
+        // expect: an agent reads as what acted
         assert_eq!(Agent::Local.to_string(), "local");
         assert_eq!(Agent::System.to_string(), "system");
         assert_eq!(

@@ -99,6 +99,7 @@ mod tests {
 
     #[test]
     fn a_book_s_language_brings_its_house_style() {
+        // expect: each language brings its house style
         assert_eq!(
             QuotationMarks::of_language(Some("de")),
             QuotationMarks::PointingIn
@@ -128,19 +129,23 @@ mod tests {
 
     #[test]
     fn every_style_is_known_by_its_name() {
+        // expect: every style is found by its name
         for style in QuotationMarks::ALL {
             assert_eq!(QuotationMarks::named(style.name()), Some(style));
             assert_eq!(QuotationMarks::new(style.name()), Ok(style));
         }
+        // and: an unknown name finds none
         assert_eq!(QuotationMarks::named("guillemets"), None);
     }
 
     #[test]
     fn a_name_is_read_with_the_spaces_around_it_left_out() {
+        // expect: a name with spaces around it is read
         assert_eq!(
             QuotationMarks::new(" low-high "),
             Ok(QuotationMarks::LowHigh)
         );
+        // and: an unknown name is refused
         assert_eq!(
             QuotationMarks::new("guillemets"),
             Err(InvalidQuotationMarks::Unknown("guillemets".to_owned()))
@@ -149,6 +154,7 @@ mod tests {
 
     #[test]
     fn french_marks_keep_a_narrow_space_inside() {
+        // expect: french marks keep a narrow space inside
         assert_eq!(QuotationMarks::SpacedOut.shown(), "«\u{202F}…\u{202F}»");
         assert_eq!(QuotationMarks::PointingIn.shown(), "»…«");
     }

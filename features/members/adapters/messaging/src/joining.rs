@@ -80,7 +80,7 @@ mod tests {
         listener: Inboxed<JoinByAcceptedInvitationListener>,
     }
 
-    async fn founded() -> Bench {
+    async fn a_founded_project() -> Bench {
         let store = Arc::new(InMemoryEventStore::new());
         let members = MembersCore::new(
             store.clone(),
@@ -107,7 +107,7 @@ mod tests {
         }
     }
 
-    fn accepted(scope: Value, agent: Value) -> Message {
+    fn an_acceptance(scope: Value, agent: Value) -> Message {
         Message::opening(
             RoutingKey::parse(ACCEPTED).expect("a declared key"),
             json!({
@@ -128,7 +128,7 @@ mod tests {
         json!({ "kind": "account", "id": "account_bo" })
     }
 
-    async fn joined(bench: &Bench) -> Vec<MembersEvent> {
+    async fn events_after_founding(bench: &Bench) -> Vec<MembersEvent> {
         bench
             .store
             .read_from(
@@ -150,18 +150,21 @@ mod tests {
             ("author", Role::Author),
             ("reader", Role::Reader),
         ] {
-            let bench = founded().await;
+            // given: a founded project
+            let bench = a_founded_project().await;
 
+            // when: an acceptance of an invitation into it in each role is heard twice
             for _ in 0..2 {
                 bench
                     .listener
-                    .handle(&accepted(into_the_project_as(named), bo()))
+                    .handle(&an_acceptance(into_the_project_as(named), bo()))
                     .await
                     .expect("messages come at least once");
             }
 
+            // then: whoever accepted joined once, in that role
             assert_eq!(
-                joined(&bench).await,
+                events_after_founding(&bench).await,
                 vec![MembersEvent::Joined {
                     account: AccountId::from("account_bo"),
                     role,
@@ -172,21 +175,25 @@ mod tests {
 
     #[tokio::test]
     async fn a_member_already_keeps_the_role_they_have() {
-        let bench = founded().await;
+        // given: a founded project
+        let bench = a_founded_project().await;
+        // and: a reader of it
         bench
             .members
             .join(None, "project_1", "account_bo", Role::Reader)
             .await
             .expect("joining should succeed");
 
+        // when: their acceptance of an invitation as author is heard
         bench
             .listener
-            .handle(&accepted(into_the_project_as("author"), bo()))
+            .handle(&an_acceptance(into_the_project_as("author"), bo()))
             .await
             .expect("an owner changes a member's role; an invitation is no way around that");
 
+        // then: they stay a reader
         assert_eq!(
-            joined(&bench).await,
+            events_after_founding(&bench).await,
             vec![MembersEvent::Joined {
                 account: AccountId::from("account_bo"),
                 role: Role::Reader,
@@ -196,32 +203,37 @@ mod tests {
 
     #[tokio::test]
     async fn an_invitation_to_the_instance_lets_nobody_join_anything() {
-        let bench = founded().await;
+        // given: a founded project
+        let bench = a_founded_project().await;
 
+        // when: an acceptance of an invitation to the instance is heard
         bench
             .listener
-            .handle(&accepted(json!({ "kind": "instance" }), bo()))
+            .handle(&an_acceptance(json!({ "kind": "instance" }), bo()))
             .await
             .expect("there is nothing to join");
 
-        assert!(joined(&bench).await.is_empty());
+        // then: nobody joined
+        assert!(events_after_founding(&bench).await.is_empty());
     }
 
     #[tokio::test]
     async fn an_acceptance_the_listener_cannot_act_on_belongs_in_dead_letters() {
-        let bench = founded().await;
+        // given: a founded project
+        let bench = a_founded_project().await;
 
+        // expect: hearing each acceptance with no role, no account or no sense fails
         for unreadable in [
-            accepted(into_the_project_as("editor"), bo()),
-            accepted(
+            an_acceptance(into_the_project_as("editor"), bo()),
+            an_acceptance(
                 into_the_project_as("author"),
                 json!({ "kind": "system", "id": null }),
             ),
-            accepted(
+            an_acceptance(
                 into_the_project_as("author"),
                 json!({ "kind": "account", "id": null }),
             ),
-            accepted(
+            an_acceptance(
                 into_the_project_as("author"),
                 json!({ "kind": "system", "id": "account_bo" }),
             ),
@@ -233,14 +245,18 @@ mod tests {
         ] {
             assert!(bench.listener.handle(&unreadable).await.is_err());
         }
-        assert!(joined(&bench).await.is_empty());
+        // and: nobody joined
+        assert!(events_after_founding(&bench).await.is_empty());
     }
 
     #[tokio::test]
     async fn only_an_accepted_invitation_is_heard() {
-        let listener = founded().await.listener;
+        // given: the listener
+        let listener = a_founded_project().await.listener;
 
+        // expect: it hears an acceptance
         assert!(listener.hears(&RoutingKey::parse(ACCEPTED).expect("a declared key")));
+        // and: not an issuing
         assert!(
             !listener
                 .hears(&RoutingKey::parse(invitations_contract::ISSUED).expect("a declared key"))

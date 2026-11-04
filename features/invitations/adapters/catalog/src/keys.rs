@@ -33,12 +33,15 @@ mod tests {
 
     #[tokio::test]
     async fn a_process_keeps_one_key_and_another_draws_its_own() {
+        // given: the keys of a process
         let keys = InMemoryTokenKeys::new();
 
+        // then: it keeps one key
         assert_eq!(
             keys.key().await.expect("a key is at hand"),
             keys.key().await.expect("a key is at hand")
         );
+        // and: another process draws its own
         assert_ne!(
             keys.key().await.expect("a key is at hand"),
             InMemoryTokenKeys::new()

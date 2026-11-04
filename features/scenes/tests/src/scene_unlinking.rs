@@ -91,17 +91,22 @@ fn discarded(idea: &str) -> Message {
 
 #[tokio::test]
 async fn a_discarded_idea_is_unlinked_from_every_scene() {
+    // given: a scene linked to two ideas
     let wired = a_workbench();
     let one = wired.a_scene_linked_to(&["idea_gone", "idea_kept"]).await;
+    // and: another linked to one of them
     let other = wired.a_scene_linked_to(&["idea_gone"]).await;
 
+    // when: that idea's discarding is heard
     wired
         .unlink
         .handle(&discarded("idea_gone"))
         .await
         .expect("unlinking should succeed");
 
+    // then: the first keeps only the other idea
     assert_eq!(wired.ideas_of(one).await, vec![IdeaLink::from("idea_kept")]);
+    // and: the second keeps none
     assert!(
         wired.ideas_of(other).await.is_empty(),
         "a link to an idea nobody kept is a reference to nothing"
@@ -110,15 +115,18 @@ async fn a_discarded_idea_is_unlinked_from_every_scene() {
 
 #[tokio::test]
 async fn a_discarded_idea_takes_no_scene_with_it() {
+    // given: a scene linked to an idea
     let wired = a_workbench();
     let scene = wired.a_scene_linked_to(&["idea_gone"]).await;
 
+    // when: the idea's discarding is heard
     wired
         .unlink
         .handle(&discarded("idea_gone"))
         .await
         .expect("unlinking should succeed");
 
+    // then: the scene is still there
     assert!(
         wired.scenes.open(&scene.to_string()).await.is_ok(),
         "ideas are disposable and scenes are the book: losing the idea drops the link, never the text"
@@ -127,9 +135,11 @@ async fn a_discarded_idea_takes_no_scene_with_it() {
 
 #[tokio::test]
 async fn hearing_the_same_discard_twice_is_harmless() {
+    // given: a scene linked to an idea
     let wired = a_workbench();
     wired.a_scene_linked_to(&["idea_gone"]).await;
 
+    // then: hearing the idea's discarding twice succeeds both times
     for _ in 0..2 {
         wired
             .unlink
@@ -141,18 +151,23 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 
 #[tokio::test]
 async fn the_listener_hears_only_ideas_being_discarded() {
+    // given: the listener
     let wired = a_workbench();
 
+    // when: what it listens to is asked
     let heard: Vec<Subscription> = wired.unlink.listens_to();
 
+    // then: it hears ideas being discarded
     assert!(heard.iter().any(|subscription| {
         subscription.covers(&RoutingKey::parse(DISCARDED).expect("a declared key is fine"))
     }));
+    // and: nothing else
     assert_eq!(heard.len(), 1);
 }
 
 #[tokio::test]
 async fn a_message_about_no_idea_at_all_is_refused() {
+    // given: a message about no idea at all
     let wired = a_workbench();
     let nonsense = Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
@@ -160,6 +175,7 @@ async fn a_message_about_no_idea_at_all_is_refused() {
         at(1_000),
     );
 
+    // then: hearing it fails
     assert!(
         wired.unlink.handle(&nonsense).await.is_err(),
         "a message the listener cannot act on belongs in dead letters, not silently dropped"

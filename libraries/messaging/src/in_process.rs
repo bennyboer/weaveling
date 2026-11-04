@@ -228,7 +228,7 @@ mod tests {
         OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
     }
 
-    fn saying(routing: &str) -> Message {
+    fn a_message(routing: &str) -> Message {
         Message::opening(
             RoutingKey::parse(routing).expect("a plain key is fine"),
             json!({}),
@@ -238,34 +238,41 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_hears_what_it_subscribed_to() {
+        // given: a listener subscribed to a key
         let dispatcher = a_workbench();
         let listener = Overheard::listening("idea.captured");
         dispatcher.listen(listener.clone());
 
+        // when: a message on that key is published
         dispatcher
-            .publish(saying("idea.captured"))
+            .publish(a_message("idea.captured"))
             .await
             .expect("publishing should succeed");
 
+        // then: it hears it
         assert_eq!(listener.what_it_heard(), vec!["idea.captured"]);
     }
 
     #[tokio::test]
     async fn a_listener_hears_nothing_it_did_not_subscribe_to() {
+        // given: a listener subscribed to a key
         let dispatcher = a_workbench();
         let listener = Overheard::listening("idea.captured");
         dispatcher.listen(listener.clone());
 
+        // when: a message on another key is published
         dispatcher
-            .publish(saying("board.pinned"))
+            .publish(a_message("board.pinned"))
             .await
             .expect("publishing should succeed");
 
+        // then: it hears nothing
         assert!(listener.what_it_heard().is_empty());
     }
 
     #[tokio::test]
     async fn everyone_interested_hears_the_same_message() {
+        // given: listeners subscribed exactly, by wildcard and to everything
         let dispatcher = a_workbench();
         let exact = Overheard::named("exact", "idea.captured", Delivery::Kept, false);
         let wildcard = Overheard::named("wildcard", "idea.*", Delivery::Kept, false);
@@ -274,11 +281,13 @@ mod tests {
         dispatcher.listen(wildcard.clone());
         dispatcher.listen(everything.clone());
 
+        // when: a message they all match is published
         dispatcher
-            .publish(saying("idea.captured"))
+            .publish(a_message("idea.captured"))
             .await
             .expect("publishing should succeed");
 
+        // then: each hears it
         assert_eq!(exact.what_it_heard().len(), 1);
         assert_eq!(wildcard.what_it_heard().len(), 1);
         assert_eq!(everything.what_it_heard().len(), 1);
@@ -287,29 +296,34 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "is already listening")]
     async fn two_listeners_may_not_share_a_name() {
+        // given: a listener
         let dispatcher = a_workbench();
         dispatcher.listen(Overheard::listening("idea.captured"));
 
+        // when: another of the same name listens
         dispatcher.listen(Overheard::listening("idea.retitled"));
     }
 
     #[tokio::test]
     async fn a_listener_may_bind_more_than_one_key() {
+        // given: a listener bound to two keys
         let dispatcher = a_workbench();
         let listener = Overheard::listening_to_both("board.idea.pinned", "board.idea.unpinned");
         dispatcher.listen(listener.clone());
 
+        // when: messages on both and on a third are published
         for routing in [
             "board.idea.pinned",
             "board.idea.unpinned",
             "board.idea.moved",
         ] {
             dispatcher
-                .publish(saying(routing))
+                .publish(a_message(routing))
                 .await
                 .expect("publishing should succeed");
         }
 
+        // then: it hears those on its two keys
         assert_eq!(
             listener.what_it_heard(),
             vec!["board.idea.pinned", "board.idea.unpinned"],
@@ -320,15 +334,18 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_matching_two_bindings_arrives_once() {
+        // given: a listener with two bindings one key matches
         let dispatcher = a_workbench();
         let listener = Overheard::listening_to_both("board.#", "board.idea.pinned");
         dispatcher.listen(listener.clone());
 
+        // when: a message on that key is published
         dispatcher
-            .publish(saying("board.idea.pinned"))
+            .publish(a_message("board.idea.pinned"))
             .await
             .expect("publishing should succeed");
 
+        // then: it arrives once
         assert_eq!(
             listener.what_it_heard().len(),
             1,
@@ -338,16 +355,19 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_nobody_wants_is_not_a_failure() {
+        // given: nobody listening
         let dispatcher = a_workbench();
 
+        // expect: a message can still be published
         dispatcher
-            .publish(saying("idea.captured"))
+            .publish(a_message("idea.captured"))
             .await
             .expect("nobody listening is not an error, it is just quiet");
     }
 
     #[tokio::test]
     async fn a_listener_is_kept_unless_it_says_otherwise() {
+        // given: a listener that says nothing of its delivery
         struct Quiet;
 
         #[async_trait]
@@ -369,6 +389,7 @@ mod tests {
             }
         }
 
+        // then: it is kept
         assert_eq!(
             Quiet.delivery(),
             Delivery::Kept,
@@ -378,15 +399,19 @@ mod tests {
 
     #[tokio::test]
     async fn nothing_is_dead_lettered_when_every_listener_copes() {
+        // given: a listener that copes
         let dispatcher = a_workbench();
         dispatcher.listen(Overheard::listening("idea.captured"));
 
+        // when: a message for it is published
         dispatcher
-            .publish(saying("idea.captured"))
+            .publish(a_message("idea.captured"))
             .await
             .expect("publishing should succeed");
 
+        // then: nothing is dead lettered
         assert!(dispatcher.dead().await.is_empty());
+        // and: nothing waits
         assert_eq!(
             dispatcher
                 .deliveries
@@ -400,6 +425,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_may_publish_while_being_told() {
+        // given: a listener that publishes while being told
         struct Echoing {
             dispatcher: Arc<InProcessDispatcher>,
         }
@@ -430,6 +456,7 @@ mod tests {
             }
         }
 
+        // and: one listening to what it publishes
         let dispatcher = a_workbench();
         let onward = Overheard::listening("board.pinned");
         dispatcher.listen(onward.clone());
@@ -437,17 +464,20 @@ mod tests {
             dispatcher: dispatcher.dispatcher.clone(),
         }));
 
+        // when: a message for the first is published
         dispatcher
-            .publish(saying("idea.captured"))
+            .publish(a_message("idea.captured"))
             .await
             .expect("a listener publishing must not deadlock the dispatcher");
         dispatcher.drain().await;
 
+        // then: the second hears what the first published
         assert_eq!(onward.what_it_heard(), vec!["board.pinned"]);
     }
 
     #[tokio::test]
     async fn what_a_listener_hears_keeps_the_conversation_it_arrived_in() {
+        // given: a listener remembering the conversations it hears
         struct Remembering {
             seen: Mutex<Vec<String>>,
         }
@@ -481,9 +511,11 @@ mod tests {
             seen: Mutex::new(Vec::new()),
         });
         dispatcher.listen(listener.clone());
-        let opening = saying("idea.captured");
+        // and: a message opening a conversation
+        let opening = a_message("idea.captured");
         let conversation = opening.conversation.to_string();
 
+        // when: it and an answer to it are published
         dispatcher
             .publish(opening.clone())
             .await
@@ -497,6 +529,7 @@ mod tests {
             .await
             .expect("publishing should succeed");
 
+        // then: the listener heard both in that conversation
         assert_eq!(
             listener.seen.lock().expect("seen lock poisoned").as_slice(),
             [conversation.clone(), conversation],

@@ -87,8 +87,10 @@ async fn nothing_told(socket: &mut Subscriber) -> bool {
 
 #[tokio::test]
 async fn whoever_follows_an_idea_is_told_where_it_appears_as_that_changes() {
+    // given: a followed idea
     let mut followed = followed(&["idea_1"]).await;
 
+    // when: it is placed in a scene and taken out again
     followed
         .catalog
         .remember_committed(&an_idea("idea_1"), &a_scene("scene_1"), 1)
@@ -102,6 +104,7 @@ async fn whoever_follows_an_idea_is_told_where_it_appears_as_that_changes() {
         .expect("forgetting should succeed");
     let gone = told(&mut followed.sockets[0]).await;
 
+    // then: it is told it appears in the scene
     assert_eq!(
         (placed["of"].clone(), placed["event"].clone()),
         (
@@ -109,12 +112,15 @@ async fn whoever_follows_an_idea_is_told_where_it_appears_as_that_changes() {
             json!({ "places": [{ "type": "scene", "id": "scene_1" }] })
         )
     );
+    // and: then that it appears nowhere
     assert_eq!(gone["event"], json!({ "places": [] }));
+    // and: the later telling is of a later version
     assert!(gone["version"].as_u64() > placed["version"].as_u64());
 }
 
 #[tokio::test]
 async fn a_late_change_is_told_as_what_is_kept() {
+    // given: a followed idea taken out of a scene
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
@@ -123,12 +129,14 @@ async fn a_late_change_is_told_as_what_is_kept() {
         .expect("forgetting should succeed");
     told(&mut followed.sockets[0]).await;
 
+    // when: an older placing in the scene comes late
     followed
         .catalog
         .remember_committed(&an_idea("idea_1"), &a_scene("scene_1"), 1)
         .await
         .expect("remembering should succeed");
 
+    // then: it is told it appears nowhere
     assert_eq!(
         told(&mut followed.sockets[0]).await["event"],
         json!({ "places": [] }),
@@ -138,7 +146,9 @@ async fn a_late_change_is_told_as_what_is_kept() {
 
 #[tokio::test]
 async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_other() {
+    // given: three followed ideas
     let mut followed = followed(&["idea_1", "idea_2", "idea_3"]).await;
+    // and: the first in a section to go and in another, the second only in the one to go, the third only in the other
     for (idea, place) in [
         ("idea_1", a_section("section_gone")),
         ("idea_1", a_section("section_kept")),
@@ -151,24 +161,29 @@ async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_othe
             .await
             .expect("remembering should succeed");
     }
+    // and: all they were told so far heard
     for socket in &mut followed.sockets {
         while !nothing_told(socket).await {}
     }
 
+    // when: the section to go is forgotten
     followed
         .catalog
         .forget_place_committed(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: the first is told it appears only in the other
     assert_eq!(
         told(&mut followed.sockets[0]).await["event"],
         json!({ "places": [{ "type": "section", "id": "section_kept" }] })
     );
+    // and: the second that it appears nowhere
     assert_eq!(
         told(&mut followed.sockets[1]).await["event"],
         json!({ "places": [] })
     );
+    // and: the third is told nothing
     assert!(
         nothing_told(&mut followed.sockets[2]).await,
         "an idea that never appeared in the place is not told"
@@ -177,6 +192,7 @@ async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_othe
 
 #[tokio::test]
 async fn a_discarded_idea_is_told_it_appears_nowhere() {
+    // given: a followed idea placed in a scene
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
@@ -185,12 +201,14 @@ async fn a_discarded_idea_is_told_it_appears_nowhere() {
         .expect("remembering should succeed");
     told(&mut followed.sockets[0]).await;
 
+    // when: the idea is discarded
     followed
         .catalog
         .forget_subject_committed(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
+    // then: it is told it appears nowhere
     assert_eq!(
         told(&mut followed.sockets[0]).await["event"],
         json!({ "places": [] })
@@ -199,6 +217,7 @@ async fn a_discarded_idea_is_told_it_appears_nowhere() {
 
 #[tokio::test]
 async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
+    // given: a followed idea that was discarded
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
@@ -207,13 +226,16 @@ async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
         .expect("forgetting should succeed");
     told(&mut followed.sockets[0]).await;
 
+    // when: old tombstones are forgotten
     let forgotten = followed
         .catalog
         .forget_tombstones_laid_before_committed(LAID + Duration::from_secs(1), u64::MAX)
         .await
         .expect("forgetting tombstones should succeed");
 
+    // then: its tombstone is forgotten
     assert_eq!(forgotten, 1);
+    // and: nobody is told
     assert!(
         nothing_told(&mut followed.sockets[0]).await,
         "where an idea appears does not change when its tombstone goes"
@@ -222,7 +244,9 @@ async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
 
 #[tokio::test]
 async fn an_appearance_written_in_a_transaction_that_is_dropped_tells_nothing() {
+    // given: a followed idea
     let mut followed = followed(&["idea_1"]).await;
+    // and: a transaction placing it and discarding it
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -238,7 +262,9 @@ async fn an_appearance_written_in_a_transaction_that_is_dropped_tells_nothing() 
         .await
         .expect("forgetting should succeed");
 
+    // when: the transaction is dropped
     drop(transaction);
 
+    // then: nothing is told
     assert!(nothing_told(&mut followed.sockets[0]).await);
 }

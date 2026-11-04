@@ -51,6 +51,7 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn a_dismissal_and_an_appointment_under_way_end_as_if_one_went_first() {
+    // given: an appointed operator
     let bench = OnPostgres::setup().await;
     let (kept, newcomer) = (
         AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000)),
@@ -70,6 +71,7 @@ async fn a_dismissal_and_an_appointment_under_way_end_as_if_one_went_first() {
         .finish()
         .await
         .expect("committing should succeed");
+    // and: a newcomer's appointment under way
     let mut appointing = bench
         .transactions
         .begin()
@@ -81,6 +83,7 @@ async fn a_dismissal_and_an_appointment_under_way_end_as_if_one_went_first() {
         .await
         .expect("appointing should succeed");
 
+    // when: the newcomer is dismissed while the appointment is finished
     let (dismissal, ()) = tokio::join!(
         async {
             transacting::retrying!(&bench.transactions, |dismissing| {
@@ -101,6 +104,7 @@ async fn a_dismissal_and_an_appointment_under_way_end_as_if_one_went_first() {
         }
     );
 
+    // then: the two end as if one went first
     let mut asking = bench
         .transactions
         .begin()

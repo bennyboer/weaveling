@@ -23,7 +23,7 @@ fn an_owner() -> Acting {
     }
 }
 
-fn issued(invitation: &InvitationId) -> Message {
+fn an_issue_of(invitation: &InvitationId) -> Message {
     Message::opening(
         RoutingKey::parse(ISSUED).expect("a declared routing key is fine"),
         json!({
@@ -36,7 +36,7 @@ fn issued(invitation: &InvitationId) -> Message {
     )
 }
 
-fn deleted(project: &str) -> Message {
+fn a_deletion_of(project: &str) -> Message {
     Message::opening(
         RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
         json!({
@@ -58,7 +58,7 @@ struct Listening {
 }
 
 fn listening() -> Listening {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     Listening {
         cataloguing: wiring::inboxed(CatalogueInvitationsListener::new(
@@ -80,7 +80,7 @@ fn listening() -> Listening {
 }
 
 impl Listening {
-    async fn invited_into(&self, project: &str) -> InvitationId {
+    async fn an_open_invitation_into(&self, project: &str) -> InvitationId {
         self.wired
             .invitations
             .invite_to_project(&an_owner(), project, Role::Author, "bo@example.com", ORIGIN)
@@ -117,11 +117,16 @@ impl Listening {
 
 #[tokio::test]
 async fn an_invitation_into_a_project_once_listed_asks_after_its_project() {
+    // given: an open invitation into a project
     let listening = listening();
-    let id = listening.invited_into("project_loom").await;
+    let id = listening.an_open_invitation_into("project_loom").await;
 
-    listening.hears(&listening.cataloguing, &issued(&id)).await;
+    // when: its issue is heard
+    listening
+        .hears(&listening.cataloguing, &an_issue_of(&id))
+        .await;
 
+    // then: it asks after its project
     let follow_ups = listening.wired.follow_ups().await;
     assert_eq!(follow_ups.len(), 1);
     assert_eq!(follow_ups[0].routing.to_string(), WITHDRAW_IF_PROJECT_GONE);
@@ -134,6 +139,7 @@ async fn an_invitation_into_a_project_once_listed_asks_after_its_project() {
             project: "project_loom".to_owned(),
         }
     );
+    // and: the list does not hear its own asking
     assert!(
         !listening.cataloguing.hears(&follow_ups[0].routing),
         "every invitation's change is heard, never the list's own follow-up"
@@ -142,6 +148,7 @@ async fn an_invitation_into_a_project_once_listed_asks_after_its_project() {
 
 #[tokio::test]
 async fn an_invitation_to_the_instance_asks_after_no_project() {
+    // given: an open invitation to the instance
     let listening = listening();
     let id = listening
         .wired
@@ -151,14 +158,19 @@ async fn an_invitation_to_the_instance_asks_after_no_project() {
         .expect("an operator may invite")
         .id;
 
-    listening.hears(&listening.cataloguing, &issued(&id)).await;
+    // when: its issue is heard
+    listening
+        .hears(&listening.cataloguing, &an_issue_of(&id))
+        .await;
 
+    // then: nothing is asked
     assert!(listening.wired.follow_ups().await.is_empty());
 }
 
 #[tokio::test]
 async fn a_listing_whose_hearing_does_not_commit_asks_nothing_and_lists_nothing() {
-    let wired = wiring::wired();
+    // given: an open invitation into a project
+    let wired = wiring::a_workbench();
     let id = wired
         .invitations
         .invite_to_project(
@@ -172,6 +184,7 @@ async fn a_listing_whose_hearing_does_not_commit_asks_nothing_and_lists_nothing(
         .expect("an owner may invite")
         .id;
 
+    // when: its issue is heard in a hearing that does not commit
     wiring::inboxed_in(
         CatalogueInvitationsListener::new(
             wired.invitations.clone(),
@@ -180,14 +193,16 @@ async fn a_listing_whose_hearing_does_not_commit_asks_nothing_and_lists_nothing(
         ),
         InMemoryTransactions::refusing_commits(),
     )
-    .handle(&issued(&id))
+    .handle(&an_issue_of(&id))
     .await
     .expect_err("a hearing that does not commit is not handled");
 
+    // then: nothing is asked
     assert!(
         wired.follow_ups().await.is_empty(),
         "the follow-up is asked in the hearing's transaction"
     );
+    // and: nothing is listed
     assert!(
         wired
             .catalog
@@ -202,13 +217,16 @@ async fn a_listing_whose_hearing_does_not_commit_asks_nothing_and_lists_nothing(
 #[tokio::test]
 async fn the_follow_up_withdraws_an_invitation_whose_project_is_gone_and_leaves_one_whose_project_is_not()
  {
+    // given: open invitations into two projects
     let listening = listening();
-    let into_the_loom = listening.invited_into("project_loom").await;
-    let into_the_weft = listening.invited_into("project_weft").await;
+    let into_the_loom = listening.an_open_invitation_into("project_loom").await;
+    let into_the_weft = listening.an_open_invitation_into("project_weft").await;
+    // and: one project deleted
     listening
-        .hears(&listening.naming, &deleted("project_loom"))
+        .hears(&listening.naming, &a_deletion_of("project_loom"))
         .await;
 
+    // when: the asking after each project is heard
     for id in [&into_the_loom, &into_the_weft] {
         listening
             .hears(
@@ -225,10 +243,12 @@ async fn the_follow_up_withdraws_an_invitation_whose_project_is_gone_and_leaves_
             .await;
     }
 
+    // then: the one into the deleted project is withdrawn in the system's name
     assert_eq!(
         listening.last_of(&into_the_loom).await,
         (InvitationEvent::Withdrawn, Agent::System)
     );
+    // and: the other stays open
     assert!(matches!(
         listening.last_of(&into_the_weft).await.0,
         InvitationEvent::Issued { .. }
@@ -237,12 +257,15 @@ async fn the_follow_up_withdraws_an_invitation_whose_project_is_gone_and_leaves_
 
 #[tokio::test]
 async fn a_project_s_tombstone_asks_for_its_invitations_to_be_swept() {
+    // given: the listeners following up invitations
     let listening = listening();
 
+    // when: a project's deletion is heard
     listening
-        .hears(&listening.naming, &deleted("project_loom"))
+        .hears(&listening.naming, &a_deletion_of("project_loom"))
         .await;
 
+    // then: its invitations are asked to be swept
     let follow_ups = listening.wired.follow_ups().await;
     assert_eq!(follow_ups.len(), 1);
     assert_eq!(follow_ups[0].routing.to_string(), SWEEP_PROJECT);
@@ -254,16 +277,19 @@ async fn a_project_s_tombstone_asks_for_its_invitations_to_be_swept() {
             project: "project_loom".to_owned(),
         }
     );
+    // and: the sweep hears that asking
     assert!(listening.sweeping.hears(&follow_ups[0].routing));
 }
 
 #[tokio::test]
 async fn an_invitation_listed_only_after_the_sweep_is_withdrawn_by_its_own_follow_up() {
+    // given: an open invitation into a project
     let listening = listening();
-    let id = listening.invited_into("project_loom").await;
+    let id = listening.an_open_invitation_into("project_loom").await;
 
+    // and: its project swept before the invitation was listed
     listening
-        .hears(&listening.naming, &deleted("project_loom"))
+        .hears(&listening.naming, &a_deletion_of("project_loom"))
         .await;
     listening.followed_up().await;
     assert!(
@@ -273,9 +299,13 @@ async fn an_invitation_listed_only_after_the_sweep_is_withdrawn_by_its_own_follo
         ),
         "the sweep came before the list had heard of the invitation"
     );
-    listening.hears(&listening.cataloguing, &issued(&id)).await;
+    // when: it is listed and followed up
+    listening
+        .hears(&listening.cataloguing, &an_issue_of(&id))
+        .await;
     listening.followed_up().await;
 
+    // then: it is withdrawn in the system's name
     assert_eq!(
         listening.last_of(&id).await,
         (InvitationEvent::Withdrawn, Agent::System)
@@ -284,10 +314,14 @@ async fn an_invitation_listed_only_after_the_sweep_is_withdrawn_by_its_own_follo
 
 #[tokio::test]
 async fn an_invitation_listed_and_checked_before_the_tombstone_is_withdrawn_by_the_sweep() {
+    // given: an open invitation into a project
     let listening = listening();
-    let id = listening.invited_into("project_loom").await;
+    let id = listening.an_open_invitation_into("project_loom").await;
 
-    listening.hears(&listening.cataloguing, &issued(&id)).await;
+    // and: listed and asked after while its project stood
+    listening
+        .hears(&listening.cataloguing, &an_issue_of(&id))
+        .await;
     listening.followed_up().await;
     assert!(
         matches!(
@@ -296,11 +330,13 @@ async fn an_invitation_listed_and_checked_before_the_tombstone_is_withdrawn_by_t
         ),
         "the project was not gone yet when the list asked after it"
     );
+    // when: its project's deletion is heard and followed up
     listening
-        .hears(&listening.naming, &deleted("project_loom"))
+        .hears(&listening.naming, &a_deletion_of("project_loom"))
         .await;
     listening.followed_up().await;
 
+    // then: it is withdrawn in the system's name
     assert_eq!(
         listening.last_of(&id).await,
         (InvitationEvent::Withdrawn, Agent::System)

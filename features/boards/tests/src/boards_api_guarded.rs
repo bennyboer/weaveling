@@ -88,7 +88,7 @@ fn a_card(idea: &str) -> Value {
     json!({ "idea": idea, "spot": { "x": 0, "y": 0 }, "size": { "width": 168, "height": 84 } })
 }
 
-async fn guarded() -> Guarded {
+async fn a_board_in_ada_s_project() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     let wired = wiring::wired_guarded_by(
@@ -120,7 +120,7 @@ async fn guarded() -> Guarded {
     }
 }
 
-async fn pinned(guarded: &Guarded) -> Vec<Value> {
+async fn ideas_on(guarded: &Guarded) -> Vec<Value> {
     guarded
         .ada
         .get(&format!("/boards/{}", guarded.board))
@@ -153,8 +153,10 @@ async fn changes_by(guarded: &Guarded, account: &TestServer) -> [TestResponse; 3
 
 #[tokio::test]
 async fn a_project_s_board_is_not_there_for_whoever_may_not_read_it() {
-    let guarded = guarded().await;
+    // given: a board grace may not read
+    let guarded = a_board_in_ada_s_project().await;
 
+    // when: she opens, reads and changes it
     let opened = guarded
         .grace
         .post("/boards")
@@ -166,65 +168,84 @@ async fn a_project_s_board_is_not_there_for_whoever_may_not_read_it() {
         .await;
     let [pinning, reshaping, unpinning] = changes_by(&guarded, &guarded.grace).await;
 
+    // then: each is not found
     for answered in [opened, read, pinning, reshaping, unpinning] {
         answered.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answered.json::<Value>()["type"], "not-found");
     }
+    // and: following it ends as not there
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("board", "boards", &[("board", &guarded.board)])
         .await;
     assert_eq!(hers.ended().await, "not-there");
-    assert_eq!(pinned(&guarded).await, vec![json!("idea_1")]);
+    // and: the board is unchanged
+    assert_eq!(ideas_on(&guarded).await, vec![json!("idea_1")]);
 }
 
 #[tokio::test]
 async fn a_reader_opens_reads_and_follows_the_board_and_is_told_only_an_author_may_change_it() {
-    let guarded = guarded().await;
+    // given: a board
+    let guarded = a_board_in_ada_s_project().await;
+    // and: grace a reader of its project
     guarded.roles.give("account_grace", &READER);
 
+    // when: she opens it
     let opened = guarded
         .grace
         .post("/boards")
         .json(&json!({ "project": PROJECT }))
         .await;
+    // then: she finds the board
     opened.assert_status_ok();
     assert_eq!(opened.json::<Value>()["id"], guarded.board.as_str());
+    // and: she may read it
     guarded
         .grace
         .get(&format!("/boards/{}", guarded.board))
         .await
         .assert_status_ok();
+    // and: she may follow it
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("board", "boards", &[("board", &guarded.board)])
         .await;
     hers.frame().await;
+    // and: each change she makes is refused as not by an author
     for refused in changes_by(&guarded, &guarded.grace).await {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-author");
     }
-    assert_eq!(pinned(&guarded).await, vec![json!("idea_1")]);
+    // and: the board is unchanged
+    assert_eq!(ideas_on(&guarded).await, vec![json!("idea_1")]);
 }
 
 #[tokio::test]
 async fn an_author_pins_moves_and_unpins() {
-    let guarded = guarded().await;
+    // given: a board
+    let guarded = a_board_in_ada_s_project().await;
+    // and: grace an author of its project
     guarded
         .roles
         .give("account_grace", &[Act::Read, Act::Write]);
 
+    // when: she pins, moves and unpins
     let [pinning, reshaping, unpinning] = changes_by(&guarded, &guarded.grace).await;
 
+    // then: each is done
     pinning.assert_status_ok();
     reshaping.assert_status_ok();
     unpinning.assert_status(StatusCode::NO_CONTENT);
-    assert_eq!(pinned(&guarded).await, vec![json!("idea_2")]);
+    // and: the board shows it
+    assert_eq!(ideas_on(&guarded).await, vec![json!("idea_2")]);
 }
 
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
-    let guarded = guarded().await;
+    // given: a board
+    let guarded = a_board_in_ada_s_project().await;
+    // and: who may do what cannot be known
     *guarded.roles.down.lock().expect("never poisoned") = true;
 
+    // then: opening and reading it fail
     for answered in [
         guarded
             .ada
@@ -235,6 +256,7 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    // and: following it ends as failed
     let mut ada_s = Subscriber::on(&guarded.ada).await;
     ada_s
         .subscribe("board", "boards", &[("board", &guarded.board)])
@@ -244,15 +266,19 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
 
 #[tokio::test]
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
-    let guarded = guarded().await;
+    // given: a board
+    let guarded = a_board_in_ada_s_project().await;
+    // and: grace following it as a reader
     guarded.roles.give("account_grace", &READER);
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("board", "boards", &[("board", &guarded.board)])
         .await;
     hers.frame().await;
 
+    // when: her role is taken away
     guarded.roles.give("account_grace", &[]);
     guarded.roles.access_changed(PROJECT);
 
+    // then: her following ends as access lost
     assert_eq!(hers.ended().await, "access-lost");
 }

@@ -128,8 +128,10 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
+        // then: each event worth publishing lands on the key the contract declares, within every invitation's
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
                 eventpublishing::routing_for(KIND, event.name()).to_string(),
@@ -143,14 +145,18 @@ mod tests {
                     .covers(&message.routing)
             );
         }
+        // and: every invitation's is everything of the kind
         assert_eq!(eventpublishing::everything_from(KIND), EVERY_INVITATION);
     }
 
     #[test]
     fn an_issue_tells_to_whom_by_what_digest_and_until_when_and_nothing_else_tells_the_address() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
-        let issued = eventsourcing_body(&recorded(&id, an_issue()));
+        // when: its issue is published
+        let issued = body_published_for(&recorded(&id, an_issue()));
+        // then: it tells to whom, by what digest and until when
         assert_eq!(
             issued,
             InvitationEventDTO::Issued {
@@ -162,6 +168,7 @@ mod tests {
             },
             "accounts keep their tickets from it, the token's digest being harmless and the address judged so"
         );
+        // and: nothing else published tells the address
         for event in [
             InvitationEvent::Accepted {
                 scope: Scope::Instance,
@@ -181,9 +188,11 @@ mod tests {
 
     #[test]
     fn an_acceptance_tells_into_which_project_as_what() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
-        let accepted = eventsourcing_body(&recorded(
+        // when: its acceptance into a project is published
+        let accepted = body_published_for(&recorded(
             &id,
             InvitationEvent::Accepted {
                 scope: Scope::Project {
@@ -193,6 +202,7 @@ mod tests {
             },
         ));
 
+        // then: it tells into which project as what
         assert_eq!(
             accepted,
             InvitationEventDTO::Accepted {
@@ -207,14 +217,16 @@ mod tests {
 
     #[test]
     fn an_issue_into_a_project_tells_which_as_what_and_whether_an_operator_issued_it() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
+        // when: its issue into a project as each role is published
         for (role, named) in [
             (Role::Owner, "owner"),
             (Role::Author, "author"),
             (Role::Reader, "reader"),
         ] {
-            let issued = eventsourcing_body(&recorded(
+            let issued = body_published_for(&recorded(
                 &id,
                 InvitationEvent::Issued {
                     to: ada(),
@@ -229,6 +241,7 @@ mod tests {
                 },
             ));
 
+            // then: it tells which project, as what and that no operator issued it
             assert_eq!(
                 issued,
                 InvitationEventDTO::Issued {
@@ -247,14 +260,16 @@ mod tests {
 
     #[test]
     fn a_decline_tells_why() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
+        // then: its declining for each reason tells why
         for (reason, told) in [
             (DeclineReason::AddressHasAccount, "address-has-account"),
             (DeclineReason::TurnedDown, "turned-down"),
         ] {
             assert_eq!(
-                eventsourcing_body(&recorded(&id, InvitationEvent::Declined { reason })),
+                body_published_for(&recorded(&id, InvitationEvent::Declined { reason })),
                 InvitationEventDTO::Declined {
                     reason: told.to_owned()
                 }
@@ -262,7 +277,7 @@ mod tests {
         }
     }
 
-    fn eventsourcing_body(happened: &Recorded<InvitationEvent>) -> InvitationEventDTO {
+    fn body_published_for(happened: &Recorded<InvitationEvent>) -> InvitationEventDTO {
         eventpublishing::published_in::<InvitationEventDTO>(
             &message_for(happened).expect("published"),
         )
@@ -273,13 +288,17 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event_and_the_invitation_reads_back() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
+        // when: each event worth publishing is published
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
             let message = message_for(&recorded(&id, event)).expect("published");
 
+            // then: the name on the wire is the event's
             assert_eq!(message.payload["event"]["name"], expected);
+            // and: the invitation reads back
             assert_eq!(
                 eventpublishing::aggregate_in::<InvitationId>(&message).expect("readable"),
                 id
@@ -289,8 +308,10 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
+        // given: an invitation
         let id = InvitationId::generate(at(1_000));
 
+        // then: its snapshot is not published
         assert!(
             message_for(&recorded(
                 &id,

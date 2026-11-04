@@ -42,11 +42,14 @@ fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) -> Value 
 
 #[tokio::test]
 async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
     let server = served_to(&wired, wiring::an_operator());
 
+    // when: it invites
     let response = invite(&server, ADA).await;
 
+    // then: the invitation is told as the list will show it
     response.assert_status(StatusCode::CREATED);
     let invited: InvitationSummaryDTO = response.json();
     assert_eq!(
@@ -66,10 +69,12 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
         ),
         "the answer is the invitation as the list will show it, so the page need not wait for the list"
     );
+    // and: the link mailed is made from the page it was sent from
     assert!(
         wired.links_mailed_to(ADA).await[0]
             .starts_with("https://weaveling.example.com/invitation#")
     );
+    // and: the invitation keeps the digest of the token mailed
     let id: InvitationId = invited.id.parse().expect("the id told is an invitation's");
     let issued = wired
         .store
@@ -84,33 +89,40 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
 
 #[tokio::test]
 async fn an_invitation_named_from_no_page_is_refused() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
     let server = served_to(&wired, wiring::an_operator());
 
+    // then: inviting from no page is refused
     refused_as(
         &server.post("/invitations").json(&inviting(ADA)).await,
         StatusCode::BAD_REQUEST,
         refused::ORIGIN_MISSING,
     );
+    // and: nothing is mailed
     assert!(wired.sent_to(ADA).await.is_empty());
 }
 
 #[tokio::test]
 async fn anyone_but_an_operator_is_refused() {
-    let wired = wiring::wired();
+    // given: an open invitation
+    let wired = wiring::a_workbench();
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
+    // and: someone who is no operator
     let server = served_to(&wired, wiring::no_operator());
 
+    // then: inviting is refused
     refused_as(
         &invite(&server, "grace@example.com").await,
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
+    // and: withdrawing is refused
     refused_as(
         &server.delete(&format!("/invitations/{id}")).await,
         StatusCode::FORBIDDEN,
@@ -120,14 +132,17 @@ async fn anyone_but_an_operator_is_refused() {
 
 #[tokio::test]
 async fn an_address_is_refused_by_its_kind() {
-    let wired = wiring::wired();
+    // given: an operator
+    let wired = wiring::a_workbench();
     let server = served_to(&wired, wiring::an_operator());
 
+    // then: an address that is none is refused as malformed
     refused_as(
         &invite(&server, "ada").await,
         StatusCode::UNPROCESSABLE_ENTITY,
         refused::EMAIL_MALFORMED,
     );
+    // and: one too long is refused as too long, telling the most allowed
     let told = refused_as(
         &invite(&server, &format!("{}@example.com", "a".repeat(250))).await,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -138,7 +153,8 @@ async fn an_address_is_refused_by_its_kind() {
 
 #[tokio::test]
 async fn an_address_invited_too_often_is_told_how_long_to_wait() {
-    let wired = wiring::wired();
+    // given: an address invited as often as allowed
+    let wired = wiring::a_workbench();
     let server = served_to(&wired, wiring::an_operator());
     for _ in 0..3 {
         invite(&server, ADA)
@@ -146,8 +162,10 @@ async fn an_address_invited_too_often_is_told_how_long_to_wait() {
             .assert_status(StatusCode::CREATED);
     }
 
+    // when: it is invited once more
     let response = invite(&server, ADA).await;
 
+    // then: it is refused, telling how long to wait
     let told = refused_as(&response, StatusCode::TOO_MANY_REQUESTS, refused::THROTTLED);
     assert_eq!(response.header(RETRY_AFTER), "60");
     assert_eq!(told["minutes"], 1);
@@ -155,19 +173,23 @@ async fn an_address_invited_too_often_is_told_how_long_to_wait() {
 
 #[tokio::test]
 async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all_is_said_so() {
-    let wired = wiring::wired();
+    // given: an open invitation
+    let wired = wiring::a_workbench();
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
+    // and: an operator
     let server = served_to(&wired, wiring::an_operator());
 
+    // then: it withdraws the invitation
     server
         .delete(&format!("/invitations/{id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
+    // and: one missing is refused as not found
     refused_as(
         &server
             .delete(&format!(
@@ -178,6 +200,7 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
         StatusCode::NOT_FOUND,
         refused::INVITATION_NOT_FOUND,
     );
+    // and: no invitation at all is refused as invalid
     refused_as(
         &server.delete("/invitations/not-an-id").await,
         StatusCode::BAD_REQUEST,
@@ -187,7 +210,8 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
 
 #[tokio::test]
 async fn an_invitation_taken_up_is_not_withdrawn() {
-    let wired = wiring::wired();
+    // given: an invitation taken up
+    let wired = wiring::a_workbench();
     let id = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
@@ -200,6 +224,7 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
         .await
         .expect("an open invitation is accepted");
 
+    // then: withdrawing it is refused as accepted already
     refused_as(
         &served_to(&wired, wiring::an_operator())
             .delete(&format!("/invitations/{id}"))

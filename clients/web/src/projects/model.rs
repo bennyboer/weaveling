@@ -272,6 +272,7 @@ mod tests {
 
         #[test]
         fn founding_or_joining_lets_one_into_the_project() {
+            // expect: a founding and a joining each begin a membership
             for event in [
                 json!({ "name": "FOUNDED", "owner": "account_1" }),
                 json!({ "name": "JOINED", "account": "account_1", "role": "reader" }),
@@ -285,6 +286,7 @@ mod tests {
 
         #[test]
         fn leaving_or_being_removed_lets_one_out_of_the_project() {
+            // expect: a leaving and a removal each end a membership
             for event in [
                 json!({ "name": "LEFT", "account": "account_1" }),
                 json!({ "name": "REMOVED", "account": "account_1" }),
@@ -298,6 +300,7 @@ mod tests {
 
         #[test]
         fn a_new_role_a_disbanding_or_a_frame_about_nothing_known_changes_no_list() {
+            // expect: no membership begins or ends by any of them
             for frame in [
                 told(
                     Some("project_1"),
@@ -319,6 +322,7 @@ mod tests {
 
         #[test]
         fn a_project_one_was_let_into_is_asked_for_again_ever_more_slowly_for_ten_seconds() {
+            // when: every wait is waited until there is none
             let mut waited = Duration::ZERO;
             let mut waits = Vec::new();
             while let Some(wait) = next_wait(waited) {
@@ -326,12 +330,15 @@ mod tests {
                 waited += wait;
             }
 
+            // then: the waits double from a tenth of a second to one second
             assert_eq!(
                 waits[..6],
                 [100, 100, 200, 400, 800, 1_000],
                 "quick at first, as the list is usually told within moments, then once a second"
             );
+            // and: they end after about ten seconds
             assert_eq!(waited, Duration::from_millis(10_600));
+            // and: stay at one second till then
             assert!(waits[5..].iter().all(|wait| *wait == 1_000));
         }
     }
@@ -370,6 +377,7 @@ mod tests {
 
         #[test]
         fn a_project_started_elsewhere_joins_the_list_in_its_place() {
+            // when: the start of a project not held is taken in
             let next = taken_in(
                 vec![
                     a_project("project_3", 1, "Weft"),
@@ -383,12 +391,14 @@ mod tests {
             )
             .expect("a started project follows on from nothing");
 
+            // then: it is listed in its place among the others, updated when it was started
             assert_eq!(named(&next), vec![("Weft", 1), ("Heddle", 1), ("Loom", 1)]);
             assert_eq!(next[1].updated_at, datetime!(2026-10-21 12:00 UTC));
         }
 
         #[test]
         fn a_rename_that_follows_on_renames_it_and_says_when() {
+            // when: a rename of the next version is taken in
             let next = taken_in(
                 vec![a_project("project_1", 1, "Loom")],
                 told(
@@ -399,12 +409,14 @@ mod tests {
             )
             .expect("a rename follows on");
 
+            // then: the project is listed renamed at that version, updated when it was renamed
             assert_eq!(named(&next), vec![("Weft", 2)]);
             assert_eq!(next[0].updated_at, datetime!(2026-10-21 12:00 UTC));
         }
 
         #[test]
         fn changed_details_and_marks_keep_the_name_and_say_when() {
+            // when: a change of details or of marks is taken in
             for event in [
                 json!({ "name": "DETAILS_CHANGED", "language": "de", "quotation": null, "description": "" }),
                 json!({ "name": "QUOTATION_CHANGED", "quotation": "pointing-in" }),
@@ -415,6 +427,7 @@ mod tests {
                 )
                 .expect("a change of details follows on");
 
+                // then: the project keeps its name at the new version, updated when it changed
                 assert_eq!(named(&next), vec![("Loom", 2)]);
                 assert_eq!(next[0].updated_at, datetime!(2026-10-21 12:00 UTC));
             }
@@ -422,20 +435,26 @@ mod tests {
 
         #[test]
         fn a_deleted_project_leaves_and_one_never_held_is_gone_already() {
+            // given: a project held
             let held = vec![a_project("project_1", 2, "Loom")];
 
+            // when: its deletion is taken in
             let gone = taken_in(
                 held.clone(),
                 told("project_1", 3, json!({ "name": "DELETED" })),
             );
+            // and: the deletion of a project never held
             let never = taken_in(held, told("project_9", 4, json!({ "name": "DELETED" })));
 
+            // then: it has left the list
             assert_eq!(gone.as_deref().map(named), Some(vec![]));
+            // and: the other deletion leaves the list as it was
             assert_eq!(never.as_deref().map(named), Some(vec![("Loom", 2)]));
         }
 
         #[test]
         fn what_is_held_already_changes_nothing() {
+            // when: a rename at the version held is taken in
             let next = taken_in(
                 vec![a_project("project_1", 3, "Weft")],
                 told(
@@ -444,6 +463,7 @@ mod tests {
                     json!({ "name": "RENAMED", "project_name": "Loom" }),
                 ),
             );
+            // and: the start of a project held
             let again = taken_in(
                 vec![a_project("project_1", 1, "Loom")],
                 told(
@@ -453,12 +473,14 @@ mod tests {
                 ),
             );
 
+            // then: both leave the list as it was
             assert_eq!(next.as_deref().map(named), Some(vec![("Weft", 3)]));
             assert_eq!(again.as_deref().map(named), Some(vec![("Loom", 1)]));
         }
 
         #[test]
         fn what_cannot_be_taken_in_asks_for_the_list_again() {
+            // given: changes that do not follow on from the list held
             let undated = FrameDTO {
                 at: None,
                 ..told(
@@ -514,6 +536,7 @@ mod tests {
                 ("a change that does not say when", undated),
             ];
 
+            // then: none of them can be taken in
             for (case, told) in cases {
                 assert_eq!(
                     taken_in(vec![a_project("project_1", 1, "Loom")], told),
@@ -552,6 +575,7 @@ mod tests {
 
         #[test]
         fn a_rename_that_follows_on_renames_the_open_project() {
+            // when: a rename of the next version is taken in
             let next = described(1)
                 .taken_in(told(
                     2,
@@ -559,6 +583,7 @@ mod tests {
                 ))
                 .expect("a rename follows on");
 
+            // then: the project is renamed at that version, its details kept
             assert_eq!(next.name, "The Weft");
             assert_eq!(next.version, Version::from(2));
             assert_eq!(next.details, described(1).details);
@@ -566,6 +591,7 @@ mod tests {
 
         #[test]
         fn changed_details_replace_the_details_and_keep_the_name() {
+            // when: a change of details is taken in
             let next = described(1)
                 .taken_in(told(
                     2,
@@ -573,6 +599,7 @@ mod tests {
                 ))
                 .expect("a change of details follows on");
 
+            // then: the details are the new ones
             assert_eq!(
                 next.details,
                 ProjectDetails {
@@ -581,12 +608,14 @@ mod tests {
                     description: "Ein Buch".to_owned(),
                 }
             );
+            // and: the name is kept at the new version
             assert_eq!(next.name, "The Loom");
             assert_eq!(next.version, Version::from(2));
         }
 
         #[test]
         fn changed_marks_change_only_the_marks() {
+            // when: a change of marks is taken in
             let next = described(1)
                 .taken_in(told(
                     2,
@@ -594,6 +623,7 @@ mod tests {
                 ))
                 .expect("a change of marks follows on");
 
+            // then: the marks are the new ones, the rest kept at the new version
             assert_eq!(next.details.quotation, QuotationMarks::named("pointing-in"));
             assert_eq!(next.details.language.as_deref(), Some("en"));
             assert_eq!(next.version, Version::from(2));
@@ -601,16 +631,19 @@ mod tests {
 
         #[test]
         fn a_change_already_held_changes_nothing() {
+            // when: a rename at the version held is taken in
             let next = described(3).taken_in(told(
                 3,
                 json!({ "name": "RENAMED", "project_name": "The Weft" }),
             ));
 
+            // then: the project is as it was
             assert_eq!(next, Some(described(3)));
         }
 
         #[test]
         fn what_cannot_be_taken_in_asks_for_the_project_again() {
+            // given: changes that do not follow on from the open project
             let cases = [
                 (
                     "a change further on than the next",
@@ -624,6 +657,7 @@ mod tests {
                 ("an event not known", told(2, json!({ "name": "ARCHIVED" }))),
             ];
 
+            // then: none of them can be taken in
             for (case, told) in cases {
                 assert_eq!(described(1).taken_in(told), None, "{case}");
             }
@@ -631,6 +665,7 @@ mod tests {
 
         #[test]
         fn a_trashing_told_after_what_is_held_says_the_open_project_went_to_the_trash() {
+            // given: a trashing at any version
             let trashing = |version| {
                 told(
                     version,
@@ -638,15 +673,18 @@ mod tests {
                 )
             };
 
+            // then: one after the version held trashes the open project, however far after
             assert!(described(1).trashed_by(&trashing(2)));
             assert!(
                 described(1).trashed_by(&trashing(4)),
                 "whatever came between, the project is in the trash now"
             );
+            // and: one already held does not
             assert!(
                 !described(2).trashed_by(&trashing(2)),
                 "a trashing already held is old news"
             );
+            // and: neither does a deletion or a restoring
             assert!(!described(1).trashed_by(&told(2, json!({ "name": "DELETED" }))));
             assert!(!described(1).trashed_by(&told(2, json!({ "name": "RESTORED" }))));
         }
@@ -690,29 +728,34 @@ mod tests {
 
         #[test]
         fn a_change_told_awaits_the_project_listed_at_least_at_its_version() {
+            // when: a change is told
             let awaited = Awaited::told(&told(
                 3,
                 json!({ "name": "RENAMED", "project_name": "The Weft" }),
             ))
             .expect("a rename is awaited");
 
+            // then: a list without the project or with it older does not hold it
             assert!(!awaited.holds(&[]), "a list without it is behind");
             assert!(
                 !awaited.holds(&listed(2)),
                 "a list holding it older is behind"
             );
+            // and: one with it at that version or later does
             assert!(awaited.holds(&listed(3)));
             assert!(awaited.holds(&listed(4)));
         }
 
         #[test]
         fn a_project_trashed_or_deleted_is_awaited_gone_from_the_list() {
+            // when: a trashing or a deletion is told
             for event in [
                 json!({ "name": "TRASHED", "until": "2026-12-03T10:00:00Z" }),
                 json!({ "name": "DELETED" }),
             ] {
                 let awaited = Awaited::told(&told(3, event.clone())).expect("awaited");
 
+                // then: only a list without the project holds it
                 assert!(!awaited.holds(&listed(2)), "{event}");
                 assert!(awaited.holds(&[]), "{event}");
             }
@@ -720,6 +763,7 @@ mod tests {
 
         #[test]
         fn a_frame_that_names_nothing_awaits_nothing() {
+            // given: a frame about no project
             let nameless = FrameDTO {
                 of: None,
                 version: 3,
@@ -727,12 +771,14 @@ mod tests {
                 event: json!({ "name": "RENAMED", "project_name": "The Weft" }),
             };
 
+            // then: neither it nor an unknown event awaits anything
             assert_eq!(Awaited::told(&nameless), None);
             assert_eq!(Awaited::told(&told(3, json!({ "name": "ARCHIVED" }))), None);
         }
 
         #[test]
         fn a_project_trashed_is_awaited_in_the_trash_and_one_restored_out_of_it() {
+            // when: a trashing and a restoring are told
             let trashed = AwaitedInTheTrash::told(&told(
                 2,
                 json!({ "name": "TRASHED", "until": "2026-12-03T10:00:00Z" }),
@@ -741,23 +787,28 @@ mod tests {
             let restored = AwaitedInTheTrash::told(&told(3, json!({ "name": "RESTORED" })))
                 .expect("a restoring is awaited out of it");
 
+            // then: only a trash with the project holds the trashing
             assert!(!trashed.holds(&[]));
             assert!(trashed.holds(&in_the_trash()));
+            // and: only a trash without it holds the restoring
             assert!(!restored.holds(&in_the_trash()));
             assert!(restored.holds(&[]));
         }
 
         #[test]
         fn a_project_purged_is_awaited_out_of_the_trash() {
+            // when: a deletion is told
             let purged = AwaitedInTheTrash::told(&told(4, json!({ "name": "DELETED" })))
                 .expect("a project purged leaves the trash, so the trash is asked again");
 
+            // then: only a trash without the project holds it
             assert!(!purged.holds(&in_the_trash()));
             assert!(purged.holds(&[]));
         }
 
         #[test]
         fn nothing_but_trashing_restoring_and_purging_is_awaited_in_the_trash() {
+            // expect: a rename or an unknown event awaits nothing in the trash
             for event in [
                 json!({ "name": "RENAMED", "project_name": "The Weft" }),
                 json!({ "name": "ARCHIVED" }),

@@ -128,8 +128,10 @@ mod tests {
 
     #[test]
     fn a_first_answer_that_holds_the_change_ends_the_asking_at_once() {
+        // given: a first answer that holds the change
         let asked = Asked::answering(&[3]);
 
+        // then: it is given after one asking and no pause
         assert_eq!(asked.until(3), 3);
         assert_eq!(asked.times.get(), 1);
         assert!(
@@ -140,8 +142,10 @@ mod tests {
 
     #[test]
     fn an_answer_behind_the_change_is_asked_for_again_after_growing_pauses_until_it_holds() {
+        // given: answers that reach the change on the third asking
         let asked = Asked::answering(&[1, 2, 3, 9]);
 
+        // then: the third answer is given after the first two pauses
         assert_eq!(asked.until(3), 3);
         assert_eq!(asked.times.get(), 3);
         assert_eq!(*asked.paused.borrow(), PAUSES[..2]);
@@ -149,8 +153,10 @@ mod tests {
 
     #[test]
     fn after_the_last_pause_the_last_answer_is_given_up_with() {
+        // given: answers that reach the change only after the last pause
         let asked = Asked::answering(&[1, 1, 1, 1, 2, 9]);
 
+        // then: the answer after the last pause is given, every pause taken
         assert_eq!(asked.until(9), 2, "the last answer, whatever it holds");
         assert_eq!(asked.times.get(), PAUSES.len() as u32 + 1);
         assert_eq!(*asked.paused.borrow(), PAUSES);

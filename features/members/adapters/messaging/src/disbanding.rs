@@ -87,7 +87,7 @@ mod tests {
         }
     }
 
-    fn deleted() -> Message {
+    fn a_deletion() -> Message {
         Message::opening(
             RoutingKey::parse(DELETED).expect("a declared key"),
             json!({
@@ -100,7 +100,7 @@ mod tests {
         )
     }
 
-    async fn happened(bench: &Bench) -> Vec<(MembersEvent, Agent)> {
+    async fn events_of(bench: &Bench) -> Vec<(MembersEvent, Agent)> {
         bench
             .store
             .read_from(
@@ -118,12 +118,16 @@ mod tests {
     #[tokio::test]
     async fn a_deleted_project_s_members_are_disbanded_by_the_system_once_however_often_it_is_told()
     {
+        // given: the listener
         let bench = bench();
+        // expect: it hears a project's deletion
         assert!(
             bench
                 .listener
                 .hears(&RoutingKey::parse(DELETED).expect("a declared key"))
         );
+
+        // given: a project's members, an owner and a reader
         bench
             .members
             .found(None, "project_1", "account_ada")
@@ -135,28 +139,33 @@ mod tests {
             .await
             .expect("joining should succeed");
 
+        // when: its deletion is heard twice
         for _ in 0..2 {
             bench
                 .listener
-                .handle(&deleted())
+                .handle(&a_deletion())
                 .await
                 .expect("messages come at least once");
         }
 
-        let told = happened(&bench).await;
+        // then: the members are disbanded once, by the system
+        let told = events_of(&bench).await;
         assert_eq!(told.len(), 3);
         assert_eq!(told[2], (MembersEvent::Disbanded, Agent::System));
     }
 
     #[tokio::test]
     async fn a_deletion_heard_before_the_founding_leaves_nothing_to_found_and_nobody_to_join() {
+        // given: the listener
         let bench = bench();
 
+        // when: a project's deletion is heard
         bench
             .listener
-            .handle(&deleted())
+            .handle(&a_deletion())
             .await
             .expect("members never founded are disbanded all the same");
+        // and: then its founding and a joining
         bench
             .members
             .found(None, "project_1", "account_ada")
@@ -168,29 +177,34 @@ mod tests {
             .await
             .expect("an invitation taken up into a deleted project is no failure either");
 
+        // then: its members were only disbanded
         assert_eq!(
-            happened(&bench).await,
+            events_of(&bench).await,
             vec![(MembersEvent::Disbanded, Agent::System)]
         );
     }
 
     #[tokio::test]
     async fn a_disbanding_whose_hearing_does_not_commit_is_undone_with_it() {
+        // given: a listener whose hearings do not commit
         let bench = bench_hearing_in(InMemoryTransactions::refusing_commits());
+        // and: a project's members founded
         bench
             .members
             .found(None, "project_1", "account_ada")
             .await
             .expect("founding should succeed");
 
+        // when: its deletion is heard
         bench
             .listener
-            .handle(&deleted())
+            .handle(&a_deletion())
             .await
             .expect_err("a hearing that does not commit is not handled");
 
+        // then: its members are only founded
         assert_eq!(
-            happened(&bench).await.len(),
+            events_of(&bench).await.len(),
             1,
             "the disbanding is written in the hearing's transaction"
         );

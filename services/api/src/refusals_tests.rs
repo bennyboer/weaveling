@@ -140,20 +140,26 @@ impl Refused {
 
 #[tokio::test]
 async fn nothing_refused_is_an_empty_list() {
+    // given: nothing refused
     let refused = Refused::nothing_yet();
 
+    // when: the refusals are listed
     let listed = refused.listed().await;
 
+    // then: the list is empty
     assert!(listed.is_empty());
 }
 
 #[tokio::test]
 async fn a_refused_message_is_listed_with_what_why_and_when() {
+    // given: a refused message
     let refused = Refused::nothing_yet();
     refused.given_up_on("idea.captured").await;
 
+    // when: the refusals are listed
     let listed = refused.listed().await;
 
+    // then: it is listed with what, why and when
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].listener, "catalogue-idea");
     assert_eq!(listed[0].routing, "idea.captured");
@@ -166,11 +172,14 @@ async fn a_refused_message_is_listed_with_what_why_and_when() {
 
 #[tokio::test]
 async fn a_refusal_says_in_plain_words_what_the_listener_could_not_do() {
+    // given: a refused message
     let refused = Refused::nothing_yet();
     refused.given_up_on("idea.captured").await;
 
+    // when: the refusals are listed
     let listed = refused.listed().await;
 
+    // then: it says in plain words what the listener could not do
     assert_eq!(
         listed[0].plainly.as_deref(),
         Some("A change to an idea did not reach the list of ideas."),
@@ -180,11 +189,14 @@ async fn a_refusal_says_in_plain_words_what_the_listener_could_not_do() {
 
 #[tokio::test]
 async fn a_refusal_by_a_listener_no_longer_wired_has_no_plain_words() {
+    // given: a message refused by a listener no longer wired
     let refused = Refused::nothing_yet();
     refused.given_up_by(UNWIRED, "idea.captured").await;
 
+    // when: the refusals are listed
     let listed = refused.listed().await;
 
+    // then: it has no plain words
     assert_eq!(
         listed[0].plainly, None,
         "a dead letter outlives the code that refused it, so the client needs its own fallback"
@@ -193,14 +205,18 @@ async fn a_refusal_by_a_listener_no_longer_wired_has_no_plain_words() {
 
 #[tokio::test]
 async fn trying_again_offers_the_message_afresh_from_now() {
+    // given: a refused message
     let refused = Refused::nothing_yet();
     refused.given_up_on("idea.captured").await;
     let id = refused.listed().await[0].id;
 
+    // when: it is tried again
     let response = refused.server.post(&format!("/refusals/{id}/retry")).await;
 
+    // then: it is no longer listed
     response.assert_status(StatusCode::NO_CONTENT);
     assert!(refused.listed().await.is_empty());
+    // and: it is offered afresh from now, not before
     assert!(
         refused
             .deliveries
@@ -221,16 +237,19 @@ async fn trying_again_offers_the_message_afresh_from_now() {
 
 #[tokio::test]
 async fn acknowledging_keeps_the_message_but_marks_it_seen() {
+    // given: two refused messages
     let refused = Refused::nothing_yet();
     refused.given_up_on("idea.captured").await;
     refused.given_up_on("idea.retitled").await;
     let id = refused.listed().await[0].id;
 
+    // when: the first is acknowledged
     let response = refused
         .server
         .post(&format!("/refusals/{id}/acknowledge"))
         .await;
 
+    // then: both stay listed with only the first marked seen
     response.assert_status(StatusCode::NO_CONTENT);
     let listed: Vec<_> = refused
         .listed()
@@ -253,21 +272,27 @@ async fn acknowledging_keeps_the_message_but_marks_it_seen() {
 
 #[tokio::test]
 async fn acting_on_something_already_gone_is_harmless() {
+    // given: nothing refused
     let refused = Refused::nothing_yet();
 
+    // when: a refusal that is gone is tried again and acknowledged
     let retried = refused.server.post("/refusals/404/retry").await;
     let acknowledged = refused.server.post("/refusals/404/acknowledge").await;
 
+    // then: both are done
     retried.assert_status(StatusCode::NO_CONTENT);
     acknowledged.assert_status(StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
 async fn an_id_that_is_not_a_number_is_a_bad_request() {
+    // given: nothing refused
     let refused = Refused::nothing_yet();
 
+    // when: a refusal is tried again by an id that is not a number
     let response = refused.server.post("/refusals/latest/retry").await;
 
+    // then: it is a bad request
     response.assert_status(StatusCode::BAD_REQUEST);
 }
 
@@ -277,28 +302,35 @@ async fn told(socket: &mut Subscriber) -> serde_json::Value {
 
 #[tokio::test]
 async fn whoever_follows_the_refusals_is_told_when_a_delivery_is_given_up() {
+    // given: someone following the refusals
     let refused = Refused::nothing_yet();
     let mut socket = refused.followed().await;
 
+    // when: a delivery is given up
     refused.given_up_on("idea.captured").await;
 
+    // then: they are told the refusals changed
     assert_eq!(told(&mut socket).await["event"]["name"], "REFUSALS_CHANGED");
 }
 
 #[tokio::test]
 async fn acknowledging_and_retrying_are_told_too_each_with_a_newer_version() {
+    // given: two refused messages
     let refused = Refused::nothing_yet();
     refused.given_up_on("idea.captured").await;
     refused.given_up_on("idea.retitled").await;
     let listed = refused.listed().await;
+    // and: someone following the refusals
     let mut socket = refused.followed().await;
 
+    // when: one is acknowledged
     refused
         .server
         .post(&format!("/refusals/{}/acknowledge", listed[0].id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     let acknowledged = told(&mut socket).await;
+    // and: the other is tried again
     refused
         .server
         .post(&format!("/refusals/{}/retry", listed[1].id))
@@ -306,13 +338,16 @@ async fn acknowledging_and_retrying_are_told_too_each_with_a_newer_version() {
         .assert_status(StatusCode::NO_CONTENT);
     let retried = told(&mut socket).await;
 
+    // then: the later telling has the newer version
     assert!(retried["version"].as_u64() > acknowledged["version"].as_u64());
 }
 
 #[tokio::test]
 async fn a_delivery_refused_but_offered_again_tells_nothing() {
+    // given: someone following the refusals
     let refused = Refused::nothing_yet();
     let mut socket = refused.followed().await;
+    // and: a delivery taken up for handling
     let message = Message::opening(
         RoutingKey::parse("idea.captured").expect("a plain key is fine"),
         serde_json::json!({ "nothing": "much" }),
@@ -332,12 +367,14 @@ async fn a_delivery_refused_but_offered_again_tells_nothing() {
         .await
         .expect("claiming should succeed");
 
+    // when: it is refused to be offered again
     refused
         .deliveries
         .mark_as_refused(&claimed[0], "not yet", GIVEN_UP)
         .await
         .expect("refusing should succeed");
 
+    // then: nothing is told
     assert!(
         socket.silent().await,
         "a delivery that will be offered again is not a refusal anyone needs to see"
@@ -346,10 +383,12 @@ async fn a_delivery_refused_but_offered_again_tells_nothing() {
 
 #[tokio::test]
 async fn a_change_is_tried_again_for_thirty_days_after_it_happened_and_not_after() {
+    // given: a change refused thirty days after it happened
     let refused = Refused::nothing_yet();
     refused
         .given_up_on_what_happened(CATALOGUING, "idea.captured", ASKED - RETRIABLE_FOR)
         .await;
+    // and: one refused a moment later than that
     refused
         .given_up_on_what_happened(
             CATALOGUING,
@@ -358,8 +397,10 @@ async fn a_change_is_tried_again_for_thirty_days_after_it_happened_and_not_after
         )
         .await;
 
+    // when: the refusals are listed
     let listed = refused.listed().await;
 
+    // then: only the first may be tried again
     let triable: Vec<(String, bool)> = listed
         .iter()
         .map(|refusal| (refusal.routing.clone(), refusal.may_be_tried_again))
@@ -372,21 +413,25 @@ async fn a_change_is_tried_again_for_thirty_days_after_it_happened_and_not_after
         ],
         "the list says which may be tried again, so the page need not know the limit"
     );
+    // when: the second is tried again
     let too_old = listed[1].id;
     let response = refused
         .server
         .post(&format!("/refusals/{too_old}/retry"))
         .await;
+    // then: it is refused as too late
     response.assert_status(StatusCode::CONFLICT);
     assert_eq!(
         response.json::<serde_json::Value>()["type"],
         refused::TOO_LATE_TO_TRY_AGAIN
     );
+    // and: it stays listed
     assert_eq!(
         refused.listed().await.len(),
         2,
         "a change refused for being too old stays listed, to be acknowledged"
     );
+    // and: the first may still be tried again
     refused
         .server
         .post(&format!("/refusals/{}/retry", listed[0].id))

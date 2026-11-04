@@ -128,19 +128,23 @@ mod tests {
             (SIGNED_UP, "SIGNED_UP"),
             (SIGNED_UP_BY_INVITATION, "SIGNED_UP_BY_INVITATION"),
         ] {
+            // given: the listener
             let bench = bench();
+            // expect: it hears each way of signing up
             assert!(
                 bench
                     .listener
                     .hears(&RoutingKey::parse(routing).expect("a declared key"))
             );
 
+            // when: a sign-up is heard
             bench
                 .listener
                 .handle(&told(routing, ada_signed_up(named)))
                 .await
                 .expect("a sign-up is taken in");
 
+            // then: whoever signed up is known by name and address
             assert_eq!(
                 known(&bench).await,
                 vec![Person {
@@ -154,8 +158,10 @@ mod tests {
 
     #[tokio::test]
     async fn what_is_no_sign_up_is_refused_and_teaches_nothing() {
+        // given: the listener
         let bench = bench();
 
+        // expect: hearing what is no sign-up fails
         for unreadable in [
             told(SIGNED_UP, json!({ "version": 1, "name": "EMAIL_VERIFIED" })),
             told(SIGNED_UP, json!({ "version": 1, "name": "SIGNED_UP" })),
@@ -165,6 +171,7 @@ mod tests {
                 "a message the listener cannot act on belongs in dead letters"
             );
         }
+        // and: nobody is known
         assert!(known(&bench).await.is_empty());
     }
 }

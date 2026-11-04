@@ -59,8 +59,10 @@ crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
+    // given: the list on postgres
     let bench = OnPostgres::setup().await;
 
+    // when: the collation of its id column is read
     let collation: Option<String> = sqlx::query_scalar(
         "SELECT collation_name::text
          FROM information_schema.columns
@@ -71,6 +73,7 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
     .await
     .expect("reading the list should succeed");
 
+    // then: it sorts bytewise
     assert_eq!(
         collation.as_deref(),
         Some("C"),
@@ -82,10 +85,12 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_standing() {
+    // given: the list on postgres
     let bench = OnPostgres::setup().await;
     let catalog = Arc::new(PostgresInvitationCatalog::new(bench.pool.clone()));
     let transactions = Arc::new(PostgresTransactions::new(bench.pool.clone()));
 
+    // when: invitations are remembered and forgotten at once, again and again
     for nth in 0..40 {
         let summary = suite::a_summary(
             InvitationId::generate(suite::at(1_000 + nth)),
@@ -122,6 +127,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
             .expect("forgetting should succeed");
     }
 
+    // then: none of them stands
     assert!(
         catalog
             .listed_after(None, 100)
@@ -135,19 +141,23 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
 
 #[tokio::test]
 async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
+    // given: the token keys on postgres
     let bench = OnPostgres::setup().await;
     let keys = Arc::new(postgres::PostgresTokenKeys::new(bench.pool.clone()));
 
+    // when: many ask for the key at once
     let asked: Vec<_> = futures_util::future::join_all((0..8).map(|_| {
         let keys = keys.clone();
         async move { keys.key().await.expect("a key is at hand") }
     }))
     .await;
 
+    // then: all are told the one key
     assert!(
         asked.iter().all(|key| *key == asked[0]),
         "every invitation issued and mailed is derived under the one key"
     );
+    // and: a restart finds it
     assert_eq!(
         postgres::PostgresTokenKeys::new(bench.pool.clone())
             .key()
@@ -160,7 +170,7 @@ async fn the_token_key_is_drawn_once_and_kept_however_many_ask_at_once() {
     bench.cleanup().await;
 }
 
-async fn buried_while(
+async fn burying_while(
     bench: OnPostgres,
     project: &ProjectLink,
     remembering: Transaction,
@@ -190,6 +200,7 @@ async fn buried_while(
 
 #[tokio::test]
 async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name() {
+    // given: a project's name under way
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut naming = bench
@@ -210,8 +221,10 @@ async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name()
         .await
         .expect("remembering should succeed");
 
-    let bench = buried_while(bench, &project, naming).await;
+    // when: its tombstone is laid meanwhile
+    let bench = burying_while(bench, &project, naming).await;
 
+    // then: it has no name
     assert!(
         bench
             .store
@@ -226,6 +239,7 @@ async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name()
 
 #[tokio::test]
 async fn a_project_s_tombstone_laid_while_its_trash_is_under_way_leaves_no_trash() {
+    // given: a project's trashing under way
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut trashing = bench
@@ -239,8 +253,10 @@ async fn a_project_s_tombstone_laid_while_its_trash_is_under_way_leaves_no_trash
         .await
         .expect("remembering should succeed");
 
-    let bench = buried_while(bench, &project, trashing).await;
+    // when: its tombstone is laid meanwhile
+    let bench = burying_while(bench, &project, trashing).await;
 
+    // then: it is in no trash
     assert!(
         !bench
             .store

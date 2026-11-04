@@ -9,7 +9,7 @@ use crate::wiring::{ADA, HER_PASSWORD, Wired};
 const BEA: &str = "bea@example.com";
 const HIS_PASSWORD: &str = "a horse of another colour";
 
-async fn signed_up(wired: &Wired, email: &str, password: &str) -> AccountId {
+async fn an_unverified_account(wired: &Wired, email: &str, password: &str) -> AccountId {
     wired
         .accounts
         .sign_up(email, "Someone", password)
@@ -24,8 +24,8 @@ async fn signed_up(wired: &Wired, email: &str, password: &str) -> AccountId {
         .expect("the address should be held")
 }
 
-async fn verified(wired: &Wired, email: &str, password: &str) -> AccountId {
-    let id = signed_up(wired, email, password).await;
+async fn a_verified_account(wired: &Wired, email: &str, password: &str) -> AccountId {
+    let id = an_unverified_account(wired, email, password).await;
     wired
         .accounts
         .verify(email, &wired.last_code_sent_to(email))
@@ -41,9 +41,11 @@ fn refused(signed_in: Result<AccountId, AccountsError>) -> bool {
 
 #[tokio::test]
 async fn the_right_address_and_password_sign_a_verified_account_in() {
+    // given: a verified account
     let wired = wiring::wired();
-    let id = verified(&wired, ADA, HER_PASSWORD).await;
+    let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
+    // then: its address and password sign it in
     assert_eq!(
         wired
             .accounts
@@ -56,9 +58,11 @@ async fn the_right_address_and_password_sign_a_verified_account_in() {
 
 #[tokio::test]
 async fn the_address_signs_in_however_it_is_typed() {
+    // given: a verified account
     let wired = wiring::wired();
-    let id = verified(&wired, ADA, HER_PASSWORD).await;
+    let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
+    // then: its address in other letters and spacing signs it in
     assert_eq!(
         wired
             .accounts
@@ -71,12 +75,15 @@ async fn the_address_signs_in_however_it_is_typed() {
 
 #[tokio::test]
 async fn a_wrong_password_and_an_unknown_address_are_refused_in_the_same_words() {
+    // given: a verified account
     let wired = wiring::wired();
-    verified(&wired, ADA, HER_PASSWORD).await;
+    a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
+    // then: a wrong password is refused
     assert!(refused(
         wired.accounts.sign_in(ADA, "not her password at all").await
     ));
+    // and: an unknown address is refused alike
     assert!(
         refused(
             wired
@@ -90,24 +97,29 @@ async fn a_wrong_password_and_an_unknown_address_are_refused_in_the_same_words()
 
 #[tokio::test]
 async fn an_address_and_a_password_of_two_accounts_do_not_sign_in() {
+    // given: two verified accounts
     let wired = wiring::wired();
-    verified(&wired, ADA, HER_PASSWORD).await;
-    verified(&wired, BEA, HIS_PASSWORD).await;
+    a_verified_account(&wired, ADA, HER_PASSWORD).await;
+    a_verified_account(&wired, BEA, HIS_PASSWORD).await;
 
+    // then: each address with the other's password is refused
     assert!(refused(wired.accounts.sign_in(ADA, HIS_PASSWORD).await));
     assert!(refused(wired.accounts.sign_in(BEA, HER_PASSWORD).await));
 }
 
 #[tokio::test]
 async fn an_address_held_but_not_yet_the_accounts_own_does_not_sign_in() {
+    // given: a verified account
     let wired = wiring::wired();
-    let id = verified(&wired, ADA, HER_PASSWORD).await;
+    let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
+    // and: another address held for it
     let reserved = EmailAddress::new("ada@example.org").expect("a plain address");
     wired
         .claim(&reserved, &id, wired.clock.now())
         .await
         .expect("claiming should succeed");
 
+    // then: the held address does not sign it in
     assert!(
         refused(
             wired
@@ -121,6 +133,7 @@ async fn an_address_held_but_not_yet_the_accounts_own_does_not_sign_in() {
 
 #[tokio::test]
 async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_in() {
+    // given: an address claimed for an account never written
     let wired = wiring::wired();
     wired
         .claim(
@@ -131,6 +144,7 @@ async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_i
         .await
         .expect("claiming should succeed");
 
+    // then: the address does not sign in
     assert!(
         refused(wired.accounts.sign_in(ADA, HER_PASSWORD).await),
         "a server stopping between claiming an address and writing its account must not \
@@ -140,13 +154,16 @@ async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_i
 
 #[tokio::test]
 async fn an_unverified_account_is_told_so_only_with_the_right_password() {
+    // given: an unverified account
     let wired = wiring::wired();
-    signed_up(&wired, ADA, HER_PASSWORD).await;
+    an_unverified_account(&wired, ADA, HER_PASSWORD).await;
 
+    // then: the right password is told it is not verified yet
     assert!(matches!(
         wired.accounts.sign_in(ADA, HER_PASSWORD).await,
         Err(AccountsError::NotVerifiedYet)
     ));
+    // and: a wrong one is only refused
     assert!(
         refused(wired.accounts.sign_in(ADA, "not her password at all").await),
         "without the password, an unverified account looks like no account at all"
@@ -155,6 +172,7 @@ async fn an_unverified_account_is_told_so_only_with_the_right_password() {
 
 #[tokio::test]
 async fn an_address_nobody_has_costs_the_same_work_as_a_password_checked() {
+    // given: how long a password takes to check
     let wired = wiring::wired();
     PasswordHash::stand_in();
     let checking = (0..3)
@@ -166,6 +184,7 @@ async fn an_address_nobody_has_costs_the_same_work_as_a_password_checked() {
         .min()
         .unwrap_or(Duration::ZERO);
 
+    // when: an address nobody has signs in
     let started = Instant::now();
     let _refused = wired
         .accounts
@@ -173,6 +192,7 @@ async fn an_address_nobody_has_costs_the_same_work_as_a_password_checked() {
         .await;
     let signing_in = started.elapsed();
 
+    // then: it takes about as long
     assert!(
         signing_in >= checking / 4,
         "an unknown address answered in {signing_in:?} where a password takes {checking:?} \

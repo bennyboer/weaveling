@@ -105,6 +105,7 @@ mod tests {
 
     #[test]
     fn a_language_tag_is_kept_in_its_usual_case() {
+        // expect: each tag is kept in the case its parts usually take
         assert_eq!(
             BookLanguage::new("de").map(|it| it.to_string()),
             Ok("de".to_owned())
@@ -123,6 +124,7 @@ mod tests {
 
     #[test]
     fn what_is_not_a_language_tag_is_refused() {
+        // expect: each malformed tag is refused
         for refused in ["", "d", "deutsch", "de_DE", "en-", "12", "en-toolongpart"] {
             assert!(
                 BookLanguage::new(refused).is_err(),
@@ -133,6 +135,7 @@ mod tests {
 
     #[test]
     fn a_description_keeps_its_line_breaks_and_loses_its_margins() {
+        // expect: a description is trimmed with its line breaks kept
         assert_eq!(
             ProjectDescription::new("  A weaver's daughter.\nA war.  ").map(|it| it.to_string()),
             Ok("A weaver's daughter.\nA war.".to_owned())
@@ -141,10 +144,12 @@ mod tests {
 
     #[test]
     fn a_description_refuses_control_characters_and_great_length() {
+        // expect: a control character is refused
         assert_eq!(
             ProjectDescription::new("a\u{7}b"),
             Err(InvalidProjectDescription::ControlCharacter)
         );
+        // and: a description past its limit is refused
         assert_eq!(
             ProjectDescription::new(&"a".repeat(4_097)),
             Err(InvalidProjectDescription::TooLong {

@@ -52,22 +52,28 @@ mod tests {
 
     #[test]
     fn the_system_clock_reports_a_plausible_present() {
+        // expect: the system clock reports a moment after its writing
         assert!(SystemClock.now().unix_timestamp() > 1_700_000_000);
     }
 
     #[test]
     fn a_fixed_clock_reports_the_moment_it_was_given() {
+        // given: a fixed clock
         let clock = FixedClock::new(at(1_000));
 
+        // then: it reports the moment it was given
         assert_eq!(clock.now(), at(1_000));
     }
 
     #[test]
     fn a_fixed_clock_can_be_moved_forward() {
+        // given: a fixed clock
         let clock = FixedClock::new(at(1_000));
 
+        // when: it is moved forward
         clock.set(at(2_000));
 
+        // then: it reports the new moment
         assert_eq!(clock.now(), at(2_000));
     }
 }

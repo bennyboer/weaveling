@@ -38,7 +38,7 @@ impl Mailer for DownOnce {
     }
 }
 
-async fn invited(wired: &Wired) -> InvitationId {
+async fn an_open_invitation(wired: &Wired) -> InvitationId {
     wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
@@ -64,15 +64,19 @@ async fn the_issue_told(wired: &Wired) -> Message {
 
 #[tokio::test]
 async fn an_issue_mails_nothing_until_it_is_heard_and_then_the_link_derived_for_it() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
+    // then: nothing is mailed yet
     assert!(
         wired.mailbox.sent_to(ADA).is_empty(),
         "the mail is the listener's, after the issue has committed"
     );
 
+    // when: its issue is heard
     let token = wired.token_mailed_to(ADA).await;
 
+    // then: the token mailed is the one derived for it
     assert_eq!(
         token.as_str(),
         InvitationToken::derived(&wired.keys.key().await.expect("a key is at hand"), &id).as_str(),
@@ -82,10 +86,12 @@ async fn an_issue_mails_nothing_until_it_is_heard_and_then_the_link_derived_for_
 
 #[tokio::test]
 async fn an_issue_heard_twice_is_mailed_once() {
-    let wired = wiring::wired();
-    invited(&wired).await;
+    // given: the issue of an invitation told
+    let wired = wiring::a_workbench();
+    an_open_invitation(&wired).await;
     let issued = the_issue_told(&wired).await;
 
+    // when: it is heard twice
     for _ in 0..2 {
         wired
             .mailing
@@ -94,12 +100,14 @@ async fn an_issue_heard_twice_is_mailed_once() {
             .expect("messages come at least once");
     }
 
+    // then: it is mailed once
     assert_eq!(wired.mailbox.sent_to(ADA).len(), 1);
 }
 
 #[tokio::test]
 async fn a_mail_that_could_not_be_sent_is_refused_and_sent_when_the_issue_is_offered_again() {
-    let wired = wiring::wired();
+    // given: a mail server down once
+    let wired = wiring::a_workbench();
     let down_once = Arc::new(DownOnce::default());
     let mailing = wiring::inboxed_effect(MailIssuedInvitationListener::new(InvitationsCore::new(
         wired.store.clone(),
@@ -111,16 +119,21 @@ async fn a_mail_that_could_not_be_sent_is_refused_and_sent_when_the_issue_is_off
         Arc::new(AllowingEverything),
         wired.clock.clone(),
     )));
-    let id = invited(&wired).await;
+    // and: the issue of an invitation told
+    let id = an_open_invitation(&wired).await;
     let issued = the_issue_told(&wired).await;
 
+    // when: the issue is heard
     let refused = mailing.handle(&issued).await;
+    // and: heard again
     mailing
         .handle(&issued)
         .await
         .expect("the mail server is up again");
 
+    // then: the first hearing is refused
     assert!(refused.is_err(), "a mail not sent is no issue heard");
+    // and: the link the invitation was issued with is mailed once
     let mailed = down_once.mailbox.sent_to(ADA);
     assert_eq!(mailed.len(), 1);
     assert!(
@@ -134,14 +147,16 @@ async fn a_mail_that_could_not_be_sent_is_refused_and_sent_when_the_issue_is_off
 
 #[tokio::test]
 async fn an_invitation_withdrawn_before_its_mail_was_heard_is_not_mailed() {
-    let wired = wiring::wired();
-    let id = invited(&wired).await;
+    // given: an invitation withdrawn before its mail was heard
+    let wired = wiring::a_workbench();
+    let id = an_open_invitation(&wired).await;
     wired
         .invitations
         .withdraw(&wiring::an_operator(), &id)
         .await
         .expect("an operator may withdraw");
 
+    // then: nothing is mailed
     assert!(
         wired.sent_to(ADA).await.is_empty(),
         "a link mailed now would lead to an invitation already gone"

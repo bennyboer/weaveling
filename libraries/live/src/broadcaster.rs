@@ -116,33 +116,43 @@ mod tests {
 
     #[tokio::test]
     async fn a_hearer_hears_only_what_is_told_about_its_own() {
+        // given: someone hearing one channel
         let broadcaster = Broadcaster::new();
         let mut mine = broadcaster.hear("outline_1");
 
+        // when: something is told on another channel and then on its own
         broadcaster.tell("outline_2", "theirs".to_owned());
         broadcaster.tell("outline_1", "mine".to_owned());
 
+        // then: it hears only its own
         assert_eq!(soon(&mut mine).await.as_deref(), Some("mine"));
     }
 
     #[tokio::test]
     async fn everyone_hearing_the_same_hears_it() {
+        // given: two hearing the same channel
         let broadcaster = Broadcaster::new();
         let mut one = broadcaster.hear("outline_1");
         let mut other = broadcaster.hear("outline_1");
 
+        // when: something is told on it
         broadcaster.tell("outline_1", "moved".to_owned());
 
+        // then: both hear it
         assert_eq!(soon(&mut one).await.as_deref(), Some("moved"));
         assert_eq!(soon(&mut other).await.as_deref(), Some("moved"));
     }
 
     #[tokio::test]
     async fn what_was_told_before_anyone_listened_is_gone() {
+        // given: something told before anyone listened
         let broadcaster = Broadcaster::new();
         broadcaster.tell("outline_1", "early".to_owned());
+
+        // when: someone starts hearing
         let mut late = broadcaster.hear("outline_1");
 
+        // then: it hears nothing
         assert_eq!(
             soon(&mut late).await,
             None,
@@ -152,13 +162,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_hearer_that_fell_behind_stops_hearing() {
+        // given: a hearer on a broadcaster holding two frames
         let broadcaster = Broadcaster::holding(2);
         let mut slow = broadcaster.hear("outline_1");
 
+        // when: three are told before it hears any
         for nth in 0..3 {
             broadcaster.tell("outline_1", nth.to_string());
         }
 
+        // then: its hearing ends
         assert_eq!(
             slow.next().await,
             None,

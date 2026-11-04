@@ -31,23 +31,29 @@ mod tests {
 
     #[test]
     fn an_account_is_shown_by_the_first_letter_of_its_name_in_capitals() {
+        // expect: the first letter in capitals, whatever its alphabet
         assert_eq!(initial_of("Bennybär"), "B");
         assert_eq!(initial_of("ådne"), "Å");
     }
 
     #[test]
     fn what_comes_before_the_first_letter_is_passed_over() {
+        // expect: quotes and spaces before the name give no initial
         assert_eq!(initial_of("\u{201e}Ada\u{201c}"), "A");
         assert_eq!(initial_of("  ada"), "A");
     }
 
     #[test]
     fn an_account_keeps_its_tint_and_accounts_are_spread_over_the_tints() {
+        // expect: an account is tinted alike each time
         assert_eq!(tint_of("account_1"), tint_of("account_1"));
 
+        // when: ten accounts are tinted
         let tinted: Vec<String> = (1..=10)
             .map(|account| tint_of(&format!("account_{account}")))
             .collect();
+
+        // then: every tint is among them
         for tint in 0..TINTS {
             assert!(
                 tinted.contains(&format!("tint-{tint}")),

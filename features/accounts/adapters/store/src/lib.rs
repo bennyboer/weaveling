@@ -286,8 +286,10 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
+        // given: an address and a name
         let (email, name) = ada();
 
+        // expect: every event is read back as it was written
         for event in [
             AccountEvent::SignedUp {
                 email: email.clone(),
@@ -341,6 +343,7 @@ mod tests {
 
     #[test]
     fn a_stored_address_or_name_the_domain_would_refuse_reads_as_nothing() {
+        // expect: no event is read of a stored address, name or reason that is refused
         for refused in [
             json!({ "SignedUp": { "email": "ada", "name": "Ada" } }),
             json!({ "SignedUp": { "email": "ada@example.com", "name": "  " } }),
@@ -357,6 +360,7 @@ mod tests {
 
     #[test]
     fn a_reason_for_declining_is_stored_by_a_name_a_human_can_read() {
+        // when: an invitation declined for each reason is written
         for (reason, stored) in [
             (DeclineReason::AddressHasAccount, "address-has-account"),
             (DeclineReason::TurnedDown, "turned-down"),
@@ -366,12 +370,14 @@ mod tests {
                 reason,
             });
 
+            // then: the reason is stored by its readable name
             assert_eq!(written["InvitationDeclined"]["reason"], json!(stored));
         }
     }
 
     #[test]
     fn a_snapshots_moment_is_stored_in_a_shape_a_human_can_read() {
+        // when: a snapshot is written
         let (email, name) = ada();
         let written = (codec().body)(&AccountEvent::Snapshotted {
             email,
@@ -383,6 +389,7 @@ mod tests {
             locks: BTreeMap::new(),
         });
 
+        // then: its moment of signing up is stored as a readable date
         assert_eq!(
             written["Snapshotted"]["signed_up_at"],
             json!("1970-01-01T00:16:40Z")

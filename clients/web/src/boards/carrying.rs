@@ -192,6 +192,7 @@ mod tests {
 
     #[test]
     fn a_slip_too_small_to_be_a_drag_leaves_the_card_alone() {
+        // expect: a card carried only a slip lands where it was
         for slip in [at(0, 0), at(3, 3), at(-3, 0), at(0, 3)] {
             assert_eq!(
                 carrying(Held::Whole, slip).landing(),
@@ -203,24 +204,30 @@ mod tests {
 
     #[test]
     fn a_drag_becomes_one_the_moment_it_passes_the_threshold() {
+        // expect: a carrying just short of the threshold is no drag
         assert!(!carrying(Held::Whole, at(3, 3)).dragging());
+        // and: one reaching it either way is
         assert!(carrying(Held::Whole, at(4, 0)).dragging());
         assert!(carrying(Held::Whole, at(0, -4)).dragging());
     }
 
     #[test]
     fn dragging_the_body_moves_the_card_without_reshaping_it() {
+        // when: a card is dragged by its body
         let landed = carrying(Held::Whole, at(43, -27)).landing();
 
+        // then: it lands moved and snapped, its size unchanged
         assert_eq!(landed.spot, at(145, 75), "100+43 and 100-27, both snapped");
         assert_eq!(landed.size, CARD.size);
     }
 
     #[test]
     fn every_landing_sits_on_the_grid() {
+        // when: a card is dragged off the grid by each of its handles
         for held in EVERY_HANDLE {
             let landed = carrying(held, at(37, -23)).landing();
 
+            // then: all four of its edges land on the grid
             assert_eq!(landed.spot.x % GRID, 0, "{} left", held.side());
             assert_eq!(landed.spot.y % GRID, 0, "{} top", held.side());
             assert_eq!(
@@ -240,6 +247,7 @@ mod tests {
 
     #[test]
     fn pulling_a_side_moves_only_that_edge() {
+        // when: each side is pulled outwards
         for (held, by, spot, size) in [
             (Held::Right, at(50, 0), CARD.spot, of(250, 100)),
             (Held::Bottom, at(0, 50), CARD.spot, of(200, 150)),
@@ -248,6 +256,7 @@ mod tests {
         ] {
             let landed = carrying(held, by).landing();
 
+            // then: the card grows by that side alone
             assert_eq!(landed.spot, spot, "{} spot", held.side());
             assert_eq!(landed.size, size, "{} size", held.side());
         }
@@ -255,6 +264,7 @@ mod tests {
 
     #[test]
     fn pulling_one_side_leaves_the_opposite_one_where_it_was() {
+        // when: each side is pulled outwards
         for (held, by) in [
             (Held::Right, at(70, 0)),
             (Held::Left, at(-70, 0)),
@@ -262,6 +272,8 @@ mod tests {
             (Held::Top, at(0, -70)),
         ] {
             let landed = carrying(held, by).landing();
+
+            // then: the opposite side stays where it was
             let stayed = match held {
                 Held::Left => landed.spot.x + landed.size.width == 300,
                 Held::Right => landed.spot.x == 100,
@@ -279,8 +291,10 @@ mod tests {
 
     #[test]
     fn pulling_a_corner_moves_both_its_edges() {
+        // when: a corner is pulled outwards
         let landed = carrying(Held::TopLeft, at(-40, -20)).landing();
 
+        // then: both its edges move and the opposite corner stays
         assert_eq!(landed.spot, at(60, 80));
         assert_eq!(
             landed.size,
@@ -291,9 +305,11 @@ mod tests {
 
     #[test]
     fn a_card_cannot_be_pulled_smaller_than_it_is_allowed_to_be() {
+        // when: each side is pulled far past the other
         for held in [Held::Right, Held::Left, Held::Top, Held::Bottom] {
             let landed = carrying(held, at(-500, -500)).landing();
 
+            // then: the card is no smaller than allowed
             assert!(
                 landed.size.width >= SMALLEST.width && landed.size.height >= SMALLEST.height,
                 "{} shrank to {:?}",
@@ -305,8 +321,10 @@ mod tests {
 
     #[test]
     fn shrinking_from_a_leading_edge_stops_without_running_past_the_far_one() {
+        // when: the left side is pushed far past the right
         let landed = carrying(Held::Left, at(500, 0)).landing();
 
+        // then: the right edge stays and the card is as narrow as allowed
         assert_eq!(
             landed.spot.x + landed.size.width,
             300,
@@ -317,8 +335,10 @@ mod tests {
 
     #[test]
     fn a_card_may_be_dragged_behind_the_origin() {
+        // when: a card is dragged past the origin
         let landed = carrying(Held::Whole, at(-195, -170)).landing();
 
+        // then: it lands at a spot below zero
         assert_eq!(
             landed.spot,
             at(-95, -70),
@@ -328,14 +348,17 @@ mod tests {
 
     #[test]
     fn the_arrow_keys_step_one_cell_and_leap_eight() {
+        // expect: each arrow steps one cell its way
         assert_eq!(nudge("ArrowRight", false, at(40, 40)), Some(at(45, 40)));
         assert_eq!(nudge("ArrowLeft", false, at(40, 40)), Some(at(35, 40)));
         assert_eq!(nudge("ArrowUp", false, at(40, 40)), Some(at(40, 35)));
+        // and: a leaping arrow goes eight
         assert_eq!(nudge("ArrowDown", true, at(40, 40)), Some(at(40, 80)));
     }
 
     #[test]
     fn keys_that_are_not_arrows_move_nothing() {
+        // expect: no nudge for any other key
         for key in ["Enter", "Escape", "a", "Tab"] {
             assert_eq!(nudge(key, false, at(40, 40)), None, "{key} is not a nudge");
         }
@@ -343,6 +366,7 @@ mod tests {
 
     #[test]
     fn snapping_rounds_to_the_nearest_cell_in_both_directions() {
+        // expect: a spot snaps to its nearest cell on either side of zero
         assert_eq!(snapped(at(12, 13)), at(10, 15));
         assert_eq!(snapped(at(-12, -13)), at(-10, -15));
         assert_eq!(snapped(at(40, 40)), at(40, 40));

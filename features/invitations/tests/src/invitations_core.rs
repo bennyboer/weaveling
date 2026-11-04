@@ -34,21 +34,25 @@ fn core_committing_with(
 
 #[tokio::test]
 async fn an_invitation_whose_issuing_cannot_be_kept_is_mailed_to_nobody() {
-    let wired = wiring::wired();
+    // given: invitations whose events cannot be kept
+    let wired = wiring::a_workbench();
 
+    // when: one is issued
     let refused = core_over(&wired, Arc::new(RefusesAppending(wired.store.clone())))
         .invite_to_instance(&wiring::an_operator(), "ada@example.com", ORIGIN)
         .await;
 
+    // then: it is refused
     assert!(refused.is_err());
+    // and: nothing is mailed
     assert!(
         wired.sent_to("ada@example.com").await.is_empty(),
         "the mail goes out only once the invitation is kept"
     );
 }
 
-async fn withdrawn_while_losing_races(losses: u8) -> (Result<(), InvitationsError>, usize) {
-    let wired = wiring::wired();
+async fn withdrawing_while_losing_races(losses: u8) -> (Result<(), InvitationsError>, usize) {
+    let wired = wiring::a_workbench();
     let issued = wired
         .invitations
         .invite_to_instance(&wiring::an_operator(), "ada@example.com", ORIGIN)
@@ -73,29 +77,37 @@ async fn withdrawn_while_losing_races(losses: u8) -> (Result<(), InvitationsErro
 
 #[tokio::test]
 async fn a_withdrawal_that_lost_a_race_is_tried_again_and_lands() {
-    let (withdrawn, told) = withdrawn_while_losing_races(4).await;
+    // when: a withdrawal loses four races
+    let (withdrawn, told) = withdrawing_while_losing_races(4).await;
 
+    // then: it lands
     withdrawn.expect("the fifth try lands");
+    // and: once
     assert_eq!(told, 2, "issued, then withdrawn once");
 }
 
 #[tokio::test]
 async fn a_withdrawal_that_lost_every_race_it_may_try_is_a_conflict() {
-    let (withdrawn, told) = withdrawn_while_losing_races(5).await;
+    // when: a withdrawal loses five races
+    let (withdrawn, told) = withdrawing_while_losing_races(5).await;
 
+    // then: it is a conflict
     assert!(matches!(
         withdrawn,
         Err(InvitationsError::Events(ServiceError::Store(
             StoreError::Outdated { .. }
         )))
     ));
+    // and: nothing is withdrawn
     assert_eq!(told, 1, "issued, never withdrawn");
 }
 
 #[tokio::test]
 async fn an_invitation_whose_commit_is_refused_is_mailed_to_nobody() {
-    let wired = wiring::wired();
+    // given: invitations whose commits are refused
+    let wired = wiring::a_workbench();
 
+    // when: one is issued
     let refused = core_committing_with(
         &wired,
         wired.store.clone(),
@@ -104,7 +116,9 @@ async fn an_invitation_whose_commit_is_refused_is_mailed_to_nobody() {
     .invite_to_instance(&wiring::an_operator(), "ada@example.com", ORIGIN)
     .await;
 
+    // then: it is refused
     assert!(refused.is_err());
+    // and: nothing is mailed
     assert!(
         wired.sent_to("ada@example.com").await.is_empty(),
         "the mail goes out only once the invitation is committed"
@@ -113,13 +127,15 @@ async fn an_invitation_whose_commit_is_refused_is_mailed_to_nobody() {
 
 #[tokio::test]
 async fn tombstones_forgotten_are_forgotten_for_good() {
-    let wired = wiring::wired();
+    // given: a project's tombstone
+    let wired = wiring::a_workbench();
     wired
         .invitations
         .lay_project_tombstone(None, &ProjectLink::from("project_gone"), wiring::at(1_000))
         .await
         .expect("laying a tombstone should succeed");
 
+    // when: what was laid before a later moment is forgotten twice
     let mut forgotten = Vec::new();
     for _ in 0..2 {
         forgotten.push(
@@ -131,5 +147,6 @@ async fn tombstones_forgotten_are_forgotten_for_good() {
         );
     }
 
+    // then: it is forgotten once
     assert_eq!(forgotten, [1, 0]);
 }

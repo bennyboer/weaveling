@@ -22,7 +22,7 @@ fn a_workbench() -> Wired {
     wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-async fn listed(wired: &Wired) -> Vec<String> {
+async fn titles_listed(wired: &Wired) -> Vec<String> {
     wired
         .catalog
         .in_project(&ProjectLink::from("project_1"))
@@ -78,26 +78,32 @@ fn a_captured_idea_told_of(id: &IdeaId) -> Message {
 
 #[tokio::test]
 async fn a_captured_idea_reaches_the_listing() {
+    // given: a workbench
     let wired = a_workbench();
 
+    // when: an idea is captured
     a_captured_idea(&wired).await;
 
-    assert_eq!(listed(&wired).await, ["The Loom"]);
+    // then: it is listed
+    assert_eq!(titles_listed(&wired).await, ["The Loom"]);
 }
 
 #[tokio::test]
 async fn hearing_the_same_message_twice_leaves_one_idea() {
+    // given: a captured idea
     let wired = a_workbench();
     let id = a_captured_idea(&wired).await;
 
+    // when: its capture is heard again
     wired
         .projector
         .handle(&a_captured_idea_told_of(&id))
         .await
         .expect("a redelivery is not a failure");
 
+    // then: it is listed once
     assert_eq!(
-        listed(&wired).await,
+        titles_listed(&wired).await,
         ["The Loom"],
         "a broker redelivers, so hearing twice must count once"
     );
@@ -105,6 +111,7 @@ async fn hearing_the_same_message_twice_leaves_one_idea() {
 
 #[tokio::test]
 async fn a_stale_message_cannot_resurrect_a_discarded_idea() {
+    // given: a discarded idea
     let wired = a_workbench();
     let id = a_captured_idea(&wired).await;
     wired
@@ -113,18 +120,25 @@ async fn a_stale_message_cannot_resurrect_a_discarded_idea() {
         .await
         .expect("discarding should succeed");
     wired.settle().await;
-    assert!(listed(&wired).await.is_empty(), "the discard was projected");
+    // and: it is no longer listed
+    assert!(
+        titles_listed(&wired).await.is_empty(),
+        "the discard was projected"
+    );
 
+    // when: its capture is heard again
     wired
         .projector
         .handle(&a_captured_idea_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
 
+    // then: it stays unlisted
     assert!(
-        listed(&wired).await.is_empty(),
+        titles_listed(&wired).await.is_empty(),
         "the projector reads the idea rather than trusting the message, so order cannot bite"
     );
+    // and: its tombstone is forgotten once, at its time
     assert_eq!(
         (
             wired
@@ -150,6 +164,7 @@ async fn a_stale_message_cannot_resurrect_a_discarded_idea() {
 
 #[tokio::test]
 async fn the_listing_follows_the_latest_title_however_messages_arrive() {
+    // given: a retitled idea
     let wired = a_workbench();
     let id = a_captured_idea(&wired).await;
     wired
@@ -159,14 +174,16 @@ async fn the_listing_follows_the_latest_title_however_messages_arrive() {
         .expect("retitling should succeed");
     wired.settle().await;
 
+    // when: its capture is heard again
     wired
         .projector
         .handle(&a_captured_idea_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
 
+    // then: its latest title is listed
     assert_eq!(
-        listed(&wired).await,
+        titles_listed(&wired).await,
         ["The Silent Loom"],
         "an out of order redelivery must not roll the listing back"
     );
@@ -174,6 +191,7 @@ async fn the_listing_follows_the_latest_title_however_messages_arrive() {
 
 #[tokio::test]
 async fn a_message_about_no_idea_at_all_is_refused() {
+    // given: a message about no idea at all
     let wired = a_workbench();
     let nonsense = Message::opening(
         RoutingKey::parse("idea.captured").expect("a plain key is fine"),
@@ -181,8 +199,10 @@ async fn a_message_about_no_idea_at_all_is_refused() {
         at(1_000),
     );
 
+    // when: it is heard
     let refused = wired.projector.handle(&nonsense).await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a message the projector cannot act on belongs in dead letters, not silently dropped"
@@ -191,14 +211,17 @@ async fn a_message_about_no_idea_at_all_is_refused() {
 
 #[tokio::test]
 async fn a_message_about_an_idea_that_was_never_stored_is_refused() {
+    // given: an idea never stored
     let wired = a_workbench();
     let never_stored = IdeaId::generate(at(1_000));
 
+    // when: its capture is heard
     let refused = wired
         .projector
         .handle(&a_captured_idea_told_of(&never_stored))
         .await;
 
+    // then: it is refused
     assert!(
         refused.is_err(),
         "a refusal reaches dead letters and can be retried, while acknowledging it would drop the \

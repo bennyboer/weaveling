@@ -37,16 +37,20 @@ mod tests {
 
     #[test]
     fn a_project_must_be_named() {
+        // expect: a blank name is refused
         assert_eq!(ProjectName::new("  "), Err(InvalidProjectName::Blank));
     }
 
     #[test]
     fn a_name_is_one_line_up_to_its_limit() {
+        // expect: a line break is refused
         assert_eq!(
             ProjectName::new("The\nLoom"),
             Err(InvalidProjectName::ControlCharacter)
         );
+        // and: a name of the limit is taken
         assert!(ProjectName::new(&"a".repeat(ProjectName::MAX_CHARS)).is_ok());
+        // and: one past it is refused
         assert_eq!(
             ProjectName::new(&"a".repeat(ProjectName::MAX_CHARS + 1)),
             Err(InvalidProjectName::TooLong {

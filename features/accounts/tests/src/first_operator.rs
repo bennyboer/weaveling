@@ -5,7 +5,7 @@ use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 const GRACE: &str = "grace@example.com";
 
-async fn drawn(wired: &Wired) -> String {
+async fn an_operator_code(wired: &Wired) -> String {
     wired
         .accounts
         .draw_operator_code()
@@ -32,9 +32,12 @@ async fn held(wired: &Wired, address: &str) -> bool {
 #[tokio::test]
 async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_account_in_to_operate()
  {
+    // given: an instance signing up by invitation with an operator code drawn
     let wired = wiring::wired();
-    let code = drawn(&wired).await;
+    let code = an_operator_code(&wired).await;
     let accounts = by_invitation(&wired);
+
+    // then: an operator is wanted
     assert!(
         accounts
             .operator_wanted()
@@ -42,6 +45,7 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
             .expect("asking should succeed")
     );
 
+    // when: the first account signs up with the code and becomes operator by it
     accounts
         .sign_up_to_operate(ADA, "Ada", HER_PASSWORD, &format!(" {code}\n"))
         .await
@@ -59,12 +63,14 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
         .await
         .expect("the code was only looked at when signing up, so it is still there to take");
 
+    // then: no operator is wanted any more
     assert!(
         !accounts
             .operator_wanted()
             .await
             .expect("asking should succeed")
     );
+    // and: nobody else signs up with the code
     assert!(matches!(
         accounts
             .sign_up_to_operate(GRACE, "Grace", HER_PASSWORD, &code)
@@ -79,28 +85,34 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
 
 #[tokio::test]
 async fn a_code_that_is_not_the_logged_one_lets_nobody_in() {
+    // given: an instance signing up by invitation with an operator code drawn
     let wired = wiring::wired();
-    drawn(&wired).await;
+    an_operator_code(&wired).await;
 
+    // then: signing up to operate with another code is refused
     assert!(matches!(
         by_invitation(&wired)
             .sign_up_to_operate(ADA, "Ada", HER_PASSWORD, "0123456789abcdef0123456789abcdef")
             .await,
         Err(AccountsError::OperatorCodeWrong)
     ));
+    // and: no account is made and nothing is sent
     assert!(!held(&wired, ADA).await);
     assert!(wired.mailbox.sent_to(ADA).is_empty());
 }
 
 #[tokio::test]
 async fn where_anyone_may_sign_up_a_code_changes_nothing() {
+    // given: an instance anyone may sign up to
     let wired = wiring::wired();
 
+    // when: an account signs up to operate with any code
     wired
         .accounts
         .sign_up_to_operate(ADA, "Ada", HER_PASSWORD, "whatever was typed")
         .await
         .expect("an open instance asks no code");
 
+    // then: it is made
     assert!(held(&wired, ADA).await);
 }

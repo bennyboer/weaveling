@@ -53,6 +53,7 @@ crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
+    // given: a remembered idea
     let bench = OnSqlite::setup().await;
     bench
         .committing()
@@ -63,16 +64,19 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
         ))
         .await
         .expect("remembering should succeed");
+    // and: its stored version set below zero
     sqlx::query("UPDATE idea_summaries SET version = -3")
         .execute(&bench.pool)
         .await
         .expect("editing the file by hand should succeed");
 
+    // when: its project is listed
     let found = bench
         .store
         .in_project(&ProjectLink::from("project_1"))
         .await;
 
+    // then: the listing is refused
     assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
@@ -80,9 +84,11 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standing() {
+    // given: a catalog
     let bench = OnSqlite::setup().await;
     let catalog = bench.committing();
 
+    // when: ideas are remembered and forgotten at once
     for nth in 0..40 {
         let summary = suite::a_summary(
             IdeaId::generate(suite::at(1_000 + nth)),
@@ -97,6 +103,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standi
         forgotten.expect("forgetting should succeed");
     }
 
+    // then: none of them stands
     assert!(
         catalog
             .in_project(&ProjectLink::from("project_1"))

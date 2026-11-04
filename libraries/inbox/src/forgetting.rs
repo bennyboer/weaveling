@@ -57,6 +57,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_chore_forgets_only_what_was_heard_longer_ago_than_tombstones_are_kept() {
+        // given: a message heard longer ago than tombstones are kept, and one heard since
         let clock = Arc::new(FixedClock::new(NOW));
         let inbox = Arc::new(InMemoryInbox::new(clock.clone()));
         let transactions = Arc::new(InMemoryTransactions::new());
@@ -80,6 +81,7 @@ mod tests {
                 .await
                 .expect("finishing should succeed");
         }
+        // and: the chore that forgets old hearings
         clock.set(NOW);
         let chore = ForgetOldTombstones::new(
             "forget-old-hearings",
@@ -87,7 +89,9 @@ mod tests {
             clock.clone(),
         );
 
+        // when: it is carried out
         let forgotten = chore.carry_out().await.expect("forgetting should succeed");
+        // and: both are heard once more
         let mut transaction = transactions
             .begin()
             .await
@@ -103,7 +107,9 @@ mod tests {
                 .expect("hearing should succeed"),
         );
 
+        // then: one is forgotten
         assert_eq!(forgotten, 1);
+        // and: it is the one heard long ago
         assert_eq!(heard, (false, true), "and it was committed");
     }
 }

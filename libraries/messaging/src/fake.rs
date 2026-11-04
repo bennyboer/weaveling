@@ -62,9 +62,11 @@ mod tests {
 
     #[tokio::test]
     async fn it_hears_what_is_published_until_told_to_refuse() {
+        // given: a fake publisher
         let publisher = FakePublisher::default();
         let first = a_message();
 
+        // when: a message is published, and another once it is told to refuse
         publisher
             .publish(first.clone())
             .await
@@ -72,7 +74,9 @@ mod tests {
         publisher.refusing(true);
         let refused = publisher.publish(a_message()).await;
 
+        // then: the second is refused
         assert!(refused.is_err());
+        // and: only the first was heard
         assert_eq!(publisher.heard(), [first]);
     }
 }
