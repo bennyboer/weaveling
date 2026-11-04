@@ -1,6 +1,8 @@
+use accounts_core::{AccountId, Dismissal, Operators};
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use time::{Duration, OffsetDateTime};
 use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
@@ -46,3 +48,71 @@ impl Workbench for OnPostgres {
 }
 
 crate::conformance_tests!(OnPostgres);
+
+#[tokio::test]
+async fn a_dismissal_waits_for_an_appointment_under_way() {
+    let bench = OnPostgres::setup().await;
+    let (kept, newcomer) = (
+        AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000)),
+        AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
+    );
+    let mut appointing = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store
+        .appoint(&mut appointing, &kept)
+        .await
+        .expect("appointing should succeed");
+    appointing
+        .finish()
+        .await
+        .expect("committing should succeed");
+    let mut appointing = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store
+        .appoint(&mut appointing, &newcomer)
+        .await
+        .expect("appointing should succeed");
+
+    let (dismissal, ()) = tokio::join!(
+        async {
+            let mut dismissing = bench
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            let dismissal = bench
+                .store
+                .dismiss(&mut dismissing, &newcomer)
+                .await
+                .expect("dismissing should succeed");
+            dismissing
+                .finish()
+                .await
+                .expect("committing should succeed");
+            dismissal
+        },
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            appointing
+                .finish()
+                .await
+                .expect("committing should succeed");
+        }
+    );
+
+    assert_eq!(
+        dismissal,
+        Dismissal::Dismissed,
+        "a dismissal that did not wait would find nobody to dismiss, and the appointment landing after it \
+         would leave an operator the events never made"
+    );
+    bench.cleanup().await;
+}

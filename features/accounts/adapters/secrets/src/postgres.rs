@@ -29,7 +29,9 @@ const APPOINT: &str = "
     ON CONFLICT (account) DO NOTHING
 ";
 
-const EVERY_OPERATOR_HELD: &str = "SELECT account FROM account_operators FOR UPDATE";
+const OPERATORS_ONE_AT_A_TIME: &str = "account-operators";
+
+const EVERY_OPERATOR: &str = "SELECT account FROM account_operators";
 
 const DISMISS: &str = "DELETE FROM account_operators WHERE account = $1";
 
@@ -473,6 +475,9 @@ impl Operators for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(APPOINT)
             .bind(account.to_string())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
@@ -487,7 +492,10 @@ impl Operators for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<Dismissal, SecretsError> {
-        let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR_HELD)
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
+        let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR)
             .fetch_all(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

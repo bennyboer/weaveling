@@ -32,14 +32,14 @@ impl AccountsCore {
             if !self.operators.take_code(transaction, &digest).await? {
                 return Err(AccountsError::OperatorCodeWrong);
             }
+            self.operators.appoint(transaction, id).await?;
             self.commanded_in(
                 transaction,
                 id,
                 AccountCommand::BecomeOperator,
                 &id.acting(),
             )
-            .await?;
-            Ok(self.operators.appoint(transaction, id).await?)
+            .await
         })
     }
 
@@ -96,14 +96,14 @@ impl AccountsCore {
         self.operating(by).await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
+            self.operators.appoint(transaction, account).await?;
             self.commanded_in(
                 transaction,
                 account,
                 AccountCommand::BecomeOperator,
                 &by.acting(),
             )
-            .await?;
-            Ok(self.operators.appoint(transaction, account).await?)
+            .await
         })
     }
 
