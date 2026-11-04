@@ -151,9 +151,6 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -172,9 +169,6 @@ impl SceneCatalog for PostgresSceneCatalog {
         title: &SceneTitle,
         version: u64,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(RETITLE)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -195,9 +189,6 @@ impl SceneCatalog for PostgresSceneCatalog {
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(NOTE_OPENING)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -216,9 +207,6 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(in_microseconds(at))
