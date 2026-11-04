@@ -95,12 +95,7 @@ async fn an_invitation_taken_up_or_withdrawn_before_is_left_as_it_was_and_a_swee
     let open = invited_into(&wired, "project_loom", "grace@example.com").await;
     wired
         .invitations
-        .taken_up(
-            None,
-            &accepted,
-            wiring::at(1_700_000_100),
-            &Agent::Account("account_ada".into()),
-        )
+        .taken_up(None, &accepted, &Agent::Account("account_ada".into()))
         .await
         .expect("taking up should succeed");
 
@@ -204,12 +199,7 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
     let accepted = invited_into(&wired, "project_loom", "ada@example.com").await;
     wired
         .invitations
-        .taken_up(
-            None,
-            &accepted,
-            wiring::at(1_700_000_100),
-            &Agent::Account("account_ada".into()),
-        )
+        .taken_up(None, &accepted, &Agent::Account("account_ada".into()))
         .await
         .expect("taking up should succeed");
     wired

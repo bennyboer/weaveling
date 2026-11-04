@@ -283,11 +283,10 @@ impl InvitationsCore {
         &self,
         within: Option<&mut Transaction>,
         invitation: &InvitationId,
-        at: OffsetDateTime,
         by: &Agent,
     ) -> Result<(), InvitationsError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
-            settled(self.service.accept(transaction, invitation, at, by).await)?;
+            settled(self.service.accept(transaction, invitation, by).await)?;
 
             Ok(())
         })

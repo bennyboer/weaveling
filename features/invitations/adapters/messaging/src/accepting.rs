@@ -38,7 +38,6 @@ impl KeptHandler for AcceptTakenUpInvitationListener {
             .taken_up(
                 Some(transaction),
                 &invitation,
-                message.occurred_at,
                 &Agent::Account(told.aggregate.id.into()),
             )
             .await?)

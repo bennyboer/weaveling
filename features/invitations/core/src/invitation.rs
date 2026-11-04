@@ -27,9 +27,7 @@ pub enum InvitationCommand {
         by_an_operator: bool,
         origin: String,
     },
-    Accept {
-        at: OffsetDateTime,
-    },
+    Accept,
     Withdraw,
     Decline {
         reason: DeclineReason,
@@ -109,8 +107,6 @@ pub enum InvitationError {
     AlreadyAccepted,
     #[error("this invitation was withdrawn")]
     Withdrawn,
-    #[error("this invitation has run out")]
-    Expired,
     #[error("this invitation was declined, its address having an account already")]
     Declined,
 }
@@ -220,7 +216,7 @@ impl Aggregate for Invitation {
                 by_an_operator,
                 origin,
             }]),
-            InvitationCommand::Accept { .. }
+            InvitationCommand::Accept
             | InvitationCommand::Withdraw
             | InvitationCommand::Decline { .. }
             | InvitationCommand::Retire => Err(InvitationError::NotIssuedYet),
@@ -302,21 +298,12 @@ impl Aggregate for Invitation {
             (InvitationCommand::Decline { reason }, Outcome::Open) => {
                 Ok(vec![InvitationEvent::Declined { reason }])
             }
-            (InvitationCommand::Accept { .. }, Outcome::Declined(_)) => {
-                Err(InvitationError::Declined)
-            }
+            (InvitationCommand::Accept, Outcome::Declined(_)) => Err(InvitationError::Declined),
             (InvitationCommand::Withdraw, Outcome::Open) => Ok(vec![InvitationEvent::Withdrawn]),
-            (InvitationCommand::Accept { .. }, Outcome::Withdrawn) => {
-                Err(InvitationError::Withdrawn)
-            }
-            (InvitationCommand::Accept { at }, Outcome::Open) if self.is_expired(at) => {
-                Err(InvitationError::Expired)
-            }
-            (InvitationCommand::Accept { .. }, Outcome::Open) => {
-                Ok(vec![InvitationEvent::Accepted {
-                    scope: self.scope.clone(),
-                }])
-            }
+            (InvitationCommand::Accept, Outcome::Withdrawn) => Err(InvitationError::Withdrawn),
+            (InvitationCommand::Accept, Outcome::Open) => Ok(vec![InvitationEvent::Accepted {
+                scope: self.scope.clone(),
+            }]),
         }
     }
 

@@ -48,10 +48,6 @@ fn issued_at(seconds: i64) -> Invitation {
         .expect("issuing gives birth")
 }
 
-fn accepting(seconds: i64) -> InvitationCommand {
-    InvitationCommand::Accept { at: at(seconds) }
-}
-
 #[test]
 fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
     assert_eq!(
@@ -98,7 +94,7 @@ fn an_open_invitation_is_taken_up_once() {
     let mut invitation = issued_at(1_000);
 
     assert_eq!(
-        invitation.decide(accepting(2_000), &an_operator()),
+        invitation.decide(InvitationCommand::Accept, &an_operator()),
         Ok(vec![InvitationEvent::Accepted {
             scope: Scope::Instance,
         }])
@@ -112,25 +108,24 @@ fn an_open_invitation_is_taken_up_once() {
 
     assert_eq!(invitation.outcome(), Outcome::Accepted);
     assert_eq!(
-        invitation.decide(accepting(3_000), &an_operator()),
+        invitation.decide(InvitationCommand::Accept, &an_operator()),
         Err(InvitationError::AlreadyAccepted),
         "one link signs one account up"
     );
 }
 
 #[test]
-fn an_invitation_holds_to_its_last_moment_and_no_longer() {
-    let last = 1_000 + Duration::days(7).whole_seconds();
+fn an_invitation_taken_up_is_accepted_however_late_it_is_heard() {
+    let after_its_last_moment = 1_000 + Duration::days(7).whole_seconds() + 1;
+    let invitation = issued_at(1_000);
 
+    assert!(invitation.is_expired(at(after_its_last_moment)));
     assert_eq!(
-        issued_at(1_000).decide(accepting(last), &an_operator()),
+        invitation.decide(InvitationCommand::Accept, &an_operator()),
         Ok(vec![InvitationEvent::Accepted {
             scope: Scope::Instance,
-        }])
-    );
-    assert_eq!(
-        issued_at(1_000).decide(accepting(last + 1), &an_operator()),
-        Err(InvitationError::Expired)
+        }]),
+        "accounts decided it came in time as it took the ticket, so its last moment is not judged a second time"
     );
 }
 
@@ -146,7 +141,7 @@ fn a_withdrawn_invitation_is_not_taken_up_and_withdrawing_twice_changes_nothing(
 
     assert_eq!(invitation.outcome(), Outcome::Withdrawn);
     assert_eq!(
-        invitation.decide(accepting(3_000), &an_operator()),
+        invitation.decide(InvitationCommand::Accept, &an_operator()),
         Err(InvitationError::Withdrawn)
     );
     assert_eq!(
@@ -186,7 +181,7 @@ fn an_expired_invitation_may_still_be_withdrawn() {
 
 #[test]
 fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
-    for command in [accepting(1_000), InvitationCommand::Withdraw] {
+    for command in [InvitationCommand::Accept, InvitationCommand::Withdraw] {
         assert_eq!(
             Invitation::begin(command, &an_operator()),
             Err(InvitationError::NotIssuedYet)
@@ -308,7 +303,7 @@ fn an_invitation_to_an_address_with_an_account_is_declined_and_closed() {
         "an operator withdrawing what was declined is told nothing is left to do"
     );
     assert_eq!(
-        invitation.decide(InvitationCommand::Accept { at: at(1_100) }, &Agent::System),
+        invitation.decide(InvitationCommand::Accept, &Agent::System),
         Err(InvitationError::Declined)
     );
 }
@@ -418,7 +413,7 @@ fn an_acceptance_tells_the_scope_it_was_into() {
     .expect("issuing gives birth");
 
     assert_eq!(
-        invitation.decide(InvitationCommand::Accept { at: at(1_100) }, &Agent::System),
+        invitation.decide(InvitationCommand::Accept, &Agent::System),
         Ok(vec![InvitationEvent::Accepted {
             scope: into_a_project
         }]),

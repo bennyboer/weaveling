@@ -193,20 +193,22 @@ async fn a_taking_up_naming_no_invitation_is_refused() {
 }
 
 #[tokio::test]
-async fn a_taking_up_told_as_of_after_the_invitation_ran_out_is_refused() {
+async fn a_taking_up_stamped_after_the_last_moment_is_accepted_as_accounts_decided() {
     let wired = wiring::wired();
     let id = invited(&wired).await;
 
-    assert!(
-        listener(&wired)
-            .handle(&taken_up(
-                &id,
-                wiring::at(1_700_000_000) + Duration::days(7) + Duration::seconds(1),
-            ))
-            .await
-            .is_err(),
-        "accounts let nobody in past the last moment, so such a message shows something gone wrong"
-    );
+    listener(&wired)
+        .handle(&taken_up(
+            &id,
+            wiring::at(1_700_000_000) + Duration::days(7) + Duration::seconds(1),
+        ))
+        .await
+        .expect("accounts checked the ticket in time and stamped its taking up a moment later");
+
+    assert!(matches!(
+        happened(&wired, &id).await.as_slice(),
+        [_, InvitationEvent::Accepted { .. }]
+    ));
 }
 
 #[tokio::test]

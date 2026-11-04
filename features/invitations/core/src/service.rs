@@ -5,7 +5,6 @@ use email::EmailAddress;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
 use mailing::{Mail, Mailer};
 use throttling::{Admission, Rule, Throttles};
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::catalog::InvitationSummary;
@@ -143,16 +142,10 @@ impl InvitationService {
         &self,
         transaction: &mut Transaction,
         invitation: &InvitationId,
-        at: OffsetDateTime,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(
-            transaction,
-            invitation,
-            InvitationCommand::Accept { at },
-            agent,
-        )
-        .await
+        self.carry_out(transaction, invitation, InvitationCommand::Accept, agent)
+            .await
     }
 
     pub async fn decline(

@@ -196,12 +196,7 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
         .id;
     wired
         .invitations
-        .taken_up(
-            None,
-            &id,
-            wiring::at(1_700_000_100),
-            &Agent::Account("account_ada".into()),
-        )
+        .taken_up(None, &id, &Agent::Account("account_ada".into()))
         .await
         .expect("an open invitation is accepted");
 

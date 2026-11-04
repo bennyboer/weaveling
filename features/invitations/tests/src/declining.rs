@@ -159,12 +159,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
         .expect("an operator may withdraw");
     wired
         .invitations
-        .taken_up(
-            None,
-            &accepted,
-            wiring::at(1_700_000_050),
-            &Agent::Account("account_ada".into()),
-        )
+        .taken_up(None, &accepted, &Agent::Account("account_ada".into()))
         .await
         .expect("an open invitation is accepted");
     let listener = listener(&wired);
