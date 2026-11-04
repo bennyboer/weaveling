@@ -1,6 +1,6 @@
 use authorizing::AuthorizerError;
 use thiserror::Error;
-use transacting::Failure;
+use transacting::{Failure, LostRace};
 
 use crate::catalog::CatalogError;
 
@@ -14,4 +14,10 @@ pub enum StatisticsError {
     ProjectNotThere,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
+}
+
+impl LostRace for StatisticsError {
+    fn lost_race(&self) -> bool {
+        matches!(self, StatisticsError::Transaction(failure) if failure.lost_race())
+    }
 }
