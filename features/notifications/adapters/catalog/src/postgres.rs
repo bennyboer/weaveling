@@ -17,7 +17,8 @@ use crate::kept::{unreachable, unreadable};
 
 const REMEMBER: &str = "
     INSERT INTO notices (notice, version, account, project, about, noted_at, dismissed_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    SELECT $1, $2, $3, $4, $5, $6, $7
+    WHERE NOT EXISTS (SELECT 1 FROM notice_tombstones WHERE notice = $1)
     ON CONFLICT (notice) DO UPDATE
     SET version   = EXCLUDED.version,
         account   = EXCLUDED.account,
@@ -94,6 +95,18 @@ const DUE_FOR_FORGETTING: &str = "
 
 const FORGET: &str = "DELETE FROM notices WHERE notice = $1";
 
+const LAY_NOTICE_TOMBSTONE: &str =
+    "INSERT INTO notice_tombstones (notice, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_NOTICE_TOMBSTONES: &str = "
+    DELETE FROM notice_tombstones WHERE notice IN (
+        SELECT notice FROM notice_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, notice
+        LIMIT $2
+    )
+";
+
 const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
     DELETE FROM project_tombstones WHERE project IN (
         SELECT project FROM project_tombstones
@@ -152,6 +165,9 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         transaction: &mut Transaction,
         summary: &NoticeSummary,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("notice:{}", summary.id))
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(i64::try_from(summary.version.count()).map_err(unreachable)?)
@@ -327,7 +343,17 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         &self,
         transaction: &mut Transaction,
         notice: &NoticeId,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("notice:{}", notice))
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(LAY_NOTICE_TOMBSTONE)
+            .bind(notice.to_string())
+            .bind(at)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(notice.to_string())
             .execute(connection(transaction).map_err(unreachable)?)
@@ -335,6 +361,21 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_notice_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_NOTICE_TOMBSTONES)
+            .bind(before)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn forget_project_tombstones_laid_before(

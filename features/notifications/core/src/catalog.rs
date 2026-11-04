@@ -92,7 +92,15 @@ pub trait NoticeCatalog: Send + Sync {
         &self,
         transaction: &mut Transaction,
         notice: &NoticeId,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
+
+    async fn forget_notice_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn forget_project_tombstones_laid_before(
         &self,

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use eventsourcing::Version;
-use notifications_core::{NoticeCatalog, ProjectLink, ProjectName};
+use notifications_core::{NoticeCatalog, NoticeSummary, ProjectLink, ProjectName};
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
@@ -99,6 +99,59 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
             .expect("asking should succeed")
             .is_empty(),
         "a tombstone that did not wait for the name under way would leave it, for a project that is gone"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn forgetting_a_notice_waits_for_its_cataloguing_under_way() {
+    let bench = OnPostgres::setup().await;
+    let notice: NoticeSummary = crate::suite::a_summary("account_bo", 1_000, 1, false);
+    let mut cataloguing = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store
+        .remember(&mut cataloguing, &notice)
+        .await
+        .expect("remembering should succeed");
+
+    tokio::join!(
+        async {
+            let mut forgetting = bench
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            bench
+                .store
+                .forget(&mut forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
+                .await
+                .expect("forgetting should succeed");
+            forgetting
+                .finish()
+                .await
+                .expect("committing should succeed");
+        },
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            cataloguing
+                .finish()
+                .await
+                .expect("committing should succeed");
+        }
+    );
+
+    assert!(
+        bench
+            .store
+            .open_for(&notice.account)
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a forget that did not wait would leave the row the cataloguing was writing"
     );
     bench.cleanup().await;
 }

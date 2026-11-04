@@ -86,9 +86,32 @@ impl<C: NoticeCatalog> Committing<'_, C> {
     }
 
     pub async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+        self.forget_at(notice, OffsetDateTime::UNIX_EPOCH).await
+    }
+
+    pub async fn forget_at(
+        &self,
+        notice: &NoticeId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.forget(&mut transaction, notice).await?;
+        self.catalog.forget(&mut transaction, notice, at).await?;
         transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_notice_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_notice_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
     }
 
     pub async fn forget_project_tombstones_laid_before(
@@ -517,6 +540,65 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
     }
 }
 
+pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
+    catalog: &Committing<'_, impl NoticeCatalog>,
+) {
+    let notice = a_summary("account_bo", 1_000, 1, false);
+    remembered(catalog, &notice).await;
+    catalog
+        .forget_at(&notice.id, at(2_000))
+        .await
+        .expect("forgetting should succeed");
+
+    remembered(
+        catalog,
+        &NoticeSummary {
+            version: Version::of(2),
+            ..notice.clone()
+        },
+    )
+    .await;
+
+    assert!(
+        open_for(catalog, "account_bo").await.is_empty(),
+        "a cataloguing that read the notice before it was forgotten must not bring it back"
+    );
+}
+
+pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked(
+    catalog: &Committing<'_, impl NoticeCatalog>,
+) {
+    let notices: Vec<NoticeSummary> = (1..=3)
+        .map(|nth| a_summary("account_bo", nth * 1_000, 1, false))
+        .collect();
+    for (notice, seconds) in notices.iter().zip([3_000, 1_000, 2_000]) {
+        catalog
+            .forget_at(&notice.id, at(seconds))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    assert_eq!(
+        catalog
+            .forget_notice_tombstones_laid_before(at(9_000), 2)
+            .await
+            .expect("forgetting tombstones should succeed"),
+        2
+    );
+    for notice in &notices {
+        remembered(catalog, notice).await;
+    }
+    let mut open: Vec<NoticeId> = open_for(catalog, "account_bo")
+        .await
+        .iter()
+        .map(|summary| summary.id)
+        .collect();
+    open.sort();
+    let mut forgotten_first = vec![notices[1].id, notices[2].id];
+    forgotten_first.sort();
+    assert_eq!(open, forgotten_first, "the oldest tombstones went first");
+}
+
 pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl NoticeCatalog>,
 ) {
@@ -548,7 +630,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     uncommitted
-        .forget(&mut transaction, &kept.id)
+        .forget(&mut transaction, &kept.id, at(3_000))
         .await
         .expect("forgetting should succeed");
     uncommitted
@@ -620,6 +702,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_notice_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
         );
         $crate::catalog_conformance_case!(
             $workbench,

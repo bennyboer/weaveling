@@ -200,3 +200,43 @@ async fn a_project_tombstone_forgotten_is_forgotten_for_good() {
 
     assert_eq!(forgotten, [1, 0]);
 }
+
+#[tokio::test]
+async fn a_notice_catalogued_after_it_was_forgotten_is_nothing_to_catalogue() {
+    let kept = kept();
+    let notice = kept.noted().await;
+    kept.forgotten_at(NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1))
+        .await;
+
+    kept.catalogued(&notice).await;
+
+    assert!(
+        kept.catalog
+            .open_for(&AccountId::from("account_bo"))
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a message about it still on its way finds nothing to catalogue, which is no failure"
+    );
+}
+
+#[tokio::test]
+async fn a_forgotten_notice_s_tombstone_is_forgotten_by_the_same_chore() {
+    let kept = kept();
+    kept.noted().await;
+    let forgotten_at = NOTED_AT + UNDISMISSED_KEPT_FOR + Duration::seconds(1);
+    kept.forgotten_at(forgotten_at).await;
+
+    let forgotten = [
+        kept.notifications
+            .forget_tombstones_laid_before(forgotten_at + Duration::seconds(1), 10)
+            .await
+            .expect("forgetting should succeed"),
+        kept.notifications
+            .forget_tombstones_laid_before(forgotten_at + Duration::seconds(1), 10)
+            .await
+            .expect("forgetting should succeed"),
+    ];
+
+    assert_eq!(forgotten, [1, 0]);
+}
