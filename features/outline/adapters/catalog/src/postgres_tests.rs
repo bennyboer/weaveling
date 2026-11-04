@@ -1,9 +1,11 @@
 use async_trait::async_trait;
+use registry::{PostgresRegistry, Registry};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use transacting::{PostgresTransactions, Transactions};
+use time::OffsetDateTime;
+use transacting::{Failure, PostgresTransactions, Transactions, Tried};
 
-use outline_core::{Attachment, OutlineCatalog, OutlineId, ProjectLink};
+use outline_core::{Attachment, KIND, OutlineCatalog, OutlineId, ProjectLink};
 
 use crate::postgres;
 use crate::postgres::PostgresOutlineCatalog;
@@ -114,6 +116,63 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_sta
             .expect("listing should succeed")
             .is_empty(),
         "a remember racing a forget must never bring the forgotten outline back"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn an_open_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_commits() {
+    let bench = OnPostgres::setup().await;
+    registry::postgres::migrations()
+        .run(&bench.pool)
+        .await
+        .expect("the registry should lay down beside the catalog");
+    let registry = PostgresRegistry::new(bench.pool.clone());
+    let project = ProjectLink::from("project_loom");
+    let outline = OutlineId::generate(suite::at(1_000));
+    let mut opening = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    assert!(
+        !bench
+            .store
+            .has_project_tombstone_within(&mut opening, &project)
+            .await
+            .expect("asking should succeed")
+    );
+    registry
+        .claim(
+            &mut opening,
+            KIND.as_str(),
+            project.as_str(),
+            &outline.to_string(),
+        )
+        .await
+        .expect("claiming should succeed");
+
+    transacting::retrying!(&bench.transactions, |burying| {
+        bench
+            .store
+            .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
+            .await
+            .map_err(Tried::Refused)
+    })
+    .expect("laying a tombstone should succeed");
+    let swept = registry
+        .holder(KIND.as_str(), project.as_str())
+        .await
+        .expect("the sweep should read the claims");
+
+    assert_eq!(
+        swept, None,
+        "the sweep cannot see a claim not committed yet"
+    );
+    assert!(
+        matches!(opening.finish().await, Err(Failure::LostRace)),
+        "the open read no tombstone and the sweep read no claim, so the open, between the two, \
+         loses and is tried again, then finding the tombstone"
     );
     bench.cleanup().await;
 }

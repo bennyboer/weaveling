@@ -216,6 +216,16 @@ impl SceneCatalog for TellingScenes {
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
         self.kept.has_project_tombstone(project).await
     }
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        self.kept
+            .has_project_tombstone_within(transaction, project)
+            .await
+    }
 }
 
 pub fn router(scenes: ScenesCore) -> Router {

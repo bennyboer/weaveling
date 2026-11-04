@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use transacting::{PostgresTransactions, Transactions};
+use time::OffsetDateTime;
+use transacting::{Failure, PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresIdeaCatalog;
@@ -193,6 +194,59 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standi
             .expect("listing should succeed")
             .is_empty(),
         "a remember racing a forget must never bring the forgotten idea back"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_cataloguing_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_commits() {
+    let bench = OnPostgres::setup().await;
+    let project = ProjectLink::from("project_loom");
+    let summary = suite::a_summary(
+        IdeaId::generate(suite::at(1_000)),
+        "project_loom",
+        "The Loom",
+    );
+    let mut cataloguing = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    assert!(
+        !bench
+            .store
+            .has_project_tombstone_within(&mut cataloguing, &project)
+            .await
+            .expect("asking should succeed")
+    );
+    bench
+        .store
+        .remember(&mut cataloguing, &summary)
+        .await
+        .expect("remembering should succeed");
+
+    transacting::retrying!(&bench.transactions, |burying| {
+        bench
+            .store
+            .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
+            .await
+            .map_err(Tried::Refused)
+    })
+    .expect("laying a tombstone should succeed");
+    let swept = bench
+        .store
+        .in_project_after(&project, None, 10)
+        .await
+        .expect("the sweep should read the catalog");
+
+    assert!(
+        swept.is_empty(),
+        "the sweep cannot see an idea not catalogued yet"
+    );
+    assert!(
+        matches!(cataloguing.finish().await, Err(Failure::LostRace)),
+        "the cataloguing read no tombstone and the sweep read no idea, so the cataloguing, between \
+         the two, loses and is tried again, then finding the tombstone and discarding the idea"
     );
     bench.cleanup().await;
 }

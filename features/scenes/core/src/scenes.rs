@@ -51,22 +51,16 @@ impl ScenesCore {
         let link = ProjectLink::from(project);
         self.authorized(agent, Act::Write, &link, || ScenesError::ProjectNotThere)
             .await?;
-        if self.catalog.has_project_tombstone(&link).await? {
-            return Err(ScenesError::ProjectNotThere);
-        }
-
-        let scene = transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.create(transaction, project).await
-        })?;
-        if self.catalog.has_project_tombstone(&link).await? {
-            match self.delete(&scene.id().to_string(), &Agent::System).await {
-                Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
-                Err(refused) => return Err(refused),
+        transacting::retrying!(&*self.transactions, |transaction| {
+            if self
+                .catalog
+                .has_project_tombstone_within(transaction, &link)
+                .await?
+            {
+                return Err(ScenesError::ProjectNotThere);
             }
-            return Err(ScenesError::ProjectNotThere);
-        }
-
-        Ok(scene)
+            self.service.create(transaction, project).await
+        })
     }
 
     pub async fn read(&self, id: &str, agent: &Agent) -> Result<Scene, ScenesError> {

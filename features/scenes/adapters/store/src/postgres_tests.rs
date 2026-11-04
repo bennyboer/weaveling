@@ -4,11 +4,13 @@ use async_trait::async_trait;
 use clock::FixedClock;
 use messaging::{FakePublisher, Message};
 use outbox::{Outbox, PostgresOutbox};
-use scenes_core::{Scene, SceneId, SceneStore, StoreError};
+use scenes_catalog::PostgresSceneCatalog;
+use scenes_core::{Scene, SceneCatalog, SceneId, SceneStore, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use time::OffsetDateTime;
 use tokio::task::JoinSet;
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{Failure, PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresSceneStore;
@@ -271,6 +273,59 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
     assert!(
         lost.is_empty(),
         "edits written while the scene was compacted were lost: {lost:?}"
+    );
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_create_that_found_no_tombstone_loses_to_one_laid_and_swept_before_it_commits() {
+    let (fixture, pool) = a_migrated_schema().await;
+    scenes_catalog::postgres::migrations()
+        .run(&pool)
+        .await
+        .expect("the catalog should lay down beside the store");
+    let transactions = PostgresTransactions::new(pool.clone());
+    let store = PostgresSceneStore::new(pool.clone());
+    let catalog = PostgresSceneCatalog::new(pool);
+    let project = suite::a_project();
+    let mut creating = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    assert!(
+        !catalog
+            .has_project_tombstone_within(&mut creating, &project)
+            .await
+            .expect("asking should succeed")
+    );
+    store
+        .create(
+            &mut creating,
+            &Scene::empty(suite::an_id(1_000), project.clone()),
+        )
+        .await
+        .expect("creating should succeed");
+
+    transacting::retrying!(&transactions, |burying| {
+        catalog
+            .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
+            .await
+            .map_err(Tried::Refused)
+    })
+    .expect("laying a tombstone should succeed");
+    let swept = store
+        .in_project(&project, None, 10)
+        .await
+        .expect("the sweep should read the scenes");
+
+    assert!(
+        swept.is_empty(),
+        "the sweep cannot see a scene not committed yet"
+    );
+    assert!(
+        matches!(creating.finish().await, Err(Failure::LostRace)),
+        "the create read no tombstone and the sweep read no scene, so the create, between the two, \
+         loses and is tried again, then finding the tombstone"
     );
     fixture.cleanup().await;
 }

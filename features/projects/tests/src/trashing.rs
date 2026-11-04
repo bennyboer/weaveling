@@ -404,6 +404,58 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
         .expect("an owner restores");
 }
 
+#[tokio::test]
+async fn an_owner_changing_a_project_in_the_trash_hears_it_is_there_and_others_that_it_is_gone() {
+    let roles = Arc::new(Roles::default());
+    let wired = wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), roles.clone());
+    let id = wired
+        .projects
+        .start("Shared", &RawDetails::default(), &an_account(ADA))
+        .await
+        .expect("starting should succeed")
+        .0
+        .to_string();
+    roles.give(ADA, &id, &OWNER);
+    wired
+        .projects
+        .trash(&id, None, &an_account(ADA))
+        .await
+        .expect("an owner trashes");
+    wired.settle().await;
+    roles.give(ADA, &id, &IN_THE_TRASH_AN_OWNER_MAY);
+    roles.give(GRACE, &id, &[]);
+
+    assert!(
+        matches!(
+            wired
+                .projects
+                .rename(&id, "Renamed", None, &an_account(ADA))
+                .await,
+            Err(ProjectsError::Events(ServiceError::Refused(
+                ProjectError::Trashed
+            )))
+        ),
+        "an owner may restore the project, so a change is refused as in the trash, not as unknown"
+    );
+    assert!(
+        matches!(
+            wired.projects.read(&id, &an_account(ADA)).await,
+            Err(ProjectsError::Events(ServiceError::NotFound { .. }))
+        ),
+        "a project in the trash is read by nobody, its owners too"
+    );
+    assert!(
+        matches!(
+            wired
+                .projects
+                .rename(&id, "Renamed", None, &an_account(GRACE))
+                .await,
+            Err(ProjectsError::Events(ServiceError::NotFound { .. }))
+        ),
+        "whoever may not restore it learns nothing of the trash"
+    );
+}
+
 fn server_of(wired: &Wired) -> TestServer {
     TestServer::new(wired.routes.clone().layer(Extension(local())))
 }

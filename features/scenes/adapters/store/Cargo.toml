@@ -26,3 +26,4 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 yrs = { workspace = true }
 
 test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }
+scenes-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-scenes-catalog", features = ["postgres"] }

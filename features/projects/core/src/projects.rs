@@ -278,6 +278,10 @@ impl ProjectsCore {
             Ok(())
         } else if self.authorizer.may(agent, Act::Read, &named).await? {
             Err(ProjectsError::NotAnOwner)
+        } else if act != Act::Read && self.authorizer.may(agent, Act::Restore, &named).await? {
+            Err(ProjectsError::Events(ServiceError::Refused(
+                ProjectError::Trashed,
+            )))
         } else {
             Err(service::not_found(project))
         }

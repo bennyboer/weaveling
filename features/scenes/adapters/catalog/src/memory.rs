@@ -231,6 +231,14 @@ impl SceneCatalog for InMemorySceneCatalog {
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
         Ok(self.read().project_tombstones.contains_key(project))
     }
+
+    async fn has_project_tombstone_within(
+        &self,
+        _transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        self.has_project_tombstone(project).await
+    }
 }
 
 #[cfg(test)]

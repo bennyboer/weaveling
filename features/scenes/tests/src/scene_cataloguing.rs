@@ -145,6 +145,14 @@ impl SceneCatalog for OutOfReach {
     async fn has_project_tombstone(&self, _project: &ProjectLink) -> Result<bool, CatalogError> {
         Err(out_of_reach())
     }
+
+    async fn has_project_tombstone_within(
+        &self,
+        _transaction: &mut Transaction,
+        _project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        Err(out_of_reach())
+    }
 }
 
 impl Wired {

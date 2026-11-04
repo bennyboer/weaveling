@@ -3872,6 +3872,7 @@ dependencies = [
  "tokio",
  "weaveling-boards-core",
  "weaveling-clock",
+ "weaveling-registry",
  "weaveling-test-harness",
  "weaveling-transacting",
 ]
@@ -4795,6 +4796,7 @@ dependencies = [
  "tokio",
  "weaveling-clock",
  "weaveling-outline-core",
+ "weaveling-registry",
  "weaveling-test-harness",
  "weaveling-transacting",
 ]
@@ -5175,6 +5177,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-scenes-catalog",
  "weaveling-scenes-core",
  "weaveling-test-harness",
  "weaveling-transacting",
