@@ -88,18 +88,21 @@ impl TellingAppearances {
 
         transaction.after_commit(async move {
             for subject in subjects {
-                let Ok(places) = kept.places_of(&subject).await else {
-                    continue;
-                };
-                let Subject::Idea(idea) = subject;
-                let event = IdeaPlacesDTO {
-                    places: places.iter().map(to_dto).collect(),
-                };
-                teller.tell(
-                    AppearanceChanges(idea.as_str().to_owned()),
-                    idea.as_str(),
-                    event,
-                );
+                let Subject::Idea(idea) = &subject;
+                teller
+                    .tell_latest(
+                        AppearanceChanges(idea.as_str().to_owned()),
+                        idea.as_str(),
+                        async {
+                            kept.places_of(&subject)
+                                .await
+                                .ok()
+                                .map(|places| IdeaPlacesDTO {
+                                    places: places.iter().map(to_dto).collect(),
+                                })
+                        },
+                    )
+                    .await;
             }
         });
     }

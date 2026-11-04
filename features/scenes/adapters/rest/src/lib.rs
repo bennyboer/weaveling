@@ -107,18 +107,19 @@ impl TellingScenes {
         }
     }
 
-    fn tell_after(&self, transaction: &mut Transaction, id: SceneId) {
-        let (kept, teller) = (self.kept.clone(), self.teller.clone());
+    fn tell_after(&self, transaction: &mut Transaction, id: SceneId, project: &ProjectLink) {
+        let (kept, teller, project) = (self.kept.clone(), self.teller.clone(), project.clone());
 
         transaction.after_commit(async move {
-            let Ok(Some(summary)) = kept.summary_of(id).await else {
-                return;
-            };
-            teller.tell(
-                SceneChanges(summary.project.clone()),
-                &id.to_string(),
-                to_summary_dto(&summary),
-            );
+            teller
+                .tell_latest(SceneChanges(project), &id.to_string(), async {
+                    kept.summary_of(id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|summary| to_summary_dto(&summary))
+                })
+                .await;
         });
     }
 }
@@ -132,7 +133,7 @@ impl SceneCatalog for TellingScenes {
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
         self.kept.remember(transaction, id, project).await?;
-        self.tell_after(transaction, id);
+        self.tell_after(transaction, id, project);
 
         Ok(())
     }
@@ -148,7 +149,7 @@ impl SceneCatalog for TellingScenes {
         self.kept
             .retitle(transaction, id, project, title, version)
             .await?;
-        self.tell_after(transaction, id);
+        self.tell_after(transaction, id, project);
 
         Ok(())
     }
@@ -164,7 +165,7 @@ impl SceneCatalog for TellingScenes {
         self.kept
             .note_opening(transaction, id, project, opening, at)
             .await?;
-        self.tell_after(transaction, id);
+        self.tell_after(transaction, id, project);
 
         Ok(())
     }
@@ -269,14 +270,11 @@ impl TellingRestylingTasks {
         let (kept, teller, project) = (self.kept.clone(), self.teller.clone(), project.clone());
 
         transaction.after_commit(async move {
-            let Ok(Some(progress)) = kept.progress(&project).await else {
-                return;
-            };
-            teller.tell(
-                RestylingChanges(project.clone()),
-                project.as_str(),
-                as_dto(progress),
-            );
+            teller
+                .tell_latest(RestylingChanges(project.clone()), project.as_str(), async {
+                    kept.progress(&project).await.ok().flatten().map(as_dto)
+                })
+                .await;
         });
     }
 }
