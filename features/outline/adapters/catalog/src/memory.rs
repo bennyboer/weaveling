@@ -329,6 +329,14 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .expect("outline catalog lock poisoned")
             .contains_key(project))
     }
+
+    async fn has_project_tombstone_within(
+        &self,
+        _transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        self.has_project_tombstone(project).await
+    }
 }
 
 #[cfg(test)]

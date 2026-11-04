@@ -76,6 +76,12 @@ pub trait OutlineCatalog: Send + Sync {
     ) -> Result<(), CatalogError>;
 
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError>;
 }
 
 impl OutlineSummary {

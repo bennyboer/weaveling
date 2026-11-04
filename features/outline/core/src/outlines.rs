@@ -49,20 +49,19 @@ impl OutlinesCore {
             OutlinesError::ProjectNotThere
         })
         .await?;
-        if self.catalog.has_project_tombstone(&project).await? {
+        let mut transaction = self.transactions.begin().await?;
+        if self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, &project)
+            .await?
+        {
             return Err(OutlinesError::ProjectNotThere);
         }
-
-        let mut transaction = self.transactions.begin().await?;
         let id = self
             .service
             .claim(&mut transaction, &project, agent)
             .await?;
         transaction.finish().await?;
-        if self.catalog.has_project_tombstone(&project).await? {
-            self.discarded(&id).await?;
-            return Err(OutlinesError::ProjectNotThere);
-        }
 
         Ok(Open {
             id,

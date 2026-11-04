@@ -46,20 +46,19 @@ impl BoardsCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Read, &project, || BoardsError::ProjectNotThere)
             .await?;
-        if self.catalog.has_project_tombstone(&project).await? {
+        let mut transaction = self.transactions.begin().await?;
+        if self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, &project)
+            .await?
+        {
             return Err(BoardsError::ProjectNotThere);
         }
-
-        let mut transaction = self.transactions.begin().await?;
         let id = self
             .service
             .claim(&mut transaction, &project, agent)
             .await?;
         transaction.finish().await?;
-        if self.catalog.has_project_tombstone(&project).await? {
-            self.discarded(&id).await?;
-            return Err(BoardsError::ProjectNotThere);
-        }
 
         Ok(Open {
             id,

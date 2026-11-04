@@ -292,4 +292,16 @@ impl BoardCatalog for SqliteBoardCatalog {
             .await
             .map_err(unreachable)
     }
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)
+    }
 }
