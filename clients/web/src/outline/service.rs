@@ -213,6 +213,7 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
 fn as_change(dto: OutlineChangeDTO) -> OutlineChange {
     OutlineChange {
         id: OutlineId::from(dto.id),
+        since: dto.since,
         version: dto.version,
         sections: dto.sections.into_iter().map(as_section_change).collect(),
     }

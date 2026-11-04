@@ -1,5 +1,8 @@
 use async_trait::async_trait;
+use eventsourcing::Version;
+use notifications_core::{NoticeCatalog, NoticeSummary, ProjectLink, ProjectName};
 use test_harness::PostgresFixture;
+use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
@@ -45,3 +48,110 @@ impl Workbench for OnPostgres {
 }
 
 crate::conformance_tests!(OnPostgres);
+
+#[tokio::test]
+async fn a_project_s_tombstone_waits_for_its_name_under_way() {
+    let bench = OnPostgres::setup().await;
+    let project = ProjectLink::from("project_loom");
+    let mut naming = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store
+        .remember_project_name(
+            &mut naming,
+            &ProjectName {
+                project: project.clone(),
+                version: Version::of(1),
+                name: "The Loom".to_owned(),
+            },
+        )
+        .await
+        .expect("remembering should succeed");
+
+    tokio::join!(
+        async {
+            let mut burying = bench
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            bench
+                .store
+                .lay_project_tombstone(&mut burying, &project, OffsetDateTime::UNIX_EPOCH)
+                .await
+                .expect("laying a tombstone should succeed");
+            burying.finish().await.expect("committing should succeed");
+        },
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            naming.finish().await.expect("committing should succeed");
+        }
+    );
+
+    assert!(
+        bench
+            .store
+            .project_names(std::slice::from_ref(&project))
+            .await
+            .expect("asking should succeed")
+            .is_empty(),
+        "a tombstone that did not wait for the name under way would leave it, for a project that is gone"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn forgetting_a_notice_waits_for_its_cataloguing_under_way() {
+    let bench = OnPostgres::setup().await;
+    let notice: NoticeSummary = crate::suite::a_summary("account_bo", 1_000, 1, false);
+    let mut cataloguing = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store
+        .remember(&mut cataloguing, &notice)
+        .await
+        .expect("remembering should succeed");
+
+    tokio::join!(
+        async {
+            let mut forgetting = bench
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            bench
+                .store
+                .forget(&mut forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
+                .await
+                .expect("forgetting should succeed");
+            forgetting
+                .finish()
+                .await
+                .expect("committing should succeed");
+        },
+        async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            cataloguing
+                .finish()
+                .await
+                .expect("committing should succeed");
+        }
+    );
+
+    assert!(
+        bench
+            .store
+            .open_for(&notice.account)
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a forget that did not wait would leave the row the cataloguing was writing"
+    );
+    bench.cleanup().await;
+}

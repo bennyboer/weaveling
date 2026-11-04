@@ -14,14 +14,18 @@ use time::OffsetDateTime;
 
 const KEEP_CODE: &str = "
     INSERT INTO account_operator_code (digest)
-    VALUES ($1)
+    SELECT $1
+    WHERE NOT EXISTS (SELECT 1 FROM account_operators)
     ON CONFLICT (single) DO UPDATE
     SET digest = EXCLUDED.digest
 ";
 
 const HOLDS_CODE: &str = "SELECT EXISTS (SELECT 1 FROM account_operator_code WHERE digest = $1)";
 
-const TAKE_CODE: &str = "DELETE FROM account_operator_code WHERE digest = $1";
+const TAKE_CODE: &str = "
+    DELETE FROM account_operator_code
+    WHERE digest = $1 AND NOT EXISTS (SELECT 1 FROM account_operators)
+";
 
 const APPOINT: &str = "
     INSERT INTO account_operators (account)
@@ -29,11 +33,15 @@ const APPOINT: &str = "
     ON CONFLICT (account) DO NOTHING
 ";
 
-const EVERY_OPERATOR_HELD: &str = "SELECT account FROM account_operators FOR UPDATE";
+const OPERATORS_ONE_AT_A_TIME: &str = "account-operators";
+
+const EVERY_OPERATOR: &str = "SELECT account FROM account_operators";
 
 const DISMISS: &str = "DELETE FROM account_operators WHERE account = $1";
 
 const ANY_APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators)";
+
+const APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators WHERE account = $1)";
 
 const CLAIM: &str = "
     INSERT INTO account_email_addresses (email, account, claimed_at)
@@ -436,14 +444,17 @@ impl Operators for PostgresSecrets {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(KEEP_CODE)
+    ) -> Result<bool, SecretsError> {
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
+        let kept = sqlx::query(KEEP_CODE)
             .bind(digest.as_str())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        Ok(kept.rows_affected() == 1)
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
@@ -459,6 +470,9 @@ impl Operators for PostgresSecrets {
         transaction: &mut Transaction,
         digest: &TokenDigest,
     ) -> Result<bool, SecretsError> {
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
         let done = sqlx::query(TAKE_CODE)
             .bind(digest.as_str())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
@@ -473,6 +487,9 @@ impl Operators for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(APPOINT)
             .bind(account.to_string())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
@@ -487,7 +504,10 @@ impl Operators for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<Dismissal, SecretsError> {
-        let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR_HELD)
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
+        let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR)
             .fetch_all(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
@@ -505,6 +525,21 @@ impl Operators for PostgresSecrets {
         };
 
         Ok(dismissal)
+    }
+
+    async fn is_appointed(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        transacting::postgres::one_at_a_time(transaction, OPERATORS_ONE_AT_A_TIME)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query_scalar(APPOINTED)
+            .bind(account.to_string())
+            .fetch_one(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

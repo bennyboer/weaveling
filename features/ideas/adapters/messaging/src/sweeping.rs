@@ -32,6 +32,11 @@ impl DiscardOnProjectDeletedListener {
 
     async fn sweep(&self, asked: &Message) -> Result<(), Failure> {
         let (project, after) = what_to_sweep(asked)?;
+        if after.is_none() {
+            self.ideas
+                .lay_project_tombstone(&project, asked.occurred_at)
+                .await?;
+        }
         let batch = self
             .ideas
             .sweep(&project, after.as_deref(), self.at_most)

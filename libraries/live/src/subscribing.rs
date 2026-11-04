@@ -3,13 +3,13 @@ use std::error::Error;
 use std::future;
 use std::sync::Arc;
 
-use acting::SessionEnd;
 use async_trait::async_trait;
-use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::{Extension, Router, routing};
+use ending::Ends;
 use eventsourcing::Agent;
-use live_contract::{ACCESS_CHANGED, AskedDTO, FrameDTO, SESSION_ENDED, ToldDTO, ended};
+use live_contract::{ACCESS_CHANGED, AskedDTO, FrameDTO, ToldDTO, ended};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -111,18 +111,17 @@ impl Topics {
     }
 }
 
-/// Serves `/live`, the one socket a client subscribes to every topic over; it closes as `SESSION_ENDED` when the request's `SessionEnd` is reached.
+/// Serves `/live`, the one socket a client subscribes to every topic over; it closes as its request's `Ends` tell it.
 pub fn live_socket(topics: Topics) -> Router {
     Router::new().route(
         "/live",
         routing::get(
             move |upgrade: WebSocketUpgrade,
                   Extension(agent): Extension<Agent>,
-                  session: Option<Extension<SessionEnd>>| async move {
+                  ends: Ends| async move {
                 let topics = topics.clone();
-                let session = session.map_or_else(SessionEnd::never, |Extension(session)| session);
                 let answer: Response =
-                    upgrade.on_upgrade(move |socket| serve(socket, agent, topics, session));
+                    upgrade.on_upgrade(move |socket| serve(socket, agent, topics, ends));
                 answer
             },
         ),
@@ -142,21 +141,16 @@ fn ended_as(id: &str, why: &str) -> String {
 
 type Following = HashMap<String, JoinHandle<()>>;
 
-async fn serve(mut socket: WebSocket, agent: Agent, topics: Topics, session: SessionEnd) {
+async fn serve(mut socket: WebSocket, agent: Agent, topics: Topics, ends: Ends) {
     let (sending, mut to_send) = mpsc::channel::<String>(WAITING_TO_BE_SENT);
     let mut following = Following::new();
-    let session_ended = session.reached();
-    tokio::pin!(session_ended);
+    let ended = ends.reached();
+    tokio::pin!(ended);
 
     loop {
         tokio::select! {
-            () = &mut session_ended => {
-                _ = socket
-                    .send(Message::Close(Some(CloseFrame {
-                        code: SESSION_ENDED,
-                        reason: "session-ended".into(),
-                    })))
-                    .await;
+            end = &mut ended => {
+                _ = socket.send(Message::Close(Some(end.frame()))).await;
                 break;
             }
             Some(said) = to_send.recv() => {
@@ -253,6 +247,10 @@ async fn follow(id: &str, subscribed: Subscribed, sending: &mpsc::Sender<String>
         })
     };
 
+    let following = told(&ToldDTO::Following { id: id.to_owned() });
+    if sending.send(following).await.is_err() {
+        return ended::FAILED;
+    }
     if let Some(version) = standing {
         let standing = FrameDTO {
             of: None,

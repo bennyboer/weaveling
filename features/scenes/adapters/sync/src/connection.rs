@@ -5,7 +5,7 @@ use std::sync::Arc;
 use authorizing::AccessWatch;
 use eventsourcing::Agent;
 use futures_util::future::select_all;
-use scenes_core::{Access, SceneId};
+use scenes_core::{Access, SceneId, ScenesError, StoreError};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::warn;
 
@@ -92,7 +92,7 @@ impl Connection {
             self.live.next_peer(),
             self.to_client.clone(),
             wrapping,
-            &present,
+            present.scene(),
         );
         peer.deliver(&present.greet(), &present);
         self.joined.insert(
@@ -159,17 +159,32 @@ impl Connection {
             return;
         }
 
-        match present.receive(message) {
+        let gone = match present.receive(message) {
             Ok(reaction) => {
                 peer.deliver(&reaction, present);
 
-                if let Some(update) = reaction.to_store
-                    && let Err(problem) = present.persist(&update).await
-                {
-                    warn!(peer = peer.id(), %problem, "an edit reached the scene but not the store");
+                match reaction.to_store {
+                    Some(update) => match present.persist(&update).await {
+                        Ok(()) => false,
+                        Err(ScenesError::Store(StoreError::NotFound(_))) => true,
+                        Err(problem) => {
+                            warn!(peer = peer.id(), %problem, "an edit reached the scene but not the store");
+                            false
+                        }
+                    },
+                    None => false,
                 }
             }
-            Err(problem) => warn!(peer = peer.id(), %problem, "ignoring a frame"),
+            Err(problem) => {
+                warn!(peer = peer.id(), %problem, "ignoring a frame");
+                false
+            }
+        };
+        if gone {
+            self.joined.remove(scene);
+            let _ = self
+                .to_client
+                .send(Envelope::Refused(scene.to_owned()).encode());
         }
     }
 }

@@ -177,14 +177,14 @@ impl Bench {
             .state
             .attachments();
         let mut rewriting = Vec::new();
-        for _ in 0..SAMPLES {
+        for version in 1..=SAMPLES as u64 {
             let (rewritten, taken) = timed(async {
                 let mut transaction = InMemoryTransactions::new()
                     .begin()
                     .await
                     .expect("beginning should succeed");
                 self.catalog
-                    .holds(&mut transaction, self.outline, &held)
+                    .holds(&mut transaction, self.outline, version, &held)
                     .await?;
                 transaction
                     .finish()

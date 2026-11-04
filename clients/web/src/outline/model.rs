@@ -44,6 +44,7 @@ pub struct SectionChange {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OutlineChange {
     pub id: OutlineId,
+    pub since: u64,
     pub version: u64,
     pub sections: Vec<SectionChange>,
 }
@@ -134,6 +135,14 @@ impl Outline {
             version: self.version + 1,
             sections: tree.walked(),
         })
+    }
+
+    pub fn fits(&self, change: &OutlineChange) -> bool {
+        change.since == self.version
+            || change
+                .sections
+                .iter()
+                .all(|section| section.attachments.is_some())
     }
 
     pub fn changed_by(&self, change: OutlineChange) -> Self {
@@ -316,6 +325,30 @@ mod tests {
         }
     }
 
+    fn a_change_since(since: u64, attachments: Option<Vec<Attachment>>) -> OutlineChange {
+        OutlineChange {
+            id: OutlineId::from("outline_1".to_owned()),
+            since,
+            version: since + 1,
+            sections: vec![changed("kept", attachments)],
+        }
+    }
+
+    #[test]
+    fn a_change_leaving_attachments_out_fits_only_the_outline_it_was_decided_from() {
+        let held = an_outline(vec![a_section("kept", None)]);
+
+        assert!(held.fits(&a_change_since(1, None)));
+        assert!(
+            !held.fits(&a_change_since(2, None)),
+            "decided over a change this copy has not seen, the attachments it leaves out may have changed"
+        );
+        assert!(
+            held.fits(&a_change_since(2, Some(Vec::new()))),
+            "a change telling every section's attachments fits whatever was held"
+        );
+    }
+
     #[test]
     fn a_change_takes_the_scenes_it_sends_and_keeps_the_scenes_it_does_not() {
         let mut kept = a_section("kept", None);
@@ -326,6 +359,7 @@ mod tests {
 
         let now = held.changed_by(OutlineChange {
             id: OutlineId::from("outline_1".to_owned()),
+            since: 6,
             version: 7,
             sections: vec![
                 changed("new", None),

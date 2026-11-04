@@ -56,6 +56,13 @@ impl IdeasCore {
         self.authorized(agent, Act::Write, &project, || IdeasError::ProjectNotThere)
             .await?;
         let mut transaction = self.transactions.begin().await?;
+        if self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, &project)
+            .await?
+        {
+            return Err(IdeasError::ProjectNotThere);
+        }
         let id = self
             .service
             .capture(&mut transaction, &project, title, agent)
@@ -157,6 +164,14 @@ impl IdeasCore {
             self.catalog
                 .forget(&mut transaction, id, self.clock.now())
                 .await?;
+        } else if self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, standing.state.project())
+            .await?
+        {
+            self.service
+                .discard(&mut transaction, id, None, &Agent::System)
+                .await?;
         } else {
             self.catalog
                 .remember(
@@ -168,6 +183,19 @@ impl IdeasCore {
         transaction.finish().await?;
 
         Ok(())
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), IdeasError> {
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn sweep(

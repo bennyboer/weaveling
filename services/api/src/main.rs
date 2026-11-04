@@ -1,6 +1,9 @@
 use std::sync::Arc;
+use std::time::Duration;
 
+use axum::Extension;
 use clock::SystemClock;
+use ending::Shutdown;
 use tokio::net::TcpListener;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
@@ -11,6 +14,7 @@ use weaveling_service_api::{
 };
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
+const SOCKETS_GIVEN_TO_CLOSE: Duration = Duration::from_secs(60);
 
 async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
     let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
@@ -67,6 +71,8 @@ async fn main() {
         .init();
 
     let (routes, relays, settling, chores) = serving().await;
+    let shutdown = Shutdown::new();
+    let routes = routes.layer(Extension(shutdown.clone()));
 
     let listener = TcpListener::bind("127.0.0.1:3000")
         .await
@@ -77,10 +83,23 @@ async fn main() {
     );
 
     axum::serve(listener, routes)
-        .with_graceful_shutdown(interrupted())
+        .with_graceful_shutdown({
+            let shutdown = shutdown.clone();
+            async move {
+                interrupted().await;
+                shutdown.close();
+            }
+        })
         .await
         .expect("should serve");
 
+    if tokio::time::timeout(SOCKETS_GIVEN_TO_CLOSE, shutdown.drained())
+        .await
+        .is_err()
+    {
+        tracing::warn!("some sockets did not close in time, so what they were writing may be lost");
+    }
+    tracing::info!("the sockets have closed");
     stop(settling, relays, chores).await;
 }
 

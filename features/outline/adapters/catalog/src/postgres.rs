@@ -40,6 +40,14 @@ const IN_PROJECT: &str = "
 
 const LET_GO: &str = "DELETE FROM outline_attachments WHERE outline = $1";
 
+const INDEXED_AS_OF: &str = "
+    INSERT INTO outline_index_versions (outline, version)
+    VALUES ($1, $2)
+    ON CONFLICT (outline) DO UPDATE
+    SET version = EXCLUDED.version
+    WHERE outline_index_versions.version < EXCLUDED.version
+";
+
 const HOLD: &str = "
     INSERT INTO outline_attachments (outline, attachment_type, attachment_id)
     SELECT $1, attachment_type, attachment_id
@@ -188,8 +196,19 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         &self,
         transaction: &mut Transaction,
         outline: OutlineId,
+        version: u64,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
+        let newer = sqlx::query(INDEXED_AS_OF)
+            .bind(outline.to_string())
+            .bind(i64::try_from(version).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        if newer.rows_affected() == 0 {
+            return Ok(());
+        }
+
         let attachment_types: Vec<&str> =
             attachments.iter().map(rows::attachment_type_of).collect();
         let attachment_ids: Vec<String> = attachments.iter().map(ToString::to_string).collect();
@@ -309,6 +328,9 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
+            .await
+            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
@@ -323,6 +345,21 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
+    }
+
+    async fn has_project_tombstone_within(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
+            .await
+            .map_err(unreachable)?;
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)
     }

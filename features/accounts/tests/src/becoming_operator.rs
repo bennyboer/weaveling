@@ -184,7 +184,7 @@ impl Operators for FailingToAppointOnce {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
-    ) -> Result<(), SecretsError> {
+    ) -> Result<bool, SecretsError> {
         self.kept.keep_code(transaction, digest).await
     }
 
@@ -218,6 +218,14 @@ impl Operators for FailingToAppointOnce {
         account: &AccountId,
     ) -> Result<Dismissal, SecretsError> {
         self.kept.dismiss(transaction, account).await
+    }
+
+    async fn is_appointed(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        self.kept.is_appointed(transaction, account).await
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

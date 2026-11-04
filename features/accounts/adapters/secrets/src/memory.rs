@@ -278,11 +278,18 @@ impl Operators for InMemorySecrets {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
-    ) -> Result<(), SecretsError> {
-        let replaced = self.kept().operator_code.replace(digest.clone());
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        if !kept.operators.is_empty() {
+            return Ok(false);
+        }
+        let replaced = kept.operator_code.replace(digest.clone());
+        drop(kept);
         self.undo_on_rollback(transaction, move |kept| {
             kept.operator_code = replaced;
-        })
+        })?;
+
+        Ok(true)
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
@@ -295,7 +302,7 @@ impl Operators for InMemorySecrets {
         digest: &TokenDigest,
     ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
-        if kept.operator_code.as_ref() != Some(digest) {
+        if kept.operator_code.as_ref() != Some(digest) || !kept.operators.is_empty() {
             return Ok(false);
         }
         kept.operator_code = None;
@@ -340,6 +347,14 @@ impl Operators for InMemorySecrets {
         })?;
 
         Ok(Dismissal::Dismissed)
+    }
+
+    async fn is_appointed(
+        &self,
+        _transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        Ok(self.kept().operators.contains(account))
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

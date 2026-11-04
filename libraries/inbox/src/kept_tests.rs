@@ -6,9 +6,9 @@ use messaging::{Failure, Listener, Message, RoutingKey};
 use serde_json::json;
 use thiserror::Error;
 use time::OffsetDateTime;
-use transacting::{InMemoryTransactions, Transaction, memory};
+use transacting::{InMemoryTransactions, Transaction, Transactions, memory};
 
-use crate::{InMemoryInbox, Inboxed, KeptHandler};
+use crate::{EffectHandler, InMemoryInbox, Inboxed, InboxedEffect, KeptHandler};
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -150,4 +150,111 @@ async fn an_inboxed_handler_is_named_and_listens_as_it_says() {
     assert_eq!(listener.named().as_str(), "note-what-was-heard");
     assert!(listener.hears(&RoutingKey::parse("thing.happened").expect("a plain key")));
     assert_eq!(listener.when_refused(), "Something heard was not noted.");
+}
+
+struct Mailing {
+    transactions: Arc<InMemoryTransactions>,
+    sent: Mutex<u32>,
+    refusing: Mutex<Vec<Refusal>>,
+}
+
+#[async_trait]
+impl EffectHandler for Mailing {
+    const NAME: &'static str = "mail-what-was-heard";
+    const LISTENS_TO: &'static [&'static str] = &["thing.happened"];
+    const WHEN_REFUSED: &'static str = "Something heard was not mailed.";
+
+    async fn take_in(&self, _message: &Message) -> Result<(), Failure> {
+        let beside =
+            tokio::time::timeout(std::time::Duration::from_secs(1), self.transactions.begin())
+                .await
+                .expect("no transaction is held while the mail goes, so another may begin")
+                .expect("beginning should succeed");
+        drop(beside);
+        if let Some(refusal) = self
+            .refusing
+            .lock()
+            .expect("nothing panics holding it")
+            .pop()
+        {
+            return Err(Box::new(refusal));
+        }
+        *self.sent.lock().expect("nothing panics holding it") += 1;
+
+        Ok(())
+    }
+}
+
+fn mailing(refusals: Vec<Refusal>) -> InboxedEffect<Mailing> {
+    let transactions = Arc::new(InMemoryTransactions::new());
+
+    InboxedEffect::new(
+        Mailing {
+            transactions: transactions.clone(),
+            sent: Mutex::new(0),
+            refusing: Mutex::new(refusals),
+        },
+        transactions,
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+            OffsetDateTime::UNIX_EPOCH,
+        )))),
+    )
+}
+
+fn sent(listener: &InboxedEffect<Mailing>) -> u32 {
+    *listener
+        .handler
+        .sent
+        .lock()
+        .expect("nothing panics holding it")
+}
+
+#[tokio::test]
+async fn an_effect_is_carried_out_with_no_transaction_held_and_once_for_a_message_handed_over_twice()
+ {
+    let listener = mailing(Vec::new());
+    let message = a_message();
+
+    for _ in 0..2 {
+        listener
+            .handle(&message)
+            .await
+            .expect("handling should succeed");
+    }
+
+    assert_eq!(sent(&listener), 1);
+}
+
+#[tokio::test]
+async fn an_effect_that_failed_is_carried_out_when_the_message_comes_again() {
+    let listener = mailing(vec![Refusal("the mail server is down")]);
+    let message = a_message();
+
+    let refused = listener.handle(&message).await;
+    listener
+        .handle(&message)
+        .await
+        .expect("handling should succeed the second time");
+
+    assert_eq!(
+        refused
+            .expect_err("the first handling was refused")
+            .because
+            .to_string(),
+        "the mail server is down"
+    );
+    assert_eq!(
+        sent(&listener),
+        1,
+        "a failed effect noted nothing, so it is carried out anew"
+    );
+}
+
+#[tokio::test]
+async fn an_effect_handler_is_named_and_listens_as_it_says() {
+    let listener = mailing(Vec::new());
+
+    assert_eq!(listener.named().as_str(), "mail-what-was-heard");
+    assert!(listener.hears(&RoutingKey::parse("thing.happened").expect("a plain key")));
+    assert_eq!(listener.when_refused(), "Something heard was not mailed.");
 }

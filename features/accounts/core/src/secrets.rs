@@ -156,7 +156,7 @@ pub trait Operators: Send + Sync {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
-    ) -> Result<(), SecretsError>;
+    ) -> Result<bool, SecretsError>;
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
 
@@ -177,6 +177,12 @@ pub trait Operators: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<Dismissal, SecretsError>;
+
+    async fn is_appointed(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError>;
 
     async fn any_appointed(&self) -> Result<bool, SecretsError>;
 }

@@ -49,20 +49,19 @@ impl OutlinesCore {
             OutlinesError::ProjectNotThere
         })
         .await?;
-        if self.catalog.has_project_tombstone(&project).await? {
+        let mut transaction = self.transactions.begin().await?;
+        if self
+            .catalog
+            .has_project_tombstone_within(&mut transaction, &project)
+            .await?
+        {
             return Err(OutlinesError::ProjectNotThere);
         }
-
-        let mut transaction = self.transactions.begin().await?;
         let id = self
             .service
             .claim(&mut transaction, &project, agent)
             .await?;
         transaction.finish().await?;
-        if self.catalog.has_project_tombstone(&project).await? {
-            self.discarded(&id).await?;
-            return Err(OutlinesError::ProjectNotThere);
-        }
 
         Ok(Open {
             id,
@@ -120,6 +119,7 @@ impl OutlinesCore {
 
         Ok(Added {
             section,
+            since: changed.since,
             version: changed.version,
             standing: changed.standing,
         })
@@ -278,7 +278,12 @@ impl OutlinesCore {
 
         let mut transaction = self.transactions.join(within).await?;
         self.catalog
-            .holds(&mut transaction, *outline, &holding)
+            .holds(
+                &mut transaction,
+                *outline,
+                standing.version.count(),
+                &holding,
+            )
             .await?;
         Ok(transaction.finish().await?)
     }
@@ -437,6 +442,11 @@ impl OutlinesCore {
         )?;
 
         Ok(Changed {
+            since: Version::of(
+                landed.version.count()
+                    - u64::try_from(landed.events.len())
+                        .expect("a command appends a handful of events"),
+            ),
             version: landed.version,
             attachments_changed_in: service::attachments_changed_in(&landed),
             standing: self.service.latest(&outline).await?,

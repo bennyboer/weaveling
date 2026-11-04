@@ -3068,6 +3068,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
@@ -3603,6 +3604,7 @@ dependencies = [
  "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",
+ "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-mailing",
@@ -3691,6 +3693,7 @@ dependencies = [
  "weaveling-acting",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-invitations-contract",
@@ -3730,7 +3733,6 @@ dependencies = [
 name = "weaveling-acting"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "weaveling-eventsourcing",
 ]
 
@@ -4058,6 +4060,17 @@ name = "weaveling-email"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "weaveling-ending"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "tokio",
+ "tokio-util",
+ "weaveling-live-contract",
 ]
 
 [[package]]
@@ -4421,8 +4434,8 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
- "weaveling-acting",
  "weaveling-authorizing",
+ "weaveling-ending",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-live-contract",
@@ -5178,8 +5191,8 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
- "weaveling-acting",
  "weaveling-authorizing",
+ "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-live-contract",
  "weaveling-quotation",
@@ -5200,6 +5213,7 @@ dependencies = [
  "weaveling-acting",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-inbox",
@@ -5269,6 +5283,7 @@ dependencies = [
  "weaveling-boards-wiring",
  "weaveling-chores",
  "weaveling-clock",
+ "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
  "weaveling-invitations-wiring",

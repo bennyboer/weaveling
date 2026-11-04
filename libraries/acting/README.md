@@ -29,6 +29,4 @@ pub async fn invite_to_instance(
 
 **Only what holds for the whole instance.** A project's roles, owner, author, reader, differ from project to project, and come from the `Authorizer` asked about that one project, not from here.
 
-**And when the session ends, `SessionEnd`.** The same gate puts it into the request beside `Acting`: `reached()` returns once the session is over, signed out here or elsewhere, its account locked, its password reset, or its last moment come; accounts make it, behind the `Ending` trait, so whatever holds a request open, the one live socket and the editing socket, closes on it without knowing accounts. Where nothing puts one there, `SessionEnd::never()` never ends.
-
 In local mode nothing reads it yet, and nothing puts it there; it comes when a route there wants it.

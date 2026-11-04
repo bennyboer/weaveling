@@ -15,14 +15,18 @@ use time::OffsetDateTime;
 
 const KEEP_CODE: &str = "
     INSERT INTO account_operator_code (digest)
-    VALUES (?1)
+    SELECT ?1
+    WHERE NOT EXISTS (SELECT 1 FROM account_operators)
     ON CONFLICT (single) DO UPDATE
     SET digest = EXCLUDED.digest
 ";
 
 const HOLDS_CODE: &str = "SELECT EXISTS (SELECT 1 FROM account_operator_code WHERE digest = ?1)";
 
-const TAKE_CODE: &str = "DELETE FROM account_operator_code WHERE digest = ?1";
+const TAKE_CODE: &str = "
+    DELETE FROM account_operator_code
+    WHERE digest = ?1 AND NOT EXISTS (SELECT 1 FROM account_operators)
+";
 
 const APPOINT: &str = "
     INSERT INTO account_operators (account)
@@ -452,14 +456,14 @@ impl Operators for SqliteSecrets {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(KEEP_CODE)
+    ) -> Result<bool, SecretsError> {
+        let kept = sqlx::query(KEEP_CODE)
             .bind(digest.as_str())
             .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        Ok(kept.rows_affected() == 1)
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
@@ -522,6 +526,18 @@ impl Operators for SqliteSecrets {
         } else {
             Dismissal::NotAppointed
         })
+    }
+
+    async fn is_appointed(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        sqlx::query_scalar(APPOINTED)
+            .bind(account.to_string())
+            .fetch_one(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

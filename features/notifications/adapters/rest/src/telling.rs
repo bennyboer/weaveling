@@ -125,8 +125,20 @@ impl NoticeCatalog for TellingNotices {
         &self,
         transaction: &mut Transaction,
         notice: &NoticeId,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.forget(transaction, notice).await
+        self.kept.forget(transaction, notice, at).await
+    }
+
+    async fn forget_notice_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.kept
+            .forget_notice_tombstones_laid_before(transaction, before, at_most)
+            .await
     }
 
     async fn forget_project_tombstones_laid_before(

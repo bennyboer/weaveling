@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-ending"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
+tokio = { workspace = true, features = ["macros", "sync"] }
+tokio-util = { workspace = true, features = ["rt"] }
+
+live-contract = { version = "0.1.0", path = "../live-contract", package = "weaveling-live-contract" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }

@@ -38,3 +38,8 @@ CREATE TABLE project_tombstones (
 );
 
 CREATE INDEX project_tombstones_by_laid_at ON project_tombstones (laid_at);
+
+CREATE TABLE outline_index_versions (
+    outline     TEXT    PRIMARY KEY,
+    version     INTEGER NOT NULL
+);

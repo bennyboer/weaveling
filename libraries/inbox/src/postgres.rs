@@ -17,6 +17,10 @@ const HEAR: &str = "
     ON CONFLICT (listener, message_id) DO NOTHING
 ";
 
+const WAS_HEARD: &str = "
+    SELECT EXISTS (SELECT 1 FROM inbox WHERE listener = $1 AND message_id = $2)
+";
+
 const FORGET: &str = "
     DELETE FROM inbox
     WHERE (listener, message_id) IN (
@@ -62,6 +66,20 @@ impl Inbox for PostgresInbox {
             .map_err(unreachable)?;
 
         Ok(heard.rows_affected() == 0)
+    }
+
+    async fn was_heard(
+        &self,
+        transaction: &mut Transaction,
+        listener: &ListenerName,
+        message: MessageId,
+    ) -> Result<bool, InboxError> {
+        sqlx::query_scalar(WAS_HEARD)
+            .bind(listener.as_str())
+            .bind(message.as_uuid())
+            .fetch_one(transacting::postgres::connection(transaction)?)
+            .await
+            .map_err(unreachable)
     }
 
     async fn forget_heard_before(

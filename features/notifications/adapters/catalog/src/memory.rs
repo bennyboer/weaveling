@@ -16,6 +16,7 @@ pub struct InMemoryNoticeCatalog {
     people: Arc<RwLock<HashMap<AccountId, String>>>,
     project_names: Arc<RwLock<HashMap<ProjectLink, ProjectName>>>,
     tombstones: Arc<RwLock<HashMap<ProjectLink, OffsetDateTime>>>,
+    forgotten: Arc<RwLock<HashMap<NoticeId, OffsetDateTime>>>,
 }
 
 impl InMemoryNoticeCatalog {
@@ -62,7 +63,13 @@ impl InMemoryNoticeCatalog {
         let into_kept = self.kept.clone();
         let into_people = self.people.clone();
         let into_project_names = self.project_names.clone();
+        let forgotten = self
+            .forgotten
+            .read()
+            .expect("notice catalog lock poisoned")
+            .clone();
         let into_tombstones = self.tombstones.clone();
+        let into_forgotten = self.forgotten.clone();
 
         transacting::memory::undo_on_rollback(transaction, move || {
             *into_kept.write().expect("notice catalog lock poisoned") = kept;
@@ -73,6 +80,9 @@ impl InMemoryNoticeCatalog {
             *into_tombstones
                 .write()
                 .expect("notice catalog lock poisoned") = tombstones;
+            *into_forgotten
+                .write()
+                .expect("notice catalog lock poisoned") = forgotten;
         })
         .map_err(unreachable)
     }
@@ -90,6 +100,14 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         summary: &NoticeSummary,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
+        if self
+            .forgotten
+            .read()
+            .expect("notice catalog lock poisoned")
+            .contains_key(&summary.id)
+        {
+            return Ok(());
+        }
         let mut kept = self.write();
         if kept
             .get(&summary.id)
@@ -252,11 +270,42 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         &self,
         transaction: &mut Transaction,
         notice: &NoticeId,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
+        self.forgotten
+            .write()
+            .expect("notice catalog lock poisoned")
+            .entry(*notice)
+            .or_insert(at);
         self.write().remove(notice);
 
         Ok(())
+    }
+
+    async fn forget_notice_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut forgotten = self
+            .forgotten
+            .write()
+            .expect("notice catalog lock poisoned");
+        let mut old: Vec<(OffsetDateTime, NoticeId)> = forgotten
+            .iter()
+            .filter(|(_, laid_at)| **laid_at < before)
+            .map(|(notice, laid_at)| (*laid_at, *notice))
+            .collect();
+        old.sort();
+        old.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, notice) in &old {
+            forgotten.remove(notice);
+        }
+
+        Ok(old.len() as u64)
     }
 
     async fn forget_project_tombstones_laid_before(

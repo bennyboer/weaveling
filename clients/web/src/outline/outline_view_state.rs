@@ -74,16 +74,6 @@ impl OutlineViewState {
             }
         };
 
-        let changed = move |told: OutlineChange| {
-            confirmed.update(|held| {
-                if let Some(held) = held
-                    && told.version >= held.version
-                {
-                    *held = held.changed_by(told);
-                }
-            });
-        };
-
         let opening = {
             let id = project.clone();
 
@@ -99,6 +89,24 @@ impl OutlineViewState {
             })
         };
         opening.dispatch(());
+
+        let changed = move |told: OutlineChange| {
+            let stale = confirmed.with_untracked(|held| {
+                held.as_ref()
+                    .is_some_and(|held| told.version >= held.version && !held.fits(&told))
+            });
+            if stale {
+                opening.dispatch(());
+                return;
+            }
+            confirmed.update(|held| {
+                if let Some(held) = held
+                    && told.version >= held.version
+                {
+                    *held = held.changed_by(told);
+                }
+            });
+        };
 
         let failed = move |failure: ApiError| {
             if failure == ApiError::Overtaken {

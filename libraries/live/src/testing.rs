@@ -43,8 +43,25 @@ impl Subscriber {
         tokio::time::sleep(SETTLING).await;
     }
 
-    /// The next thing told, whatever it is, failing unless it comes within a second.
+    /// The next thing told but that a subscription is followed, failing unless it comes within a second.
     pub async fn told(&mut self) -> ToldDTO {
+        loop {
+            match self.anything_told().await {
+                ToldDTO::Following { .. } => {}
+                told => return told,
+            }
+        }
+    }
+
+    /// Waits until the subscription under `id` is followed, failing on anything else told first.
+    pub async fn following(&mut self, id: &str) {
+        match self.anything_told().await {
+            ToldDTO::Following { id: followed } if followed == id => {}
+            other => panic!("{id} followed, not {other:?}"),
+        }
+    }
+
+    async fn anything_told(&mut self) -> ToldDTO {
         tokio::time::timeout(FRESH, self.socket.receive_json())
             .await
             .expect("told while it is fresh")
@@ -68,11 +85,15 @@ impl Subscriber {
         }
     }
 
-    /// Whether nothing is told for a short while; whatever is told meanwhile is read and gone.
+    /// Whether nothing but that a subscription is followed is told for a short while; whatever is told meanwhile is read and gone.
     pub async fn silent(&mut self) -> bool {
-        tokio::time::timeout(QUIET, self.socket.receive_text())
-            .await
-            .is_err()
+        loop {
+            match tokio::time::timeout(QUIET, self.socket.receive_json::<ToldDTO>()).await {
+                Err(_) => return true,
+                Ok(ToldDTO::Following { .. }) => {}
+                Ok(_) => return false,
+            }
+        }
     }
 
     pub async fn nothing(&mut self) {
@@ -81,9 +102,16 @@ impl Subscriber {
 
     /// The code the server closed the socket with, if it closes within a second.
     pub async fn closed_as(&mut self) -> Option<u16> {
-        match tokio::time::timeout(FRESH, self.socket.receive_message()).await {
-            Ok(WsMessage::Close(Some(frame))) => Some(u16::from(frame.code)),
-            _ => None,
+        loop {
+            match tokio::time::timeout(FRESH, self.socket.receive_message()).await {
+                Ok(WsMessage::Close(Some(frame))) => return Some(u16::from(frame.code)),
+                Ok(WsMessage::Text(text))
+                    if matches!(
+                        serde_json::from_str::<ToldDTO>(&text),
+                        Ok(ToldDTO::Following { .. })
+                    ) => {}
+                _ => return None,
+            }
         }
     }
 

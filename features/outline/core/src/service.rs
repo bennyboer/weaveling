@@ -25,11 +25,13 @@ pub struct Open {
 
 pub struct Added {
     pub section: SectionId,
+    pub since: Version,
     pub version: Version,
     pub standing: Standing<Outline>,
 }
 
 pub struct Changed {
+    pub since: Version,
     pub version: Version,
     pub attachments_changed_in: Vec<SectionId>,
     pub standing: Standing<Outline>,

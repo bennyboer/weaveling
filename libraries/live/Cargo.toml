@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-acting = { version = "0.1.0", path = "../acting", package = "weaveling-acting" }
+ending = { version = "0.1.0", path = "../ending", package = "weaveling-ending" }
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
 serde = { workspace = true }

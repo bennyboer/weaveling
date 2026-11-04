@@ -13,6 +13,7 @@ time = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time", "macros"] }
 
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
+ending = { version = "0.1.0", path = "../../../libraries/ending", package = "weaveling-ending" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }

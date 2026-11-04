@@ -140,6 +140,7 @@ export async function routingLive(page: Page, routing: Routing = {}) {
       if (asked.do === "subscribe") {
         subscriptions.set(asked.id, { topic: asked.topic, about: asked.about, socket });
         if (routing.withheld?.includes(asked.topic)) {
+          socket.send(JSON.stringify({ told: "following", id: asked.id }));
           return;
         }
         if (routing.held?.includes(asked.topic)) {

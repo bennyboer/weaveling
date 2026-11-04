@@ -20,5 +20,5 @@ postgres = ["dep:sqlx", "transacting/postgres"]
 sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }

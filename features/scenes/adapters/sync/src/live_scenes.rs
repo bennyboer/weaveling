@@ -23,7 +23,7 @@ pub type PeerId = usize;
 
 type Rooms = HashMap<SceneId, Room>;
 
-const BACKLOG: usize = 256;
+pub(crate) const BACKLOG: usize = 256;
 const GRACE: Duration = Duration::from_secs(30);
 const SWEEP_EVERY: Duration = Duration::from_secs(10);
 const RECOUNT_EVERY: Duration = Duration::from_secs(2);
@@ -51,6 +51,7 @@ pub struct LiveScene {
     scene: Scene,
     traffic: broadcast::Sender<Overheard>,
     unsaved: AtomicBool,
+    gone: AtomicBool,
     uncounted: AtomicBool,
     recount_waiting: AtomicBool,
     counting: OneAtATime<()>,
@@ -59,11 +60,12 @@ pub struct LiveScene {
 }
 
 impl LiveScene {
-    fn open(scene: Scene) -> Self {
+    pub(crate) fn open(scene: Scene) -> Self {
         LiveScene {
             scene,
             traffic: broadcast::channel(BACKLOG).0,
             unsaved: AtomicBool::new(false),
+            gone: AtomicBool::new(false),
             uncounted: AtomicBool::new(false),
             recount_waiting: AtomicBool::new(false),
             counting: OneAtATime::new(()),
@@ -152,6 +154,10 @@ impl LiveScene {
         self.scene.text()
     }
 
+    pub fn everything(&self) -> Vec<u8> {
+        self.scene.everything()
+    }
+
     pub fn restyled(&self, style: QuotationMarks) -> Option<Vec<u8>> {
         self.scene.restyled(style)
     }
@@ -237,6 +243,9 @@ impl Presence {
             .await;
         match persisted {
             Ok(()) => self.count_soon().await,
+            Err(ScenesError::Store(StoreError::NotFound(_))) => {
+                self.scene.gone.store(true, Ordering::Release)
+            }
             Err(_) => self.scene.unsaved.store(true, Ordering::Release),
         }
 
@@ -338,6 +347,9 @@ impl LiveScenes {
         self.start_sweeping();
 
         if let Some(entered) = self.enter(id, None) {
+            if entered.scene.gone.load(Ordering::Acquire) {
+                return Err(ScenesError::Store(StoreError::NotFound(id)));
+            }
             return Ok(entered);
         }
 

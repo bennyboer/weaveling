@@ -5,17 +5,19 @@ use clock::FixedClock;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transaction, Transactions};
 
 use crate::agent::Agent;
 use crate::aggregate::AggregateId;
 use crate::codec::Codec;
 use crate::postgres::PostgresEventStore;
-use crate::service::EventSourcingService;
+use crate::service::{EventSourcingService, ServiceError};
+use crate::store::{EventStore, StoreError};
 use crate::testing::sample;
 use crate::testing::sample::{SAMPLE, Sample, SampleCommand, SampleEvent};
 use crate::testing::stored;
 use crate::testing::{Tables, Workbench};
+use crate::version::Version;
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -269,4 +271,173 @@ async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
         "Third"
     );
     bench.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn forgetting_a_stream_waits_for_an_append_under_way_and_takes_it_too() {
+    let bench = OnPostgres::setup().await;
+    let service: EventSourcingService<Sample> = EventSourcingService::new(
+        Arc::new(PostgresEventStore::new(
+            bench.pool.clone(),
+            stored::codec(),
+            sample::message_for,
+        )),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+    let aggregate = AggregateId::from("sample_forgotten");
+    let mut transaction = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    service
+        .begin(
+            &mut transaction,
+            &aggregate,
+            SampleCommand::Create {
+                title: "The Loom".to_owned(),
+                description: "A silent machine.".to_owned(),
+            },
+            &Agent::System,
+        )
+        .await
+        .expect("beginning the sample should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+    let mut appending = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    service
+        .execute(
+            &mut appending,
+            &aggregate,
+            SampleCommand::UpdateTitle("Second".to_owned()),
+            &Agent::System,
+        )
+        .await
+        .expect("retitling should succeed");
+
+    tokio::join!(
+        async {
+            let mut forgetting = bench
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            bench
+                .store
+                .forget(&mut forgetting, &aggregate, SAMPLE)
+                .await
+                .expect("forgetting should succeed");
+            forgetting.finish().await.expect("finishing should succeed");
+        },
+        async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            appending.finish().await.expect("finishing should succeed");
+        }
+    );
+
+    assert!(
+        bench
+            .store
+            .read_from(&aggregate, SAMPLE, Version::of(1))
+            .await
+            .expect("reading should succeed")
+            .is_empty(),
+        "a forget that did not wait would leave the append's event alone, a stream that cannot be read"
+    );
+    bench.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_appends_crossing_on_two_streams_lose_a_race_rather_than_fail() {
+    let bench = OnPostgres::setup().await;
+    let service: EventSourcingService<Sample> = EventSourcingService::new(
+        Arc::new(PostgresEventStore::new(
+            bench.pool.clone(),
+            stored::codec(),
+            sample::message_for,
+        )),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+    let (one, other) = (
+        AggregateId::from("sample_one"),
+        AggregateId::from("sample_other"),
+    );
+    for aggregate in [&one, &other] {
+        let mut transaction = bench
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
+        service
+            .begin(
+                &mut transaction,
+                aggregate,
+                SampleCommand::Create {
+                    title: "The Loom".to_owned(),
+                    description: "A silent machine.".to_owned(),
+                },
+                &Agent::System,
+            )
+            .await
+            .expect("beginning the sample should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+    }
+    let mut first = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let mut second = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    assert!(!lost_race(&service, &mut first, &one).await);
+    assert!(!lost_race(&service, &mut second, &other).await);
+
+    let (crossing, crossed) = tokio::join!(
+        lost_race(&service, &mut first, &other),
+        lost_race(&service, &mut second, &one)
+    );
+
+    assert_eq!(
+        [crossing, crossed].iter().filter(|lost| **lost).count(),
+        1,
+        "one of two appends waiting on each other is told it lost the race, so it is tried again, \
+         and the other goes on"
+    );
+    drop(first);
+    drop(second);
+    bench.cleanup().await;
+}
+
+async fn lost_race(
+    service: &EventSourcingService<Sample>,
+    transaction: &mut Transaction,
+    aggregate: &AggregateId,
+) -> bool {
+    match service
+        .execute(
+            transaction,
+            aggregate,
+            SampleCommand::UpdateTitle("Crossed".to_owned()),
+            &Agent::System,
+        )
+        .await
+    {
+        Ok(_) => false,
+        Err(ServiceError::Store(StoreError::Outdated { .. })) => true,
+        Err(failure) => {
+            panic!("an append either lands or loses the race, never fails: {failure:?}")
+        }
+    }
 }

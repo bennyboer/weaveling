@@ -438,6 +438,9 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         transaction: &mut Transaction,
         named: &ProjectName,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("project:{}", named.project))
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER_PROJECT_NAME)
             .bind(named.project.as_str())
             .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
@@ -455,6 +458,9 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("project:{}", project))
+            .await
+            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.as_str())
             .bind(at)
@@ -505,6 +511,9 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         version: Version,
         in_the_trash: bool,
     ) -> Result<(), CatalogError> {
+        transacting::postgres::one_at_a_time(transaction, &format!("project:{}", project))
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER_PROJECT_TRASH)
             .bind(project.as_str())
             .bind(i64::try_from(version.count()).map_err(unreachable)?)

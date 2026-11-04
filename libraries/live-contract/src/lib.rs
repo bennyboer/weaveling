@@ -9,6 +9,9 @@ pub const ACCESS_CHANGED: &str = "access-changed";
 /// The code a socket is closed with when its session ends; the client then asks no more and signs out.
 pub const SESSION_ENDED: u16 = 4401;
 
+/// The code a socket is closed with when the server is stopping; the client opens it again once it is back.
+pub const SERVER_CLOSING: u16 = 1001;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FrameDTO {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -37,9 +40,22 @@ pub enum AskedDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "told", rename_all = "kebab-case")]
 pub enum ToldDTO {
-    Frame { id: String, frame: FrameDTO },
-    Notice { id: String, notice: String },
-    Ended { id: String, why: String },
+    /// The subscription hears its channel from now on, so what is read after this misses nothing told later.
+    Following {
+        id: String,
+    },
+    Frame {
+        id: String,
+        frame: FrameDTO,
+    },
+    Notice {
+        id: String,
+        notice: String,
+    },
+    Ended {
+        id: String,
+        why: String,
+    },
 }
 
 /// Why a subscription ended, told under its id; the socket and its other subscriptions go on.

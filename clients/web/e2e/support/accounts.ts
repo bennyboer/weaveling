@@ -446,6 +446,7 @@ export async function aServerWithAccounts(
           about: asked.about,
           socket,
         });
+        socket.send(JSON.stringify({ told: "following", id: asked.id }));
       }
     });
     socket.onClose(() => {

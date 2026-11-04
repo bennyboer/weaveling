@@ -15,6 +15,7 @@ struct Attachments {
     by_outline: HashMap<OutlineId, Vec<Attachment>>,
     by_attachment: HashMap<Attachment, BTreeSet<OutlineId>>,
     tombstones: HashMap<Attachment, OffsetDateTime>,
+    indexed_as_of: HashMap<OutlineId, u64>,
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +47,37 @@ impl InMemoryOutlineCatalog {
         self.attached
             .write()
             .expect("outline catalog lock poisoned")
+    }
+
+    fn held(&self, outline: OutlineId, attachments: &[Attachment]) {
+        let mut attached = self.write_attachments();
+        let arriving: HashSet<&Attachment> = attachments.iter().collect();
+        let left_behind = attached
+            .by_outline
+            .insert(outline, attachments.to_vec())
+            .unwrap_or_default();
+
+        for gone in left_behind
+            .iter()
+            .filter(|attachment| !arriving.contains(attachment))
+        {
+            let Some(holding) = attached.by_attachment.get_mut(gone) else {
+                continue;
+            };
+            holding.remove(&outline);
+
+            if holding.is_empty() {
+                attached.by_attachment.remove(gone);
+            }
+        }
+
+        for held in attachments {
+            attached
+                .by_attachment
+                .entry(held.clone())
+                .or_default()
+                .insert(outline);
+        }
     }
 
     fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
@@ -136,7 +168,7 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .entry(*outline)
             .or_insert(at);
         self.write().remove(outline);
-        self.holds(transaction, *outline, &[]).await?;
+        self.held(*outline, &[]);
 
         Ok(())
     }
@@ -157,37 +189,22 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         &self,
         transaction: &mut Transaction,
         outline: OutlineId,
+        version: u64,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
-        let mut attached = self.write_attachments();
-        let arriving: HashSet<&Attachment> = attachments.iter().collect();
-        let left_behind = attached
-            .by_outline
-            .insert(outline, attachments.to_vec())
-            .unwrap_or_default();
-
-        for gone in left_behind
-            .iter()
-            .filter(|attachment| !arriving.contains(attachment))
         {
-            let Some(holding) = attached.by_attachment.get_mut(gone) else {
-                continue;
-            };
-            holding.remove(&outline);
-
-            if holding.is_empty() {
-                attached.by_attachment.remove(gone);
+            let mut attached = self.write_attachments();
+            if attached
+                .indexed_as_of
+                .get(&outline)
+                .is_some_and(|indexed| *indexed >= version)
+            {
+                return Ok(());
             }
+            attached.indexed_as_of.insert(outline, version);
         }
-
-        for held in attachments {
-            attached
-                .by_attachment
-                .entry(held.clone())
-                .or_default()
-                .insert(outline);
-        }
+        self.held(outline, attachments);
 
         Ok(())
     }
@@ -328,6 +345,14 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .read()
             .expect("outline catalog lock poisoned")
             .contains_key(project))
+    }
+
+    async fn has_project_tombstone_within(
+        &self,
+        _transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<bool, CatalogError> {
+        self.has_project_tombstone(project).await
     }
 }
 

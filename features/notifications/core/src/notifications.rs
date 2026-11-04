@@ -198,7 +198,7 @@ impl NotificationsCore {
                 .forget(&mut transaction, &AggregateId::from(notice), KIND)
                 .await
                 .map_err(ServiceError::Store)?;
-            self.catalog.forget(&mut transaction, notice).await?;
+            self.catalog.forget(&mut transaction, notice, now).await?;
             transaction.finish().await?;
         }
 
@@ -211,13 +211,17 @@ impl NotificationsCore {
         at_most: u64,
     ) -> Result<u64, NotificationsError> {
         let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
+        let projects = self
             .catalog
             .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
             .await?;
+        let notices = self
+            .catalog
+            .forget_notice_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
         transaction.finish().await?;
 
-        Ok(forgotten)
+        Ok(projects + notices)
     }
 
     pub async fn catalogue(
@@ -225,7 +229,11 @@ impl NotificationsCore {
         within: Option<&mut Transaction>,
         notice: &NoticeId,
     ) -> Result<(), NotificationsError> {
-        let standing = self.events.latest(&AggregateId::from(notice)).await?;
+        let standing = match self.events.latest(&AggregateId::from(notice)).await {
+            Ok(standing) => standing,
+            Err(ServiceError::NotFound { .. }) => return Ok(()),
+            Err(failure) => return Err(failure.into()),
+        };
 
         let mut transaction = self.transactions.join(within).await?;
         self.catalog

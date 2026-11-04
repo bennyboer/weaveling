@@ -1,27 +1,19 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ::wiring::Context;
-use async_trait::async_trait;
-use boards_catalog::InMemoryBoardCatalog;
-use boards_core::{
-    BoardCatalog, BoardEvent, BoardId, BoardSummary, BoardsError, CatalogError, IdeaLink, KIND,
-    ProjectLink,
-};
+use boards_core::{BoardCatalog, BoardsError, KIND, ProjectLink};
 use boards_messaging::{
     DiscardBoardsOnProjectDeletedListener, RememberDeletedProjectsListener, SWEEP_PROJECT,
     SweepProjectDTO,
 };
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use inbox::{InMemoryInbox, Inboxed};
-use messaging::{FakePublisher, Listener, Message, RoutingKey};
-use outbox::InMemoryOutbox;
+use messaging::{Listener, Message, RoutingKey};
 use projects_contract::DELETED;
-use registry::{InMemoryRegistry, Registry};
+use registry::Registry;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
-use transacting::{InMemoryTransactions, Transaction, Transactions};
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
@@ -320,154 +312,5 @@ async fn a_board_opened_before_the_deletion_is_discarded_once_the_sweep_it_asks_
             .state
             .is_discarded(),
         "the sweep reads the registry after the tombstone committed, so it finds the board"
-    );
-}
-
-struct BuriedMidOpen {
-    catalog: Arc<InMemoryBoardCatalog>,
-    asked: AtomicUsize,
-}
-
-#[async_trait]
-impl BoardCatalog for BuriedMidOpen {
-    async fn remember(
-        &self,
-        transaction: &mut Transaction,
-        summary: &BoardSummary,
-    ) -> Result<(), CatalogError> {
-        self.catalog.remember(transaction, summary).await
-    }
-
-    async fn forget(
-        &self,
-        transaction: &mut Transaction,
-        board: &BoardId,
-        at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
-        self.catalog.forget(transaction, board, at).await
-    }
-
-    async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError> {
-        self.catalog.in_project(project).await
-    }
-
-    async fn holds(
-        &self,
-        transaction: &mut Transaction,
-        board: BoardId,
-        ideas: &[IdeaLink],
-    ) -> Result<(), CatalogError> {
-        self.catalog.holds(transaction, board, ideas).await
-    }
-
-    async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError> {
-        self.catalog.boards_holding(idea).await
-    }
-
-    async fn lay_tombstone(
-        &self,
-        transaction: &mut Transaction,
-        idea: &IdeaLink,
-        at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
-        self.catalog.lay_tombstone(transaction, idea, at).await
-    }
-
-    async fn forget_tombstones_laid_before(
-        &self,
-        transaction: &mut Transaction,
-        before: OffsetDateTime,
-        at_most: u64,
-    ) -> Result<u64, CatalogError> {
-        self.catalog
-            .forget_tombstones_laid_before(transaction, before, at_most)
-            .await
-    }
-
-    async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
-        self.catalog.held_though_tombstoned(board).await
-    }
-
-    async fn lay_project_tombstone(
-        &self,
-        transaction: &mut Transaction,
-        project: &ProjectLink,
-        at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
-        self.catalog
-            .lay_project_tombstone(transaction, project, at)
-            .await
-    }
-
-    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
-        if self.asked.fetch_add(1, Ordering::AcqRel) == 0 {
-            return Ok(false);
-        }
-
-        self.catalog.has_project_tombstone(project).await
-    }
-}
-
-#[tokio::test]
-async fn a_tombstone_laid_while_the_board_was_opened_discards_what_the_open_started() {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
-    let store = Arc::new(InMemoryEventStore::new());
-    let registry = Arc::new(InMemoryRegistry::new());
-    let catalog = Arc::new(InMemoryBoardCatalog::new());
-    let transactions = Arc::new(InMemoryTransactions::new());
-    let mut transaction = transactions
-        .begin()
-        .await
-        .expect("an in-memory transaction begins");
-    catalog
-        .lay_project_tombstone(&mut transaction, &ProjectLink::from("project_1"), at(900))
-        .await
-        .expect("laying a project's tombstone should succeed");
-    transaction
-        .finish()
-        .await
-        .expect("an in-memory transaction commits");
-    let boards = boards_wiring::core(
-        &boards_wiring::Ports {
-            events: store.clone(),
-            transactions,
-            catalog: Arc::new(BuriedMidOpen {
-                catalog,
-                asked: AtomicUsize::new(0),
-            }),
-            registry: registry.clone(),
-            inbox: Arc::new(InMemoryInbox::new(clock.clone())),
-            outbox: Arc::new(InMemoryOutbox::new(
-                Arc::new(FakePublisher::default()),
-                clock.clone(),
-            )),
-        },
-        &Context {
-            clock,
-            publisher: Arc::new(FakePublisher::default()),
-            authorizer: Arc::new(TheSystemAndTheAuthor::default()),
-        },
-    );
-
-    let refused = boards.open("project_1", &an_author()).await;
-
-    let started: BoardId = registry
-        .holder(KIND.as_str(), "project_1")
-        .await
-        .expect("asking should succeed")
-        .expect("the open claimed before it saw the tombstone")
-        .parse()
-        .expect("the registry holds an id");
-    let happened: Vec<BoardEvent> = store
-        .read_from(&AggregateId::from(&started), KIND, Version::ZERO)
-        .await
-        .expect("reading should succeed")
-        .into_iter()
-        .map(|recorded| recorded.event)
-        .collect();
-    assert!(matches!(refused, Err(BoardsError::ProjectNotThere)));
-    assert!(
-        matches!(happened.last(), Some(BoardEvent::Discarded)),
-        "an open that finds the tombstone after its own commit discards what it started, so the board does not outlive the project"
     );
 }

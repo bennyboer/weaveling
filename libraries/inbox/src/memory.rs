@@ -64,6 +64,15 @@ impl Inbox for InMemoryInbox {
         Ok(false)
     }
 
+    async fn was_heard(
+        &self,
+        _transaction: &mut Transaction,
+        listener: &ListenerName,
+        message: MessageId,
+    ) -> Result<bool, InboxError> {
+        Ok(self.held().contains_key(&(listener.clone(), message)))
+    }
+
     async fn forget_heard_before(
         &self,
         transaction: &mut Transaction,
