@@ -5,12 +5,13 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+futures-util = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 
 [features]
-postgres = ["dep:sqlx"]
+postgres = ["dep:sqlx", "dep:futures-util"]
 sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]

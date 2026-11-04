@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use thiserror::Error;
-use transacting::Transaction;
+use transacting::{Failure, LostRace, Transaction};
 
 use crate::{IdeaLink, ProjectLink, Scene, SceneId, SceneTitle};
 
@@ -14,6 +14,18 @@ pub enum StoreError {
     Unusable(SceneId),
     #[error("the scene store failed: {0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl LostRace for StoreError {
+    fn lost_race(&self) -> bool {
+        false
+    }
+}
+
+impl From<Failure> for StoreError {
+    fn from(failure: Failure) -> Self {
+        StoreError::Backend(Box::new(failure))
+    }
 }
 
 #[async_trait]

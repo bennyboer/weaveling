@@ -3,7 +3,7 @@ use eventsourcing::Version;
 use notifications_core::{NoticeCatalog, NoticeSummary, ProjectLink, ProjectName};
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresNoticeCatalog;
@@ -50,7 +50,7 @@ impl Workbench for OnPostgres {
 crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
-async fn a_project_s_tombstone_waits_for_its_name_under_way() {
+async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name() {
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut naming = bench
@@ -73,21 +73,21 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
 
     tokio::join!(
         async {
-            let mut burying = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .lay_project_tombstone(&mut burying, &project, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("laying a tombstone should succeed");
-            burying.finish().await.expect("committing should succeed");
+            transacting::retrying!(&bench.transactions, |burying| {
+                bench
+                    .store
+                    .lay_project_tombstone(burying, &project, OffsetDateTime::UNIX_EPOCH)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("laying a tombstone should succeed");
         },
         async {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            naming.finish().await.expect("committing should succeed");
+            match naming.finish().await {
+                Ok(()) | Err(transacting::Failure::LostRace) => {}
+                Err(failed) => panic!("committing should succeed or lose the race: {failed:?}"),
+            }
         }
     );
 
@@ -104,7 +104,7 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
 }
 
 #[tokio::test]
-async fn forgetting_a_notice_waits_for_its_cataloguing_under_way() {
+async fn a_notice_forgotten_while_its_cataloguing_is_under_way_stays_forgotten() {
     let bench = OnPostgres::setup().await;
     let notice: NoticeSummary = crate::suite::a_summary("account_bo", 1_000, 1, false);
     let mut cataloguing = bench
@@ -120,27 +120,21 @@ async fn forgetting_a_notice_waits_for_its_cataloguing_under_way() {
 
     tokio::join!(
         async {
-            let mut forgetting = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .forget(&mut forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("forgetting should succeed");
-            forgetting
-                .finish()
-                .await
-                .expect("committing should succeed");
+            transacting::retrying!(&bench.transactions, |forgetting| {
+                bench
+                    .store
+                    .forget(forgetting, &notice.id, OffsetDateTime::UNIX_EPOCH)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("forgetting should succeed");
         },
         async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            cataloguing
-                .finish()
-                .await
-                .expect("committing should succeed");
+            match cataloguing.finish().await {
+                Ok(()) | Err(transacting::Failure::LostRace) => {}
+                Err(failed) => panic!("committing should succeed or lose the race: {failed:?}"),
+            }
         }
     );
 

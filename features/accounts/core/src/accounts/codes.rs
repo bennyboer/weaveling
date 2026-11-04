@@ -105,17 +105,13 @@ impl AccountsCore {
         purpose: CodePurpose,
         code: &str,
     ) -> Result<VerificationCode, AccountsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let attempt = self
-            .verifications
-            .attempt(
-                &mut transaction,
-                id,
-                purpose,
-                PendingVerification::MAX_TRIES,
+        let attempt = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AccountsError>(
+                self.verifications
+                    .attempt(transaction, id, purpose, PendingVerification::MAX_TRIES)
+                    .await?,
             )
-            .await?;
-        transaction.finish().await?;
+        })?;
         let pending = match attempt {
             Attempt::Nothing => return Err(AccountsError::CodeWrong),
             Attempt::Exhausted => return Err(AccountsError::CodeExhausted),
@@ -139,11 +135,13 @@ impl AccountsCore {
         purpose: CodePurpose,
     ) -> Result<(), AccountsError> {
         let pending = PendingVerification::issued(self.clock.now());
-        let mut transaction = self.transactions.begin().await?;
-        self.verifications
-            .issue(&mut transaction, id, purpose, &pending)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AccountsError>(
+                self.verifications
+                    .issue(transaction, id, purpose, &pending)
+                    .await?,
+            )
+        })?;
         let code = pending.code.as_str();
         let (subject, body) = match purpose {
             CodePurpose::ConfirmAddress => (

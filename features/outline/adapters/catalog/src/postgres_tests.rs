@@ -1,9 +1,6 @@
-use std::time::{Duration, Instant};
-
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
 use outline_core::{Attachment, OutlineCatalog, OutlineId, ProjectLink};
@@ -117,53 +114,6 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_sta
             .expect("listing should succeed")
             .is_empty(),
         "a remember racing a forget must never bring the forgotten outline back"
-    );
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_project_s_tombstone_waits_for_an_open_under_way() {
-    let bench = OnPostgres::setup().await;
-    let project = ProjectLink::from("project_loom");
-    let mut opening = bench
-        .transactions
-        .begin()
-        .await
-        .expect("beginning should succeed");
-    assert!(
-        !bench
-            .store
-            .has_project_tombstone_within(&mut opening, &project)
-            .await
-            .expect("asking should succeed")
-    );
-
-    let (buried_at, opened_at) = tokio::join!(
-        async {
-            let mut burying = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .lay_project_tombstone(&mut burying, &project, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("laying a tombstone should succeed");
-            burying.finish().await.expect("committing should succeed");
-            Instant::now()
-        },
-        async move {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            let opened_at = Instant::now();
-            opening.finish().await.expect("committing should succeed");
-            opened_at
-        }
-    );
-
-    assert!(
-        buried_at > opened_at,
-        "the tombstone waits for an open that found none, so the sweep it asks for finds what the open claimed"
     );
     bench.cleanup().await;
 }

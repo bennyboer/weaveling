@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::{Duration, OffsetDateTime};
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresAppearanceCatalog;
@@ -78,41 +78,30 @@ async fn remembered_while_gone(gone: Gone) -> Vec<Place> {
         let (gone_subject, gone_place) = (subject.clone(), place);
         let (remembered, forgotten) = tokio::join!(
             tokio::spawn(async move {
-                let mut transaction = remembered_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                remembering
-                    .remember(&mut transaction, &of, &at_place, 1)
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*remembered_in, |transaction| {
+                    remembering
+                        .remember(transaction, &of, &at_place, 1)
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
             tokio::spawn(async move {
-                let mut transaction = forgotten_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                match gone {
-                    Gone::Subject => {
-                        forgetting
-                            .forget_subject(&mut transaction, &gone_subject, at(5_000))
-                            .await?
+                transacting::retrying!(&*forgotten_in, |transaction| {
+                    match gone {
+                        Gone::Subject => forgetting
+                            .forget_subject(transaction, &gone_subject, at(5_000))
+                            .await
+                            .map_err(Tried::Refused)?,
+                        Gone::Place => {
+                            forgetting
+                                .forget_place(transaction, &gone_place, at(5_000))
+                                .await
+                                .map_err(Tried::Refused)?;
+                        }
                     }
-                    Gone::Place => {
-                        forgetting
-                            .forget_place(&mut transaction, &gone_place, at(5_000))
-                            .await?;
-                    }
-                }
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
         );
         remembered

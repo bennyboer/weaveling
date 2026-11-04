@@ -11,8 +11,9 @@ use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use sqlx::migrate::Migrator;
-use sqlx::{PgConnection, PgPool, Row};
-use transacting::{PostgresTransactions, Transaction, Transactions};
+use sqlx::{PgPool, Row};
+use transacting::postgres::Connection;
+use transacting::{PostgresTransactions, Transaction};
 
 const REMEMBER: &str = "INSERT INTO scenes (scene, project, title) VALUES ($1, $2, $3)";
 
@@ -164,18 +165,28 @@ impl PostgresSceneStore {
     }
 
     pub async fn compact(&self, id: SceneId) -> Result<bool, StoreError> {
-        let mut transaction = self.begin().await?;
+        let transactions = PostgresTransactions::new(self.pool.clone());
 
+        transacting::retrying!(&transactions, |transaction| {
+            self.compacted(transaction, id).await
+        })
+    }
+
+    async fn compacted(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<bool, StoreError> {
         let found: Option<String> = sqlx::query_scalar(HOLD)
             .bind(id.to_string())
-            .fetch_optional(connection(&mut transaction)?)
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = found else {
             return Err(StoreError::NotFound(id));
         };
 
-        let parts = self.parts(&mut transaction, id).await?;
+        let parts = self.parts(transaction, id).await?;
         if parts.len() as i64 <= self.compact_after {
             return Ok(false);
         }
@@ -184,27 +195,18 @@ impl PostgresSceneStore {
         let collapsed: i64 = sqlx::query_scalar(WRITE_SNAPSHOT)
             .bind(id.to_string())
             .bind(scene.everything())
-            .fetch_one(connection(&mut transaction)?)
+            .fetch_one(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(FORGET_BEFORE)
             .bind(id.to_string())
             .bind(collapsed)
-            .execute(connection(&mut transaction)?)
+            .execute(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.finish().await.map_err(unreachable)?;
-
         Ok(true)
-    }
-
-    async fn begin(&self) -> Result<Transaction, StoreError> {
-        PostgresTransactions::new(self.pool.clone())
-            .begin()
-            .await
-            .map_err(unreachable)
     }
 
     async fn parts(
@@ -253,7 +255,7 @@ async fn bumped(
     ))
 }
 
-fn connection(transaction: &mut Transaction) -> Result<&mut PgConnection, StoreError> {
+fn connection(transaction: &mut Transaction) -> Result<&mut Connection, StoreError> {
     transacting::postgres::connection(transaction).map_err(unreachable)
 }
 

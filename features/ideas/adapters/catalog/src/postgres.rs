@@ -102,9 +102,6 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         transaction: &mut Transaction,
         summary: &IdeaSummary,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.version.count() as i64)
@@ -123,9 +120,6 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         id: &IdeaId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(at)
@@ -171,9 +165,6 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
@@ -189,9 +180,6 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         transaction: &mut Transaction,
         project: &ProjectLink,
     ) -> Result<bool, CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{project}"))
-            .await
-            .map_err(unreachable)?;
         sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .fetch_one(connection(transaction).map_err(unreachable)?)

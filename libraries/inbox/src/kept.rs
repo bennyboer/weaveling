@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use messaging::{Failure, Listener, ListenerName, Message, NotHandled, Subscription};
 use transacting::{Transaction, Transactions};
 
-use crate::Inbox;
+use crate::{Failed, Inbox};
 
 #[async_trait]
 pub trait KeptHandler: Send + Sync {
@@ -44,17 +44,21 @@ impl<H: KeptHandler> Inboxed<H> {
     }
 
     async fn hear(&self, listener: &ListenerName, message: &Message) -> Result<(), Failure> {
-        let mut transaction = self.transactions.begin().await?;
-        if self
-            .inbox
-            .heard_before(&mut transaction, listener, message.id)
-            .await?
-        {
-            return Ok(());
-        }
-        self.handler.take_in(&mut transaction, message).await?;
-
-        Ok(transaction.finish().await?)
+        transacting::retrying!(&*self.transactions, |transaction| {
+            if self
+                .inbox
+                .heard_before(transaction, listener, message.id)
+                .await
+                .map_err(Failed::from)?
+            {
+                return Ok(());
+            }
+            self.handler
+                .take_in(transaction, message)
+                .await
+                .map_err(Failed)
+        })
+        .map_err(|unheard| unheard.0)
     }
 }
 
@@ -107,23 +111,24 @@ impl<H: EffectHandler> InboxedEffect<H> {
     }
 
     async fn hear(&self, listener: &ListenerName, message: &Message) -> Result<(), Failure> {
-        let mut asking = self.transactions.begin().await?;
-        let heard = self
-            .inbox
-            .was_heard(&mut asking, listener, message.id)
-            .await?;
-        asking.finish().await?;
+        let heard = transacting::retrying!(&*self.transactions, |asking| {
+            Ok::<_, Failed>(self.inbox.was_heard(asking, listener, message.id).await?)
+        })
+        .map_err(|unheard| unheard.0)?;
         if heard {
             return Ok(());
         }
         self.handler.take_in(message).await?;
 
-        let mut noting = self.transactions.begin().await?;
-        self.inbox
-            .heard_before(&mut noting, listener, message.id)
-            .await?;
-
-        Ok(noting.finish().await?)
+        transacting::retrying!(&*self.transactions, |noting| {
+            Ok::<_, Failed>(
+                self.inbox
+                    .heard_before(noting, listener, message.id)
+                    .await?,
+            )
+        })
+        .map(|_| ())
+        .map_err(|unheard| unheard.0)
     }
 }
 

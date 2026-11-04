@@ -64,12 +64,9 @@ impl ProjectsCore {
         details: &RawDetails<'_>,
         agent: &Agent,
     ) -> Result<(ProjectId, Standing<Project>), ProjectsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let id = self
-            .service
-            .start(&mut transaction, name, details, agent)
-            .await?;
-        transaction.finish().await?;
+        let id = transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.start(transaction, name, details, agent).await
+        })?;
 
         Ok((id, self.service.latest(&id).await?))
     }
@@ -224,14 +221,14 @@ impl ProjectsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, ProjectsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
     }
 
     pub async fn catalogue(
@@ -241,22 +238,22 @@ impl ProjectsCore {
     ) -> Result<(), ProjectsError> {
         let standing = self.service.latest_even_deleted(id).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        if standing.state.is_deleted() {
-            self.catalog
-                .forget(&mut transaction, id, self.clock.now())
-                .await?;
-        } else {
-            self.catalog
-                .remember(
-                    &mut transaction,
-                    &ProjectSummary::of(*id, standing.version, &standing.state),
-                )
-                .await?;
-        }
-        transaction.finish().await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if standing.state.is_deleted() {
+                self.catalog
+                    .forget(transaction, id, self.clock.now())
+                    .await?;
+            } else {
+                self.catalog
+                    .remember(
+                        transaction,
+                        &ProjectSummary::of(*id, standing.version, &standing.state),
+                    )
+                    .await?;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     async fn authorized_to_manage(

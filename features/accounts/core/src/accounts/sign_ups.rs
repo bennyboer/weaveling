@@ -70,21 +70,25 @@ impl AccountsCore {
 
         let hashed = password.hashed();
         let id = AccountId::generate(self.clock.now());
-        let mut transaction = self.transactions.begin().await?;
-        if !self.claimed(&mut transaction, &email, &id).await? {
-            drop(transaction);
+        let claimed = transacting::retrying!(&*self.transactions, |transaction| {
+            if !self.claimed(transaction, &email, &id).await? {
+                return Ok(false);
+            }
+            self.events
+                .begin(
+                    transaction,
+                    &AggregateId::from(&id),
+                    AccountCommand::SignUp(email.clone(), name.clone()),
+                    &id.acting(),
+                )
+                .await?;
+            self.passwords.keep(transaction, &id, &hashed).await?;
+
+            Ok::<_, AccountsError>(true)
+        })?;
+        if !claimed {
             return self.tell_already_signed_up(&email).await;
         }
-        self.events
-            .begin(
-                &mut transaction,
-                &AggregateId::from(&id),
-                AccountCommand::SignUp(email.clone(), name),
-                &id.acting(),
-            )
-            .await?;
-        self.passwords.keep(&mut transaction, &id, &hashed).await?;
-        transaction.finish().await?;
 
         self.mail_code(&id, &email, CodePurpose::ConfirmAddress)
             .await
@@ -108,37 +112,39 @@ impl AccountsCore {
         if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
-        let mut transaction = self.transactions.begin().await?;
-        self.not_paused(&mut transaction, &found.scope).await?;
-        let Some(ticket) = self
-            .invitation_tickets
-            .take_ticket(&mut transaction, &digest)
-            .await?
-        else {
-            return Err(AccountsError::InvitationInvalid);
-        };
-        if self.clock.now() > ticket.until {
-            return Err(AccountsError::InvitationExpired);
-        }
+        let id = transacting::retrying!(&*self.transactions, |transaction| {
+            self.not_paused(transaction, &found.scope).await?;
+            let Some(ticket) = self
+                .invitation_tickets
+                .take_ticket(transaction, &digest)
+                .await?
+            else {
+                return Err(AccountsError::InvitationInvalid);
+            };
+            if self.clock.now() > ticket.until {
+                return Err(AccountsError::InvitationExpired);
+            }
 
-        let id = AccountId::generate(self.clock.now());
-        if !self.claimed(&mut transaction, &ticket.to, &id).await? {
-            return Err(AccountsError::EmailAddressHasAccount);
-        }
-        self.events
-            .begin(
-                &mut transaction,
-                &AggregateId::from(&id),
-                AccountCommand::SignUpByInvitation {
-                    email: ticket.to.clone(),
-                    name,
-                    invitation: ticket.invitation,
-                },
-                &id.acting(),
-            )
-            .await?;
-        self.passwords.keep(&mut transaction, &id, &hashed).await?;
-        transaction.finish().await?;
+            let id = AccountId::generate(self.clock.now());
+            if !self.claimed(transaction, &ticket.to, &id).await? {
+                return Err(AccountsError::EmailAddressHasAccount);
+            }
+            self.events
+                .begin(
+                    transaction,
+                    &AggregateId::from(&id),
+                    AccountCommand::SignUpByInvitation {
+                        email: ticket.to.clone(),
+                        name: name.clone(),
+                        invitation: ticket.invitation,
+                    },
+                    &id.acting(),
+                )
+                .await?;
+            self.passwords.keep(transaction, &id, &hashed).await?;
+
+            Ok(id)
+        })?;
         let account = self.get(&id).await?.state;
 
         self.opened(id, account, self.clock.now()).await

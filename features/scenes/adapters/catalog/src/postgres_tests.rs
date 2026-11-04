@@ -5,7 +5,7 @@ use scenes_core::{CatalogError, ProjectLink, SceneCatalog, SceneId};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::{Duration, OffsetDateTime};
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::{PostgresQuotationRestylingTasks, PostgresSceneCatalog};
@@ -74,36 +74,26 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_scene_stand
         let in_project = project.clone();
         let (remembered, forgotten) = tokio::join!(
             tokio::spawn(async move {
-                let mut transaction = remembered_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                remembering
-                    .remember(&mut transaction, id, &in_project)
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*remembered_in, |transaction| {
+                    remembering
+                        .remember(transaction, id, &in_project)
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
             tokio::spawn(async move {
-                let mut transaction = forgotten_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                forgetting
-                    .forget(
-                        &mut transaction,
-                        id,
-                        OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000),
-                    )
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*forgotten_in, |transaction| {
+                    forgetting
+                        .forget(
+                            transaction,
+                            id,
+                            OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000),
+                        )
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
         );
         remembered

@@ -100,9 +100,6 @@ impl ProjectCatalog for PostgresProjectCatalog {
         transaction: &mut Transaction,
         summary: &ProjectSummary,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.version.count() as i64)
@@ -123,9 +120,6 @@ impl ProjectCatalog for PostgresProjectCatalog {
         id: &ProjectId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &id.to_string())
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(at)

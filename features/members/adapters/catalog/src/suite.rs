@@ -4,7 +4,7 @@ use eventsourcing::{AccountId, Version};
 use members_core::{
     CatalogError, Member, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -48,9 +48,15 @@ impl<C: MembershipCatalog> Committing<'_, C> {
     }
 
     pub async fn remember(&self, members: &ProjectMembers) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.remember(&mut transaction, members).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember(transaction, members)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_trash(
@@ -59,32 +65,44 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         version: u64,
         in_the_trash: bool,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember_trash(
-                &mut transaction,
-                &ProjectLink::from(project),
-                Version::of(version),
-                in_the_trash,
-            )
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_trash(
+                    transaction,
+                    &ProjectLink::from(project),
+                    Version::of(version),
+                    in_the_trash,
+                )
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_trash(&self, project: &str) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .forget_trash(&mut transaction, &ProjectLink::from(project))
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_trash(transaction, &ProjectLink::from(project))
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .remember_person(&mut transaction, person)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_person(transaction, person)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

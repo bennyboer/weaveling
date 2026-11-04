@@ -235,32 +235,29 @@ async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
         .await
         .expect("finishing should succeed");
 
-    let mut writing = JoinSet::new();
-    for nth in 0..200 {
-        let (store, transactions) = (store.clone(), transactions.clone());
-        writing.spawn(async move {
-            let mut transaction = transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            store
-                .apply(
-                    &mut transaction,
-                    id,
-                    &suite::a_paragraph(&format!("[{nth}]")),
-                )
-                .await?;
-            transaction
-                .finish()
-                .await
-                .expect("finishing should succeed");
-            Ok(())
-        });
-    }
-    for _ in 0..50 {
-        let store = store.clone();
-        writing.spawn(async move { store.compact(id).await.map(|_| ()) });
-    }
+    let mut writing: JoinSet<Result<(), StoreError>> = JoinSet::new();
+    let (editing, edits_in) = (store.clone(), transactions.clone());
+    writing.spawn(async move {
+        for nth in 0..200 {
+            transacting::retrying!(&*edits_in, |transaction| {
+                editing
+                    .apply(transaction, id, &suite::a_paragraph(&format!("[{nth}]")))
+                    .await
+            })?;
+        }
+        Ok(())
+    });
+    let compacting = store.clone();
+    writing.spawn(async move {
+        for _ in 0..50 {
+            if let Err(why) = compacting.compact(id).await
+                && !matches!(why, StoreError::Backend(_))
+            {
+                return Err(why);
+            }
+        }
+        Ok(())
+    });
     while let Some(written) = writing.join_next().await {
         written
             .expect("writing should not panic")

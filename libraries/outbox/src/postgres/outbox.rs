@@ -58,12 +58,14 @@ impl PostgresOutbox {
     }
 
     async fn mark_published(&self, entry: i64) -> Result<(), OutboxError> {
-        sqlx::query(MARK_PUBLISHED)
-            .bind(entry)
-            .bind(self.clock.now())
-            .execute(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+        transacting::postgres::retried(|| {
+            sqlx::query(MARK_PUBLISHED)
+                .bind(entry)
+                .bind(self.clock.now())
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
 
         Ok(())
     }
@@ -82,13 +84,15 @@ impl Outbox for PostgresOutbox {
 
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let now = self.clock.now();
-        let claimed = sqlx::query(CLAIM)
-            .bind(now)
-            .bind(now + CLAIM_FOR)
-            .bind(at_most)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+        let claimed = transacting::postgres::retried(|| {
+            sqlx::query(CLAIM)
+                .bind(now)
+                .bind(now + CLAIM_FOR)
+                .bind(at_most)
+                .fetch_all(&self.pool)
+        })
+        .await
+        .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
 
         let mut waiting = claimed.iter().map(waiting).collect::<Result<Vec<_>, _>>()?;
         waiting.sort_by_key(|(entry, _)| *entry);
@@ -119,12 +123,14 @@ impl Outbox for PostgresOutbox {
         before: OffsetDateTime,
         at_most: i64,
     ) -> Result<u64, OutboxError> {
-        let gone = sqlx::query(DELETE_PUBLISHED)
-            .bind(before)
-            .bind(at_most)
-            .execute(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+        let gone = transacting::postgres::retried(|| {
+            sqlx::query(DELETE_PUBLISHED)
+                .bind(before)
+                .bind(at_most)
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
 
         Ok(gone.rows_affected())
     }

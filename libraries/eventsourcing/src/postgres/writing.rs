@@ -1,5 +1,5 @@
 use outbox::Origin;
-use transacting::{Failure, Transaction};
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
@@ -12,8 +12,6 @@ const HEAD: &str = "
     FROM events
     WHERE aggregate = $1 AND kind = $2
 ";
-
-const DEADLOCK_DETECTED: &str = "40P01";
 
 const WRITE: &str = "
     INSERT INTO events
@@ -37,12 +35,6 @@ where
             return Ok(());
         }
 
-        crate::postgres::one_stream_at_a_time(transaction, aggregate, kind)
-            .await
-            .map_err(|failure| match is_deadlock(&failure) {
-                true => StoreError::outdated(aggregate, kind, expected),
-                false => StoreError::backend(aggregate, kind, failure.to_string()),
-            })?;
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
@@ -120,18 +112,6 @@ where
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
-}
-
-fn is_deadlock(failure: &Failure) -> bool {
-    let Failure::Backend(reason) = failure else {
-        return false;
-    };
-
-    reason
-        .downcast_ref::<sqlx::Error>()
-        .and_then(sqlx::Error::as_database_error)
-        .and_then(|database| database.code())
-        .is_some_and(|code| code == DEADLOCK_DETECTED)
 }
 
 fn is_unique_violation(failure: &sqlx::Error) -> bool {

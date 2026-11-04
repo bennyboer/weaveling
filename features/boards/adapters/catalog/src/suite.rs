@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 use time::OffsetDateTime;
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -46,21 +46,39 @@ impl<C: BoardCatalog> Committing<'_, C> {
     }
 
     pub async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.remember(&mut transaction, summary).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember(transaction, summary)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.forget(&mut transaction, board, at).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget(transaction, board, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog.holds(&mut transaction, board, ideas).await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .holds(transaction, board, ideas)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn lay_tombstone(
@@ -68,11 +86,15 @@ impl<C: BoardCatalog> Committing<'_, C> {
         idea: &IdeaLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .lay_tombstone(&mut transaction, idea, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .lay_tombstone(transaction, idea, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -80,14 +102,16 @@ impl<C: BoardCatalog> Committing<'_, C> {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let done = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn lay_project_tombstone(
@@ -95,11 +119,15 @@ impl<C: BoardCatalog> Committing<'_, C> {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, project, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .lay_project_tombstone(transaction, project, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

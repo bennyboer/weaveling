@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::{Duration, OffsetDateTime};
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -52,14 +52,16 @@ impl<C: WordCountCatalog> Committing<'_, C> {
         words: u64,
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let kept = self
-            .catalog
-            .keep(&mut transaction, scene, project, words, counted_at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let kept = self
+                .catalog
+                .keep(transaction, scene, project, words, counted_at)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(kept)
+            Ok(kept)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_scene(
@@ -67,11 +69,15 @@ impl<C: WordCountCatalog> Committing<'_, C> {
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.catalog
-            .forget_scene(&mut transaction, scene, at)
-            .await?;
-        transaction.finish().await.map_err(unreachable)
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_scene(transaction, scene, at)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -79,14 +85,16 @@ impl<C: WordCountCatalog> Committing<'_, C> {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await.map_err(unreachable)?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 }
 

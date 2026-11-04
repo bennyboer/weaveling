@@ -18,7 +18,7 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use memory::InMemoryTransactions;
-pub use retrying::LostRace;
+pub use retrying::{LostRace, Tried};
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresTransactions;
@@ -41,6 +41,14 @@ pub enum Failure {
     Backend(#[source] Box<dyn Error + Send + Sync>),
     #[error("the transaction was begun by another backend than the one it was handed to")]
     BegunElsewhere,
+    #[error("the transaction lost a race to another and is to be tried again")]
+    LostRace,
+}
+
+impl LostRace for Failure {
+    fn lost_race(&self) -> bool {
+        matches!(self, Failure::LostRace)
+    }
 }
 
 #[async_trait]
@@ -58,6 +66,10 @@ pub trait Transactions: Send + Sync {
 #[async_trait]
 pub(crate) trait Unit: Send + 'static {
     async fn commit(self: Box<Self>) -> Result<(), Failure>;
+
+    fn lost_race(&self) -> bool {
+        false
+    }
 
     fn as_any(&mut self) -> &mut dyn Any;
 }
@@ -80,6 +92,11 @@ impl Transaction {
 
     pub fn after_commit(&mut self, followup: impl Future<Output = ()> + Send + 'static) {
         self.after_commit.push(Box::pin(followup));
+    }
+
+    /// Whether a statement in it lost a race to another transaction, however its failure was answered: the work is then to be tried again, in a fresh transaction.
+    pub fn lost_race(&self) -> bool {
+        self.unit.lost_race()
     }
 
     pub async fn finish(self) -> Result<(), Failure> {

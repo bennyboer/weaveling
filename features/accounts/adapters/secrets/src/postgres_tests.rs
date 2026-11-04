@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::{Duration, OffsetDateTime};
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresSecrets;
@@ -50,7 +50,7 @@ impl Workbench for OnPostgres {
 crate::conformance_tests!(OnPostgres);
 
 #[tokio::test]
-async fn a_dismissal_waits_for_an_appointment_under_way() {
+async fn a_dismissal_and_an_appointment_under_way_end_as_if_one_went_first() {
     let bench = OnPostgres::setup().await;
     let (kept, newcomer) = (
         AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000)),
@@ -83,21 +83,14 @@ async fn a_dismissal_waits_for_an_appointment_under_way() {
 
     let (dismissal, ()) = tokio::join!(
         async {
-            let mut dismissing = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            let dismissal = bench
-                .store
-                .dismiss(&mut dismissing, &newcomer)
-                .await
-                .expect("dismissing should succeed");
-            dismissing
-                .finish()
-                .await
-                .expect("committing should succeed");
-            dismissal
+            transacting::retrying!(&bench.transactions, |dismissing| {
+                bench
+                    .store
+                    .dismiss(dismissing, &newcomer)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("dismissing should succeed")
         },
         async {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -108,76 +101,25 @@ async fn a_dismissal_waits_for_an_appointment_under_way() {
         }
     );
 
-    assert_eq!(
-        dismissal,
-        Dismissal::Dismissed,
-        "a dismissal that did not wait would find nobody to dismiss, and the appointment landing after it \
-         would leave an operator the events never made"
-    );
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn whether_one_is_an_operator_waits_for_a_dismissal_under_way() {
-    let bench = OnPostgres::setup().await;
-    let (kept, leaving) = (
-        AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000)),
-        AccountId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
-    );
-    for account in [&kept, &leaving] {
-        let mut appointing = bench
-            .transactions
-            .begin()
-            .await
-            .expect("beginning should succeed");
-        bench
-            .store
-            .appoint(&mut appointing, account)
-            .await
-            .expect("appointing should succeed");
-        appointing
-            .finish()
-            .await
-            .expect("committing should succeed");
-    }
-    let mut dismissing = bench
+    let mut asking = bench
         .transactions
         .begin()
         .await
         .expect("beginning should succeed");
-    bench
+    let appointed = bench
         .store
-        .dismiss(&mut dismissing, &leaving)
+        .is_appointed(&mut asking, &newcomer)
         .await
-        .expect("dismissing should succeed");
-
-    let (appointed, ()) = tokio::join!(
-        async {
-            let mut acting = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            let appointed = bench
-                .store
-                .is_appointed(&mut acting, &leaving)
-                .await
-                .expect("asking should succeed");
-            acting.finish().await.expect("committing should succeed");
-            appointed
-        },
-        async {
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            dismissing
-                .finish()
-                .await
-                .expect("committing should succeed");
-        }
-    );
+        .expect("asking should succeed");
+    drop(asking);
 
     assert!(
-        !appointed,
-        "an operator acting while they are dismissed waits for the dismissal, or their act lands after it"
+        matches!(
+            (dismissal, appointed),
+            (Dismissal::Dismissed, false) | (Dismissal::NotAppointed, true)
+        ),
+        "the two end as if one went first, a dismissal told there was nobody to dismiss leaving the newcomer \
+         appointed, as the events in that order do: {dismissal:?}, {appointed}"
     );
     bench.cleanup().await;
 }

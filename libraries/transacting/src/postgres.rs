@@ -1,11 +1,23 @@
 use std::any::Any;
+use std::fmt::{self, Debug, Formatter};
+use std::future::Future;
 
 use async_trait::async_trait;
-use sqlx::{PgConnection, PgPool, Postgres};
+use futures_util::future::BoxFuture;
+use futures_util::stream::BoxStream;
+use futures_util::{FutureExt, StreamExt, TryFutureExt, TryStreamExt};
+
+use sqlx::postgres::{PgQueryResult, PgRow, PgStatement, PgTypeInfo};
+use sqlx::{Describe, Either, Execute, Executor, PgPool, Postgres, SqlStr};
 
 use crate::{Failure, Transaction, Transactions, Unit};
 
-const ONE_AT_A_TIME: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
+/// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which the transaction's `Connection` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
+pub const SERIALIZABLE: &str =
+    "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+
+const SERIALIZATION_FAILURE: &str = "40001";
+const DEADLOCK_DETECTED: &str = "40P01";
 
 #[derive(Clone)]
 pub struct PostgresTransactions {
@@ -27,19 +39,23 @@ impl Transactions for PostgresTransactions {
             .await
             .map_err(|failure| Failure::Backend(Box::new(failure)))?;
 
-        Ok(Transaction::of(PostgresUnit(begun)))
+        Ok(Transaction::of(PostgresUnit(Connection {
+            begun,
+            lost_race: false,
+        })))
     }
 }
 
-struct PostgresUnit(sqlx::Transaction<'static, Postgres>);
+struct PostgresUnit(Connection);
 
 #[async_trait]
 impl Unit for PostgresUnit {
     async fn commit(self: Box<Self>) -> Result<(), Failure> {
-        self.0
-            .commit()
-            .await
-            .map_err(|failure| Failure::Backend(Box::new(failure)))
+        self.0.begun.commit().await.map_err(failed)
+    }
+
+    fn lost_race(&self) -> bool {
+        self.0.lost_race
     }
 
     fn as_any(&mut self) -> &mut dyn Any {
@@ -47,19 +63,109 @@ impl Unit for PostgresUnit {
     }
 }
 
-pub fn connection(transaction: &mut Transaction) -> Result<&mut PgConnection, Failure> {
-    Ok(&mut *transaction.backend::<PostgresUnit>()?.0)
+/// A transaction's connection, as adapters reach it through `connection`.
+///
+/// Whatever an adapter makes of a failed query, as a message in its own error, the transaction remembers that a statement lost to another transaction, a serialization failure or a deadlock, so `retrying!` can try the whole work again however the failure came up to it.
+pub struct Connection {
+    begun: sqlx::Transaction<'static, Postgres>,
+    lost_race: bool,
 }
 
-/// Lets one transaction at a time past this point for `key`, until it commits or rolls back.
-///
-/// Two writes that each read before they write, as an upsert that checks for a tombstone and the forgetting that lays one, can both read before either commits under PostgreSQL's READ COMMITTED, and each miss the other. Taking the same key first, the second waits for the first and then reads what it committed. SQLite's one writer and the memory's one lock do this already, so only PostgreSQL adapters ask. The key is shared by the whole database, so it names what it holds, as `appearance:idea:idea_1` or an id that says its kind.
-pub async fn one_at_a_time(transaction: &mut Transaction, key: &str) -> Result<(), Failure> {
-    sqlx::query(ONE_AT_A_TIME)
-        .bind(key)
-        .execute(connection(transaction)?)
-        .await
-        .map_err(|failure| Failure::Backend(Box::new(failure)))?;
+impl Debug for Connection {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Connection")
+            .field("lost_race", &self.lost_race)
+            .finish_non_exhaustive()
+    }
+}
 
-    Ok(())
+impl<'c> Executor<'c> for &'c mut Connection {
+    type Database = Postgres;
+
+    fn fetch_many<'e, 'q: 'e, E>(
+        self,
+        query: E,
+    ) -> BoxStream<'e, Result<Either<PgQueryResult, PgRow>, sqlx::Error>>
+    where
+        'c: 'e,
+        E: 'q + Execute<'q, Postgres>,
+    {
+        let Connection { begun, lost_race } = self;
+
+        (&mut **begun)
+            .fetch_many(query)
+            .inspect_err(move |failure| *lost_race |= crate::postgres::lost(failure))
+            .boxed()
+    }
+
+    fn fetch_optional<'e, 'q: 'e, E>(
+        self,
+        query: E,
+    ) -> BoxFuture<'e, Result<Option<PgRow>, sqlx::Error>>
+    where
+        'c: 'e,
+        E: 'q + Execute<'q, Postgres>,
+    {
+        let Connection { begun, lost_race } = self;
+
+        (&mut **begun)
+            .fetch_optional(query)
+            .inspect_err(move |failure| *lost_race |= crate::postgres::lost(failure))
+            .boxed()
+    }
+
+    fn prepare_with<'e>(
+        self,
+        sql: SqlStr,
+        parameters: &'e [PgTypeInfo],
+    ) -> BoxFuture<'e, Result<PgStatement, sqlx::Error>>
+    where
+        'c: 'e,
+    {
+        (&mut *self.begun).prepare_with(sql, parameters)
+    }
+
+    fn describe<'e>(self, sql: SqlStr) -> BoxFuture<'e, Result<Describe<Postgres>, sqlx::Error>>
+    where
+        'c: 'e,
+    {
+        (&mut *self.begun).describe(sql)
+    }
+}
+
+pub fn connection(transaction: &mut Transaction) -> Result<&mut Connection, Failure> {
+    Ok(&mut transaction.backend::<PostgresUnit>()?.0)
+}
+
+/// Runs a statement on the pool, outside any `Transaction`, again after it lost a race, as `retrying!` runs a transaction: a statement on its own is a transaction of its own, serializable as every other, and may lose one just the same.
+pub async fn retried<T, F, Running>(mut statement: F) -> Result<T, sqlx::Error>
+where
+    F: FnMut() -> Running,
+    Running: Future<Output = Result<T, sqlx::Error>>,
+{
+    let mut tried = 1;
+    loop {
+        match statement().await {
+            Err(failure) if crate::postgres::lost(&failure) && tried < crate::retrying::TRIES => {
+                crate::retrying::pause(tried).await;
+                tried += 1;
+            }
+            outcome => return outcome,
+        }
+    }
+}
+
+fn failed(failure: sqlx::Error) -> Failure {
+    match crate::postgres::lost(&failure) {
+        true => Failure::LostRace,
+        false => Failure::Backend(Box::new(failure)),
+    }
+}
+
+fn lost(failure: &sqlx::Error) -> bool {
+    failure
+        .as_database_error()
+        .and_then(|database| database.code())
+        .is_some_and(|code| code == SERIALIZATION_FAILURE || code == DEADLOCK_DETECTED)
 }

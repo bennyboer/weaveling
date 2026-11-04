@@ -149,17 +149,17 @@ impl AccountsCore {
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        let fresh = self
-            .invitation_tickets
-            .keep_ticket(&mut transaction, digest, ticket)
-            .await?;
-        if fresh && ticket.scope == InvitationScope::Instance {
-            self.declined_for_an_account(&mut transaction, ticket)
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            let fresh = self
+                .invitation_tickets
+                .keep_ticket(transaction, digest, ticket)
                 .await?;
-        }
+            if fresh && ticket.scope == InvitationScope::Instance {
+                self.declined_for_an_account(transaction, ticket).await?;
+            }
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     async fn declined_for_an_account(
@@ -215,12 +215,13 @@ impl AccountsCore {
         version: u64,
         in_the_trash: bool,
     ) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.invitation_tickets
-            .remember_trash(&mut transaction, project, version, in_the_trash)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.invitation_tickets
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn forget_trash(
@@ -228,12 +229,13 @@ impl AccountsCore {
         within: Option<&mut Transaction>,
         project: &str,
     ) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.invitation_tickets
-            .forget_trash(&mut transaction, project)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.invitation_tickets
+                .forget_trash(transaction, project)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn forget_invitation_ticket(
@@ -241,12 +243,13 @@ impl AccountsCore {
         within: Option<&mut Transaction>,
         invitation: &str,
     ) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.invitation_tickets
-            .forget_ticket(&mut transaction, invitation)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.invitation_tickets
+                .forget_ticket(transaction, invitation)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn drop_invitation_ticket(
@@ -254,11 +257,12 @@ impl AccountsCore {
         within: Option<&mut Transaction>,
         invitation: &str,
     ) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.invitation_tickets
-            .drop_ticket(&mut transaction, invitation)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.invitation_tickets
+                .drop_ticket(transaction, invitation)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 }

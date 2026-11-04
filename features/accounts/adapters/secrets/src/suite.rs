@@ -8,7 +8,7 @@ use std::ops::Deref;
 
 use futures_util::future;
 use time::OffsetDateTime;
-use transacting::{Transaction, Transactions};
+use transacting::{Transaction, Transactions, Tried};
 
 pub trait Secrets:
     EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications
@@ -52,12 +52,15 @@ impl<S: Secrets> Committing<'_, S> {
         account: &AccountId,
         at: OffsetDateTime,
     ) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store
-            .claim(&mut transaction, email, account, at)
-            .await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .claim(transaction, email, account, at)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn take_over(
@@ -68,14 +71,16 @@ impl<S: Secrets> Committing<'_, S> {
         claimed_before: OffsetDateTime,
         at: OffsetDateTime,
     ) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let taken = self
-            .store
-            .take_over(&mut transaction, email, from, to, claimed_before, at)
-            .await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let taken = self
+                .store
+                .take_over(transaction, email, from, to, claimed_before, at)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(taken)
+            Ok(taken)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn release(
@@ -83,10 +88,15 @@ impl<S: Secrets> Committing<'_, S> {
         email: &EmailAddress,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.release(&mut transaction, email, account).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .release(transaction, email, account)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn keep(
@@ -94,10 +104,15 @@ impl<S: Secrets> Committing<'_, S> {
         account: &AccountId,
         password: &PasswordHash,
     ) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.keep(&mut transaction, account, password).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .keep(transaction, account, password)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn keep_ticket(
@@ -105,55 +120,80 @@ impl<S: Secrets> Committing<'_, S> {
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let kept = self
-            .store
-            .keep_ticket(&mut transaction, digest, ticket)
-            .await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let kept = self
+                .store
+                .keep_ticket(transaction, digest, ticket)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(kept)
+            Ok(kept)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn take_ticket(
         &self,
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let taken = self.store.take_ticket(&mut transaction, digest).await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let taken = self
+                .store
+                .take_ticket(transaction, digest)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(taken)
+            Ok(taken)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store
-            .forget_ticket(&mut transaction, invitation)
-            .await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .forget_ticket(transaction, invitation)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.drop_ticket(&mut transaction, invitation).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .drop_ticket(transaction, invitation)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.open(&mut transaction, digest, session).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .open(transaction, digest, session)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.end(&mut transaction, digest).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .end(transaction, digest)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn issue(
@@ -162,12 +202,15 @@ impl<S: Secrets> Committing<'_, S> {
         purpose: CodePurpose,
         pending: &PendingVerification,
     ) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store
-            .issue(&mut transaction, account, purpose, pending)
-            .await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .issue(transaction, account, purpose, pending)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn attempt(
@@ -176,14 +219,16 @@ impl<S: Secrets> Committing<'_, S> {
         purpose: CodePurpose,
         within: u32,
     ) -> Result<Attempt, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let done = self
-            .store
-            .attempt(&mut transaction, account, purpose, within)
-            .await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .store
+                .attempt(transaction, account, purpose, within)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn close(
@@ -192,58 +237,85 @@ impl<S: Secrets> Committing<'_, S> {
         purpose: CodePurpose,
         code: &str,
     ) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let closed = self
-            .store
-            .close(
-                &mut transaction,
-                account,
-                purpose,
-                &VerificationCode::kept(code.to_owned()),
-            )
-            .await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let closed = self
+                .store
+                .close(
+                    transaction,
+                    account,
+                    purpose,
+                    &VerificationCode::kept(code.to_owned()),
+                )
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(closed)
+            Ok(closed)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn keep_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let kept = self.store.keep_code(&mut transaction, digest).await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let kept = self
+                .store
+                .keep_code(transaction, digest)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(kept)
+            Ok(kept)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn is_appointed(&self, account: &AccountId) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let appointed = self.store.is_appointed(&mut transaction, account).await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let appointed = self
+                .store
+                .is_appointed(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(appointed)
+            Ok(appointed)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let done = self.store.take_code(&mut transaction, digest).await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .store
+                .take_code(transaction, digest)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.appoint(&mut transaction, account).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .appoint(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
-        let mut transaction = self.begun().await?;
-        let done = self.store.dismiss(&mut transaction, account).await?;
-        self.finished(transaction).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            let done = self
+                .store
+                .dismiss(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
 
-        Ok(done)
+            Ok(done)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn remember_trash(
@@ -252,19 +324,27 @@ impl<S: Secrets> Committing<'_, S> {
         version: u64,
         in_the_trash: bool,
     ) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store
-            .remember_trash(&mut transaction, project, version, in_the_trash)
-            .await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn forget_trash(&self, project: &str) -> Result<(), SecretsError> {
-        let mut transaction = self.begun().await?;
-        self.store.forget_trash(&mut transaction, project).await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .forget_trash(transaction, project)
+                .await
+                .map_err(Tried::Refused)?;
 
-        self.finished(transaction).await
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
     pub async fn in_the_trash(&self, project: &str) -> bool {
@@ -294,6 +374,10 @@ impl<S: Secrets> Committing<'_, S> {
             .await
             .map_err(|failure| SecretsError::Backend(Box::new(failure)))
     }
+}
+
+fn unreachable(failure: transacting::Failure) -> SecretsError {
+    SecretsError::Backend(Box::new(failure))
 }
 
 impl<S> Deref for Committing<'_, S> {

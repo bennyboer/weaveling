@@ -92,6 +92,15 @@ pub async fn connect(server: &str, feature: &str) -> Result<PgPool, Unprepared> 
 
     PgPoolOptions::new()
         .max_connections(POOLED)
+        .after_connect(|connection, _| {
+            Box::pin(async move {
+                connection
+                    .execute(transacting::postgres::SERIALIZABLE)
+                    .await?;
+
+                Ok(())
+            })
+        })
         .connect(&beside(server, &database))
         .await
         .map_err(|why| Unprepared::Unreachable {

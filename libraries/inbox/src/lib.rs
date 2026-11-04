@@ -26,7 +26,7 @@ use async_trait::async_trait;
 use messaging::{ListenerName, MessageId};
 use thiserror::Error;
 use time::OffsetDateTime;
-use transacting::{Failure, Transaction};
+use transacting::{Failure, LostRace, Transaction};
 
 #[derive(Debug, Error)]
 pub enum InboxError {
@@ -34,6 +34,21 @@ pub enum InboxError {
     Unreachable(String),
     #[error(transparent)]
     Transacting(#[from] Failure),
+}
+
+/// A failure in a transaction `retrying!` runs, tried again only when the transaction lost a race, which the transaction knows.
+pub(crate) struct Failed(pub(crate) Box<dyn std::error::Error + Send + Sync>);
+
+impl LostRace for Failed {
+    fn lost_race(&self) -> bool {
+        false
+    }
+}
+
+impl<E: Into<Box<dyn std::error::Error + Send + Sync>>> From<E> for Failed {
+    fn from(failure: E) -> Self {
+        Failed(failure.into())
+    }
 }
 
 #[async_trait]

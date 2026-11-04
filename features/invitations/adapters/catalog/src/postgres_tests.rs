@@ -8,7 +8,7 @@ use invitations_core::{
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
-use transacting::{PostgresTransactions, Transaction, Transactions};
+use transacting::{PostgresTransactions, Transaction, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresInvitationCatalog;
@@ -96,30 +96,22 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
         let id = summary.id;
         let (remembered, forgotten) = tokio::join!(
             tokio::spawn(async move {
-                let mut transaction = remembered_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                remembering.remember(&mut transaction, &summary).await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*remembered_in, |transaction| {
+                    remembering
+                        .remember(transaction, &summary)
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
             tokio::spawn(async move {
-                let mut transaction = forgotten_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                forgetting
-                    .forget(&mut transaction, &id, suite::at(5_000))
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*forgotten_in, |transaction| {
+                    forgetting
+                        .forget(transaction, &id, suite::at(5_000))
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
         );
         remembered
@@ -175,24 +167,21 @@ async fn buried_while(
 ) -> OnPostgres {
     tokio::join!(
         async {
-            let mut burying = bench
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            bench
-                .store
-                .lay_project_tombstone(&mut burying, project, OffsetDateTime::UNIX_EPOCH)
-                .await
-                .expect("laying a tombstone should succeed");
-            burying.finish().await.expect("committing should succeed");
+            transacting::retrying!(&bench.transactions, |burying| {
+                bench
+                    .store
+                    .lay_project_tombstone(burying, project, OffsetDateTime::UNIX_EPOCH)
+                    .await
+                    .map_err(Tried::Refused)
+            })
+            .expect("laying a tombstone should succeed");
         },
         async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            remembering
-                .finish()
-                .await
-                .expect("committing should succeed");
+            match remembering.finish().await {
+                Ok(()) | Err(transacting::Failure::LostRace) => {}
+                Err(failed) => panic!("committing should succeed or lose the race: {failed:?}"),
+            }
         }
     );
 
@@ -200,7 +189,7 @@ async fn buried_while(
 }
 
 #[tokio::test]
-async fn a_project_s_tombstone_waits_for_its_name_under_way() {
+async fn a_project_s_tombstone_laid_while_its_name_is_under_way_leaves_no_name() {
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut naming = bench
@@ -236,7 +225,7 @@ async fn a_project_s_tombstone_waits_for_its_name_under_way() {
 }
 
 #[tokio::test]
-async fn a_project_s_tombstone_waits_for_its_trash_under_way() {
+async fn a_project_s_tombstone_laid_while_its_trash_is_under_way_leaves_no_trash() {
     let bench = OnPostgres::setup().await;
     let project = ProjectLink::from("project_loom");
     let mut trashing = bench

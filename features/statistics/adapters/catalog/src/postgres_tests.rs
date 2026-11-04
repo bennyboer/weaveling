@@ -5,7 +5,7 @@ use sqlx::PgPool;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
 use test_harness::PostgresFixture;
 use time::{Duration, OffsetDateTime};
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
 use crate::postgres::PostgresWordCountCatalog;
@@ -71,29 +71,22 @@ async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_cou
         let (kept_scene, forgotten_scene, of) = (scene.clone(), scene, project.clone());
         let (kept, forgotten) = tokio::join!(
             tokio::spawn(async move {
-                let mut transaction = kept_in.begin().await.expect("beginning should succeed");
-                keeping
-                    .keep(&mut transaction, &kept_scene, &of, 42, at(1_000))
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*kept_in, |transaction| {
+                    keeping
+                        .keep(transaction, &kept_scene, &of, 42, at(1_000))
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
             tokio::spawn(async move {
-                let mut transaction = forgotten_in
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                forgetting
-                    .forget_scene(&mut transaction, &forgotten_scene, at(5_000))
-                    .await?;
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-                Ok::<_, CatalogError>(())
+                transacting::retrying!(&*forgotten_in, |transaction| {
+                    forgetting
+                        .forget_scene(transaction, &forgotten_scene, at(5_000))
+                        .await
+                        .map_err(Tried::Refused)?;
+                    Ok::<_, Tried<CatalogError>>(())
+                })
             }),
         );
         kept.expect("keeping should not panic")

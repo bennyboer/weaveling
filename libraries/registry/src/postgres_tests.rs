@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
-use transacting::{PostgresTransactions, Transactions};
+use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::Registry;
 use crate::postgres;
@@ -62,25 +62,13 @@ async fn a_race_for_one_key_leaves_exactly_one_winner() {
             let transactions = PostgresTransactions::new(bench.pool.clone());
 
             tokio::spawn(async move {
-                let mut transaction = transactions
-                    .begin()
-                    .await
-                    .expect("beginning should succeed");
-                let held = registry
-                    .claim(
-                        &mut transaction,
-                        "board",
-                        "project_1",
-                        &format!("board_{nth}"),
-                    )
-                    .await
-                    .expect("claiming should succeed");
-                transaction
-                    .finish()
-                    .await
-                    .expect("finishing should succeed");
-
-                held
+                transacting::retrying!(&transactions, |transaction| {
+                    registry
+                        .claim(transaction, "board", "project_1", &format!("board_{nth}"))
+                        .await
+                        .map_err(Tried::Refused)
+                })
+                .expect("claiming should succeed")
             })
         })
         .collect();

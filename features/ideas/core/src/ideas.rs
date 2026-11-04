@@ -55,19 +55,18 @@ impl IdeasCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Write, &project, || IdeasError::ProjectNotThere)
             .await?;
-        let mut transaction = self.transactions.begin().await?;
-        if self
-            .catalog
-            .has_project_tombstone_within(&mut transaction, &project)
-            .await?
-        {
-            return Err(IdeasError::ProjectNotThere);
-        }
-        let id = self
-            .service
-            .capture(&mut transaction, &project, title, agent)
-            .await?;
-        transaction.finish().await?;
+        let id = transacting::retrying!(&*self.transactions, |transaction| {
+            if self
+                .catalog
+                .has_project_tombstone_within(transaction, &project)
+                .await?
+            {
+                return Err(IdeasError::ProjectNotThere);
+            }
+            self.service
+                .capture(transaction, &project, title, agent)
+                .await
+        })?;
 
         Ok((id, self.service.latest(&id).await?))
     }
@@ -142,14 +141,12 @@ impl IdeasCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, IdeasError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
-
-        Ok(forgotten)
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok(self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?)
+        })
     }
 
     pub async fn catalogue(
@@ -159,30 +156,30 @@ impl IdeasCore {
     ) -> Result<(), IdeasError> {
         let standing = self.service.latest(id).await?;
 
-        let mut transaction = self.transactions.join(within).await?;
-        if standing.state.is_discarded() {
-            self.catalog
-                .forget(&mut transaction, id, self.clock.now())
-                .await?;
-        } else if self
-            .catalog
-            .has_project_tombstone_within(&mut transaction, standing.state.project())
-            .await?
-        {
-            self.service
-                .discard(&mut transaction, id, None, &Agent::System)
-                .await?;
-        } else {
-            self.catalog
-                .remember(
-                    &mut transaction,
-                    &IdeaSummary::of(*id, standing.version, &standing.state),
-                )
-                .await?;
-        }
-        transaction.finish().await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if standing.state.is_discarded() {
+                self.catalog
+                    .forget(transaction, id, self.clock.now())
+                    .await?;
+            } else if self
+                .catalog
+                .has_project_tombstone_within(transaction, standing.state.project())
+                .await?
+            {
+                self.service
+                    .discard(transaction, id, None, &Agent::System)
+                    .await?;
+            } else {
+                self.catalog
+                    .remember(
+                        transaction,
+                        &IdeaSummary::of(*id, standing.version, &standing.state),
+                    )
+                    .await?;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     pub async fn lay_project_tombstone(
@@ -190,12 +187,12 @@ impl IdeasCore {
         project: &str,
         at: OffsetDateTime,
     ) -> Result<(), IdeasError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.catalog
-            .lay_project_tombstone(&mut transaction, &ProjectLink::from(project), at)
-            .await?;
-
-        Ok(transaction.finish().await?)
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok(self
+                .catalog
+                .lay_project_tombstone(transaction, &ProjectLink::from(project), at)
+                .await?)
+        })
     }
 
     pub async fn sweep(

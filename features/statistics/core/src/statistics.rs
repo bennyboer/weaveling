@@ -58,18 +58,19 @@ impl StatisticsCore {
         words: u64,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .keep(
-                &mut transaction,
-                &SceneLink::from(scene),
-                &ProjectLink::from(project),
-                words,
-                at,
-            )
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .keep(
+                    transaction,
+                    &SceneLink::from(scene),
+                    &ProjectLink::from(project),
+                    words,
+                    at,
+                )
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn scene_deleted(
@@ -78,12 +79,13 @@ impl StatisticsCore {
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
-        let mut transaction = self.transactions.join(within).await?;
-        self.catalog
-            .forget_scene(&mut transaction, &SceneLink::from(scene), at)
-            .await?;
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .forget_scene(transaction, &SceneLink::from(scene), at)
+                .await?;
 
-        Ok(transaction.finish().await?)
+            Ok(())
+        })
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -91,13 +93,13 @@ impl StatisticsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, StatisticsError> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .catalog
-            .forget_tombstones_laid_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-        Ok(forgotten)
+            Ok(forgotten)
+        })
     }
 }
