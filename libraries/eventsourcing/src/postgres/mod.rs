@@ -13,7 +13,7 @@ pub use schema::migrations;
 
 use async_trait::async_trait;
 use sqlx::PgPool;
-use transacting::Transaction;
+use transacting::{Failure, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::codec::Codec;
@@ -40,6 +40,18 @@ impl<E> PostgresEventStore<E> {
 fn as_bigint(version: Version) -> i64 {
     i64::try_from(version.count())
         .expect("no stream reaches nine quintillion events, so a version past i64::MAX is a bug")
+}
+
+async fn one_stream_at_a_time(
+    transaction: &mut Transaction,
+    aggregate: &AggregateId,
+    kind: AggregateType,
+) -> Result<(), Failure> {
+    transacting::postgres::one_at_a_time(
+        transaction,
+        &format!("events:{}:{}", kind.as_str(), aggregate.as_str()),
+    )
+    .await
 }
 
 #[async_trait]

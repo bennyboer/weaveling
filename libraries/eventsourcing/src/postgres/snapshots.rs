@@ -82,6 +82,9 @@ impl<E> PostgresEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<(), StoreError> {
+        crate::postgres::one_stream_at_a_time(transaction, aggregate, kind)
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
         sqlx::query(FORGET)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
