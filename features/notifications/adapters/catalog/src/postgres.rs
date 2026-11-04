@@ -165,9 +165,6 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         transaction: &mut Transaction,
         summary: &NoticeSummary,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("notice:{}", summary.id))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(i64::try_from(summary.version.count()).map_err(unreachable)?)
@@ -232,9 +229,6 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         transaction: &mut Transaction,
         named: &ProjectName,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{}", named.project))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(REMEMBER_PROJECT_NAME)
             .bind(named.project.to_string())
             .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
@@ -278,9 +272,6 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("project:{}", project))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
@@ -345,9 +336,6 @@ impl NoticeCatalog for PostgresNoticeCatalog {
         notice: &NoticeId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        transacting::postgres::one_at_a_time(transaction, &format!("notice:{}", notice))
-            .await
-            .map_err(unreachable)?;
         sqlx::query(LAY_NOTICE_TOMBSTONE)
             .bind(notice.to_string())
             .bind(at)
