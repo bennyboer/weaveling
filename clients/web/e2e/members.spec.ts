@@ -164,6 +164,58 @@ test("an owner changes a member's role and removes another, and the list follows
   await expect(people.filter({ hasText: "Ada Lovelace" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
 });
 
+test("two role changes close together leave the later one standing, whichever answer comes last", async ({
+  page,
+}) => {
+  // given: an owner on the members page with an author
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author" },
+  ]);
+  // and: the answer to the next change held back
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holding = true;
+  let lateAnswerTakenIn = () => {};
+  const answeredLate = new Promise<void>((resolve) => {
+    lateAnswerTakenIn = resolve;
+  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/members"),
+    async (route) => {
+      if (route.request().method() !== "PATCH" || !holding) {
+        return route.fallback();
+      }
+      holding = false;
+      await held;
+      await route.fulfill({
+        json: [
+          { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+          { ...GRACE, role: "reader" },
+        ],
+      });
+      await (await route.request().response())?.finished();
+      lateAnswerTakenIn();
+    },
+  );
+  const role = page.getByLabel("Role of Grace Hopper");
+
+  // when: the author is made a reader, then at once an owner
+  await role.selectOption("Reader");
+  await expect.poll(() => holding).toBe(false);
+  await role.selectOption("Owner");
+  await expect(role).toHaveValue("owner");
+  // and: the answer to the first comes last
+  release();
+  await answeredLate;
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
+  // then: the later change stands
+  await expect(role, "the answer to the earlier change is older than the one already shown").toHaveValue("owner");
+});
+
 test("an author sees the roles plainly and may only leave, which leads back to the projects", async ({
   page,
 }) => {

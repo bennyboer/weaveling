@@ -263,6 +263,49 @@ test("scenes answered after newer ones were told keep the newer ones and take in
   );
 });
 
+test("scenes asked for twice close together keep the later answer, whichever comes last", async ({ page }) => {
+  // given: scenes whose following the test tells
+  const live = await routingLive(page, { withheld: ["scenes"] });
+  // and: a book of one scene
+  await aNewProject(page, "ScenesAskedTwice");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  // and: the first asking for the scenes answered late, with what it read early
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let asked = 0;
+  await page.route(
+    (url) => url.pathname === "/api/scenes" && url.searchParams.has("project"),
+    async (route) => {
+      asked += 1;
+      const title = asked === 1 ? "Older" : "Newer";
+      if (asked === 1) {
+        await held;
+      }
+      await route.fulfill({
+        json: { scenes: [{ id: first, project: "", title, opening: "" }], next: null },
+      });
+    },
+  );
+
+  // when: the writing view asks for the scenes
+  await openTheWritingView(page);
+  await expect.poll(() => asked).toBe(1);
+  // and: asks again once its following begins anew
+  live.follow("scenes");
+  // then: the later answer shows
+  await expect(label(page, first)).toHaveText("Newer");
+
+  // when: the first answer arrives
+  release();
+  await page.waitForResponse((response) => new URL(response.url()).pathname === "/api/scenes");
+  await page.waitForTimeout(200);
+
+  // then: the later answer stands
+  await expect(label(page, first), "the first answer was read before the second").toHaveText("Newer");
+});
+
 test("a scene written here and then let go takes in the openings it is told again", async ({
   page,
 }) => {

@@ -176,6 +176,13 @@ export async function routingLive(page: Page, routing: Routing = {}) {
         }
       }
     },
+    follow(topic: string) {
+      for (const [id, subscription] of subscriptions) {
+        if (subscription.topic === topic) {
+          subscription.socket.send(JSON.stringify({ told: "following", id }));
+        }
+      }
+    },
     end(topic: string, why: string) {
       for (const [id, subscription] of subscriptions) {
         if (subscription.topic === topic) {

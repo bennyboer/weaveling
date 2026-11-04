@@ -19,6 +19,7 @@ pub struct Roles {
     signed_in: Memo<bool>,
     held: RwSignal<Option<BTreeMap<String, Role>>>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
+    latest: StoredValue<u64>,
 }
 
 impl Roles {
@@ -28,11 +29,13 @@ impl Roles {
             signed_in: Memo::new(move |_| matches!(session.state(), SignInState::SignedIn(_))),
             held: RwSignal::new(None),
             following: StoredValue::new_local(None),
+            latest: StoredValue::new(0),
         };
         let note = expect_context::<QuietNote>();
         let speech = expect_context::<Speech>();
 
         Effect::new(move |_| {
+            roles.latest.update_value(|latest| *latest += 1);
             roles.held.set(None);
             roles.following.set_value(roles.signed_in.get().then(|| {
                 Subscription::start(
@@ -51,8 +54,14 @@ impl Roles {
     }
 
     fn ask(self) {
+        let asked = self.latest.get_value() + 1;
+        self.latest.set_value(asked);
         task::spawn_local(async move {
-            if let Ok(held) = service::mine().await {
+            let found = service::mine().await;
+            if self.latest.try_get_value() != Some(asked) {
+                return;
+            }
+            if let Ok(held) = found {
                 _ = self.held.try_set(Some(held.into_iter().collect()));
             }
         });

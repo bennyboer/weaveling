@@ -15,24 +15,32 @@ pub fn follow(
     told: impl Fn(&SceneSummary) + Copy + 'static,
     failed: impl Fn(ApiError) + Copy + 'static,
 ) -> (Subscription, impl Fn() + Clone + 'static) {
-    let meanwhile = StoredValue::new(Vec::<SceneSummary>::new());
+    let meanwhile = StoredValue::new(None::<Vec<SceneSummary>>);
+    let latest = StoredValue::new(0_u64);
     let asking = {
         let project = project.clone();
 
         move || {
             let project = project.clone();
-            meanwhile.set_value(Vec::new());
+            let asked = latest.get_value() + 1;
+            latest.set_value(asked);
+            meanwhile.set_value(Some(Vec::new()));
 
             task::spawn_local(async move {
-                match service::in_project(&project).await {
+                let answer = service::in_project(&project).await;
+                if latest.try_get_value() != Some(asked) {
+                    return;
+                }
+                match answer {
                     Ok(all) => {
                         listed(&all);
-                        for summary in meanwhile.try_get_value().unwrap_or_default() {
+                        for summary in meanwhile.try_get_value().flatten().unwrap_or_default() {
                             told(&summary);
                         }
                     }
                     Err(failure) => failed(failure),
                 }
+                _ = meanwhile.try_set_value(None);
             });
         }
     };
@@ -42,7 +50,11 @@ pub fn follow(
         move |frame: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<SceneSummaryDTO>(frame.event) {
                 let summary = SceneSummary::from(found);
-                _ = meanwhile.try_update_value(|held| held.push(summary.clone()));
+                _ = meanwhile.try_update_value(|held| {
+                    if let Some(held) = held {
+                        held.push(summary.clone());
+                    }
+                });
                 told(&summary);
             }
         },

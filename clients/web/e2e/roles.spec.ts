@@ -200,3 +200,60 @@ test("a role changed while one is online is told, and what one may do follows it
   await expect(page.getByPlaceholder("What is the idea?")).toBeVisible();
   await expect(views(page).getByRole("link", { name: "Write" })).toBeVisible();
 });
+
+test("roles asked for twice close together keep the later answer, whichever comes last", async ({
+  page,
+}) => {
+  // given: a reader signed in, looking at the ideas
+  const { server, project } = await signedInAs(page, "reader");
+  await page.goto(`/projects/${project}/ideas`);
+  await expect(page.getByPlaceholder("What is the idea?")).toHaveCount(0);
+  await expect
+    .poll(() => subscribedTo(server, "members").filter((one) => one.about.mine === "true").length)
+    .toBeGreaterThan(0);
+  // and: the next asking for her roles answered late, with what it read early
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holding = true;
+  let lateAnswerTakenIn = () => {};
+  const answeredLate = new Promise<void>((resolve) => {
+    lateAnswerTakenIn = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/members/mine",
+    async (route) => {
+      if (!holding) {
+        return route.fallback();
+      }
+      holding = false;
+      const read = server.memberships;
+      await held;
+      await route.fulfill({ json: read });
+      await (await route.request().response())?.finished();
+      lateAnswerTakenIn();
+    },
+  );
+
+  // when: news of her memberships asks for her roles
+  toldOfMembers(server, project, { name: "JOINED", account: ADA.account, role: "reader" });
+  await expect.poll(() => holding).toBe(false);
+  // and: her role is changed to author before that answer comes
+  server.memberships = [{ project, role: "author" }];
+  toldOfMembers(server, project, { name: "ROLE_CHANGED", account: ADA.account, to: "author" });
+  // then: she may capture
+  await expect(page.getByPlaceholder("What is the idea?")).toBeVisible();
+
+  // when: the first answer arrives
+  release();
+  await answeredLate;
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+
+  // then: she still may capture
+  await expect(
+    page.getByPlaceholder("What is the idea?"),
+    "the first answer was read before her role changed",
+  ).toBeVisible();
+});
+
