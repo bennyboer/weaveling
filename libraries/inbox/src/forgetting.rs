@@ -6,7 +6,7 @@ use chores::Tombstones;
 use time::OffsetDateTime;
 use transacting::Transactions;
 
-use crate::Inbox;
+use crate::{Failed, Inbox};
 
 pub struct HeardMessages {
     inbox: Arc<dyn Inbox>,
@@ -29,14 +29,14 @@ impl Tombstones for HeardMessages {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        let mut transaction = self.transactions.begin().await?;
-        let forgotten = self
-            .inbox
-            .forget_heard_before(&mut transaction, before, at_most)
-            .await?;
-        transaction.finish().await?;
-
-        Ok(forgotten)
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, Failed>(
+                self.inbox
+                    .forget_heard_before(transaction, before, at_most)
+                    .await?,
+            )
+        })
+        .map_err(|failed| failed.0)
     }
 }
 
