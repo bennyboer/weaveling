@@ -85,21 +85,27 @@ impl Throttles for PostgresThrottles {
                 Err(wait) => return Ok(Admission::Wait(wait)),
             };
             let counted = i32::try_from(next.counted).map_err(unreachable)?;
-            let written = match before {
-                None => sqlx::query(FIRST)
-                    .bind(guarded)
-                    .bind(about)
-                    .bind(counted)
-                    .bind(next.last),
-                Some(before) => sqlx::query(NEXT)
-                    .bind(guarded)
-                    .bind(about)
-                    .bind(counted)
-                    .bind(next.last)
-                    .bind(i32::try_from(before.counted).map_err(unreachable)?)
-                    .bind(before.last),
-            }
-            .execute(&self.pool)
+            let counted_before = before
+                .map(|before| i32::try_from(before.counted))
+                .transpose()
+                .map_err(unreachable)?;
+            let written = transacting::postgres::retried(|| {
+                match (before, counted_before) {
+                    (Some(before), Some(counted_before)) => sqlx::query(NEXT)
+                        .bind(guarded)
+                        .bind(about)
+                        .bind(counted)
+                        .bind(next.last)
+                        .bind(counted_before)
+                        .bind(before.last),
+                    _ => sqlx::query(FIRST)
+                        .bind(guarded)
+                        .bind(about)
+                        .bind(counted)
+                        .bind(next.last),
+                }
+                .execute(&self.pool)
+            })
             .await
             .map_err(unreachable)?;
 
@@ -110,12 +116,14 @@ impl Throttles for PostgresThrottles {
     }
 
     async fn clear(&self, guarded: &str, about: &str) -> Result<(), ThrottlesError> {
-        sqlx::query(CLEAR)
-            .bind(guarded)
-            .bind(about)
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(CLEAR)
+                .bind(guarded)
+                .bind(about)
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         Ok(())
     }

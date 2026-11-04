@@ -152,20 +152,21 @@ impl Deliveries for PostgresDeliveries {
         listener: &ListenerName,
         message: &Message,
     ) -> Result<(), DeliveryError> {
-        sqlx::query(ENQUEUE)
-            .bind(listener.as_str())
-            .bind(message.id.as_uuid())
-            .bind(message.conversation.as_message_id().as_uuid())
-            .bind(message.caused_by.map(|caused| caused.as_uuid()))
-            .bind(message.routing.to_string())
-            .bind(&message.payload)
-            .bind(message.occurred_at)
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(ENQUEUE)
+                .bind(listener.as_str())
+                .bind(message.id.as_uuid())
+                .bind(message.conversation.as_message_id().as_uuid())
+                .bind(message.caused_by.map(|caused| caused.as_uuid()))
+                .bind(message.routing.to_string())
+                .bind(&message.payload)
+                .bind(message.occurred_at)
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
-        sqlx::query(NOTIFY)
-            .execute(&self.pool)
+        transacting::postgres::retried(|| sqlx::query(NOTIFY).execute(&self.pool))
             .await
             .map_err(unreachable)?;
 
@@ -178,14 +179,16 @@ impl Deliveries for PostgresDeliveries {
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError> {
         let claim = Claim::drawn();
-        let claimed = sqlx::query(CLAIM_DUE)
-            .bind(now)
-            .bind(now + CLAIM_FOR)
-            .bind(at_most)
-            .bind(claim.as_uuid())
-            .fetch_all(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        let claimed = transacting::postgres::retried(|| {
+            sqlx::query(CLAIM_DUE)
+                .bind(now)
+                .bind(now + CLAIM_FOR)
+                .bind(at_most)
+                .bind(claim.as_uuid())
+                .fetch_all(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         let mut queued = claimed
             .iter()
@@ -208,12 +211,14 @@ impl Deliveries for PostgresDeliveries {
     }
 
     async fn mark_as_handled(&self, queued: &Queued) -> Result<(), DeliveryError> {
-        sqlx::query(HANDLED)
-            .bind(queued.id)
-            .bind(queued.claim.as_uuid())
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(HANDLED)
+                .bind(queued.id)
+                .bind(queued.claim.as_uuid())
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         Ok(())
     }
@@ -224,14 +229,16 @@ impl Deliveries for PostgresDeliveries {
         why: &str,
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
-        sqlx::query(REFUSED)
-            .bind(queued.id)
-            .bind(again_at)
-            .bind(why)
-            .bind(queued.claim.as_uuid())
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(REFUSED)
+                .bind(queued.id)
+                .bind(again_at)
+                .bind(why)
+                .bind(queued.claim.as_uuid())
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         Ok(())
     }
@@ -242,14 +249,16 @@ impl Deliveries for PostgresDeliveries {
         why: &str,
         at: OffsetDateTime,
     ) -> Result<(), DeliveryError> {
-        sqlx::query(GIVE_UP)
-            .bind(queued.id)
-            .bind(why)
-            .bind(at)
-            .bind(queued.claim.as_uuid())
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(GIVE_UP)
+                .bind(queued.id)
+                .bind(why)
+                .bind(at)
+                .bind(queued.claim.as_uuid())
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         Ok(())
     }
@@ -285,15 +294,16 @@ impl Deliveries for PostgresDeliveries {
     }
 
     async fn retry(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
-        sqlx::query(RETRY)
-            .bind(dead_letter)
-            .bind(at)
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(RETRY)
+                .bind(dead_letter)
+                .bind(at)
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
-        sqlx::query(NOTIFY)
-            .execute(&self.pool)
+        transacting::postgres::retried(|| sqlx::query(NOTIFY).execute(&self.pool))
             .await
             .map_err(unreachable)?;
 
@@ -301,12 +311,14 @@ impl Deliveries for PostgresDeliveries {
     }
 
     async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
-        sqlx::query(ACKNOWLEDGE)
-            .bind(dead_letter)
-            .bind(at)
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::retried(|| {
+            sqlx::query(ACKNOWLEDGE)
+                .bind(dead_letter)
+                .bind(at)
+                .execute(&self.pool)
+        })
+        .await
+        .map_err(unreachable)?;
 
         Ok(())
     }

@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::fmt::{self, Debug, Formatter};
+use std::future::Future;
 
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
@@ -12,6 +13,10 @@ use sqlx::{Describe, Either, Execute, Executor, PgPool, Postgres, SqlStr};
 use crate::{Failure, Transaction, Transactions, Unit};
 
 const ONE_AT_A_TIME: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
+
+/// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which `Watched` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
+pub const SERIALIZABLE: &str =
+    "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
 
 const SERIALIZATION_FAILURE: &str = "40001";
 const DEADLOCK_DETECTED: &str = "40P01";
@@ -146,6 +151,24 @@ pub async fn one_at_a_time(transaction: &mut Transaction, key: &str) -> Result<(
         .map_err(failed)?;
 
     Ok(())
+}
+
+/// Runs a statement on the pool, outside any `Transaction`, again after it lost a race, as `retrying!` runs a transaction: a statement on its own is a transaction of its own, serializable as every other, and may lose one just the same.
+pub async fn retried<T, F, Running>(mut statement: F) -> Result<T, sqlx::Error>
+where
+    F: FnMut() -> Running,
+    Running: Future<Output = Result<T, sqlx::Error>>,
+{
+    let mut tried = 1;
+    loop {
+        match statement().await {
+            Err(failure) if crate::postgres::lost(&failure) && tried < crate::retrying::TRIES => {
+                crate::retrying::pause(tried).await;
+                tried += 1;
+            }
+            outcome => return outcome,
+        }
+    }
 }
 
 fn failed(failure: sqlx::Error) -> Failure {

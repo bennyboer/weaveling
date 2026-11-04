@@ -199,11 +199,14 @@ impl TokenKeys for PostgresTokenKeys {
         let kept = match kept {
             Some(kept) => kept,
             None => {
-                sqlx::query(DRAW_KEY)
-                    .bind(TokenKey::drawn().as_bytes())
-                    .execute(&self.pool)
-                    .await
-                    .map_err(unreachable)?;
+                let drawn = TokenKey::drawn();
+                transacting::postgres::retried(|| {
+                    sqlx::query(DRAW_KEY)
+                        .bind(drawn.as_bytes())
+                        .execute(&self.pool)
+                })
+                .await
+                .map_err(unreachable)?;
                 sqlx::query_scalar(KEPT_KEY)
                     .fetch_one(&self.pool)
                     .await

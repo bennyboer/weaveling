@@ -15,10 +15,11 @@ uuid = { workspace = true, features = ["v7"] }
 sqlx = { workspace = true, optional = true, features = ["uuid"] }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
+transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting", optional = true }
 ids = { version = "0.1.0", path = "../ids", package = "weaveling-ids" }
 
 [features]
-postgres = ["dep:sqlx"]
+postgres = ["dep:sqlx", "dep:transacting", "transacting/postgres"]
 sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]
