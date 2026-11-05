@@ -16,9 +16,9 @@ use crate::members::roles::Roles;
 use crate::problem;
 use crate::projects::details_form;
 use crate::projects::details_form::DetailsDraft;
+use crate::projects::intent::Intent;
 use crate::projects::model::{DescribedProject, ProjectId, Version};
 use crate::projects::open_project::OpenProject;
-use crate::projects::service;
 use crate::scenes::restyling::Restyled;
 use crate::scenes::service as scenes;
 use crate::speech;
@@ -83,40 +83,35 @@ fn changing_dialog(
     let known = StoredValue::new(known);
 
     let saving = Act::new(move |(), _: Here| {
-        let name = draft.title.get_untracked();
+        let name = draft.title.get_untracked().trim().to_owned();
         let details = draft.details();
         let project = project.get_value();
         let before = known.get_value();
         let (from, to) = (before.details.quotation_marks(), details.quotation_marks());
 
         async move {
-            let renamed = match name.trim() == before.name {
-                true => Ok(before.version),
-                false => service::rename(&project, name.trim())
-                    .await
-                    .map(|renamed| renamed.version),
-            };
-            let changed = match renamed {
-                Ok(version) => service::change_details(&project, &details, version)
-                    .await
-                    .map(|described| (described, version)),
-                Err(failure) => Err(failure),
-            };
+            let renamed = name == before.name
+                || landed(open_project, &project, Intent::Rename { name }).await;
+            let changed = renamed
+                && landed(
+                    open_project,
+                    &project,
+                    Intent::ChangeDetails {
+                        details,
+                        seen: before.details,
+                    },
+                )
+                .await;
 
-            match changed {
-                Ok((described, _)) if from == to => {
-                    open_project.keep(described);
-                    changing.set(false);
-                }
-                Ok((described, saved_against)) => {
-                    open_project.keep(described);
-                    stage.set(Stage::Restyling { to });
-                    following.set_value(Some(follow(project, saved_against, restyled)));
-                }
-                Err(failure) => {
-                    refused.set(Some(failure));
-                    stage.set(Stage::Editing);
-                }
+            if !changed {
+                refused.set(open_project.change_refused());
+                stage.set(Stage::Editing);
+            } else if from == to {
+                changing.set(false);
+            } else {
+                let saved_against = open_project.details_built_on().unwrap_or(before.version);
+                stage.set(Stage::Restyling { to });
+                following.set_value(Some(follow(project, saved_against, restyled)));
             }
         }
     });
@@ -234,6 +229,13 @@ fn restyling(
                 .child(speech::said("restyling-close")),
         ),
     )
+}
+
+async fn landed(open_project: OpenProject, project: &ProjectId, intent: Intent) -> bool {
+    match open_project.intended(project, intent) {
+        Some(landed) => landed.await,
+        None => false,
+    }
 }
 
 fn shown_on_the_bar(restyled: Restyled) -> (Option<String>, String) {

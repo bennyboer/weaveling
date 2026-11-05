@@ -40,13 +40,20 @@ async fn making_grace_an_author_while_losing_races(
         .expect("joining should succeed");
 
     let changed = core_over(Arc::new(FailsAppending::losing_races(store, losses)))
-        .change_role("project_1", "account_grace", Role::Author, &Agent::Local)
+        .change_role(
+            "project_1",
+            "account_grace",
+            Role::Author,
+            None,
+            &Agent::Local,
+        )
         .await
         .map(|_| ());
     let role = members
         .members("project_1", &Agent::Local)
         .await
         .expect("listing should succeed")
+        .state
         .into_iter()
         .find(|member| member.account.as_str() == "account_grace")
         .map(|member| member.role);
@@ -131,6 +138,7 @@ async fn a_disbanding_that_lost_a_race_is_refused_and_lands_when_it_is_offered_a
                 .members("project_1", &Agent::Local)
                 .await
                 .expect("listing should succeed")
+                .state
                 .is_empty(),
         "a disbanded project has no members and takes none"
     );
@@ -152,6 +160,7 @@ async fn an_owner_removed_cannot_make_themselves_owner_again_while_the_list_stil
         .remove(
             "project_1",
             "account_grace",
+            None,
             &Agent::Account("account_ada".into()),
         )
         .await
@@ -163,6 +172,7 @@ async fn an_owner_removed_cannot_make_themselves_owner_again_while_the_list_stil
             "project_1",
             "account_grace",
             Role::Owner,
+            None,
             &Agent::Account("account_grace".into()),
         )
         .await;
@@ -196,6 +206,7 @@ async fn an_owner_stepped_down_removes_nobody() {
             "project_1",
             "account_grace",
             Role::Reader,
+            None,
             &Agent::Account("account_ada".into()),
         )
         .await
@@ -206,6 +217,7 @@ async fn an_owner_stepped_down_removes_nobody() {
         .remove(
             "project_1",
             "account_ada",
+            None,
             &Agent::Account("account_grace".into()),
         )
         .await;

@@ -6,6 +6,7 @@ use crate::members::listed::Role;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoleChange {
     pub id: String,
+    pub version: u64,
     pub noted_at: OffsetDateTime,
     pub role: Role,
     pub project_name: Option<String>,

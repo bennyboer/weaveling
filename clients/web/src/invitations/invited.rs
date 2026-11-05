@@ -7,14 +7,20 @@ use crate::invitations::listed::{ListedInvitation, Scope};
 use crate::invitations::service;
 use crate::invitations::service::InvitedInto;
 use crate::members::listed::Role;
+use crate::working_copy;
+use crate::working_copy::{Versioned, WorkingCopies};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Intent {
+    Withdraw,
+}
 
 #[derive(Clone, Copy)]
 pub struct Invited {
     pub(super) into: StoredValue<InvitedInto>,
-    pub(super) invitations: RwSignal<Vec<ListedInvitation>>,
+    pub(super) invitations: WorkingCopies<String, ListedInvitation, Intent>,
     pub(super) next: RwSignal<Option<String>>,
     pub(super) loading: RwSignal<bool>,
-    pub(super) loaded: RwSignal<bool>,
     pub(super) refused: RwSignal<Option<ApiError>>,
     pub(super) email: RwSignal<String>,
     pub(super) role: RwSignal<Role>,
@@ -38,7 +44,30 @@ impl Invited {
 
     pub fn unasked(into: InvitedInto) -> Self {
         let into = StoredValue::new(into);
-        let invitations = RwSignal::new(Vec::<ListedInvitation>::new());
+        let refused = RwSignal::new(None);
+        let invitations = WorkingCopies::new(
+            move |id: String, on: ListedInvitation, intent: Intent| async move {
+                match intent {
+                    Intent::Withdraw => service::withdraw(&id, on.version).await?,
+                }
+
+                Ok(answered(on, &intent))
+            },
+            move |id: String| {
+                let into = into.get_value();
+
+                async move {
+                    service::list_invitations(&into, None)
+                        .await?
+                        .invitations
+                        .into_iter()
+                        .find(|invitation| invitation.id == id)
+                        .map(|invitation| held(invitation).1)
+                        .ok_or(ApiError::NotFound("invitation"))
+                }
+            },
+            move |failure| _ = refused.try_set(Some(failure)),
+        );
         let email = RwSignal::new(String::new());
         let role = RwSignal::new(Role::Author);
         let invite_refused = RwSignal::new(None);
@@ -49,12 +78,8 @@ impl Invited {
                     email.get_untracked(),
                     into.with_value(|into| scope_of(into, role.get_untracked())),
                 )),
-                Inviting::Again(id) => invitations.with_untracked(|listed| {
-                    listed
-                        .iter()
-                        .find(|invitation| &invitation.id == id)
-                        .map(|invitation| (invitation.email.clone(), invitation.scope.clone()))
-                }),
+                Inviting::Again(id) => untrack(|| invitations.shown_one(id))
+                    .map(|held| (held.email.clone(), held.scope.clone())),
             };
 
             async move {
@@ -63,7 +88,9 @@ impl Invited {
                 };
                 match service::invite(&invited, &scope).await {
                     Ok(invitation) => {
-                        invitations.update(|listed| listed.insert(0, invitation));
+                        let mut listed = vec![held(invitation)];
+                        listed.extend(still_listed(invitations));
+                        invitations.take_in_all(listed);
                         if inviting == Inviting::Typed {
                             email.set(String::new());
                         }
@@ -78,8 +105,7 @@ impl Invited {
             invitations,
             next: RwSignal::new(None),
             loading: RwSignal::new(false),
-            loaded: RwSignal::new(false),
-            refused: RwSignal::new(None),
+            refused,
             email,
             role,
             inviting,
@@ -96,10 +122,10 @@ impl Invited {
         task::spawn_local(async move {
             match service::list_invitations(&into, after.as_deref()).await {
                 Ok(page) => {
-                    self.invitations
-                        .update(|listed| listed.extend(page.invitations));
+                    let mut listed = still_listed(self.invitations);
+                    listed.extend(page.invitations.into_iter().map(held));
+                    self.invitations.take_in_all(listed);
                     self.next.set(page.next);
-                    self.loaded.set(true);
                 }
                 Err(failed) => self.refused.set(Some(failed)),
             }
@@ -108,16 +134,53 @@ impl Invited {
     }
 
     pub(super) fn withdraw(self, id: String) {
+        let withdrawn_or_gone =
+            untrack(|| !self.invitations.is_listed(&id) || self.invitations.unanswered_on(&id));
+        if withdrawn_or_gone {
+            return;
+        }
         self.refused.set(None);
+        let Some(landed) = self.invitations.intended(&id, Intent::Withdraw) else {
+            return;
+        };
         task::spawn_local(async move {
-            match service::withdraw(&id).await {
-                Ok(()) => self
-                    .invitations
-                    .update(|listed| listed.retain(|invitation| invitation.id != id)),
-                Err(failed) => self.refused.set(Some(failed)),
+            if landed.await {
+                self.invitations.forget(&id);
             }
         });
     }
+}
+
+impl Versioned for ListedInvitation {
+    fn version(&self) -> u64 {
+        self.version
+    }
+}
+
+impl working_copy::Intent<ListedInvitation> for Intent {
+    fn lay_over(&self, _: &mut ListedInvitation) {}
+
+    fn merged_after(&self, earlier: &Self) -> Option<Self> {
+        (self == earlier).then(|| self.clone())
+    }
+}
+
+fn held(invitation: ListedInvitation) -> (String, ListedInvitation) {
+    (invitation.id.clone(), invitation)
+}
+
+fn answered(on: ListedInvitation, intent: &Intent) -> ListedInvitation {
+    let mut answered = on;
+    working_copy::Intent::lay_over(intent, &mut answered);
+    answered.version += 1;
+
+    answered
+}
+
+fn still_listed(
+    invitations: WorkingCopies<String, ListedInvitation, Intent>,
+) -> Vec<(String, ListedInvitation)> {
+    invitations.confirmed_all()
 }
 
 fn scope_of(into: &InvitedInto, role: Role) -> Scope {
@@ -127,5 +190,61 @@ fn scope_of(into: &InvitedInto, role: Role) -> Scope {
             project: project.clone(),
             role,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use time::macros::datetime;
+
+    use super::*;
+    use crate::invitations::listed::Status;
+    use crate::working_copy::Intent as _;
+
+    fn an_open_invitation() -> ListedInvitation {
+        held(ListedInvitation {
+            id: "invitation_1".to_owned(),
+            version: 1,
+            email: "grace@example.com".to_owned(),
+            issued_at: datetime!(2026-10-23 08:00 UTC),
+            until: datetime!(2026-10-30 08:00 UTC),
+            status: Status::Open,
+            scope: Scope::Instance,
+        })
+        .1
+    }
+
+    #[test]
+    fn a_withdrawal_on_its_way_changes_nothing_shown() {
+        // given: an open invitation
+        let open = an_open_invitation();
+
+        // when: its withdrawal is laid over it
+        let mut shown = open.clone();
+        Intent::Withdraw.lay_over(&mut shown);
+
+        // then: it shows as it was
+        assert_eq!(shown, open);
+    }
+
+    #[test]
+    fn a_withdrawal_answered_stands_one_version_after_the_one_it_was_sent_on() {
+        // given: an open invitation at version one
+        let open = an_open_invitation();
+
+        // when: its withdrawal is answered
+        let answered = answered(open, &Intent::Withdraw);
+
+        // then: it stands at the next version
+        assert_eq!(answered.version(), 2);
+    }
+
+    #[test]
+    fn a_second_withdrawal_waiting_is_sent_as_one() {
+        // expect: two withdrawals in a row merge into one
+        assert_eq!(
+            Intent::Withdraw.merged_after(&Intent::Withdraw),
+            Some(Intent::Withdraw)
+        );
     }
 }

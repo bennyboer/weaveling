@@ -98,7 +98,7 @@ async fn a_link_nobody_was_given_or_one_taken_up_or_withdrawn_turns_nothing_down
         .expect("an open invitation is taken up");
     wired
         .invitations
-        .withdraw(&wiring::an_operator(), &withdrawn)
+        .withdraw(&wiring::an_operator(), &withdrawn, None)
         .await
         .expect("an operator may withdraw");
     for id in [&accepted, &withdrawn] {

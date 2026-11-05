@@ -3,7 +3,7 @@ use std::sync::Arc;
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum::http::StatusCode;
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CONTENT_TYPE, ETAG};
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use eventsourcing::Agent;
@@ -712,4 +712,360 @@ async fn a_title_too_long_is_refused_telling_how_long_it_may_be() {
     );
     assert_eq!(told["max"], SceneTitle::MAX_CHARS);
     assert_eq!(told["actual"], SceneTitle::MAX_CHARS + 1);
+}
+
+async fn moved_past_its_first_version(server: &TestServer, id: &str) {
+    linking(server, id, "idea_elsewhere")
+        .await
+        .assert_status_ok();
+}
+
+#[tokio::test]
+async fn a_scene_is_told_with_the_version_it_is_at() {
+    // given: a scene with an idea linked
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is read
+    let response = server.get(&format!("/scenes/{}", created.id)).await;
+
+    // then: it tells the version it is at, in its body and as its tag
+    assert_eq!(created.version, 0, "a new scene starts at version 0");
+    assert_eq!(response.header(ETAG), "\"1\"");
+    assert_eq!(response.json::<SceneDTO>().version, 1);
+}
+
+#[tokio::test]
+async fn retitling_from_the_version_it_is_at_lands_and_tells_the_next() {
+    // given: a scene
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+
+    // when: it is retitled from the version it is at
+    let response = server
+        .patch(&format!("/scenes/{}", created.id))
+        .add_header("if-match", "\"0\"")
+        .json(&RetitleSceneRequest {
+            title: "The loom".to_owned(),
+        })
+        .await;
+
+    // then: the retitling lands and tells the version it landed at
+    response.assert_status_ok();
+    assert_eq!(response.header(ETAG), "\"1\"");
+    let retitled = response.json::<SceneDTO>();
+    assert_eq!(retitled.title, "The loom");
+    assert_eq!(retitled.version, 1);
+}
+
+#[tokio::test]
+async fn retitling_from_a_version_moved_past_is_refused_and_changes_nothing() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is retitled from its first version
+    let response = server
+        .patch(&format!("/scenes/{}", created.id))
+        .add_header("if-match", "\"0\"")
+        .json(&RetitleSceneRequest {
+            title: "Working from a stale copy".to_owned(),
+        })
+        .await;
+
+    // then: the retitling is refused as outdated
+    refused_as(response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the scene is as it was
+    let found: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    assert_eq!(
+        found.title, "",
+        "a refused retitling must leave the title alone"
+    );
+    assert_eq!(found.version, 1);
+}
+
+#[tokio::test]
+async fn retitling_from_the_version_read_before_typing_lands() {
+    // given: a scene read at its version
+    let scenes = a_core();
+    let server = a_server(scenes.clone());
+    let created = a_scene(&server).await;
+    let read: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    // and: prose typed into it since
+    scenes
+        .apply(&created.id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("should apply");
+    scenes
+        .apply(&created.id, &a_paragraph("Then it spoke."))
+        .await
+        .expect("should apply");
+
+    // when: it is retitled from the version read before the typing
+    let response = server
+        .patch(&format!("/scenes/{}", created.id))
+        .add_header("if-match", format!("\"{}\"", read.version))
+        .json(&RetitleSceneRequest {
+            title: "The loom".to_owned(),
+        })
+        .await;
+
+    // then: the retitling lands, one past the version read
+    response.assert_status_ok();
+    let retitled = response.json::<SceneDTO>();
+    assert_eq!(retitled.title, "The loom");
+    assert_eq!(
+        retitled.version,
+        read.version + 1,
+        "the prose counts its own versions, so typing must not make the title look outdated"
+    );
+}
+
+#[tokio::test]
+async fn retitling_from_a_version_another_retitling_moved_past_is_refused() {
+    // given: a scene read at its version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    let read: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    // and: retitled by someone else since
+    retitling(&server, &created.id, "Theirs")
+        .await
+        .assert_status_ok();
+
+    // when: it is retitled from the version read before
+    let response = server
+        .patch(&format!("/scenes/{}", created.id))
+        .add_header("if-match", format!("\"{}\"", read.version))
+        .json(&RetitleSceneRequest {
+            title: "Mine".to_owned(),
+        })
+        .await;
+
+    // then: the retitling is refused as outdated
+    refused_as(response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the other title stays
+    let found: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    assert_eq!(
+        found.title, "Theirs",
+        "a title written over another unseen must not land"
+    );
+}
+
+#[tokio::test]
+async fn retitling_without_if_match_lands_on_whatever_the_scene_is_at() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is retitled without saying from which version
+    let response = retitling(&server, &created.id, "The loom").await;
+
+    // then: the retitling lands on the version it is at
+    response.assert_status_ok();
+    assert_eq!(response.json::<SceneDTO>().version, 2);
+}
+
+#[tokio::test]
+async fn linking_from_the_version_it_is_at_lands_and_tells_the_next() {
+    // given: a scene
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+
+    // when: an idea is linked from the version it is at
+    let response = server
+        .post(&format!("/scenes/{}/ideas", created.id))
+        .add_header("if-match", "\"0\"")
+        .json(&LinkIdeaRequest {
+            idea: "idea_1".to_owned(),
+        })
+        .await;
+
+    // then: the link lands and tells the version it landed at
+    response.assert_status_ok();
+    assert_eq!(response.header(ETAG), "\"1\"");
+    let linked = response.json::<SceneDTO>();
+    assert_eq!(linked.ideas, vec!["idea_1"]);
+    assert_eq!(linked.version, 1);
+}
+
+#[tokio::test]
+async fn linking_from_a_version_moved_past_is_refused_and_changes_nothing() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: an idea is linked from its first version
+    let response = server
+        .post(&format!("/scenes/{}/ideas", created.id))
+        .add_header("if-match", "\"0\"")
+        .json(&LinkIdeaRequest {
+            idea: "idea_1".to_owned(),
+        })
+        .await;
+
+    // then: the link is refused as outdated
+    refused_as(response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the scene holds only what it held
+    let found: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    assert_eq!(found.ideas, vec!["idea_elsewhere"]);
+    assert_eq!(found.version, 1);
+}
+
+#[tokio::test]
+async fn linking_without_if_match_lands_on_whatever_the_scene_is_at() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: an idea is linked without saying from which version
+    let response = linking(&server, &created.id, "idea_1").await;
+
+    // then: the link lands on the version it is at
+    response.assert_status_ok();
+    let linked = response.json::<SceneDTO>();
+    assert_eq!(linked.ideas, vec!["idea_elsewhere", "idea_1"]);
+    assert_eq!(linked.version, 2);
+}
+
+#[tokio::test]
+async fn unlinking_from_the_version_it_is_at_lands_and_tells_the_next() {
+    // given: a scene with an idea linked
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: the idea is unlinked from the version it is at
+    let response = server
+        .delete(&format!("/scenes/{}/ideas/idea_elsewhere", created.id))
+        .add_header("if-match", "\"1\"")
+        .await;
+
+    // then: the unlinking lands and tells the version it landed at
+    response.assert_status_ok();
+    assert_eq!(response.header(ETAG), "\"2\"");
+    let unlinked = response.json::<SceneDTO>();
+    assert!(unlinked.ideas.is_empty());
+    assert_eq!(unlinked.version, 2);
+}
+
+#[tokio::test]
+async fn unlinking_from_a_version_moved_past_is_refused_and_changes_nothing() {
+    // given: a scene with an idea linked since its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: the idea is unlinked from its first version
+    let response = server
+        .delete(&format!("/scenes/{}/ideas/idea_elsewhere", created.id))
+        .add_header("if-match", "\"0\"")
+        .await;
+
+    // then: the unlinking is refused as outdated
+    refused_as(response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the idea is still linked
+    let found: SceneDTO = server.get(&format!("/scenes/{}", created.id)).await.json();
+    assert_eq!(found.ideas, vec!["idea_elsewhere"]);
+    assert_eq!(found.version, 1);
+}
+
+#[tokio::test]
+async fn unlinking_without_if_match_lands_on_whatever_the_scene_is_at() {
+    // given: a scene with an idea linked since its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: the idea is unlinked without saying from which version
+    let response = server
+        .delete(&format!("/scenes/{}/ideas/idea_elsewhere", created.id))
+        .await;
+
+    // then: the unlinking lands on the version it is at
+    response.assert_status_ok();
+    let unlinked = response.json::<SceneDTO>();
+    assert!(unlinked.ideas.is_empty());
+    assert_eq!(unlinked.version, 2);
+}
+
+#[tokio::test]
+async fn deleting_from_the_version_it_is_at_lands() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is deleted from the version it is at
+    let response = server
+        .delete(&format!("/scenes/{}", created.id))
+        .add_header("if-match", "\"1\"")
+        .await;
+
+    // then: it is deleted
+    response.assert_status(StatusCode::NO_CONTENT);
+    // and: it is not found
+    refused_as(
+        server.get(&format!("/scenes/{}", created.id)).await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
+}
+
+#[tokio::test]
+async fn deleting_from_a_version_moved_past_is_refused_and_keeps_the_scene() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is deleted from its first version
+    let response = server
+        .delete(&format!("/scenes/{}", created.id))
+        .add_header("if-match", "\"0\"")
+        .await;
+
+    // then: the deleting is refused as outdated
+    refused_as(response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the scene is still there as it was
+    let found = server.get(&format!("/scenes/{}", created.id)).await;
+    found.assert_status_ok();
+    assert_eq!(found.json::<SceneDTO>().version, 1);
+}
+
+#[tokio::test]
+async fn deleting_without_if_match_lands_on_whatever_the_scene_is_at() {
+    // given: a scene moved past its first version
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+    moved_past_its_first_version(&server, &created.id).await;
+
+    // when: it is deleted without saying from which version
+    let response = server.delete(&format!("/scenes/{}", created.id)).await;
+
+    // then: it is deleted
+    response.assert_status(StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn an_if_match_that_is_no_version_is_a_bad_request() {
+    // given: a scene
+    let server = a_server(a_core());
+    let created = a_scene(&server).await;
+
+    // when: it is retitled from something that is no version
+    let response = server
+        .patch(&format!("/scenes/{}", created.id))
+        .add_header("if-match", "\"not-a-version\"")
+        .json(&RetitleSceneRequest {
+            title: "Nowhere".to_owned(),
+        })
+        .await;
+
+    // then: it is a bad request
+    refused_as(response, StatusCode::BAD_REQUEST, "unreadable");
 }

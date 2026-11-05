@@ -56,7 +56,7 @@ const WRITE_SNAPSHOT: &str = "
 
 const WRITE_UPDATE: &str = "
     WITH bumped AS (
-        UPDATE scenes SET version = version + 1, uncounted = TRUE WHERE scene = $1
+        UPDATE scenes SET prose_version = prose_version + 1, uncounted = TRUE WHERE scene = $1
     )
     INSERT INTO scene_updates (scene, is_snapshot, bytes)
     VALUES ($1, FALSE, $2)
@@ -88,9 +88,13 @@ const FORGET_BEFORE: &str = "DELETE FROM scene_updates WHERE scene = $1 AND seq 
 
 const FORGET: &str = "DELETE FROM scenes WHERE scene = $1 RETURNING project";
 
-const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1 AND version = $2";
+const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1 AND prose_version = $2";
 
 const VERSION_OF: &str = "SELECT version FROM scenes WHERE scene = $1";
+
+const PROSE_VERSION_OF: &str = "SELECT prose_version FROM scenes WHERE scene = $1";
+
+const HELD_VERSION: &str = "SELECT version FROM scenes WHERE scene = $1 FOR UPDATE";
 
 const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT $1";
 
@@ -560,6 +564,34 @@ impl SceneStore for PostgresSceneStore {
         let version: Option<i64> = sqlx::query_scalar(VERSION_OF)
             .bind(id.to_string())
             .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        version.ok_or(StoreError::NotFound(id)).and_then(|version| {
+            u64::try_from(version).map_err(|why| StoreError::Backend(Box::new(why)))
+        })
+    }
+
+    async fn prose_version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        let version: Option<i64> = sqlx::query_scalar(PROSE_VERSION_OF)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        version.ok_or(StoreError::NotFound(id)).and_then(|version| {
+            u64::try_from(version).map_err(|why| StoreError::Backend(Box::new(why)))
+        })
+    }
+
+    async fn version_within(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<u64, StoreError> {
+        let version: Option<i64> = sqlx::query_scalar(HELD_VERSION)
+            .bind(id.to_string())
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 

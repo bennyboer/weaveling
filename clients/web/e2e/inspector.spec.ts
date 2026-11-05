@@ -210,3 +210,100 @@ test("a scene not in the book the idea appears in opens on the writing view's ot
     page.locator(`[data-scene="${scene}"] .ProseMirror`),
   ).toBeFocused();
 });
+
+const titleOf = async (page: Page, idea: string) =>
+  (await (await page.request.get(`${API}/ideas/${idea}`)).json()).title;
+
+async function renameInPlace(page: Page, title: string) {
+  const field = page.getByRole("textbox", { name: "Idea name" });
+  await field.fill(title);
+  await field.press("Enter");
+}
+
+test("renames made while one is on its way land as the last, sent once", async ({
+  page,
+}) => {
+  // given: an idea opened
+  await aNewProject(page, "RenamedInARow");
+  const idea = await anIdea(page, "A girl in a wood");
+  await inspect(page, idea);
+  await expect(page.getByRole("textbox", { name: "Idea name" })).toHaveValue(
+    "A girl in a wood",
+  );
+  // and: its first rename held on its way
+  const sent: string[] = [];
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(new RegExp(`/api/ideas/${idea}$`), async (route) => {
+    if (route.request().method() !== "PATCH") {
+      return route.fallback();
+    }
+    sent.push(route.request().postDataJSON().title);
+    if (sent.length === 1) {
+      await released;
+    }
+    await route.fallback();
+  });
+
+  // when: it is renamed three times in a row
+  await renameInPlace(page, "A girl lost");
+  await expect.poll(() => sent.length).toBe(1);
+  await renameInPlace(page, "A girl found");
+  await renameInPlace(page, "A girl at home");
+  // and: the first rename is let through
+  release();
+
+  // then: the last name lands
+  await expect.poll(() => titleOf(page, idea)).toBe("A girl at home");
+  await expect(page.getByRole("textbox", { name: "Idea name" })).toHaveValue(
+    "A girl at home",
+  );
+  // and: the renames waiting were sent as one
+  expect(
+    sent,
+    "renames made while one is on its way go out as the newest of them",
+  ).toEqual(["A girl lost", "A girl at home"]);
+});
+
+test("a rename refused because another author renamed meanwhile is made again on theirs", async ({
+  page,
+}) => {
+  // given: an idea opened
+  await aNewProject(page, "RenamedMeanwhile");
+  const idea = await anIdea(page, "A girl in a wood");
+  await inspect(page, idea);
+  await expect(page.getByRole("textbox", { name: "Idea name" })).toHaveValue(
+    "A girl in a wood",
+  );
+  // and: another author renaming it just before my rename arrives
+  const matched: (string | null)[] = [];
+  await page.route(new RegExp(`/api/ideas/${idea}$`), async (route) => {
+    if (route.request().method() !== "PATCH") {
+      return route.fallback();
+    }
+    matched.push(await route.request().headerValue("If-Match"));
+    if (matched.length === 1) {
+      const theirs = await page.request.patch(`${API}/ideas/${idea}`, {
+        data: { title: "A boy in a wood" },
+      });
+      expect(theirs.ok()).toBe(true);
+    }
+    await route.fallback();
+  });
+
+  // when: it is renamed here
+  await renameInPlace(page, "A girl lost");
+
+  // then: my rename lands over theirs
+  await expect.poll(() => titleOf(page, idea)).toBe("A girl lost");
+  await expect(page.getByRole("textbox", { name: "Idea name" })).toHaveValue(
+    "A girl lost",
+  );
+  // and: it was refused once on the version it was made on, then made on theirs
+  expect(
+    matched,
+    "the first rename names the version it was made on and is refused as outdated",
+  ).toEqual(['"1"', '"2"']);
+});

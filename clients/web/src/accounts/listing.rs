@@ -3,7 +3,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
-use crate::accounts::roster::Roster;
+use crate::accounts::roster;
+use crate::accounts::roster::{Intent, Roster};
 use crate::accounts::{CurrentSession, SignInState, lock_dialog, role_dialog};
 use crate::moment;
 use crate::problem;
@@ -27,11 +28,14 @@ pub fn accounts_listing() -> impl IntoView {
     };
 
     (
-        move || roster.refused.get().map(problem::problem),
+        move || {
+            let in_dialog =
+                roster.locking.with(Option::is_some) || roster.changing_role.with(Option::is_some);
+            (!in_dialog).then(|| roster.refused.get().map(problem::problem))
+        },
         html::ul().class("accounts").child(move || {
             roster
-                .accounts
-                .get()
+                .shown()
                 .into_iter()
                 .map(|account| listed(roster, account))
                 .collect_view()
@@ -51,8 +55,27 @@ pub fn accounts_listing() -> impl IntoView {
                 let id = account.id.clone();
                 lock_dialog::lock_dialog(
                     account,
-                    move |lock| roster.mark(&id, Some(lock)),
-                    move || roster.locking.set(None),
+                    move |typed| {
+                        let landed = roster.intended(
+                            &id,
+                            Intent::Lock {
+                                typed,
+                                since: roster::now(),
+                            },
+                        );
+
+                        async move {
+                            match landed {
+                                Some(landed) => landed.await,
+                                None => false,
+                            }
+                        }
+                    },
+                    roster.refused,
+                    move || {
+                        roster.refused.set(None);
+                        roster.locking.set(None);
+                    },
                 )
             })
         },
@@ -60,17 +83,33 @@ pub fn accounts_listing() -> impl IntoView {
             roster.changing_role.get().map(|account| {
                 let id = account.id.clone();
                 let yourself = own_email().as_deref() == Some(account.email.as_str());
+                let intent = if account.operator {
+                    Intent::Dismiss
+                } else {
+                    Intent::Appoint
+                };
                 role_dialog::role_dialog(
                     account,
                     yourself,
                     move || {
-                        if yourself {
-                            session.ask_again();
-                        } else {
-                            roster.turn_role(&id);
+                        let landed = roster.intended(&id, intent.clone());
+
+                        async move {
+                            let landed = match landed {
+                                Some(landed) => landed.await,
+                                None => false,
+                            };
+                            if landed && yourself {
+                                session.ask_again();
+                            }
+                            landed
                         }
                     },
-                    move || roster.changing_role.set(None),
+                    roster.refused,
+                    move || {
+                        roster.refused.set(None);
+                        roster.changing_role.set(None);
+                    },
                 )
             })
         },

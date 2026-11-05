@@ -7,6 +7,7 @@ use crate::http::ApiError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedAccount {
     pub id: String,
+    pub version: u64,
     pub name: String,
     pub email: String,
     pub verified: bool,
@@ -46,6 +47,7 @@ fn listed(summary: AccountSummaryDTO) -> Result<ListedAccount, ApiError> {
 
     Ok(ListedAccount {
         id: summary.id,
+        version: summary.version,
         name: summary.name,
         email: summary.email,
         verified: summary.verified,
@@ -78,6 +80,7 @@ mod tests {
     fn an_account_of_ada(locks: Vec<LockDTO>) -> AccountSummaryDTO {
         AccountSummaryDTO {
             id: "account_1".to_owned(),
+            version: 4,
             name: "Ada".to_owned(),
             email: "ada@example.com".to_owned(),
             verified: true,
@@ -106,6 +109,7 @@ mod tests {
             AccountPage {
                 accounts: vec![ListedAccount {
                     id: "account_1".to_owned(),
+                    version: 4,
                     name: "Ada".to_owned(),
                     email: "ada@example.com".to_owned(),
                     verified: true,

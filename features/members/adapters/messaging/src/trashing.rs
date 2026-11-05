@@ -351,7 +351,7 @@ mod tests {
         assert!(
             bench
                 .members
-                .change_role("project_1", "account_grace", Role::Owner, &ada)
+                .change_role("project_1", "account_grace", Role::Owner, None, &ada)
                 .await
                 .is_err(),
             "no role changes in a project in the trash"
@@ -360,7 +360,7 @@ mod tests {
         assert!(
             bench
                 .members
-                .remove("project_1", "account_ada", &ada)
+                .remove("project_1", "account_ada", None, &ada)
                 .await
                 .is_err(),
             "nor is anyone removed from it"

@@ -20,7 +20,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json};
 use clock::text;
-use eventsourcing::ServiceError;
+use eventsourcing::{ServiceError, StoreError};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -303,10 +303,16 @@ async fn lock(
     State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<LockRequest>,
 ) -> Result<StatusCode, Problem> {
     accounts
-        .lock(&by, &account_named(&account)?, &request.reason)
+        .lock(
+            &by,
+            &account_named(&account)?,
+            &request.reason,
+            serving::demanded(&headers)?,
+        )
         .await
         .map_err(problem_of)?;
 
@@ -317,9 +323,10 @@ async fn unlock(
     State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     accounts
-        .unlock(&by, &account_named(&account)?)
+        .unlock(&by, &account_named(&account)?, serving::demanded(&headers)?)
         .await
         .map_err(problem_of)?;
 
@@ -330,9 +337,10 @@ async fn appoint_operator(
     State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     accounts
-        .appoint_operator(&by, &account_named(&account)?)
+        .appoint_operator(&by, &account_named(&account)?, serving::demanded(&headers)?)
         .await
         .map_err(problem_of)?;
 
@@ -343,9 +351,10 @@ async fn dismiss_operator(
     State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     accounts
-        .dismiss_operator(&by, &account_named(&account)?)
+        .dismiss_operator(&by, &account_named(&account)?, serving::demanded(&headers)?)
         .await
         .map_err(problem_of)?;
 
@@ -361,6 +370,7 @@ fn account_named(given: &str) -> Result<AccountId, Problem> {
 fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
     AccountSummaryDTO {
         id: summary.id.to_string(),
+        version: summary.version.count(),
         name: summary.name.to_string(),
         email: summary.email.to_string(),
         verified: summary.verified,
@@ -514,6 +524,9 @@ fn problem_of(refusal: AccountsError) -> Problem {
         }
         AccountsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(refused::ACCOUNT_NOT_FOUND, "there is no such account")
+        }
+        AccountsError::Events(ref outdated @ ServiceError::Store(StoreError::Outdated { .. })) => {
+            Problem::of(outdated, |refusal| Problem::unexpected(refusal))
         }
         AccountsError::OperatorCodeWrong => {
             Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)

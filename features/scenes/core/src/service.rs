@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clock::Clock;
+use eventsourcing::Version;
 use transacting::Transaction;
 
 use crate::{IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesError};
@@ -71,11 +72,14 @@ impl SceneService {
         transaction: &mut Transaction,
         id: &str,
         title: &str,
-    ) -> Result<(), ScenesError> {
+        expected: Option<Version>,
+    ) -> Result<Version, ScenesError> {
         let id: SceneId = id.parse()?;
         let title = SceneTitle::new(title)?;
+        self.held_at(transaction, id, expected).await?;
+        self.store.retitle(transaction, id, &title).await?;
 
-        Ok(self.store.retitle(transaction, id, &title).await?)
+        self.reached(transaction, id).await
     }
 
     pub async fn announce_word_count(
@@ -99,6 +103,12 @@ impl SceneService {
         Ok(self.store.version_of(id).await?)
     }
 
+    pub async fn prose_version_of(&self, id: &str) -> Result<u64, ScenesError> {
+        let id: SceneId = id.parse()?;
+
+        Ok(self.store.prose_version_of(id).await?)
+    }
+
     pub async fn announce_opening(
         &self,
         transaction: &mut Transaction,
@@ -118,13 +128,15 @@ impl SceneService {
         transaction: &mut Transaction,
         id: &str,
         idea: &str,
-    ) -> Result<(), ScenesError> {
+        expected: Option<Version>,
+    ) -> Result<Version, ScenesError> {
         let id: SceneId = id.parse()?;
-
-        Ok(self
-            .store
+        self.held_at(transaction, id, expected).await?;
+        self.store
             .link(transaction, id, &IdeaLink::from(idea))
-            .await?)
+            .await?;
+
+        self.reached(transaction, id).await
     }
 
     pub async fn unlink(
@@ -132,13 +144,15 @@ impl SceneService {
         transaction: &mut Transaction,
         id: &str,
         idea: &str,
-    ) -> Result<(), ScenesError> {
+        expected: Option<Version>,
+    ) -> Result<Version, ScenesError> {
         let id: SceneId = id.parse()?;
-
-        Ok(self
-            .store
+        self.held_at(transaction, id, expected).await?;
+        self.store
             .unlink(transaction, id, &IdeaLink::from(idea))
-            .await?)
+            .await?;
+
+        self.reached(transaction, id).await
     }
 
     pub async fn unlink_everywhere(
@@ -152,9 +166,45 @@ impl SceneService {
             .await?)
     }
 
-    pub async fn delete(&self, transaction: &mut Transaction, id: &str) -> Result<(), ScenesError> {
+    pub async fn delete(
+        &self,
+        transaction: &mut Transaction,
+        id: &str,
+        expected: Option<Version>,
+    ) -> Result<(), ScenesError> {
         let id: SceneId = id.parse()?;
+        self.held_at(transaction, id, expected).await?;
 
         Ok(self.store.delete(transaction, id).await?)
+    }
+
+    async fn held_at(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        expected: Option<Version>,
+    ) -> Result<(), ScenesError> {
+        let Some(expected) = expected else {
+            return Ok(());
+        };
+
+        if self.reached(transaction, id).await? == expected {
+            Ok(())
+        } else {
+            Err(ScenesError::Outdated {
+                scene: id,
+                expected,
+            })
+        }
+    }
+
+    async fn reached(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<Version, ScenesError> {
+        Ok(Version::of(
+            self.store.version_within(transaction, id).await?,
+        ))
     }
 }

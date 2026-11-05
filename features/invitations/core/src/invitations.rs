@@ -200,6 +200,7 @@ impl InvitationsCore {
         &self,
         by: &Acting,
         invitation: &InvitationId,
+        expected: Option<Version>,
     ) -> Result<(), InvitationsError> {
         match self.service.latest(invitation).await?.state.scope() {
             Scope::Instance => operating(by)?,
@@ -213,11 +214,15 @@ impl InvitationsCore {
             }
         }
 
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service
-                .withdraw(transaction, invitation, &by.agent)
-                .await
-        })
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .withdraw(transaction, invitation, expected, &by.agent)
+                    .await
+            }
+        )
     }
 
     pub async fn instance_invitations(
@@ -444,7 +449,7 @@ impl InvitationsCore {
             if self.catalog.has_project_tombstone(project).await? {
                 settled(
                     self.service
-                        .withdraw(transaction, invitation, &Agent::System)
+                        .withdraw(transaction, invitation, None, &Agent::System)
                         .await,
                 )?;
             }
@@ -494,7 +499,7 @@ impl InvitationsCore {
     ) -> Result<(), InvitationsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
             self.service
-                .withdraw(transaction, invitation, &Agent::System)
+                .withdraw(transaction, invitation, None, &Agent::System)
                 .await
         })
     }

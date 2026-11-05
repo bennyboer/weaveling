@@ -4,11 +4,11 @@ mod topic;
 use std::collections::BTreeMap;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use clock::text;
-use eventsourcing::{AccountId, Agent, ServiceError};
+use eventsourcing::{AccountId, Agent, ServiceError, StoreError};
 use notifications_contract::{AboutDTO, NoticeDTO, role};
 use notifications_core::{
     About, Names, NoticeSummary, NotificationsCore, NotificationsError, Role,
@@ -44,9 +44,10 @@ async fn dismiss(
     State(notifications): State<NotificationsCore>,
     Extension(agent): Extension<Agent>,
     Path(notice): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     notifications
-        .dismiss(&notice, &agent)
+        .dismiss(&notice, serving::demanded(&headers)?, &agent)
         .await
         .map_err(problem_of)?;
 
@@ -59,6 +60,9 @@ fn problem_of(failure: NotificationsError) -> Problem {
         | NotificationsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(serving::NOT_FOUND, "there is no such notice")
         }
+        NotificationsError::Events(
+            ref outdated @ ServiceError::Store(StoreError::Outdated { .. }),
+        ) => Problem::of(outdated, |refusal| Problem::unexpected(refusal)),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }
@@ -67,6 +71,7 @@ fn to_dto(summary: &NoticeSummary, names: &Names) -> NoticeDTO {
     NoticeDTO {
         names: named_in(&summary.about, names),
         id: summary.id.to_string(),
+        version: summary.version.count(),
         noted_at: text::serialize(summary.noted_at),
         about: match &summary.about {
             About::RoleChanged { project, role, by } => AboutDTO::RoleChanged {

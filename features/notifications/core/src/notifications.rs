@@ -4,6 +4,7 @@ use std::sync::Arc;
 use clock::Clock;
 use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
+    Version,
 };
 use time::{Duration, OffsetDateTime};
 use transacting::{Transaction, Transactions};
@@ -91,20 +92,34 @@ impl NotificationsCore {
         Ok(standing)
     }
 
-    pub async fn dismiss(&self, notice: &str, agent: &Agent) -> Result<(), NotificationsError> {
+    pub async fn dismiss(
+        &self,
+        notice: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<(), NotificationsError> {
         let id: NoticeId = notice.parse()?;
         self.read(notice, agent).await?;
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.events
-                .execute(
-                    transaction,
-                    &AggregateId::from(&id),
-                    NoticeCommand::Dismiss,
-                    agent,
-                )
-                .await?;
-            Ok(())
-        })
+        let key = AggregateId::from(&id);
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                match expected {
+                    Some(expected) => {
+                        self.events
+                            .execute_at(transaction, &key, expected, NoticeCommand::Dismiss, agent)
+                            .await?
+                    }
+                    None => {
+                        self.events
+                            .execute(transaction, &key, NoticeCommand::Dismiss, agent)
+                            .await?
+                    }
+                };
+                Ok(())
+            }
+        )
     }
 
     pub async fn open_for(&self, agent: &Agent) -> Result<Vec<NoticeSummary>, NotificationsError> {

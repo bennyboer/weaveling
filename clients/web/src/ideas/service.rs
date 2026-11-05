@@ -30,13 +30,21 @@ pub async fn capture(project: &ProjectId, title: &str) -> Result<Idea, ApiError>
     Ok(kept(as_idea(http::parsed(response, SUBJECT).await?)))
 }
 
-pub async fn retitle(id: &IdeaId, title: &str) -> Result<Idea, ApiError> {
+pub async fn retitle(id: &IdeaId, title: &str, on: u64) -> Result<Idea, ApiError> {
     let payload = RetitleIdeaRequest {
         title: title.to_owned(),
     };
-    let response = http::sent_with(Request::patch(&format!("{IDEAS}/{id}")), &payload).await?;
+    let response = http::sent_with(
+        Request::patch(&format!("{IDEAS}/{id}")).header("If-Match", &matching(on)),
+        &payload,
+    )
+    .await?;
 
     Ok(kept(as_idea(http::parsed(response, SUBJECT).await?)))
+}
+
+fn matching(version: u64) -> String {
+    format!("\"{version}\"")
 }
 
 fn kept(idea: Idea) -> Idea {

@@ -1,4 +1,5 @@
 use gloo_net::http::Request;
+use projects_contract::refused::TRASHED;
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, TrashedProjectDTO,
@@ -7,7 +8,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http;
-use crate::http::ApiError;
+use crate::http::{ApiError, Refusal};
 use crate::projects::model::{
     DescribedProject, Project, ProjectDetails, ProjectId, TrashedProject, Version,
 };
@@ -15,6 +16,7 @@ use quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";
+const IF_MATCH: &str = "If-Match";
 
 pub async fn list() -> Result<Vec<Project>, ApiError> {
     let response = http::sent(Request::get(PROJECTS)).await?;
@@ -41,6 +43,25 @@ pub async fn one(id: &ProjectId) -> Result<Project, ApiError> {
     as_listed(http::parsed(response, SUBJECT).await?)
 }
 
+/// One listed project read again, refused as moved to the trash rather than as unknown when that is where it went.
+pub async fn still_listed(id: &ProjectId) -> Result<Project, ApiError> {
+    match one(id).await {
+        Err(ApiError::NotFound(subject)) => match in_the_trash().await {
+            Ok(trashed) if trashed.iter().any(|held| &held.id == id) => Err(moved_to_the_trash()),
+            _ => Err(ApiError::NotFound(subject)),
+        },
+        read => read,
+    }
+}
+
+pub fn moved_to_the_trash() -> ApiError {
+    ApiError::Rejected(Refusal {
+        kind: Some(TRASHED.to_owned()),
+        detail: String::new(),
+        particulars: Vec::new(),
+    })
+}
+
 pub async fn details(id: &ProjectId) -> Result<DescribedProject, ApiError> {
     let response = http::sent(Request::get(&format!("{PROJECTS}/{id}"))).await?;
 
@@ -58,8 +79,7 @@ pub async fn change_details(
         description: details.description.clone(),
     };
     let response = http::sent_with(
-        Request::put(&format!("{PROJECTS}/{id}/details"))
-            .header("If-Match", &format!("\"{saved_against}\"")),
+        Request::put(&format!("{PROJECTS}/{id}/details")).header(IF_MATCH, &tag(saved_against)),
         &payload,
     )
     .await?;
@@ -67,17 +87,22 @@ pub async fn change_details(
     Ok(as_described(http::parsed(response, SUBJECT).await?))
 }
 
-pub async fn rename(id: &ProjectId, name: &str) -> Result<Project, ApiError> {
+pub async fn rename(id: &ProjectId, name: &str, on: Version) -> Result<Project, ApiError> {
     let payload = RenameProjectRequest {
         name: name.to_owned(),
     };
-    let response = http::sent_with(Request::patch(&format!("{PROJECTS}/{id}")), &payload).await?;
+    let response = http::sent_with(
+        Request::patch(&format!("{PROJECTS}/{id}")).header(IF_MATCH, &tag(on)),
+        &payload,
+    )
+    .await?;
 
     as_project(http::parsed(response, SUBJECT).await?)
 }
 
-pub async fn trash(id: &ProjectId) -> Result<(), ApiError> {
-    let response = http::sent(Request::delete(&format!("{PROJECTS}/{id}"))).await?;
+pub async fn trash(id: &ProjectId, on: Version) -> Result<(), ApiError> {
+    let response =
+        http::sent(Request::delete(&format!("{PROJECTS}/{id}")).header(IF_MATCH, &tag(on))).await?;
 
     http::checked(response, SUBJECT).await.map(|_| ())
 }
@@ -89,8 +114,10 @@ pub async fn in_the_trash() -> Result<Vec<TrashedProject>, ApiError> {
     trashed.into_iter().map(as_trashed).collect()
 }
 
-pub async fn restore(id: &ProjectId) -> Result<(), ApiError> {
-    let response = http::sent(Request::post(&format!("{PROJECTS}/{id}/restore"))).await?;
+pub async fn restore(id: &ProjectId, on: Version) -> Result<(), ApiError> {
+    let response =
+        http::sent(Request::post(&format!("{PROJECTS}/{id}/restore")).header(IF_MATCH, &tag(on)))
+            .await?;
 
     http::checked(response, SUBJECT).await.map(|_| ())
 }
@@ -98,8 +125,10 @@ pub async fn restore(id: &ProjectId) -> Result<(), ApiError> {
 fn as_trashed(dto: TrashedProjectDTO) -> Result<TrashedProject, ApiError> {
     Ok(TrashedProject {
         id: ProjectId::from(dto.id),
+        version: Version::from(dto.version),
         name: dto.name,
         until: OffsetDateTime::parse(&dto.until, &Rfc3339).map_err(|_| ApiError::Unexpected)?,
+        restored: false,
     })
 }
 
@@ -112,6 +141,7 @@ fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {
         version: Version::from(dto.version),
         name: dto.name,
         updated_at,
+        trashed: false,
     })
 }
 
@@ -135,4 +165,8 @@ fn as_described(found: ProjectDetailsDTO) -> DescribedProject {
             description: found.description,
         },
     }
+}
+
+fn tag(on: Version) -> String {
+    format!("\"{on}\"")
 }

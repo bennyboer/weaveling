@@ -34,7 +34,7 @@ pub struct WorkingCopy<A: Send + Sync + 'static, I: Send + Sync + 'static> {
     confirmed: RwSignal<Option<A>>,
     pending: RwSignal<Vec<I>>,
     sending: RwSignal<bool>,
-    awaited: StoredValue<Vec<Option<Rc<Landing>>>, LocalStorage>,
+    awaited: StoredValue<Vec<Option<Lander>>, LocalStorage>,
     send: StoredValue<Sending<A, I>, LocalStorage>,
     read: StoredValue<Reading<A>, LocalStorage>,
     failed: StoredValue<Failing, LocalStorage>,
@@ -91,6 +91,11 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         self.confirmed.get()
     }
 
+    /// Whether any intent of the author's is still on its way or waiting to go: what a button shows as busy, and what saving waits for.
+    pub fn unanswered(self) -> bool {
+        self.pending.with(|pending| !pending.is_empty())
+    }
+
     pub fn confirmed_untracked(self) -> Option<A> {
         self.confirmed.get_untracked()
     }
@@ -129,7 +134,8 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
 
     fn queue(self, intent: I, landing: Option<Rc<Landing>>) {
         self.pending.update(|pending| pending.push(intent));
-        self.awaited.update_value(|awaited| awaited.push(landing));
+        self.awaited
+            .update_value(|awaited| awaited.push(landing.map(Lander)));
     }
 
     /// Takes in the aggregate at a version the server told, older or repeated versions changing nothing.
@@ -216,7 +222,7 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
                 .try_update_value(|awaited| (!awaited.is_empty()).then(|| awaited.remove(0)))
                 .flatten()
                 .flatten();
-            if let Some(landing) = landing {
+            if let Some(Lander(landing)) = &landing {
                 landing.land(landed);
             }
             _ = self.sending.try_set(false);
@@ -244,6 +250,225 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
     }
 }
 
+type SendingTo<K, A, I> = Rc<dyn Fn(K, A, I) -> Answer<A>>;
+type ReadingOne<K, A> = Rc<dyn Fn(K) -> Answer<A>>;
+type Copies<K, A, I> = Vec<(K, WorkingCopy<A, I>, Owner)>;
+
+/// A list of aggregates each kept as a `WorkingCopy` of its own, the ideas of a project or the projects of an account: every item has its own version, its own intents and its own turn, so a change to one never waits for another. The list itself is what was last read, each item shown with the author's intents laid over it.
+pub struct WorkingCopies<
+    K: Send + Sync + 'static,
+    A: Send + Sync + 'static,
+    I: Send + Sync + 'static,
+> {
+    copies: StoredValue<Copies<K, A, I>, LocalStorage>,
+    listed: RwSignal<Vec<K>>,
+    has_been_read: RwSignal<bool>,
+    owner: StoredValue<Owner, LocalStorage>,
+    send: StoredValue<SendingTo<K, A, I>, LocalStorage>,
+    read: StoredValue<ReadingOne<K, A>, LocalStorage>,
+    failed: StoredValue<Failing, LocalStorage>,
+}
+
+impl<K: Send + Sync + 'static, A: Send + Sync + 'static, I: Send + Sync + 'static> Clone
+    for WorkingCopies<K, A, I>
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<K: Send + Sync + 'static, A: Send + Sync + 'static, I: Send + Sync + 'static> Copy
+    for WorkingCopies<K, A, I>
+{
+}
+
+impl<K, A, I> WorkingCopies<K, A, I>
+where
+    K: Clone + PartialEq + Send + Sync + 'static,
+    A: Versioned,
+    I: Intent<A>,
+{
+    /// `send` carries out one intent on the item it names, at the version it is given; `read` asks for one item whole. Like every signal it belongs to the reactive owner current when it is made, and so do the copies it keeps.
+    pub fn new<Sent, Read>(
+        send: impl Fn(K, A, I) -> Sent + 'static,
+        read: impl Fn(K) -> Read + 'static,
+        failed: impl Fn(ApiError) + 'static,
+    ) -> Self
+    where
+        Sent: Future<Output = Result<A, ApiError>> + 'static,
+        Read: Future<Output = Result<A, ApiError>> + 'static,
+    {
+        let send: SendingTo<K, A, I> =
+            Rc::new(move |about, on, intent| Box::pin(send(about, on, intent)));
+        let read: ReadingOne<K, A> = Rc::new(move |about| Box::pin(read(about)));
+        let failed: Failing = Rc::new(failed);
+
+        Self {
+            copies: StoredValue::new_local(Vec::new()),
+            listed: RwSignal::new(Vec::new()),
+            has_been_read: RwSignal::new(false),
+            owner: StoredValue::new_local(Owner::current().unwrap_or_default()),
+            send: StoredValue::new_local(send),
+            read: StoredValue::new_local(read),
+            failed: StoredValue::new_local(failed),
+        }
+    }
+
+    /// Takes in the list as it was read: an item kept takes in its newer version, a new one gets a copy of its own, and one no longer listed is let go with whatever it still intended.
+    pub fn take_in_all(self, listed: Vec<(K, A)>) {
+        let keys: Vec<K> = listed.iter().map(|(about, _)| about.clone()).collect();
+        let gone: Vec<Owner> = self
+            .copies
+            .try_update_value(|copies| {
+                let mut gone = Vec::new();
+                copies.retain(|(about, _, owner)| {
+                    let kept = keys.contains(about);
+                    if !kept {
+                        gone.push(owner.clone());
+                    }
+                    kept
+                });
+                gone
+            })
+            .unwrap_or_default();
+        for owner in gone {
+            owner.cleanup();
+        }
+        for (about, told) in listed {
+            self.copy_of(&about).take_in(told);
+        }
+        _ = self.listed.try_set(keys);
+        _ = self.has_been_read.try_set(true);
+    }
+
+    /// Takes in one item at a version the server told, as `take_in_all` would, adding it to the end of the list when it is new.
+    pub fn take_in(self, about: K, told: A) {
+        self.copy_of(&about).take_in(told);
+        _ = self.listed.try_update(|listed| {
+            if !listed.contains(&about) {
+                listed.push(about);
+            }
+        });
+    }
+
+    /// Lets one item go, as when it was deleted.
+    pub fn forget(self, about: &K) {
+        let gone = self
+            .copies
+            .try_update_value(|copies| {
+                let at = copies.iter().position(|(held, _, _)| held == about)?;
+                Some(copies.remove(at).2)
+            })
+            .flatten();
+        if let Some(owner) = gone {
+            owner.cleanup();
+        }
+        _ = self
+            .listed
+            .try_update(|listed| listed.retain(|held| held != about));
+    }
+
+    pub fn intend(self, about: &K, intent: I) {
+        if let Some(copy) = self.held(about) {
+            copy.intend(intent);
+        }
+    }
+
+    pub fn intended(self, about: &K, intent: I) -> Option<Landed> {
+        self.held(about).map(|copy| copy.intended(intent))
+    }
+
+    /// Every item listed, as the author sees it.
+    pub fn shown(self) -> Vec<A> {
+        self.listed
+            .get()
+            .iter()
+            .filter_map(|about| self.held(about)?.shown())
+            .collect()
+    }
+
+    pub fn shown_one(self, about: &K) -> Option<A> {
+        self.listed.track();
+        self.held(about)?.shown()
+    }
+
+    pub fn confirmed_one(self, about: &K) -> Option<A> {
+        self.held(about)?.confirmed_untracked()
+    }
+
+    /// Whether the list was read at all yet, which tells a list still loading from one that is empty.
+    pub fn is_read(self) -> bool {
+        self.has_been_read.try_get().unwrap_or(false)
+    }
+
+    pub fn unanswered_on(self, about: &K) -> bool {
+        self.listed.track();
+        self.held(about).is_some_and(|copy| copy.unanswered())
+    }
+
+    /// Every item listed, as the server last confirmed it.
+    pub fn confirmed_all(self) -> Vec<(K, A)> {
+        self.listed
+            .get_untracked()
+            .into_iter()
+            .filter_map(|about| {
+                let confirmed = self.held(&about)?.confirmed_untracked()?;
+                Some((about, confirmed))
+            })
+            .collect()
+    }
+
+    pub fn is_listed(self, about: &K) -> bool {
+        self.listed.with(|listed| listed.contains(about))
+    }
+
+    fn held(self, about: &K) -> Option<WorkingCopy<A, I>> {
+        self.copies
+            .try_with_value(|copies| {
+                copies
+                    .iter()
+                    .find(|(held, _, _)| held == about)
+                    .map(|(_, copy, _)| *copy)
+            })
+            .flatten()
+    }
+
+    fn copy_of(self, about: &K) -> WorkingCopy<A, I> {
+        if let Some(copy) = self.held(about) {
+            return copy;
+        }
+        let (Some(send), Some(read), Some(failed), Some(owner)) = (
+            self.send.try_get_value(),
+            self.read.try_get_value(),
+            self.failed.try_get_value(),
+            self.owner.try_get_value(),
+        ) else {
+            return self.orphan();
+        };
+        let own = owner.child();
+        let (sent_about, read_about) = (about.clone(), about.clone());
+        let copy = own.with(|| {
+            WorkingCopy::new(
+                move |on, intent| send(sent_about.clone(), on, intent),
+                move || read(read_about.clone()),
+                move |failure| failed(failure),
+            )
+        });
+        self.copies
+            .update_value(|copies| copies.push((about.clone(), copy, own)));
+
+        copy
+    }
+
+    fn orphan(self) -> WorkingCopy<A, I> {
+        WorkingCopy::new(
+            |_, _| async { Err(ApiError::Unexpected) },
+            || async { Err(ApiError::Unexpected) },
+            |_| {},
+        )
+    }
+}
+
 #[derive(Default)]
 struct Landing {
     landed: Cell<Option<bool>>,
@@ -255,6 +480,17 @@ impl Landing {
         self.landed.set(Some(landed));
         if let Some(waker) = self.waker.borrow_mut().take() {
             waker.wake();
+        }
+    }
+}
+
+/// A landing waited on, held by its working copy: dropped with the copy before the server answered, as when its item is let go, it lands as not landed rather than leaving whoever waits waiting for ever.
+struct Lander(Rc<Landing>);
+
+impl Drop for Lander {
+    fn drop(&mut self) {
+        if self.0.landed.get().is_none() {
+            self.0.land(false);
         }
     }
 }

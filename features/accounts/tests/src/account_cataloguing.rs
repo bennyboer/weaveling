@@ -88,7 +88,7 @@ async fn what_happens_to_an_account_reaches_the_list() {
     // when: the operator locks the other
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -104,7 +104,7 @@ async fn what_happens_to_an_account_reaches_the_list() {
     // when: the operator unlocks it
     wired
         .accounts
-        .unlock(&grace, &ada)
+        .unlock(&grace, &ada, None)
         .await
         .expect("an operator may unlock an account");
 

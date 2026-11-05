@@ -403,6 +403,7 @@ mod postgres_tests {
                 .members("project_1", &Agent::System)
                 .await
                 .expect("a founded project has members")
+                .state
                 .len(),
             1,
             "a second founding that fails inside the transaction would take the first and everything beside it down with it"

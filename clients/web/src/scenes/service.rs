@@ -1,4 +1,4 @@
-use gloo_net::http::Request;
+use gloo_net::http::{Request, RequestBuilder, Response};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO,
@@ -19,36 +19,47 @@ const RESTYLING: &str = "rewriting of the quotation marks";
 pub async fn open(id: &SceneId) -> Result<Scene, ApiError> {
     let response = http::sent(Request::get(&format!("{SCENES}/{id}"))).await?;
 
-    Ok(as_scene(http::parsed(response, SUBJECT).await?))
+    told(response).await
 }
 
-pub async fn retitle(id: &SceneId, title: &str) -> Result<Scene, ApiError> {
+pub async fn retitle(id: &SceneId, title: &str, on: u64) -> Result<Scene, ApiError> {
     let payload = RetitleSceneRequest {
         title: title.to_owned(),
     };
-    let response = http::sent_with(Request::patch(&format!("{SCENES}/{id}")), &payload).await?;
+    let response = http::sent_with(
+        made_on(Request::patch(&format!("{SCENES}/{id}")), on),
+        &payload,
+    )
+    .await?;
 
-    Ok(as_scene(http::parsed(response, SUBJECT).await?))
+    told(response).await
 }
 
-pub async fn link(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
+pub async fn link(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiError> {
     let payload = LinkIdeaRequest {
         idea: idea.to_string(),
     };
-    let response =
-        http::sent_with(Request::post(&format!("{SCENES}/{id}/ideas")), &payload).await?;
+    let response = http::sent_with(
+        made_on(Request::post(&format!("{SCENES}/{id}/ideas")), on),
+        &payload,
+    )
+    .await?;
 
-    Ok(as_scene(http::parsed(response, SUBJECT).await?))
+    told(response).await
 }
 
-pub async fn unlink(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
-    let response = http::sent(Request::delete(&format!("{SCENES}/{id}/ideas/{idea}"))).await?;
+pub async fn unlink(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiError> {
+    let response = http::sent(made_on(
+        Request::delete(&format!("{SCENES}/{id}/ideas/{idea}")),
+        on,
+    ))
+    .await?;
 
-    Ok(as_scene(http::parsed(response, SUBJECT).await?))
+    told(response).await
 }
 
-pub async fn delete(id: &SceneId) -> Result<(), ApiError> {
-    let response = http::sent(Request::delete(&format!("{SCENES}/{id}"))).await?;
+pub async fn delete(id: &SceneId, on: u64) -> Result<(), ApiError> {
+    let response = http::sent(made_on(Request::delete(&format!("{SCENES}/{id}")), on)).await?;
     http::checked(response, SUBJECT).await?;
     written::forget(id);
 
@@ -95,17 +106,24 @@ pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {
         project: project.to_string(),
     };
     let response = http::sent_with(Request::post(SCENES), &payload).await?;
-    let made = as_scene(http::parsed(response, SUBJECT).await?);
+    let made = told(response).await?;
     written::remember(project, made.summarized());
 
     Ok(made)
 }
 
-fn as_scene(dto: SceneDTO) -> Scene {
-    Scene {
+async fn told(response: Response) -> Result<Scene, ApiError> {
+    let dto: SceneDTO = http::parsed(response, SUBJECT).await?;
+
+    Ok(Scene {
         id: SceneId::from(dto.id),
         title: dto.title,
         ideas: dto.ideas.into_iter().map(IdeaId::from).collect(),
         text: dto.text,
-    }
+        version: dto.version,
+    })
+}
+
+fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
+    request.header("If-Match", &format!("\"{on}\""))
 }

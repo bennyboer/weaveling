@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -8,9 +9,11 @@ use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::header::ETAG;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, AggregateId, AggregateType, ServiceError, Standing, Version};
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Teller, Topic};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
@@ -404,84 +407,116 @@ async fn create(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<CreateSceneRequest>,
-) -> Result<(StatusCode, Json<SceneDTO>), Problem> {
+) -> Result<Response, Problem> {
     let created = scenes
         .create(&request.project, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok((StatusCode::CREATED, Json(to_dto(&created))))
+    Ok(to_response(
+        StatusCode::CREATED,
+        &Standing {
+            state: created,
+            version: Version::ZERO,
+        },
+    ))
 }
 
 async fn find(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
-) -> Result<Json<SceneDTO>, Problem> {
+) -> Result<Response, Problem> {
     let found = scenes.read(&id, &acting).await.map_err(problem_of)?;
 
-    Ok(Json(to_dto(&found)))
+    Ok(to_response(StatusCode::OK, &found))
 }
 
 async fn retitle(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<RetitleSceneRequest>,
-) -> Result<Json<SceneDTO>, Problem> {
+) -> Result<Response, Problem> {
     let retitled = scenes
-        .retitle(&id, &request.title, &acting)
+        .retitle(&id, &request.title, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(to_dto(&retitled)))
+    Ok(to_response(StatusCode::OK, &retitled))
 }
 
 async fn link(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<LinkIdeaRequest>,
-) -> Result<Json<SceneDTO>, Problem> {
+) -> Result<Response, Problem> {
     let linked = scenes
-        .link(&id, &request.idea, &acting)
+        .link(&id, &request.idea, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(to_dto(&linked)))
+    Ok(to_response(StatusCode::OK, &linked))
 }
 
 async fn unlink(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path((id, idea)): Path<(String, String)>,
-) -> Result<Json<SceneDTO>, Problem> {
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
     let unlinked = scenes
-        .unlink(&id, &idea, &acting)
+        .unlink(&id, &idea, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(to_dto(&unlinked)))
+    Ok(to_response(StatusCode::OK, &unlinked))
 }
 
 async fn remove(
     State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
-    scenes.delete(&id, &acting).await.map_err(problem_of)?;
+    scenes
+        .delete(&id, serving::demanded(&headers)?, &acting)
+        .await
+        .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_dto(scene: &Scene) -> SceneDTO {
-    SceneDTO {
-        id: scene.id().to_string(),
-        project: scene.project().to_string(),
-        title: scene.title().to_string(),
-        ideas: scene.ideas().iter().map(ToString::to_string).collect(),
-        text: scene.text(),
-    }
+fn to_response(status: StatusCode, standing: &Standing<Scene>) -> Response {
+    let scene = &standing.state;
+
+    (
+        status,
+        [(ETAG, serving::tag(standing.version))],
+        Json(SceneDTO {
+            id: scene.id().to_string(),
+            version: standing.version.count(),
+            project: scene.project().to_string(),
+            title: scene.title().to_string(),
+            ideas: scene.ideas().iter().map(ToString::to_string).collect(),
+            text: scene.text(),
+        }),
+    )
+        .into_response()
+}
+
+fn outdated(scene: SceneId, expected: Version) -> Problem {
+    let moved_on: ServiceError<Infallible> =
+        ServiceError::Store(eventsourcing::StoreError::outdated(
+            &AggregateId::from(scene.to_string()),
+            AggregateType::of("scene"),
+            expected,
+        ));
+
+    Problem::of(&moved_on, |never| match *never {})
 }
 
 fn problem_of(refusal: ScenesError) -> Problem {
@@ -505,6 +540,7 @@ fn problem_of(refusal: ScenesError) -> Problem {
         ScenesError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, ScenesError::NotAnAuthor)
         }
+        ScenesError::Outdated { scene, expected } => outdated(scene, expected),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

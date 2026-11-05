@@ -133,6 +133,7 @@ async fn a_member_removed_hears_no_more_of_the_project_s_members() {
         .remove(
             PROJECT,
             "account_bo",
+            None,
             &Agent::Account(AccountId::from("account_ada")),
         )
         .await

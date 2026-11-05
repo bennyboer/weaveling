@@ -75,6 +75,8 @@ pub struct LockDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AccountSummaryDTO {
     pub id: String,
+    #[serde(default)]
+    pub version: u64,
     pub name: String,
     pub email: String,
     pub verified: bool,

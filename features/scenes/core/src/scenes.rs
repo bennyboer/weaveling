@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, Standing, Version};
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
@@ -63,56 +63,85 @@ impl ScenesCore {
         })
     }
 
-    pub async fn read(&self, id: &str, agent: &Agent) -> Result<Scene, ScenesError> {
+    pub async fn read(&self, id: &str, agent: &Agent) -> Result<Standing<Scene>, ScenesError> {
+        let version = Version::of(self.service.version_of(id).await?);
         let scene = self.service.open(id).await?;
         self.authorized(agent, Act::Read, scene.project(), || not_there(&scene))
             .await?;
 
-        Ok(scene)
+        Ok(Standing {
+            state: scene,
+            version,
+        })
     }
 
     pub async fn retitle(
         &self,
         id: &str,
         title: &str,
+        expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Scene, ScenesError> {
+    ) -> Result<Standing<Scene>, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.retitle(transaction, id, title).await
+        let version = transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.retitle(transaction, id, title, expected).await
         })?;
 
-        self.service.open(id).await
+        self.as_of(id, version).await
     }
 
-    pub async fn link(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
+    pub async fn link(
+        &self,
+        id: &str,
+        idea: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Standing<Scene>, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.link(transaction, id, idea).await
+        let version = transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.link(transaction, id, idea, expected).await
         })?;
 
-        self.service.open(id).await
+        self.as_of(id, version).await
     }
 
-    pub async fn unlink(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
+    pub async fn unlink(
+        &self,
+        id: &str,
+        idea: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Standing<Scene>, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.unlink(transaction, id, idea).await
+        let version = transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.unlink(transaction, id, idea, expected).await
         })?;
 
-        self.service.open(id).await
+        self.as_of(id, version).await
     }
 
-    pub async fn delete(&self, id: &str, agent: &Agent) -> Result<(), ScenesError> {
+    pub async fn delete(
+        &self,
+        id: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<(), ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.delete(transaction, id).await?;
+            self.service.delete(transaction, id, expected).await?;
 
             Ok(())
+        })
+    }
+
+    async fn as_of(&self, id: &str, version: Version) -> Result<Standing<Scene>, ScenesError> {
+        Ok(Standing {
+            state: self.service.open(id).await?,
+            version,
         })
     }
 
@@ -178,8 +207,8 @@ impl ScenesCore {
         self.service.uncounted(at_most).await
     }
 
-    pub async fn version_of(&self, id: &str) -> Result<u64, ScenesError> {
-        self.service.version_of(id).await
+    pub async fn prose_version_of(&self, id: &str) -> Result<u64, ScenesError> {
+        self.service.prose_version_of(id).await
     }
 
     pub async fn announce_count(
@@ -212,7 +241,7 @@ impl ScenesCore {
         let batch = self.service.in_project(project, after, at_most).await?;
 
         for scene in &batch {
-            match self.delete(&scene.to_string(), &Agent::System).await {
+            match self.delete(&scene.to_string(), None, &Agent::System).await {
                 Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
                 Err(refused) => return Err(refused),
             }

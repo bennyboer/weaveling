@@ -63,7 +63,7 @@ async fn withdrawing_while_losing_races(losses: u8) -> (Result<(), InvitationsEr
         &wired,
         Arc::new(FailsAppending::losing_races(wired.store.clone(), losses)),
     )
-    .withdraw(&wiring::an_operator(), &issued.id)
+    .withdraw(&wiring::an_operator(), &issued.id, None)
     .await;
     let told = wired
         .store

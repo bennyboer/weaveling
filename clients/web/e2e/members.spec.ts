@@ -216,6 +216,73 @@ test("two role changes close together leave the later one standing, whichever an
   await expect(role, "the answer to the earlier change is older than the one already shown").toHaveValue("owner");
 });
 
+test("a role change refused because another owner changed the roles meanwhile is made again on what they left", async ({
+  page,
+}) => {
+  // given: an owner on the members page with an author and a reader, the members' version told
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author" },
+    { ...HEDY, role: "reader" },
+  ]);
+  let version = 3;
+  let listed: Listed[] = [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author" },
+    { ...HEDY, role: "reader" },
+  ];
+  const sent: { role: string; on: string | undefined }[] = [];
+  await page.route(
+    (url) => url.pathname.startsWith("/api/members"),
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (request.method() === "GET" && path === "/api/members") {
+        return route.fulfill({ json: listed, headers: { ETag: `"${version}"` } });
+      }
+      if (request.method() !== "PATCH") {
+        return route.fallback();
+      }
+      const { role } = request.postDataJSON();
+      const on = request.headers()["if-match"];
+      sent.push({ role, on });
+      if (sent.length === 1) {
+        listed = listed.map((member) => (member.account === HEDY.account ? { ...member, role: "author" } : member));
+        version += 1;
+      }
+      if (on !== `"${version}"`) {
+        return route.fulfill({
+          status: 412,
+          contentType: "application/problem+json",
+          body: JSON.stringify({ type: "outdated", status: 412, detail: "changed meanwhile" }),
+        });
+      }
+      const account = path.split("/").pop();
+      listed = listed.map((member) => (member.account === account ? { ...member, role } : member));
+      version += 1;
+      return route.fulfill({ json: listed, headers: { ETag: `"${version}"` } });
+    },
+  );
+  await page.reload();
+  await expect(page.locator(".members li")).toHaveCount(3);
+
+  // when: the author is made a reader
+  await page.getByLabel("Role of Grace Hopper").selectOption("Reader");
+
+  // then: it is sent on the version read, refused, and sent again on the newer one
+  await expect
+    .poll(() => sent)
+    .toEqual([
+      { role: "reader", on: '"3"' },
+      { role: "reader", on: '"4"' },
+    ]);
+  // and: both changes stand
+  await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("reader");
+  await expect(page.getByLabel("Role of Hedy Lamarr")).toHaveValue("author");
+  // and: nothing is told as refused
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("an author sees the roles plainly and may only leave, which leads back to the projects", async ({
   page,
 }) => {

@@ -152,6 +152,18 @@ impl SceneStore for Wavering {
         self.held.version_of(id).await
     }
 
+    async fn prose_version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        self.held.prose_version_of(id).await
+    }
+
+    async fn version_within(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<u64, StoreError> {
+        self.held.version_within(transaction, id).await
+    }
+
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
         self.held.uncounted(at_most).await
     }

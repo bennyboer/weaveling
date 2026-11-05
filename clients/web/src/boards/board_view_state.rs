@@ -6,10 +6,11 @@ use crate::boards::model::{Board, Placement, PositionedIdea, Size, Spot};
 use crate::boards::service;
 use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
-use crate::ideas::followed;
-use crate::ideas::model;
+use crate::ideas::followed::FollowedIdeas;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
+use crate::ideas::working;
+use crate::ideas::working::Ideas;
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::working_copy;
@@ -40,10 +41,9 @@ enum Intent {
 pub struct BoardViewState {
     problem: RwSignal<Option<ApiError>>,
     board: Memo<Option<Board>>,
-    pool: RwSignal<Option<Vec<Idea>>>,
+    pool: FollowedIdeas,
     working: WorkingCopy<Board, Intent>,
     capturing: Action<(String, Placement), ()>,
-    retitling: Action<(IdeaId, String), ()>,
 }
 
 impl BoardViewState {
@@ -67,12 +67,9 @@ impl BoardViewState {
             )
         };
         let board = Memo::new(move |_| working.shown());
-        let pool = RwSignal::new(None::<Vec<Idea>>);
-
-        let listing = followed::asking(project, pool, move |failure| {
+        let pool = FollowedIdeas::follow(project, move |failure| {
             _ = problem.try_set(Some(failure));
         });
-        StoredValue::new_local(followed::following(project, pool, listing));
 
         working.read_again();
 
@@ -112,18 +109,15 @@ impl BoardViewState {
             let Some(version) = working.confirmed().map(|held| held.version) else {
                 return;
             };
-            let unknown = pool.with(|held| {
-                held.as_ref().is_some_and(|known| {
-                    working.confirmed_untracked().is_some_and(|open| {
-                        open.ideas
-                            .iter()
-                            .any(|pinned| known.iter().all(|idea| idea.id != pinned.idea))
-                    })
-                })
-            });
+            let unknown = pool.is_read()
+                && working.confirmed_untracked().is_some_and(|open| {
+                    open.ideas
+                        .iter()
+                        .any(|pinned| !pool.copies().is_listed(&pinned.idea))
+                });
             if unknown && listed_again_at.get_value() != Some(version) {
                 listed_again_at.set_value(Some(version));
-                listing.dispatch(None);
+                pool.read_again();
             }
         });
 
@@ -145,32 +139,12 @@ impl BoardViewState {
                         Err(failure) => return problem.set(Some(failure)),
                     };
                     let idea = caught.id.clone();
-                    pool.update(|held| {
-                        if let Some(held) = held {
-                            model::hold(held, caught);
-                        }
-                    });
+                    pool.copies().take_in(idea.clone(), caught);
 
                     working.intend(Intent::Pin { idea, at });
                 }
             })
         };
-
-        let retitling = Action::new_local(move |(idea, title): &(IdeaId, String)| {
-            let idea = idea.clone();
-            let title = title.clone();
-
-            async move {
-                match ideas::retitle(&idea, &title).await {
-                    Ok(renamed) => pool.update(|held| {
-                        if let Some(held) = held {
-                            model::hold(held, renamed);
-                        }
-                    }),
-                    Err(failure) => problem.set(Some(failure)),
-                }
-            }
-        });
 
         Self {
             problem,
@@ -178,7 +152,6 @@ impl BoardViewState {
             pool,
             working,
             capturing,
-            retitling,
         }
     }
 
@@ -241,35 +214,18 @@ impl BoardViewState {
     }
 
     pub fn retitle(&self, idea: IdeaId, title: String) {
-        self.retitling.dispatch((idea, title));
-    }
-
-    pub fn idea(&self, id: &IdeaId) -> Option<Idea> {
         self.pool
-            .with(|held| held.as_ref()?.iter().find(|known| &known.id == id).cloned())
+            .copies()
+            .intend(&idea, working::Intent::Retitle { title });
     }
 
-    pub fn adopt(&self, newer: Idea) {
-        let older = self.pool.with_untracked(|held| {
-            held.as_ref().is_some_and(|held| {
-                held.iter()
-                    .any(|known| known.id == newer.id && known.version < newer.version)
-            })
-        });
-
-        if older {
-            self.pool.update(|held| {
-                if let Some(held) = held
-                    && let Some(known) = held.iter_mut().find(|known| known.id == newer.id)
-                {
-                    *known = newer;
-                }
-            });
-        }
+    /// The ideas of the project as the board works on them, for an inspector docked beside it to share.
+    pub fn ideas(&self) -> Ideas {
+        self.pool.copies()
     }
 
     fn in_pool(&self) -> Vec<Idea> {
-        self.pool.get().unwrap_or_default()
+        self.pool.copies().shown()
     }
 }
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clock::Clock;
 use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
-    StoreError,
+    StoreError, Version,
 };
 use transacting::Transaction;
 
@@ -49,14 +49,25 @@ impl MembersService {
         transaction: &mut Transaction,
         project: &ProjectLink,
         command: MembersCommand,
+        expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<(), MembersCoreError> {
-        let _landed = self
-            .events
-            .execute(transaction, &AggregateId::from(project), command, agent)
-            .await?;
+    ) -> Result<Version, MembersCoreError> {
+        let key = AggregateId::from(project);
 
-        Ok(())
+        let landed = match expected {
+            Some(expected) => {
+                self.events
+                    .execute_at(transaction, &key, expected, command, agent)
+                    .await?
+            }
+            None => {
+                self.events
+                    .execute(transaction, &key, command, agent)
+                    .await?
+            }
+        };
+
+        Ok(landed.version)
     }
 
     pub async fn disband(

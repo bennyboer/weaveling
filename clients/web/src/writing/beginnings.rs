@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
+use leptos::task;
 
-use crate::http::ApiError;
-use crate::outline::model::{Attachment, SectionId};
-use crate::outline::service;
+use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
+use crate::writing::scene_copies::SceneCopies;
 use crate::writing::structure::Structure;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +30,7 @@ pub enum Unplaced {
 #[derive(Clone, Copy)]
 pub struct Beginnings {
     structure: Structure,
+    scenes: SceneCopies,
     problems: Problems,
     pending: RwSignal<Option<Pending>>,
     beginning_section: StoredValue<bool>,
@@ -42,9 +43,10 @@ pub struct Beginnings {
 }
 
 impl Beginnings {
-    pub fn of(structure: Structure, problems: Problems) -> Self {
+    pub fn of(structure: Structure, scenes: SceneCopies, problems: Problems) -> Self {
         Self {
             structure,
+            scenes,
             problems,
             pending: RwSignal::new(None),
             beginning_section: StoredValue::new(false),
@@ -128,40 +130,36 @@ impl Beginnings {
     }
 
     fn begin_section_at(self, under: Option<SectionId>, after: Option<SectionId>) {
-        if self.beginning_section.get_value() {
+        if self.beginning_section.get_value() || self.structure.id().is_none() {
             return;
         }
-        let Some(outline) = self.structure.id() else {
-            return;
-        };
         self.beginning_section.set_value(true);
+        let adding = self.structure.added(under, after.clone(), move |section| {
+            _ = self.focus_next.try_set_value(Some(section));
+            _ = self.pending.try_set(None);
+        });
 
-        self.structure.in_turn(async move {
-            match service::add(&outline, under, after.clone(), "", None).await {
-                Ok((section, opened)) => {
-                    self.focus_next.set_value(Some(section.clone()));
-                    self.pending.set(None);
-                    self.structure.take(opened);
-                    self.beginning_section.set_value(false);
-
+        task::spawn_local(async move {
+            let added = adding.await;
+            _ = self.beginning_section.try_set_value(false);
+            match added {
+                Some(section) => {
                     let typed = self.section_words.get_value();
                     if !typed.trim().is_empty() {
                         self.structure.retitle(section, typed);
                     }
                 }
-                Err(failure) => {
-                    self.beginning_section.set_value(false);
-                    self.structure.refresh().await;
+                None => {
+                    self.structure.caught_up().await;
                     let gone = after
                         .as_ref()
                         .is_some_and(|after| self.structure.title_of(after).is_none());
-                    if !gone {
-                        return self.problems.report(failure);
+                    if gone {
+                        self.pending.set(None);
+                        self.unplaced.set(Some(Unplaced::Section {
+                            titled: self.section_words.get_value(),
+                        }));
                     }
-                    self.pending.set(None);
-                    self.unplaced.set(Some(Unplaced::Section {
-                        titled: self.section_words.get_value(),
-                    }));
                 }
             }
         });
@@ -192,45 +190,41 @@ impl Beginnings {
             .opening
             .try_update(|opening| opening.insert(section.clone()))
             .unwrap_or(false);
-        let Some(outline) = self.structure.id().filter(|_| started) else {
+        if !started || self.structure.id().is_none() {
             return;
-        };
+        }
         let project = self.structure.project();
 
-        self.structure.in_turn(async move {
+        task::spawn_local(async move {
             let made = match scenes::create(&project).await {
                 Ok(made) => made,
-                Err(failure) => return self.could_not_begin(&section, failure),
+                Err(failure) => {
+                    self.opening.update(|opening| _ = opening.remove(&section));
+                    return self.problems.report(failure);
+                }
             };
             self.opened
                 .update_value(|opened| _ = opened.insert(made.id.clone(), section.clone()));
+            let scene = made.id.clone();
+            self.scenes.hold(made);
 
-            match service::attach(
-                &outline,
-                &Attachment::Scene(made.id.clone()),
-                &section,
-                after.map(Attachment::Scene),
-                None,
-            )
-            .await
+            if self
+                .structure
+                .brought_back(scene.clone(), section.clone(), after)
+                .await
             {
-                Ok(placed) => self.structure.take(placed),
-                Err(failure) => {
-                    self.structure.refresh().await;
-                    if self.structure.title_of(&section).is_some() {
-                        return self.could_not_begin(&section, failure);
-                    }
-                    self.opening.update(|opening| _ = opening.remove(&section));
-                    let begins = self
-                        .opening_words
-                        .with_value(|words| words.get(&section).cloned())
-                        .unwrap_or_default();
-                    self.unplaced.set(Some(Unplaced::Scene {
-                        scene: made.id,
-                        begins,
-                    }));
-                }
+                return;
             }
+            self.structure.caught_up().await;
+            self.opening.update(|opening| _ = opening.remove(&section));
+            if self.structure.title_of(&section).is_some() {
+                return;
+            }
+            let begins = self
+                .opening_words
+                .with_value(|words| words.get(&section).cloned())
+                .unwrap_or_default();
+            self.unplaced.set(Some(Unplaced::Scene { scene, begins }));
         });
     }
 
@@ -268,11 +262,9 @@ impl Beginnings {
                     self.opening_words
                         .update_value(|words| _ = words.remove(&section));
                 }
-                let problems = self.problems;
-                self.structure.in_turn(async move {
-                    if let Err(failure) = scenes::delete(&scene).await {
-                        problems.report(failure);
-                    }
+                let deleting = self.scenes.deleted(scene);
+                task::spawn_local(async move {
+                    deleting.await;
                 });
             }
             Unplaced::Section { .. } => {}
@@ -301,10 +293,5 @@ impl Beginnings {
 
     pub fn hands_over(self, section: &SectionId) -> bool {
         self.opening.with(|opening| opening.contains(section))
-    }
-
-    fn could_not_begin(self, section: &SectionId, failure: ApiError) {
-        self.opening.update(|opening| _ = opening.remove(section));
-        self.problems.report(failure);
     }
 }

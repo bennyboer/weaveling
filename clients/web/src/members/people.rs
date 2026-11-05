@@ -8,20 +8,25 @@ use crate::accounts::{CurrentSession, SignInState};
 use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
+use crate::members::intent::Intent;
 use crate::members::leaving;
-use crate::members::listed::{Member, Role};
+use crate::members::listed::{Member, Members, Role};
 use crate::members::service;
 use crate::problem;
+use crate::projects::intent::Intent as ProjectIntent;
 use crate::projects::model::ProjectId;
-use crate::projects::service as projects;
+use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::speech;
+use crate::working_copy::WorkingCopy;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Copy)]
 pub struct People {
     session: CurrentSession,
+    open_project: OpenProject,
     project: StoredValue<String>,
-    pub(super) members: RwSignal<Vec<Member>>,
+    working: WorkingCopy<Members, Intent>,
     refused: RwSignal<Option<ApiError>>,
     pub(super) leaving: RwSignal<bool>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
@@ -30,20 +35,58 @@ pub struct People {
 
 impl People {
     pub fn asked(project: ProjectId) -> Self {
+        let project = project.to_string();
+        let refused = RwSignal::new(None);
+        let built = StoredValue::new_local(None::<People>);
+        let (sending_to, reading) = (project.clone(), project.clone());
+        let working = WorkingCopy::new(
+            move |on: Members, intent: Intent| {
+                let project = sending_to.clone();
+
+                async move {
+                    match &intent {
+                        Intent::ChangeRole { account, to } => {
+                            service::change_role(&project, account, *to, on.version).await
+                        }
+                        Intent::Remove { account } => {
+                            service::remove(&project, account, on.version).await?;
+                            Ok(service::members_of(&project)
+                                .await
+                                .ok()
+                                .filter(|read| read.version > on.version)
+                                .unwrap_or_else(|| intent.landed_on(&on)))
+                        }
+                    }
+                }
+            },
+            move || {
+                let project = reading.clone();
+
+                async move { service::members_of(&project).await }
+            },
+            move |failure| {
+                _ = refused.try_set(Some(failure));
+                if let Some(people) = built.try_get_value().flatten() {
+                    people.load(0);
+                }
+            },
+        );
         let people = Self {
             session: expect_context::<CurrentSession>(),
-            project: StoredValue::new(project.to_string()),
-            members: RwSignal::new(Vec::new()),
-            refused: RwSignal::new(None),
+            open_project: expect_context::<OpenProject>(),
+            project: StoredValue::new(project),
+            working,
+            refused,
             leaving: RwSignal::new(false),
             following: StoredValue::new_local(None),
             asking: Asking::new(),
         };
+        built.set_value(Some(people));
         people.following.set_value(Some(Subscription::start(
             "members",
             &[("project", &people.project.get_value())],
-            move |_| people.load(),
-            move || people.load(),
+            move |told: FrameDTO| people.load(told.version),
+            move || people.load(0),
         )));
 
         people
@@ -56,27 +99,31 @@ impl People {
         }
     }
 
+    pub(super) fn members(self) -> Vec<Member> {
+        self.working
+            .shown()
+            .map(|members| members.people)
+            .unwrap_or_default()
+    }
+
     pub fn owning(self) -> bool {
         let own = self.own();
-        self.members.with(|members| {
-            members.iter().any(|member| {
-                member.role == Role::Owner && own.as_deref() == Some(member.account.as_str())
-            })
+        self.members().iter().any(|member| {
+            member.role == Role::Owner && own.as_deref() == Some(member.account.as_str())
         })
     }
 
     fn the_only_owner(self) -> bool {
         self.owning()
-            && self.members.with(|members| {
-                members
-                    .iter()
-                    .filter(|member| member.role == Role::Owner)
-                    .count()
-                    == 1
-            })
+            && self
+                .members()
+                .iter()
+                .filter(|member| member.role == Role::Owner)
+                .count()
+                == 1
     }
 
-    fn load(self) {
+    fn load(self, told_at: u64) {
         let project = self.project.get_value();
         let asked = self.asking.next();
         task::spawn_local(async move {
@@ -85,46 +132,33 @@ impl People {
                 return;
             }
             match found {
-                Ok(found) => self.members.set(found),
-                Err(failed) => self.refused.set(Some(failed)),
+                Ok(found) => self.working.take_in(Members {
+                    version: found.version.max(told_at),
+                    ..found
+                }),
+                Err(failed) => _ = self.refused.try_set(Some(failed)),
             }
         });
     }
 
     fn change_role(self, account: String, to: Role) {
-        let project = self.project.get_value();
         self.refused.set(None);
-        let asked = self.asking.next();
-        task::spawn_local(async move {
-            let changed = service::change_role(&project, &account, to).await;
-            match changed {
-                Ok(_) if !self.asking.is_latest(asked) => {}
-                Ok(changed) => self.members.set(changed),
-                Err(failed) => {
-                    self.refused.set(Some(failed));
-                    self.load();
-                }
-            }
-        });
+        self.working.intend(Intent::ChangeRole { account, to });
     }
 
     pub(super) fn hand_over_and_leave(self, to: String, then: impl Fn() + 'static) {
         let Some(own) = self.own() else {
             return;
         };
-        let project = self.project.get_value();
         self.refused.set(None);
+        let working = self.working;
+        let handed = working.intended(Intent::ChangeRole {
+            account: to,
+            to: Role::Owner,
+        });
         task::spawn_local(async move {
-            let left = match service::change_role(&project, &to, Role::Owner).await {
-                Ok(_) => service::remove(&project, &own).await,
-                Err(failed) => Err(failed),
-            };
-            match left {
-                Ok(()) => then(),
-                Err(failed) => {
-                    self.refused.set(Some(failed));
-                    self.load();
-                }
+            if handed.await && working.intended(Intent::Remove { account: own }).await {
+                then();
             }
         });
     }
@@ -132,23 +166,33 @@ impl People {
     pub(super) fn trash_project(self, then: impl Fn() + 'static) {
         let project = ProjectId::from(self.project.get_value());
         self.refused.set(None);
+        let Some(landed) = self.open_project.intended(&project, ProjectIntent::Trash) else {
+            return self.refused.set(self.open_project.change_refused());
+        };
         task::spawn_local(async move {
-            match projects::trash(&project).await {
-                Ok(()) => then(),
-                Err(failed) => self.refused.set(Some(failed)),
+            match landed.await {
+                true => then(),
+                false => _ = self.refused.try_set(self.open_project.change_refused()),
             }
         });
     }
 
-    fn remove(self, account: String, then: impl Fn() + 'static) {
-        let project = self.project.get_value();
+    fn leave(self, then: impl Fn() + 'static) {
+        let Some(own) = self.own() else {
+            return;
+        };
         self.refused.set(None);
+        let left = self.working.intended(Intent::Remove { account: own });
         task::spawn_local(async move {
-            match service::remove(&project, &account).await {
-                Ok(()) => then(),
-                Err(failed) => self.refused.set(Some(failed)),
+            if left.await {
+                then();
             }
         });
+    }
+
+    fn remove(self, account: String) {
+        self.refused.set(None);
+        self.working.intend(Intent::Remove { account });
     }
 }
 
@@ -171,8 +215,7 @@ pub fn people(people: People) -> impl IntoView {
             let own = people.own();
             let owning = people.owning();
             people
-                .members
-                .get()
+                .members()
                 .into_iter()
                 .map(|member| {
                     let yourself = own.as_deref() == Some(member.account.as_str());
@@ -219,7 +262,7 @@ fn listed(
                     if people.the_only_owner() {
                         people.leaving.set(true);
                     } else {
-                        people.remove(account.clone(), left.clone());
+                        people.leave(left.clone());
                     }
                 })
                 .child(speech::said("members-leave"))
@@ -230,9 +273,7 @@ fn listed(
             html::button()
                 .r#type("button")
                 .class("danger")
-                .on(ev::click, move |_| {
-                    people.remove(account.clone(), move || people.load())
-                })
+                .on(ev::click, move |_| people.remove(account.clone()))
                 .child(speech::said("members-remove"))
                 .into_any()
         })

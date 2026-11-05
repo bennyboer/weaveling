@@ -1,5 +1,6 @@
 pub mod confirm_trash;
 pub mod details_form;
+pub mod intent;
 pub mod languages;
 pub mod model;
 pub mod new_project;

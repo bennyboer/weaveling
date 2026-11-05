@@ -51,6 +51,7 @@ impl Scope {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedInvitation {
     pub id: String,
+    pub version: u64,
     pub email: String,
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
@@ -89,6 +90,7 @@ pub fn listed(summary: InvitationSummaryDTO) -> Result<ListedInvitation, ApiErro
         issued_at: moment(&summary.issued_at)?,
         until: moment(&summary.until)?,
         id: summary.id,
+        version: summary.version,
         email: summary.email,
     })
 }
@@ -115,6 +117,7 @@ mod tests {
     fn an_invitation_to_grace(status: &str, declined_for: Option<&str>) -> InvitationSummaryDTO {
         InvitationSummaryDTO {
             id: "invitation_1".to_owned(),
+            version: 3,
             email: "grace@example.com".to_owned(),
             issued_at: "2026-10-23T08:00:00Z".to_owned(),
             until: "2026-10-30T08:00:00Z".to_owned(),
@@ -147,6 +150,7 @@ mod tests {
             InvitationPage {
                 invitations: vec![ListedInvitation {
                     id: "invitation_1".to_owned(),
+                    version: 3,
                     email: "grace@example.com".to_owned(),
                     issued_at: datetime!(2026-10-23 08:00 UTC),
                     until: datetime!(2026-10-30 08:00 UTC),

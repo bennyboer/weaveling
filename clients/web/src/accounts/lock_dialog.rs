@@ -1,22 +1,15 @@
+use std::future::Future;
+
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
-use time::OffsetDateTime;
 
-use crate::accounts::listed::{ListedAccount, OperatorLock};
-use crate::accounts::service;
+use crate::accounts::listed::ListedAccount;
 use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
 use crate::speech;
-
-fn now() -> OffsetDateTime {
-    let millis = js_sys::Date::now() as i64;
-
-    OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000)
-        .unwrap_or(OffsetDateTime::UNIX_EPOCH)
-}
 
 fn naming(key: &'static str, name: &str) -> String {
     let mut args = FluentArgs::new();
@@ -25,31 +18,25 @@ fn naming(key: &'static str, name: &str) -> String {
     speech::say_with(key, &args)
 }
 
-pub fn lock_dialog(
+pub fn lock_dialog<Locked>(
     account: ListedAccount,
-    locked: impl Fn(OperatorLock) + Clone + 'static,
+    lock: impl Fn(String) -> Locked + 'static,
+    refused: RwSignal<Option<ApiError>>,
     close: impl Fn() + Copy + Send + Sync + 'static,
-) -> impl IntoView {
+) -> impl IntoView
+where
+    Locked: Future<Output = bool> + 'static,
+{
     let reason = RwSignal::new(String::new());
-    let refused = RwSignal::new(None::<ApiError>);
     let name = account.name.clone();
     let title = Signal::derive(move || naming("instance-lock-dialog", &name));
-    let id = account.id;
 
     let locking = Act::new(move |(), _: Here| {
-        refused.set(None);
-        let (id, typed, locked) = (id.clone(), reason.get_untracked(), locked.clone());
+        let locked = lock(reason.get_untracked());
 
         async move {
-            match service::lock_account(&id, &typed).await {
-                Ok(()) => {
-                    locked(OperatorLock {
-                        reason: typed.trim().to_owned(),
-                        since: now(),
-                    });
-                    close();
-                }
-                Err(failed) => refused.set(Some(failed)),
+            if locked.await {
+                close();
             }
         }
     });

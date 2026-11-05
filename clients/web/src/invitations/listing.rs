@@ -35,7 +35,7 @@ pub fn invited_list(invited: Invited) -> impl IntoView {
     (
         move || invited.refused.get().map(problem::problem),
         move || {
-            (invited.loaded.get() && invited.invitations.with(Vec::is_empty)).then(|| {
+            (invited.invitations.is_read() && invited.invitations.shown().is_empty()).then(|| {
                 html::p()
                     .class("hint")
                     .child(speech::said("instance-invitations-none"))
@@ -44,7 +44,7 @@ pub fn invited_list(invited: Invited) -> impl IntoView {
         html::ul().class("invitations").child(move || {
             invited
                 .invitations
-                .get()
+                .shown()
                 .into_iter()
                 .map(|invitation| listed(invited, invitation))
                 .collect_view()
@@ -171,8 +171,13 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
                     .child(speech::said("instance-invitation-invite-again"))
             }),
             withdrawable.then(|| {
+                let busy = id.clone();
+
                 html::button()
                     .r#type("button")
+                    .attr("aria-busy", move || {
+                        invited.invitations.unanswered_on(&busy).then_some("true")
+                    })
                     .on(ev::click, move |_| invited.withdraw(id.clone()))
                     .child(speech::said("instance-invitation-withdraw"))
             }),

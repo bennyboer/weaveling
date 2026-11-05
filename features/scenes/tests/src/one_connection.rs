@@ -280,7 +280,7 @@ async fn an_edit_into_a_scene_deleted_while_live_refuses_it_and_nobody_joins_it_
     everything(&mut heard).await;
     // and: the scene deleted
     service
-        .delete(&scene, &Agent::Local)
+        .delete(&scene, None, &Agent::Local)
         .await
         .expect("deleting should succeed");
 

@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use accounts_contract::{AccountPageDTO, LockRequest, SignInRequest, refused};
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, EmailAddress, EmailAddresses,
+    AccountCatalog, AccountId, AccountName, AccountSummary, EmailAddress, EmailAddresses, KIND,
 };
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
-use axum_test::{TestResponse, TestServer};
-use eventsourcing::Version;
+use axum_test::{TestRequest, TestResponse, TestServer};
+use eventsourcing::{AggregateId, EventStore, Version};
 use serde_json::Value;
 use transacting::{InMemoryTransactions, Transactions};
 
@@ -581,4 +581,139 @@ async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
         StatusCode::NOT_FOUND,
         refused::ACCOUNT_NOT_FOUND,
     );
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OperatorAct {
+    Lock,
+    Unlock,
+    Appoint,
+    Dismiss,
+}
+
+const EVERY_OPERATOR_ACT: [OperatorAct; 4] = [
+    OperatorAct::Lock,
+    OperatorAct::Unlock,
+    OperatorAct::Appoint,
+    OperatorAct::Dismiss,
+];
+
+impl Instance {
+    fn grace_on_ada(&self, act: OperatorAct) -> TestRequest {
+        let ada = self.ada.to_string();
+        let asked = match act {
+            OperatorAct::Lock => self
+                .server
+                .put(&format!("/instance/accounts/{ada}/lock"))
+                .json(&LockRequest {
+                    reason: "Sent spam.".to_owned(),
+                }),
+            OperatorAct::Unlock => self
+                .server
+                .delete(&format!("/instance/accounts/{ada}/lock")),
+            OperatorAct::Appoint => self
+                .server
+                .put(&format!("/instance/accounts/{ada}/operator")),
+            OperatorAct::Dismiss => self
+                .server
+                .delete(&format!("/instance/accounts/{ada}/operator")),
+        };
+
+        asked.add_header(COOKIE, &self.grace_signed_in)
+    }
+
+    async fn ada_s_version(&self) -> usize {
+        self.wired
+            .store
+            .read_from(&AggregateId::from(&self.ada), KIND, Version::of(1))
+            .await
+            .expect("reading should succeed")
+            .len()
+    }
+}
+
+#[tokio::test]
+async fn every_operator_act_from_the_version_the_operator_saw_lands() {
+    // given: an instance with two accounts, one its operator
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let mut seen = instance.ada_s_version().await;
+
+    for act in EVERY_OPERATOR_ACT {
+        // when: the operator acts on the other account from the version it stands at
+        let response = instance
+            .grace_on_ada(act)
+            .add_header("if-match", format!("\"{seen}\""))
+            .await;
+
+        // then: the act lands, moving the account one version on
+        response.assert_status(StatusCode::NO_CONTENT);
+        assert_eq!(instance.ada_s_version().await, seen + 1, "{act:?}");
+        seen += 1;
+    }
+    // and: the account ends unlocked and no operator
+    let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
+    let ada = page
+        .accounts
+        .iter()
+        .find(|listed| listed.id == instance.ada.to_string())
+        .expect("ada is listed");
+    assert!(ada.locks.is_empty());
+    assert!(!ada.operator);
+}
+
+#[tokio::test]
+async fn every_operator_act_from_a_version_the_account_has_moved_past_is_refused_and_changes_nothing()
+ {
+    // given: an instance with two accounts, one its operator
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let stale = instance.ada_s_version().await;
+    // and: the other account locked, unlocked and appointed since
+    for act in [OperatorAct::Lock, OperatorAct::Unlock, OperatorAct::Appoint] {
+        instance
+            .grace_on_ada(act)
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+    }
+    let current = instance.ada_s_version().await;
+
+    for act in EVERY_OPERATOR_ACT {
+        // when: the operator acts on it from the version it saw first
+        let response = instance
+            .grace_on_ada(act)
+            .add_header("if-match", format!("\"{stale}\""))
+            .await;
+
+        // then: the act is refused as outdated
+        refused_as(&response, StatusCode::PRECONDITION_FAILED, "outdated");
+        // and: the account stays at the version it stood at
+        assert_eq!(instance.ada_s_version().await, current, "{act:?}");
+    }
+    // and: it is still listed as an operator, and still appointed as one
+    assert!(
+        instance
+            .is_listed_as_operator(&instance.ada.to_string())
+            .await
+    );
+    let grace = instance.grace().await;
+    instance
+        .unlock(&instance.ada_signed_in, &grace)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn every_operator_act_naming_no_version_lands_whatever_the_account_stands_at() {
+    // given: an instance with two accounts, one its operator
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let before = instance.ada_s_version().await;
+
+    for act in EVERY_OPERATOR_ACT {
+        // when: the operator acts on the other account naming no version
+        let response = instance.grace_on_ada(act).await;
+
+        // then: the act lands
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+    // and: each moved the account one version on
+    assert_eq!(instance.ada_s_version().await, before + 4);
 }

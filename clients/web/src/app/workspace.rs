@@ -36,7 +36,7 @@ pub fn WorkspacePage(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                 html::ul().class("projects").child(view! {
                     <For
                         each=move || workspace.projects()
-                        key=|project| (project.id.clone(), project.version)
+                        key=|project| (project.id.clone(), project.version, project.name.clone())
                         let:project
                     >
                         {ProjectRow(ProjectRowProps {

@@ -179,7 +179,11 @@ impl SceneStore for FalteringStore {
     }
 
     async fn version_of(&self, id: SceneId) -> Result<u64, StoreError> {
-        let version = self.held.version_of(id).await?;
+        self.held.version_of(id).await
+    }
+
+    async fn prose_version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        let version = self.held.prose_version_of(id).await?;
         let edit = self.edited_mid_count.lock().expect("never poisoned").take();
         if let Some(edit) = edit {
             let mut elsewhere = InMemoryTransactions::new()
@@ -194,6 +198,14 @@ impl SceneStore for FalteringStore {
         }
 
         Ok(version)
+    }
+
+    async fn version_within(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<u64, StoreError> {
+        self.held.version_within(transaction, id).await
     }
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
@@ -529,7 +541,7 @@ async fn a_scene_deleted_while_live_is_let_go_even_with_an_unstored_edit() {
     // and: the scene deleted
     bench
         .service
-        .delete(&id.to_string(), &Agent::Local)
+        .delete(&id.to_string(), None, &Agent::Local)
         .await
         .expect("should delete");
 

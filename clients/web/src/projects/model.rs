@@ -8,6 +8,7 @@ use time::format_description::well_known::Rfc3339;
 
 use quotation::QuotationMarks;
 
+use crate::working_copy::Versioned;
 use live_contract::FrameDTO;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -22,6 +23,7 @@ pub struct Project {
     pub version: Version,
     pub name: String,
     pub updated_at: OffsetDateTime,
+    pub trashed: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -41,8 +43,10 @@ pub struct DescribedProject {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrashedProject {
     pub id: ProjectId,
+    pub version: Version,
     pub name: String,
     pub until: OffsetDateTime,
+    pub restored: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -166,6 +170,7 @@ pub fn taken_in(mut held: Vec<Project>, told: FrameDTO) -> Option<Vec<Project>> 
                 version,
                 name,
                 updated_at: at()?,
+                trashed: false,
             }),
             ProjectEventDTO::Trashed { .. } | ProjectEventDTO::Deleted => {}
             _ => return None,
@@ -222,6 +227,30 @@ pub fn membership_in(frame: FrameDTO) -> Option<Membership> {
 
 pub fn next_wait(waited: Duration) -> Option<Duration> {
     (waited < GIVEN_UP_AFTER).then(|| waited.clamp(FIRST_WAIT, LONGEST_WAIT))
+}
+
+impl Version {
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
+impl Versioned for Project {
+    fn version(&self) -> u64 {
+        self.version.0
+    }
+}
+
+impl Versioned for DescribedProject {
+    fn version(&self) -> u64 {
+        self.version.0
+    }
+}
+
+impl Versioned for TrashedProject {
+    fn version(&self) -> u64 {
+        self.version.0
+    }
 }
 
 impl From<String> for ProjectId {
@@ -357,6 +386,7 @@ mod tests {
                 version: Version::from(version),
                 name: name.to_owned(),
                 updated_at: datetime!(2026-10-20 08:00 UTC),
+                trashed: false,
             }
         }
 
@@ -715,14 +745,17 @@ mod tests {
                 version: Version::from(version),
                 name: "The Loom".to_owned(),
                 updated_at: datetime!(2026-11-03 10:00 UTC),
+                trashed: false,
             }]
         }
 
         fn in_the_trash() -> Vec<TrashedProject> {
             vec![TrashedProject {
                 id: project_1(),
+                version: Version::from(2),
                 name: "The Loom".to_owned(),
                 until: datetime!(2026-12-03 10:00 UTC),
+                restored: false,
             }]
         }
 

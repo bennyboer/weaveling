@@ -94,5 +94,13 @@ pub trait SceneStore: Send + Sync {
 
     async fn version_of(&self, id: SceneId) -> Result<u64, StoreError>;
 
+    async fn prose_version_of(&self, id: SceneId) -> Result<u64, StoreError>;
+
+    async fn version_within(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<u64, StoreError>;
+
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError>;
 }

@@ -108,7 +108,7 @@ async fn only_an_operator_invites_or_withdraws() {
     assert!(matches!(
         wired
             .invitations
-            .withdraw(&wiring::no_operator(), &id)
+            .withdraw(&wiring::no_operator(), &id, None)
             .await,
         Err(InvitationsError::NotAnOperator)
     ));
@@ -189,7 +189,7 @@ async fn an_operator_withdraws_an_invitation() {
     // when: an operator withdraws it
     wired
         .invitations
-        .withdraw(&wiring::an_operator(), &id)
+        .withdraw(&wiring::an_operator(), &id, None)
         .await
         .expect("an operator may withdraw");
 
@@ -211,7 +211,8 @@ async fn an_invitation_that_is_not_there_is_not_withdrawn() {
             .invitations
             .withdraw(
                 &wiring::an_operator(),
-                &InvitationId::generate(wiring::at(1_000))
+                &InvitationId::generate(wiring::at(1_000)),
+                None
             )
             .await,
         Err(InvitationsError::Events(ServiceError::NotFound { .. }))

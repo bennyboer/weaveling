@@ -1,3 +1,4 @@
+use eventsourcing::Version;
 use transacting::Transaction;
 
 use super::AccountsCore;
@@ -37,6 +38,7 @@ impl AccountsCore {
             self.commanded_in(
                 transaction,
                 id,
+                None,
                 AccountCommand::BecomeOperator,
                 &id.acting(),
             )
@@ -49,34 +51,50 @@ impl AccountsCore {
         by: &AccountId,
         account: &AccountId,
         reason: &str,
+        expected: Option<Version>,
     ) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.still_operating(transaction, by).await?;
-            let reason = LockReason::new(reason).map_err(AccountsError::InvalidLockReason)?;
-            self.commanded_in(
-                transaction,
-                account,
-                AccountCommand::Lock(LockKind::Operator, reason),
-                &by.acting(),
-            )
-            .await
-        })?;
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.still_operating(transaction, by).await?;
+                let reason = LockReason::new(reason).map_err(AccountsError::InvalidLockReason)?;
+                self.commanded_in(
+                    transaction,
+                    account,
+                    expected,
+                    AccountCommand::Lock(LockKind::Operator, reason),
+                    &by.acting(),
+                )
+                .await
+            }
+        )?;
         self.check_sessions();
 
         Ok(())
     }
 
-    pub async fn unlock(&self, by: &AccountId, account: &AccountId) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.still_operating(transaction, by).await?;
-            self.commanded_in(
-                transaction,
-                account,
-                AccountCommand::Unlock(LockKind::Operator),
-                &by.acting(),
-            )
-            .await
-        })
+    pub async fn unlock(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+        expected: Option<Version>,
+    ) -> Result<(), AccountsError> {
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.still_operating(transaction, by).await?;
+                self.commanded_in(
+                    transaction,
+                    account,
+                    expected,
+                    AccountCommand::Unlock(LockKind::Operator),
+                    &by.acting(),
+                )
+                .await
+            }
+        )
     }
 
     pub async fn list(
@@ -94,38 +112,50 @@ impl AccountsCore {
         &self,
         by: &AccountId,
         account: &AccountId,
+        expected: Option<Version>,
     ) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.still_operating(transaction, by).await?;
-            self.operators.appoint(transaction, account).await?;
-            self.commanded_in(
-                transaction,
-                account,
-                AccountCommand::BecomeOperator,
-                &by.acting(),
-            )
-            .await
-        })
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.still_operating(transaction, by).await?;
+                self.operators.appoint(transaction, account).await?;
+                self.commanded_in(
+                    transaction,
+                    account,
+                    expected,
+                    AccountCommand::BecomeOperator,
+                    &by.acting(),
+                )
+                .await
+            }
+        )
     }
 
     pub async fn dismiss_operator(
         &self,
         by: &AccountId,
         account: &AccountId,
+        expected: Option<Version>,
     ) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.still_operating(transaction, by).await?;
-            if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
-                return Err(AccountsError::LastOperator);
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.still_operating(transaction, by).await?;
+                if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
+                    return Err(AccountsError::LastOperator);
+                }
+                self.commanded_in(
+                    transaction,
+                    account,
+                    expected,
+                    AccountCommand::StopBeingOperator,
+                    &by.acting(),
+                )
+                .await
             }
-            self.commanded_in(
-                transaction,
-                account,
-                AccountCommand::StopBeingOperator,
-                &by.acting(),
-            )
-            .await
-        })
+        )
     }
 
     async fn still_operating(

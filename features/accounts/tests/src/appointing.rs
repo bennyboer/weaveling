@@ -67,7 +67,7 @@ async fn an_operator_makes_another_account_an_operator_who_may_then_act_as_one()
     // when: the operator appoints the account
     wired
         .accounts
-        .appoint_operator(&grace, &ada)
+        .appoint_operator(&grace, &ada, None)
         .await
         .expect("an operator may make another");
 
@@ -97,14 +97,14 @@ async fn an_operator_takes_the_role_away_and_it_counts_at_once() {
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
-        .appoint_operator(&grace, &ada)
+        .appoint_operator(&grace, &ada, None)
         .await
         .expect("an operator may make another");
 
     // when: one takes the role away from the other
     wired
         .accounts
-        .dismiss_operator(&grace, &ada)
+        .dismiss_operator(&grace, &ada, None)
         .await
         .expect("an operator may take the role away again");
 
@@ -125,7 +125,7 @@ async fn an_operator_may_give_up_the_role_but_not_as_the_last() {
 
     // then: giving up the role is refused
     assert!(matches!(
-        wired.accounts.dismiss_operator(&grace, &grace).await,
+        wired.accounts.dismiss_operator(&grace, &grace, None).await,
         Err(AccountsError::LastOperator)
     ));
     // and: the role is kept
@@ -137,13 +137,13 @@ async fn an_operator_may_give_up_the_role_but_not_as_the_last() {
     // when: another operator is appointed
     wired
         .accounts
-        .appoint_operator(&grace, &ada)
+        .appoint_operator(&grace, &ada, None)
         .await
         .expect("an operator may make another");
     // and: the first gives up the role
     wired
         .accounts
-        .dismiss_operator(&grace, &grace)
+        .dismiss_operator(&grace, &grace, None)
         .await
         .expect("with another operator she may give it up");
 
@@ -159,12 +159,12 @@ async fn only_an_operator_makes_or_unmakes_one() {
 
     // then: the account may not appoint
     assert!(matches!(
-        wired.accounts.appoint_operator(&ada, &ada).await,
+        wired.accounts.appoint_operator(&ada, &ada, None).await,
         Err(AccountsError::NotAnOperator)
     ));
     // and: may not dismiss
     assert!(matches!(
-        wired.accounts.dismiss_operator(&ada, &grace).await,
+        wired.accounts.dismiss_operator(&ada, &grace, None).await,
         Err(AccountsError::NotAnOperator)
     ));
     // and: the roles stay as they were
@@ -180,7 +180,7 @@ async fn an_account_refusing_the_role_is_not_appointed() {
 
     // then: appointing the account is refused by it
     assert!(matches!(
-        wired.accounts.appoint_operator(&grace, &ada).await,
+        wired.accounts.appoint_operator(&grace, &ada, None).await,
         Err(AccountsError::Events(ServiceError::Refused(
             AccountError::NotVerifiedYet
         )))
@@ -203,13 +203,13 @@ async fn a_locked_account_is_not_made_an_operator() {
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
     // then: appointing the account is refused
     assert!(matches!(
-        wired.accounts.appoint_operator(&grace, &ada).await,
+        wired.accounts.appoint_operator(&grace, &ada, None).await,
         Err(AccountsError::Events(ServiceError::Refused(
             AccountError::LockedCannotBecomeOperator
         )))
@@ -225,14 +225,14 @@ async fn a_dismissal_whose_event_cannot_be_kept_leaves_the_operator_appointed() 
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
-        .appoint_operator(&grace, &ada)
+        .appoint_operator(&grace, &ada, None)
         .await
         .expect("an operator may make another");
 
     // when: one dismisses the other while events cannot be kept
     let refused = wired
         .refusing_appends()
-        .dismiss_operator(&grace, &ada)
+        .dismiss_operator(&grace, &ada, None)
         .await;
 
     // then: the dismissal fails
@@ -259,7 +259,7 @@ async fn an_appointment_whose_event_cannot_be_kept_appoints_nobody() {
     // when: the operator appoints the account while events cannot be kept
     let refused = wired
         .refusing_appends()
-        .appoint_operator(&grace, &ada)
+        .appoint_operator(&grace, &ada, None)
         .await;
 
     // then: the appointment fails

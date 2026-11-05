@@ -328,6 +328,7 @@ test("a rename on the board answered after a newer one was told leaves the newer
   });
   // and: another author renaming it while a rename of mine is answered
   let heard = 0;
+  let heardBefore = 0;
   heardOn(page, "ideas", () => {
     heard += 1;
   });
@@ -338,11 +339,12 @@ test("a rename on the board answered after a newer one was told leaves the newer
     }
     const response = await route.fetch();
     await anotherAuthor(page, "patch", `/ideas/${loom}`, { title: "The heddle" });
-    await expect.poll(() => heard).toBe(2);
+    await expect.poll(() => heard - heardBefore).toBe(2);
     await route.fulfill({ response });
   });
   await page.reload();
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
+  heardBefore = heard;
 
   // when: it is renamed here
   await cardNamed(page, "The loom remembers").dblclick();

@@ -117,7 +117,7 @@ async fn a_taking_up_told_again_or_after_a_withdrawal_changes_nothing() {
     let withdrawn = an_open_invitation(&wired).await;
     wired
         .invitations
-        .withdraw(&wiring::an_operator(), &withdrawn)
+        .withdraw(&wiring::an_operator(), &withdrawn, None)
         .await
         .expect("an operator may withdraw");
     let listener = listener(&wired);

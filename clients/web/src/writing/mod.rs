@@ -25,6 +25,7 @@ mod problems;
 mod quiet_note;
 mod rearranged;
 mod saving;
+mod scene_copies;
 mod scene_ideas;
 mod scene_in_flow;
 mod settings;

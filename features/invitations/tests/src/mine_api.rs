@@ -114,7 +114,7 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
     let withdrawn = a_listed_invitation_into(&wired, "project_shed", Role::Reader, ADA).await;
     wired
         .invitations
-        .withdraw(&grace(), &withdrawn)
+        .withdraw(&grace(), &withdrawn, None)
         .await
         .expect("an owner may withdraw");
     listed(&wired, withdrawn).await;

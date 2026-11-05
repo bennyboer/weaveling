@@ -104,7 +104,7 @@ async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismisse
     let dismissed_at = NOTED_AT + Duration::days(5);
     kept.clock.set(dismissed_at);
     kept.notifications
-        .dismiss(&notice.to_string(), &bo())
+        .dismiss(&notice.to_string(), None, &bo())
         .await
         .expect("dismissing should succeed");
     kept.catalogued(&notice).await;

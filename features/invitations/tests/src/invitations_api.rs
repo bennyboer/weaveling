@@ -5,7 +5,7 @@ use axum::http::header::{ORIGIN, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use invitations_contract::{InvitationSummaryDTO, InviteRequest, ScopeDTO, refused};
-use invitations_core::{InvitationEvent, InvitationId, KIND};
+use invitations_core::{DeclineReason, InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
 
 use crate::wiring;
@@ -231,5 +231,88 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
             .await,
         StatusCode::CONFLICT,
         refused::INVITATION_ALREADY_ACCEPTED,
+    );
+}
+
+async fn an_invitation_to_ada(wired: &Wired) -> InvitationId {
+    wired
+        .invitations
+        .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
+        .await
+        .expect("an operator may invite")
+        .id
+}
+
+async fn events_of(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
+    wired
+        .store
+        .read_from(&AggregateId::from(id), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .map(|recorded| recorded.event)
+        .collect()
+}
+
+#[tokio::test]
+async fn withdrawing_from_the_version_the_operator_saw_withdraws() {
+    // given: an open invitation at its first version
+    let wired = wiring::a_workbench();
+    let id = an_invitation_to_ada(&wired).await;
+
+    // when: an operator withdraws it from that version
+    served_to(&wired, wiring::an_operator())
+        .delete(&format!("/invitations/{id}"))
+        .add_header("if-match", "\"1\"")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is withdrawn
+    assert_eq!(
+        events_of(&wired, &id).await.last(),
+        Some(&InvitationEvent::Withdrawn)
+    );
+}
+
+#[tokio::test]
+async fn withdrawing_from_a_version_the_invitation_has_moved_past_is_refused_and_changes_nothing() {
+    // given: an invitation declined since the operator saw it open
+    let wired = wiring::a_workbench();
+    let id = an_invitation_to_ada(&wired).await;
+    wired
+        .invitations
+        .declined(None, &id, DeclineReason::TurnedDown)
+        .await
+        .expect("an open invitation is declined");
+    let before = events_of(&wired, &id).await;
+
+    // when: the operator withdraws it from the version it saw
+    let response = served_to(&wired, wiring::an_operator())
+        .delete(&format!("/invitations/{id}"))
+        .add_header("if-match", "\"1\"")
+        .await;
+
+    // then: it is refused as outdated
+    refused_as(&response, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the invitation stays as it was
+    assert_eq!(events_of(&wired, &id).await, before);
+}
+
+#[tokio::test]
+async fn withdrawing_without_a_version_withdraws_whatever_the_invitation_stands_at() {
+    // given: an open invitation
+    let wired = wiring::a_workbench();
+    let id = an_invitation_to_ada(&wired).await;
+
+    // when: an operator withdraws it naming no version
+    served_to(&wired, wiring::an_operator())
+        .delete(&format!("/invitations/{id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is withdrawn
+    assert_eq!(
+        events_of(&wired, &id).await.last(),
+        Some(&InvitationEvent::Withdrawn)
     );
 }

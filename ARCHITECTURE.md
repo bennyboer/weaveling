@@ -260,6 +260,8 @@ The spikes proved the technology. This is where it lands in the codebase.
 
 **A scene has its own id, and it is a pool of its own.** `SceneId` is a UUID v7 like every other identifier here — generated when the scene is created, derivable from nothing. A scene belongs to a project, carries its own title, and links to the ideas it draws on. Nothing else holds it; the outline only points at it.
 
+**A scene counts two versions.** Its own moves with what its REST routes change — title and links — and is what `If-Match`, the `ETag` and its retitle and link messages carry. The prose counts its updates apart, so the word count can tell which writing it has counted; typing never makes a retitle look outdated.
+
 *Considered and rejected, back when a scene hung off a piece (the pool's single kind before [it split in two](#ideas-and-scenes-are-two-pools--decided)): making a scene's id equal its piece's id.* It was genuinely tempting — the scene becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
 
 - **It bakes "one scene per piece" into the key.** A piece plausibly wanted a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have had to guess its shape up front. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
@@ -861,18 +863,24 @@ Three streams meet in the client, and every view that changes something has to b
 
 **Every change says what it was made on: `If-Match`, always.** The server takes `If-Match` on every aggregate and decides a command without it against whatever it holds (`serving::demanded`); the client sent it only for a project's details. With one request at a time the client always knows the version it builds on, so every change sends it. Landing on that version, it lands; finding a newer one, another author having got in between, the server refuses it with 412, and the working copy takes in the newer state, lays its pending changes over it again and sends the change worked out anew. The outline shows why: the author sees A, B, C and moves C up, which goes out as "C after A"; another author meanwhile moved A to the end, so the server holds B, C, A, and without `If-Match` "C after A" gives B, A, C, C gone down where the author moved it up. Refused instead, it is worked out again from B, C, A as "C before B". An outright change, a card's spot, comes out the same the second time, so for it a refusal costs one round trip, and only when someone did get in between; one rule for every change is worth that.
 
-**Where it applies: every aggregate.** Nothing is counted simple until it proves to be; an aggregate that turns out not to need it can be decided again then.
+**Where it applies: every aggregate,** all of them on it since 2026-11-05. Nothing is counted simple until it proves to be; an aggregate that turns out not to need it can be decided again then.
 
 | Aggregate | Changes made fast or in a row | Merged by | Today |
 |---|---|---|---|
-| Board | reshape (spot, size), pin, unpin | card | **on its `WorkingCopy` since 2026-11-05** |
-| Outline | retitle; move up and down, promote, demote, place; add, remove; attach, detach | section, for retitles; the rest in turn | **the outline view on its `WorkingCopy` since 2026-11-05**; the writing view still keeps its own copy and queue (`writing/structure.rs`), sending no `If-Match` |
-| Ideas | retitle, discard | idea | sent and answered as they come |
-| Scenes | retitle, link and unlink ideas | scene, for titles; links in turn | sent and answered as they come; a refused link now takes back only its own |
-| Projects | rename, details | project | details carry `If-Match`; rename does not |
-| Members | change of role, removal | member | each answer taken whole; `Asking` keeps the newest list |
+| Board | reshape (spot, size), pin, unpin | card | `WorkingCopy<Board>` |
+| Outline, in the outline view | retitle; move up and down, promote, demote, place; add, remove; attach, detach | section, for retitles; the rest in turn | `WorkingCopy<Outline>` |
+| Outline, in the writing view | retitle, nest, lift, attach, detach, add, remove | section, for retitles | `WorkingCopy` of its own over the same aggregate |
+| Ideas | retitle | idea | `WorkingCopies<IdeaId, Idea>`, the board and its inspector sharing one |
+| Scenes | retitle, link and unlink ideas, delete | scene, for titles | `WorkingCopies<SceneId, Scene>` in the writing view |
+| Projects | rename, details, trash, restore | project | `WorkingCopies` for the list and the trash; the open project a copy of its own, its details not in the list |
+| Members | change of role, removal, leaving | member | `WorkingCopy<Members>`, the version in `ETag` |
+| Invitations | withdraw; to oneself, accept and decline | invitation | `WorkingCopies`; accepting and declining carry no `If-Match`, acting on one's own account with a single-use ticket |
+| Notices | dismiss | notice | `WorkingCopies` |
+| Accounts, the operator's list | lock, unlock, appoint, dismiss | account | `WorkingCopies` |
 
 So the accounts, invitations, notifications and the rest go through one too, what is done once included, creating, trashing, inviting, answering: a change like any other, which the working copy sends in its turn. Left out is only a scene's prose, which is not an aggregate but a CRDT, kept right by its own socket. Where an `Act` or an `Asking` stands today, the working copy takes its place as each aggregate moves over, and they go once nothing uses them.
+
+**A list of aggregates is `WorkingCopies`.** The ideas of a project, the projects of an account, a project's invitations, one's notices: each item an aggregate with a version of its own, so each gets a `WorkingCopy` of its own under one `WorkingCopies<Id, A, I>`, and a change to one never waits for another. The list as read feeds `take_in_all`, one told item `take_in`, an item gone `forget`; an item let go with an intent still on its way lands that intent as not landed. Only the board, an outline and a project's members are one aggregate each.
 
 **Built once, used by each: the `WorkingCopy`.** `WorkingCopy<Board>`, `WorkingCopy<Outline>`, in `clients/web/src/working_copy.rs`, holds an aggregate's confirmed state, its pending `Intent`s, the one request on its way and the merging, and answers a 412 by laying the pending changes over the newer state. The name is version control's: what the author works on, the confirmed state with their own changes over it, matched with everyone else's as they go out. A pending one is an `Intent`, `boards::Intent`, `outline::Intent`, what the author means to do and the server has yet to confirm, kept apart by its name from a change the server tells, `OutlineChange`, which is confirmed and carries a version. Each view says what its changes are, how one lays over the state, which merge, and how an answer and a told change are taken in; it no longer writes any of it by hand. To be built aggregate by aggregate, the board first, where the bug shows, then the outline, where moving in a row needs it most, then the rest, each with a browser test that holds a key or moves in a row.
 

@@ -14,6 +14,7 @@ pub struct Scene {
     pub title: String,
     pub ideas: Vec<IdeaId>,
     pub text: String,
+    pub version: u64,
 }
 
 impl Scene {

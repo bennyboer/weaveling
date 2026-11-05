@@ -72,7 +72,7 @@ async fn an_operator_locks_an_account_and_its_sessions_end_at_once() {
     // when: the operator locks the account
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -98,7 +98,7 @@ async fn a_lock_is_told_as_the_operators_doing() {
     // when: the operator locks the account
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -122,7 +122,7 @@ async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_rig
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -150,7 +150,10 @@ async fn only_an_operator_locks_or_unlocks() {
 
     // then: an account that is no operator may not lock another
     assert!(matches!(
-        wired.accounts.lock(&ada, &hedy, "I do not like her.").await,
+        wired
+            .accounts
+            .lock(&ada, &hedy, "I do not like her.", None)
+            .await,
         Err(AccountsError::NotAnOperator)
     ));
     // and: the other stays unlocked
@@ -159,13 +162,13 @@ async fn only_an_operator_locks_or_unlocks() {
     // when: the operator locks it
     wired
         .accounts
-        .lock(&grace, &hedy, "Sent spam.")
+        .lock(&grace, &hedy, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
     // then: the account that is no operator may not unlock it
     assert!(matches!(
-        wired.accounts.unlock(&ada, &hedy).await,
+        wired.accounts.unlock(&ada, &hedy, None).await,
         Err(AccountsError::NotAnOperator)
     ));
     // and: it stays locked
@@ -179,14 +182,14 @@ async fn an_unlocked_account_signs_in_again() {
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
     // when: the operator unlocks it
     wired
         .accounts
-        .unlock(&grace, &ada)
+        .unlock(&grace, &ada, None)
         .await
         .expect("an operator may unlock an account");
 
@@ -206,7 +209,7 @@ async fn an_operator_cannot_lock_themselves() {
 
     // then: locking itself is refused
     assert!(matches!(
-        wired.accounts.lock(&grace, &grace, "Testing.").await,
+        wired.accounts.lock(&grace, &grace, "Testing.", None).await,
         Err(AccountsError::Events(ServiceError::Refused(
             AccountError::OperatorCannotBeLocked
         )))
@@ -221,7 +224,7 @@ async fn an_account_is_locked_only_with_a_reason() {
 
     // then: a lock with a blank reason is refused
     assert!(matches!(
-        wired.accounts.lock(&grace, &ada, "   ").await,
+        wired.accounts.lock(&grace, &ada, "   ", None).await,
         Err(AccountsError::InvalidLockReason(_))
     ));
     // and: the account stays unlocked
@@ -235,7 +238,7 @@ async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -275,7 +278,7 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
     wired.clock.set(wiring::at(1_700_000_060));
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -283,7 +286,7 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
     wired.clock.set(wiring::at(1_700_000_120));
     wired
         .accounts
-        .unlock(&grace, &ada)
+        .unlock(&grace, &ada, None)
         .await
         .expect("an operator may unlock an account");
 
@@ -316,7 +319,7 @@ async fn a_lock_reaches_the_end_of_the_account_s_sessions_at_once() {
     // when: the operator locks the account
     wired
         .accounts
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("an operator may lock an account");
 
@@ -333,7 +336,7 @@ async fn a_lock_that_lost_a_race_is_tried_again_and_lands() {
     // when: the operator locks the account, losing four races first
     wired
         .losing_races(4)
-        .lock(&grace, &ada, "Sent spam.")
+        .lock(&grace, &ada, "Sent spam.", None)
         .await
         .expect("the fifth try lands");
 
@@ -348,7 +351,10 @@ async fn a_lock_that_lost_every_race_it_may_try_is_a_conflict() {
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // when: the operator locks the account, losing every race it may try
-    let refused = wired.losing_races(5).lock(&grace, &ada, "Sent spam.").await;
+    let refused = wired
+        .losing_races(5)
+        .lock(&grace, &ada, "Sent spam.", None)
+        .await;
 
     // then: it is refused as outdated
     assert!(matches!(

@@ -91,7 +91,7 @@ impl<S: SceneStore> Committing<'_, S> {
     }
 
     pub async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
-        let as_of = self.store.version_of(id).await?;
+        let as_of = self.store.prose_version_of(id).await?;
         self.announce_word_count_as_of(id, words, as_of).await
     }
 
@@ -816,7 +816,10 @@ pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
         .apply(id, &a_paragraph("The loom stood silent."))
         .await
         .expect("writing should succeed");
-    let counted_as_of = store.version_of(id).await.expect("the scene has a version");
+    let counted_as_of = store
+        .prose_version_of(id)
+        .await
+        .expect("the prose has a version");
     // and: written in again since
     store
         .apply(id, &a_paragraph("Then it spoke."))
@@ -852,6 +855,142 @@ pub async fn the_version_of_a_missing_scene_is_not_found(store: &Committing<'_, 
     // when: its version is asked for
     let error = store
         .version_of(missing)
+        .await
+        .expect_err("there is no version of what is not there");
+
+    // then: it is not found
+    assert!(matches!(&error, StoreError::NotFound(id) if *id == missing));
+}
+
+pub async fn a_transaction_is_told_the_version_it_moved_the_scene_to(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: a scene written in once
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+
+    // when: a transaction retitles it and asks for its version
+    let mut transaction = store.begun().await.expect("beginning should succeed");
+    let before = store
+        .uncommitted()
+        .version_within(&mut transaction, id)
+        .await
+        .expect("the scene has a version");
+    store
+        .uncommitted()
+        .retitle(&mut transaction, id, &a_title("The loom"))
+        .await
+        .expect("retitling should succeed");
+    let after = store
+        .uncommitted()
+        .version_within(&mut transaction, id)
+        .await
+        .expect("the scene has a version");
+    transaction
+        .finish()
+        .await
+        .expect("committing should succeed");
+
+    // then: it was told the version the writing left untouched, and the one its own retitling moved it to
+    assert_eq!(
+        (before, after),
+        (0, 1),
+        "the prose counts its own versions, so writing does not move the scene's"
+    );
+    // and: that is the version the scene is at
+    assert_eq!(
+        store.version_of(id).await.expect("the scene has a version"),
+        1
+    );
+}
+
+pub async fn the_prose_version_of_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: a scene never created
+    let missing = an_id(1_000);
+
+    // when: the version of its prose is asked for
+    let error = store
+        .prose_version_of(missing)
+        .await
+        .expect_err("there is no version of what is not there");
+
+    // then: it is not found
+    assert!(matches!(&error, StoreError::NotFound(id) if *id == missing));
+}
+
+pub async fn the_prose_and_the_scene_count_their_versions_apart(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: an empty scene
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    // when: it is written in twice
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("writing should succeed");
+    store
+        .apply(id, &a_paragraph("Then it spoke."))
+        .await
+        .expect("writing should succeed");
+    // then: the prose moved twice and the scene not at all
+    assert_eq!(
+        (
+            store
+                .prose_version_of(id)
+                .await
+                .expect("the prose has a version"),
+            store.version_of(id).await.expect("the scene has a version"),
+        ),
+        (2, 0),
+        "typing must not make a retitle read before it look outdated"
+    );
+
+    // when: it is retitled, linked and unlinked
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitling should succeed");
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("linking should succeed");
+    store
+        .unlink(id, &an_idea("idea_1"))
+        .await
+        .expect("unlinking should succeed");
+    // then: the scene moved three times and the prose not at all
+    assert_eq!(
+        (
+            store
+                .prose_version_of(id)
+                .await
+                .expect("the prose has a version"),
+            store.version_of(id).await.expect("the scene has a version"),
+        ),
+        (2, 3),
+        "what the scene's routes change leaves the count of the prose owed or not as it was"
+    );
+}
+
+pub async fn the_version_within_a_transaction_of_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: a scene never created
+    let missing = an_id(1_000);
+
+    // when: a transaction asks for its version
+    let mut transaction = store.begun().await.expect("beginning should succeed");
+    let error = store
+        .uncommitted()
+        .version_within(&mut transaction, missing)
         .await
         .expect_err("there is no version of what is not there");
 
@@ -1140,7 +1279,7 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
     );
 }
 
-pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
+pub async fn every_change_to_a_scene_s_title_or_links_counts_up(bench: &impl Workbench) {
     // given: two scenes
     let store = &bench.committing();
     let id = an_id(1_000);
@@ -1178,7 +1317,7 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
         .await
         .expect("link should succeed");
 
-    // then: each scene's announcements carry its count of real changes
+    // then: each scene's announcements carry its count of real changes to its title and links
     let versions: Vec<(String, u64)> = told_after_creating(bench.enqueued().await)
         .into_iter()
         .map(|(_, payload)| {
@@ -1194,10 +1333,10 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
             (id.to_string(), 1),
             (other.to_string(), 1),
             (id.to_string(), 2),
+            (id.to_string(), 3),
             (id.to_string(), 4),
-            (id.to_string(), 5),
         ],
-        "every change to a scene counts, announced or not — retitling and writing too — each          scene on its own, and what changed nothing does not"
+        "a scene's title and links count up, each scene on its own; its prose and what changed nothing do not"
     );
 }
 
@@ -1502,6 +1641,22 @@ macro_rules! conformance_tests {
             a_count_as_of_an_older_version_leaves_the_newer_writing_owed
         );
         $crate::suite::conformance_case!($workbench, the_version_of_a_missing_scene_is_not_found);
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_transaction_is_told_the_version_it_moved_the_scene_to
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            the_version_within_a_transaction_of_a_missing_scene_is_not_found
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            the_prose_version_of_a_missing_scene_is_not_found
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            the_prose_and_the_scene_count_their_versions_apart
+        );
         $crate::suite::conformance_case!($workbench, a_write_rolled_back_owes_no_count);
         $crate::suite::conformance_case!($workbench, an_empty_scene_can_be_stored);
         $crate::suite::conformance_case!($workbench, load_missing_scene_is_not_found);
@@ -1562,7 +1717,10 @@ macro_rules! conformance_tests {
             $workbench,
             unlinking_enqueues_only_for_a_link_that_was_there
         );
-        $crate::suite::bench_case!($workbench, every_change_to_a_scene_counts_up);
+        $crate::suite::bench_case!(
+            $workbench,
+            every_change_to_a_scene_s_title_or_links_counts_up
+        );
         $crate::suite::bench_case!(
             $workbench,
             announcing_a_word_count_enqueues_it_with_the_scene_s_project

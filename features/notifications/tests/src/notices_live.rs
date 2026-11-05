@@ -91,7 +91,7 @@ async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed(
     let notice = told.noted_and_listed("account_bo", "project_1").await;
     let noted = bo.frame().await;
     told.notifications
-        .dismiss(&notice.to_string(), &an_account("account_bo"))
+        .dismiss(&notice.to_string(), None, &an_account("account_bo"))
         .await
         .expect("dismissing should succeed");
     told.notifications

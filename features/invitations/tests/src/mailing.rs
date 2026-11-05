@@ -152,7 +152,7 @@ async fn an_invitation_withdrawn_before_its_mail_was_heard_is_not_mailed() {
     let id = an_open_invitation(&wired).await;
     wired
         .invitations
-        .withdraw(&wiring::an_operator(), &id)
+        .withdraw(&wiring::an_operator(), &id, None)
         .await
         .expect("an operator may withdraw");
 

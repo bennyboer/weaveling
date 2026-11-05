@@ -4,26 +4,22 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::scenes::model::{SceneId, SceneSummary};
-use crate::scenes::service as scenes;
-use crate::writing::problems::Problems;
-use crate::writing::saving::Saving;
+use crate::writing::scene_copies::SceneCopies;
 use crate::writing::structure::Structure;
 
 #[derive(Clone, Copy)]
 pub struct LooseScenes {
     listed: RwSignal<Option<Vec<SceneId>>>,
     structure: Structure,
-    problems: Problems,
-    saving: Saving,
+    scenes: SceneCopies,
 }
 
 impl LooseScenes {
-    pub fn of(structure: Structure, problems: Problems, saving: Saving) -> Self {
+    pub fn of(structure: Structure, scenes: SceneCopies) -> Self {
         Self {
             listed: RwSignal::new(None),
             structure,
-            problems,
-            saving,
+            scenes,
         }
     }
 
@@ -34,14 +30,12 @@ impl LooseScenes {
                 listed.retain(|held| held != &scene);
             }
         });
-        self.saving.write_begun();
+        let deleting = self.scenes.deleted(scene);
 
         task::spawn_local(async move {
-            if let Err(failure) = scenes::delete(&scene).await {
-                self.listed.set(before);
-                self.problems.report(failure);
+            if !deleting.await {
+                _ = self.listed.try_set(before);
             }
-            self.saving.write_done();
         });
     }
 

@@ -18,6 +18,8 @@ pub enum NoticeEventDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct NoticeDTO {
     pub id: String,
+    #[serde(default)]
+    pub version: u64,
     pub noted_at: String,
     pub about: AboutDTO,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

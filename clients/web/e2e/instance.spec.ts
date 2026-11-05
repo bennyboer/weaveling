@@ -95,6 +95,37 @@ test("an operator locks an account for a reason and unlocks it again", async ({
   expect(server.listed[1].locks).toEqual([]);
 });
 
+test("each change to an account says the version it was made on", async ({
+  page,
+}) => {
+  // given: an operator looking at an account at version five
+  await anOperatorWith(page, [HEDY, { ...GRACE, version: 5 } as typeof GRACE]);
+  const madeOn: (string | null)[] = [];
+  page.on("request", (request) => {
+    if (/\/lock$/.test(new URL(request.url()).pathname)) {
+      madeOn.push(request.headers()["if-match"] ?? null);
+    }
+  });
+
+  // when: they lock it
+  await row(page, "Grace Hopper")
+    .getByRole("button", { name: "Lock…" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
+  await dialog.getByLabel("Reason").fill("Sent spam to every member.");
+  await dialog.getByRole("button", { name: "Lock", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row(page, "Grace Hopper")).toContainText("Locked since");
+  // and: unlock it again
+  await row(page, "Grace Hopper")
+    .getByRole("button", { name: "Unlock" })
+    .click();
+  await expect(row(page, "Grace Hopper")).not.toContainText("Locked since");
+
+  // then: the lock was made on version five, the unlock on the one after
+  await expect.poll(() => madeOn).toEqual(['"5"', '"6"']);
+});
+
 test("a lock without a reason is refused and the dialog stays", async ({
   page,
 }) => {

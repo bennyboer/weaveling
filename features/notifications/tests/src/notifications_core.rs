@@ -104,7 +104,9 @@ async fn another_s_notice_is_not_there_to_read_or_dismiss() {
     // then: nobody else may read or dismiss it
     for agent in [an_account("account_ada"), Agent::System, Agent::Local] {
         assert!(not_found(kept.notifications.read(&notice, &agent).await));
-        assert!(not_found(kept.notifications.dismiss(&notice, &agent).await));
+        assert!(not_found(
+            kept.notifications.dismiss(&notice, None, &agent).await
+        ));
     }
     // and: it stands undismissed for bo
     assert!(
@@ -127,7 +129,7 @@ async fn whom_it_is_for_dismisses_it_once() {
     // when: bo dismisses it twice
     for _ in 0..2 {
         kept.notifications
-            .dismiss(&notice.to_string(), &an_account("account_bo"))
+            .dismiss(&notice.to_string(), None, &an_account("account_bo"))
             .await
             .expect("dismissing should succeed");
     }
@@ -159,6 +161,7 @@ async fn a_notice_nobody_noted_or_no_id_at_all_is_not_there() {
         kept.notifications
             .dismiss(
                 &NoticeId::generate(OffsetDateTime::UNIX_EPOCH).to_string(),
+                None,
                 &an_account("account_bo"),
             )
             .await
@@ -166,7 +169,7 @@ async fn a_notice_nobody_noted_or_no_id_at_all_is_not_there() {
     // and: dismissing what is no id at all is refused as invalid
     assert!(matches!(
         kept.notifications
-            .dismiss("no notice", &an_account("account_bo"))
+            .dismiss("no notice", None, &an_account("account_bo"))
             .await,
         Err(NotificationsError::InvalidId(_))
     ));
@@ -183,7 +186,7 @@ async fn dismissing_while_losing_races(losses: u8) -> (Result<(), NotificationsE
     );
 
     let dismissed = losing
-        .dismiss(&notice.to_string(), &an_account("account_bo"))
+        .dismiss(&notice.to_string(), None, &an_account("account_bo"))
         .await;
 
     (dismissed, events_of(&kept, &notice).await.len())

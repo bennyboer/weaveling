@@ -168,7 +168,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
     let accepted = an_open_invitation(&wired).await;
     wired
         .invitations
-        .withdraw(&wiring::an_operator(), &withdrawn)
+        .withdraw(&wiring::an_operator(), &withdrawn, None)
         .await
         .expect("an operator may withdraw");
     wired

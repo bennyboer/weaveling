@@ -4,9 +4,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::scenes::model::{SceneId, SceneSummary};
-use crate::scenes::service as scenes;
-use crate::writing::problems::Problems;
-use crate::writing::saving::Saving;
+use crate::writing::scene_copies::SceneCopies;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label {
@@ -20,19 +18,17 @@ pub struct Labels {
     openings: RwSignal<HashMap<SceneId, String>>,
     opened_here: StoredValue<HashSet<SceneId>>,
     renaming: StoredValue<HashSet<SceneId>>,
-    problems: Problems,
-    saving: Saving,
+    scenes: SceneCopies,
 }
 
 impl Labels {
-    pub fn of(problems: Problems, saving: Saving) -> Self {
+    pub fn of(scenes: SceneCopies) -> Self {
         Self {
             titles: RwSignal::new(HashMap::new()),
             openings: RwSignal::new(HashMap::new()),
             opened_here: StoredValue::new(HashSet::new()),
             renaming: StoredValue::new(HashSet::new()),
-            problems,
-            saving,
+            scenes,
         }
     }
 
@@ -103,18 +99,17 @@ impl Labels {
             .update(|titles| _ = titles.insert(scene.clone(), title.clone()));
         self.renaming
             .update_value(|renaming| _ = renaming.insert(scene.clone()));
-        self.saving.write_begun();
+        let renaming = self.scenes.retitled(scene.clone(), title);
 
         task::spawn_local(async move {
-            if let Err(failure) = scenes::retitle(&scene, &title).await {
-                self.titles
-                    .update(|titles| _ = titles.insert(scene.clone(), before));
-                self.problems.report(failure);
+            if !renaming.await {
+                _ = self
+                    .titles
+                    .try_update(|titles| _ = titles.insert(scene.clone(), before));
             }
             _ = self
                 .renaming
                 .try_update_value(|renaming| _ = renaming.remove(&scene));
-            self.saving.write_done();
         });
     }
 

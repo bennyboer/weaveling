@@ -7,7 +7,9 @@ mod sign_ups;
 use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
+use eventsourcing::{
+    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
+};
 use mailing::Mailer;
 use throttling::{Admission, Throttles};
 use time::Duration;
@@ -112,12 +114,23 @@ impl AccountsCore {
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
+        expected: Option<Version>,
         command: AccountCommand,
         agent: &Agent,
     ) -> Result<(), AccountsError> {
-        self.events
-            .execute(transaction, &AggregateId::from(account), command, agent)
-            .await?;
+        let key = AggregateId::from(account);
+        match expected {
+            Some(expected) => {
+                self.events
+                    .execute_at(transaction, &key, expected, command, agent)
+                    .await?
+            }
+            None => {
+                self.events
+                    .execute(transaction, &key, command, agent)
+                    .await?
+            }
+        };
 
         Ok(())
     }

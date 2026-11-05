@@ -113,7 +113,7 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
     // when: bo dismisses it and that is heard
     listed
         .notifications
-        .dismiss(&notice.to_string(), &bo())
+        .dismiss(&notice.to_string(), None, &bo())
         .await
         .expect("dismissing should succeed");
     hearing(&listed, &notice, 2).await;

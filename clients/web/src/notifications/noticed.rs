@@ -12,19 +12,44 @@ use crate::notifications::notice::{Notice, RoleChange};
 use crate::notifications::service;
 use crate::speech;
 use crate::speech::Speech;
+use crate::working_copy;
+use crate::working_copy::{Versioned, WorkingCopies};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Intent {
+    Dismiss,
+}
 
 #[derive(Clone, Copy)]
 pub struct Noticed {
-    open: RwSignal<Vec<RoleChange>>,
+    open: WorkingCopies<String, RoleChange, Intent>,
     refused: RwSignal<Option<ApiError>>,
 }
 
 impl Noticed {
     pub fn following() -> Self {
-        let noticed = Self {
-            open: RwSignal::new(Vec::new()),
-            refused: RwSignal::new(None),
-        };
+        let refused = RwSignal::new(None);
+        let open = WorkingCopies::new(
+            move |id: String, on: RoleChange, intent: Intent| async move {
+                match intent {
+                    Intent::Dismiss => match service::dismiss(&id, on.version).await {
+                        Ok(()) | Err(ApiError::NotFound(_)) => {}
+                        Err(failed) => return Err(failed),
+                    },
+                }
+
+                Ok(answered(on, &intent))
+            },
+            move |id: String| async move {
+                service::open()
+                    .await?
+                    .into_iter()
+                    .find(|change| change.id == id)
+                    .map(|change| held(change).1)
+                    .ok_or(ApiError::NotFound("notice"))
+            },
+            move |failure| _ = refused.try_set(Some(failure)),
+        );
         let asking = Asking::new();
         let listing = Action::new_local(move |_: &()| {
             let asked = asking.next();
@@ -35,7 +60,7 @@ impl Noticed {
                     return;
                 }
                 if let Ok(listed) = answer {
-                    _ = noticed.open.try_set(listed);
+                    open.take_in_all(listed.into_iter().map(held).collect());
                 }
             }
         });
@@ -47,12 +72,12 @@ impl Noticed {
             move || _ = listing.dispatch(()),
         ));
 
-        noticed
+        Self { open, refused }
     }
 
     pub fn notices(self) -> Vec<Notice> {
         self.open
-            .get()
+            .shown()
             .into_iter()
             .map(Notice::RoleChanged)
             .collect()
@@ -63,18 +88,51 @@ impl Noticed {
     }
 
     fn dismiss(self, notice: String) {
+        let dismissed_or_gone =
+            untrack(|| !self.open.is_listed(&notice) || self.open.unanswered_on(&notice));
+        if dismissed_or_gone {
+            return;
+        }
         self.refused.set(None);
+        let Some(landed) = self.open.intended(&notice, Intent::Dismiss) else {
+            return;
+        };
         task::spawn_local(async move {
-            match service::dismiss(&notice).await {
-                Ok(()) | Err(ApiError::NotFound(_)) => {
-                    _ = self
-                        .open
-                        .try_update(|open| open.retain(|kept| kept.id != notice));
-                }
-                Err(failed) => _ = self.refused.try_set(Some(failed)),
+            if landed.await {
+                self.open.forget(&notice);
             }
         });
     }
+
+    fn dismissing(self, notice: &String) -> Option<&'static str> {
+        self.open.unanswered_on(notice).then_some("true")
+    }
+}
+
+impl Versioned for RoleChange {
+    fn version(&self) -> u64 {
+        self.version
+    }
+}
+
+impl working_copy::Intent<RoleChange> for Intent {
+    fn lay_over(&self, _: &mut RoleChange) {}
+
+    fn merged_after(&self, earlier: &Self) -> Option<Self> {
+        (self == earlier).then(|| self.clone())
+    }
+}
+
+fn held(change: RoleChange) -> (String, RoleChange) {
+    (change.id.clone(), change)
+}
+
+fn answered(on: RoleChange, intent: &Intent) -> RoleChange {
+    let mut answered = on;
+    working_copy::Intent::lay_over(intent, &mut answered);
+    answered.version += 1;
+
+    answered
 }
 
 pub fn row(noticed: Noticed, change: RoleChange) -> impl IntoView {
@@ -101,7 +159,7 @@ pub fn row(noticed: Noticed, change: RoleChange) -> impl IntoView {
         }
     };
     let noted_at = change.noted_at;
-    let dismissed = change.id;
+    let (dismissed, busy) = (change.id.clone(), change.id);
 
     html::li().class("role-changed").child((
         html::div().class("told").child((
@@ -116,7 +174,51 @@ pub fn row(noticed: Noticed, change: RoleChange) -> impl IntoView {
             .class("dismiss")
             .attr("aria-label", speech::said("problem-dismiss"))
             .attr("title", speech::said("problem-dismiss"))
+            .attr("aria-busy", move || noticed.dismissing(&busy))
             .on(ev::click, move |_| noticed.dismiss(dismissed.clone()))
             .child(speech::said("problem-dismiss")),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use time::macros::datetime;
+
+    use super::*;
+    use crate::members::listed::Role;
+    use crate::working_copy::Intent as _;
+
+    fn a_role_changed() -> RoleChange {
+        held(RoleChange {
+            id: "notice_1".to_owned(),
+            version: 1,
+            noted_at: datetime!(2026-10-30 09:00 UTC),
+            role: Role::Author,
+            project_name: Some("Shared".to_owned()),
+            by_name: Some("Ada Lovelace".to_owned()),
+        })
+        .1
+    }
+
+    #[test]
+    fn a_dismissal_on_its_way_changes_nothing_shown() {
+        // given: a notice not yet dismissed
+        let noted = a_role_changed();
+
+        // when: its dismissal is laid over it
+        let mut shown = noted.clone();
+        Intent::Dismiss.lay_over(&mut shown);
+
+        // then: it shows as it was
+        assert_eq!(shown, noted);
+    }
+
+    #[test]
+    fn a_dismissal_landed_stands_one_version_on() {
+        // when: a notice at version one is dismissed
+        let answered = answered(a_role_changed(), &Intent::Dismiss);
+
+        // then: it stands at the next version
+        assert_eq!(answered.version(), 2);
+    }
 }

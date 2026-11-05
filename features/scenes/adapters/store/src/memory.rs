@@ -18,6 +18,7 @@ struct StoredScene {
     title: SceneTitle,
     ideas: Vec<IdeaLink>,
     version: u64,
+    prose_version: u64,
     state: Vec<u8>,
     uncounted: bool,
 }
@@ -96,6 +97,7 @@ impl SceneStore for InMemorySceneStore {
                 title: scene.title().clone(),
                 ideas: scene.ideas().to_vec(),
                 version: 0,
+                prose_version: 0,
                 state: scene.everything(),
                 uncounted: false,
             },
@@ -140,7 +142,8 @@ impl SceneStore for InMemorySceneStore {
                 project: stored.project,
                 title: stored.title,
                 ideas: stored.ideas,
-                version: stored.version + 1,
+                version: stored.version,
+                prose_version: stored.prose_version + 1,
                 state: scene.everything(),
                 uncounted: true,
             },
@@ -209,7 +212,7 @@ impl SceneStore for InMemorySceneStore {
             .write()
             .get_mut(&id)
             .map(|stored| {
-                if stored.version == as_of {
+                if stored.prose_version == as_of {
                     stored.uncounted = false;
                 }
                 stored.project.clone()
@@ -319,6 +322,21 @@ impl SceneStore for InMemorySceneStore {
             .get(&id)
             .map(|stored| stored.version)
             .ok_or(StoreError::NotFound(id))
+    }
+
+    async fn prose_version_of(&self, id: SceneId) -> Result<u64, StoreError> {
+        self.read()
+            .get(&id)
+            .map(|stored| stored.prose_version)
+            .ok_or(StoreError::NotFound(id))
+    }
+
+    async fn version_within(
+        &self,
+        _transaction: &mut Transaction,
+        id: SceneId,
+    ) -> Result<u64, StoreError> {
+        self.version_of(id).await
     }
 
     async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {

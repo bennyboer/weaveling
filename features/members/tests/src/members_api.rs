@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum::http::StatusCode;
+use axum::http::header::ETAG;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use eventsourcing::{
@@ -428,7 +429,7 @@ async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
     for project in [PROJECT, "project_never_started"] {
         assert!(
             matches!(
-                core.leave(project, &cy).await,
+                core.leave(project, None, &cy).await,
                 Err(MembersCoreError::ProjectNotThere)
             ),
             "{project}: whoever is not in a project finds nothing to leave, whatever they may read"
@@ -443,7 +444,7 @@ async fn the_system_is_no_member_and_has_nothing_to_leave() {
 
     // expect: the system leaving it is refused as no member
     assert!(matches!(
-        members.core.leave(PROJECT, &Agent::System).await,
+        members.core.leave(PROJECT, None, &Agent::System).await,
         Err(MembersCoreError::Events(ServiceError::Refused(
             MembersError::NotMember
         )))
@@ -475,4 +476,228 @@ async fn joining_is_the_system_s_carrying_out_what_an_invitation_decided() {
             .filter(|recorded| matches!(recorded.event, MembersEvent::Joined { .. }))
             .all(|recorded| recorded.metadata.agent == Agent::System)
     );
+}
+
+async fn the_listed_version(members: &Members) -> String {
+    let listed = members
+        .as_account("account_ada")
+        .get(&format!("/members?project={PROJECT}"))
+        .await;
+    listed.assert_status_ok();
+
+    listed
+        .header(ETAG)
+        .to_str()
+        .expect("a tag is text")
+        .to_owned()
+}
+
+async fn changing_the_role_from(
+    server: &TestServer,
+    account: &str,
+    to: &str,
+    version: &str,
+) -> TestResponse {
+    server
+        .patch(&format!("/members/{PROJECT}/accounts/{account}"))
+        .add_header("if-match", version)
+        .json(&ChangeRoleRequest {
+            role: to.to_owned(),
+        })
+        .await
+}
+
+async fn removing_from(server: &TestServer, account: &str, version: &str) -> TestResponse {
+    server
+        .delete(&format!("/members/{PROJECT}/accounts/{account}"))
+        .add_header("if-match", version)
+        .await
+}
+
+#[tokio::test]
+async fn the_members_are_listed_with_the_version_they_are_at() {
+    // given: a project of three, founded and joined twice
+    let members = a_project_of_three().await;
+
+    // when: its members are listed
+    let tag = the_listed_version(&members).await;
+
+    // then: the listing tells the version they are at
+    assert_eq!(tag, "\"3\"");
+}
+
+#[tokio::test]
+async fn a_change_of_role_from_the_version_listed_lands_and_tells_the_next() {
+    // given: a project of three, its members listed
+    let members = a_project_of_three().await;
+    let listed_at = the_listed_version(&members).await;
+
+    // when: its owner makes the author a reader from the version listed
+    let changed = changing_the_role_from(
+        &members.as_account("account_ada"),
+        "account_grace",
+        role::READER,
+        &listed_at,
+    )
+    .await;
+
+    // then: the change lands and tells the version it landed at
+    changed.assert_status_ok();
+    assert_eq!(changed.header(ETAG), "\"4\"");
+    assert_eq!(
+        changed.json::<Vec<MemberDTO>>()[1],
+        a_member("account_grace", role::READER)
+    );
+}
+
+#[tokio::test]
+async fn a_change_of_role_from_a_version_moved_past_is_refused_and_changes_nothing() {
+    // given: a project of three, listed before another change of role landed
+    let members = a_project_of_three().await;
+    let ada = members.as_account("account_ada");
+    let listed_at = the_listed_version(&members).await;
+    changing_the_role(&ada, "account_bo", role::AUTHOR)
+        .await
+        .assert_status_ok();
+
+    // when: its owner makes the author a reader from the version listed
+    let changed = changing_the_role_from(&ada, "account_grace", role::READER, &listed_at).await;
+
+    // then: the change is refused as outdated
+    refused_as(changed, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: the author is still an author
+    assert_eq!(
+        members.listed().await[1],
+        a_member("account_grace", role::AUTHOR),
+        "a refused change of role must leave the role alone"
+    );
+}
+
+#[tokio::test]
+async fn a_change_of_role_without_if_match_lands_on_whatever_the_members_are_at() {
+    // given: a project of three, moved on by a change of role
+    let members = a_project_of_three().await;
+    let ada = members.as_account("account_ada");
+    changing_the_role(&ada, "account_bo", role::AUTHOR)
+        .await
+        .assert_status_ok();
+
+    // when: its owner makes the author a reader without saying from which version
+    let changed = changing_the_role(&ada, "account_grace", role::READER).await;
+
+    // then: the change lands on the version they are at
+    changed.assert_status_ok();
+    assert_eq!(changed.header(ETAG), "\"5\"");
+}
+
+#[tokio::test]
+async fn a_removal_from_the_version_listed_lands() {
+    // given: a project of three, its members listed
+    let members = a_project_of_three().await;
+    let listed_at = the_listed_version(&members).await;
+
+    // when: its owner removes the reader from the version listed
+    let removed = removing_from(&members.as_account("account_ada"), "account_bo", &listed_at).await;
+
+    // then: the removal lands
+    removed.assert_status(StatusCode::NO_CONTENT);
+    // and: the others are left
+    assert_eq!(members.listed().await.len(), 2);
+}
+
+#[tokio::test]
+async fn a_removal_from_a_version_moved_past_is_refused_and_removes_nobody() {
+    // given: a project of three, listed before a change of role landed
+    let members = a_project_of_three().await;
+    let ada = members.as_account("account_ada");
+    let listed_at = the_listed_version(&members).await;
+    changing_the_role(&ada, "account_grace", role::READER)
+        .await
+        .assert_status_ok();
+
+    // when: its owner removes the reader from the version listed
+    let removed = removing_from(&ada, "account_bo", &listed_at).await;
+
+    // then: the removal is refused as outdated
+    refused_as(removed, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: all three are still members
+    assert_eq!(members.listed().await.len(), 3);
+}
+
+#[tokio::test]
+async fn a_removal_without_if_match_lands_on_whatever_the_members_are_at() {
+    // given: a project of three, moved on by a change of role
+    let members = a_project_of_three().await;
+    let ada = members.as_account("account_ada");
+    changing_the_role(&ada, "account_grace", role::READER)
+        .await
+        .assert_status_ok();
+
+    // when: its owner removes the reader without saying from which version
+    let removed = ada
+        .delete(&format!("/members/{PROJECT}/accounts/account_bo"))
+        .await;
+
+    // then: the removal lands
+    removed.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(members.listed().await.len(), 2);
+}
+
+#[tokio::test]
+async fn leaving_from_the_version_listed_lands() {
+    // given: a project of three, its members listed
+    let members = a_project_of_three().await;
+    let listed_at = the_listed_version(&members).await;
+
+    // when: its reader leaves from the version listed
+    let left = removing_from(&members.as_account("account_bo"), "account_bo", &listed_at).await;
+
+    // then: the leaving lands
+    left.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(members.listed().await.len(), 2);
+}
+
+#[tokio::test]
+async fn leaving_from_a_version_moved_past_is_refused_and_keeps_the_member() {
+    // given: a project of three, listed before a change of role landed
+    let members = a_project_of_three().await;
+    let listed_at = the_listed_version(&members).await;
+    changing_the_role(
+        &members.as_account("account_ada"),
+        "account_grace",
+        role::READER,
+    )
+    .await
+    .assert_status_ok();
+
+    // when: its reader leaves from the version listed
+    let left = removing_from(&members.as_account("account_bo"), "account_bo", &listed_at).await;
+
+    // then: the leaving is refused as outdated
+    refused_as(left, StatusCode::PRECONDITION_FAILED, "outdated");
+    // and: all three are still members
+    assert_eq!(members.listed().await.len(), 3);
+}
+
+#[tokio::test]
+async fn leaving_without_if_match_lands_on_whatever_the_members_are_at() {
+    // given: a project of three, moved on by a change of role
+    let members = a_project_of_three().await;
+    changing_the_role(
+        &members.as_account("account_ada"),
+        "account_grace",
+        role::READER,
+    )
+    .await
+    .assert_status_ok();
+
+    // when: its reader leaves without saying from which version
+    let left = members
+        .as_account("account_bo")
+        .delete(&format!("/members/{PROJECT}/accounts/account_bo"))
+        .await;
+
+    // then: the leaving lands
+    left.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(members.listed().await.len(), 2);
 }

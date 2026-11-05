@@ -58,7 +58,7 @@ impl Wired {
 
         for idea in ideas {
             self.scenes
-                .link(&id.to_string(), idea, &Agent::Local)
+                .link(&id.to_string(), idea, None, &Agent::Local)
                 .await
                 .expect("linking should succeed");
         }

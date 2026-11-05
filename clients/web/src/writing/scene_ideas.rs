@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use leptos::prelude::*;
 use leptos::task;
@@ -10,41 +10,39 @@ use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
-use crate::writing::saving::Saving;
+use crate::writing::scene_copies::SceneCopies;
 
 #[derive(Clone, Copy)]
 pub struct SceneIdeas {
     project: StoredValue<ProjectId>,
-    linked: RwSignal<HashMap<SceneId, Vec<IdeaId>>>,
+    scenes: SceneCopies,
     asked: StoredValue<HashSet<SceneId>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     asking: Action<Option<Awaited>, ()>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
     picking: RwSignal<bool>,
     problems: Problems,
-    saving: Saving,
 }
 
 impl SceneIdeas {
-    pub fn of(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
+    pub fn of(project: &ProjectId, scenes: SceneCopies, problems: Problems) -> Self {
         let ideas = RwSignal::new(None);
         let following = StoredValue::new_local(None::<Subscription>);
 
         Self {
             project: StoredValue::new(project.clone()),
-            linked: RwSignal::new(HashMap::new()),
+            scenes,
             asked: StoredValue::new(HashSet::new()),
             ideas,
             asking: followed::asking(project, ideas, move |failure| problems.report(failure)),
             following,
             picking: RwSignal::new(false),
             problems,
-            saving,
         }
     }
 
     pub fn linked_to(self, scene: &SceneId) -> Option<Vec<IdeaId>> {
-        self.linked.with(|linked| linked.get(scene).cloned())
+        self.scenes.ideas_of(scene)
     }
 
     pub fn named(self, idea: &IdeaId) -> String {
@@ -100,9 +98,7 @@ impl SceneIdeas {
 
         task::spawn_local(async move {
             match scenes::open(&scene).await {
-                Ok(found) => self
-                    .linked
-                    .update(|linked| _ = linked.insert(scene, found.ideas)),
+                Ok(found) => self.scenes.hold(found),
                 Err(failure) => {
                     _ = self.asked.try_update_value(|asked| asked.remove(&scene));
                     self.problems.report(failure);
@@ -120,73 +116,23 @@ impl SceneIdeas {
     }
 
     pub fn link(self, scene: SceneId, chosen: Vec<IdeaId>) {
-        let before = self.linked_to(&scene).unwrap_or_default();
-        self.linked.update(|linked| {
-            let ideas = linked.entry(scene.clone()).or_default();
-            ideas.extend(
-                chosen
-                    .iter()
-                    .filter(|idea| !ideas.contains(idea))
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            );
-        });
-        self.saving.write_begun();
+        let linked = self.linked_to(&scene).unwrap_or_default();
+        let new: Vec<IdeaId> = chosen
+            .into_iter()
+            .filter(|idea| !linked.contains(idea))
+            .collect();
+        let linking = self.scenes.linked(scene, new);
 
         task::spawn_local(async move {
-            for (at, idea) in chosen.iter().enumerate() {
-                match scenes::link(&scene, idea).await {
-                    Ok(found) => self
-                        .linked
-                        .update(|linked| _ = linked.insert(scene.clone(), found.ideas)),
-                    Err(failure) => {
-                        let unlinked: Vec<&IdeaId> = chosen[at..]
-                            .iter()
-                            .filter(|idea| !before.contains(idea))
-                            .collect();
-                        self.linked.update(|linked| {
-                            if let Some(ideas) = linked.get_mut(&scene) {
-                                ideas.retain(|held| !unlinked.contains(&held));
-                            }
-                        });
-                        self.problems.report(failure);
-                        break;
-                    }
-                }
-            }
-            self.saving.write_done();
+            linking.await;
         });
     }
 
     pub fn unlink(self, scene: SceneId, idea: IdeaId) {
-        let at = self
-            .linked_to(&scene)
-            .and_then(|ideas| ideas.iter().position(|held| held == &idea));
-        self.linked.update(|linked| {
-            if let Some(ideas) = linked.get_mut(&scene) {
-                ideas.retain(|held| held != &idea);
-            }
-        });
-        self.saving.write_begun();
+        let unlinking = self.scenes.unlinked(scene, idea);
 
         task::spawn_local(async move {
-            match scenes::unlink(&scene, &idea).await {
-                Ok(found) => self
-                    .linked
-                    .update(|linked| _ = linked.insert(scene, found.ideas)),
-                Err(failure) => {
-                    if let Some(at) = at {
-                        self.linked.update(|linked| {
-                            let ideas = linked.entry(scene).or_default();
-                            if !ideas.contains(&idea) {
-                                ideas.insert(at.min(ideas.len()), idea);
-                            }
-                        });
-                    }
-                    self.problems.report(failure);
-                }
-            }
-            self.saving.write_done();
+            unlinking.await;
         });
     }
 }

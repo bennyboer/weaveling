@@ -1070,3 +1070,43 @@ test("a change another author makes while mine is on its way is caught up once m
     "the scene they placed while my rename was on its way",
   ).toHaveCount(1);
 });
+
+test("a heading renamed on a book another author changed meanwhile is renamed again on the book as it is now", async ({
+  page,
+}) => {
+  // given: a book open in the writing view that hears no news
+  await routingLive(page, { withheld: ["outlines"] });
+  const { outline, ids } = await aBookFollowedLive(page, "LiveRenamedOnNewer", {
+    routed: true,
+  });
+  // and: the other section renamed by another author meanwhile
+  await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids["Part Two"]}`, {
+    title: "The Middle",
+  });
+  // and: every rename this view sends counted
+  const answered: number[] = [];
+  page.on("response", (response) => {
+    if (response.request().method() === "PATCH" && response.url().includes("/sections/")) {
+      answered.push(response.status());
+    }
+  });
+
+  // when: i rename the first heading
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await page.keyboard.press("Enter");
+
+  // then: both renames are saved
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted", "The Middle"]);
+  // and: mine was refused once for being made on the older book, then made again
+  await expect
+    .poll(() => answered, {
+      message: "refused as made on an older version, then sent again on the newer",
+    })
+    .toEqual([412, 200]);
+  // and: no alarm is raised
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

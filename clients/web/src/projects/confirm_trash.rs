@@ -36,7 +36,10 @@ pub fn ConfirmTrash(workspace: Workspace, overlays: Overlays) -> impl IntoView {
                             .child(speech::said("trash-project-cancel")),
                         html::button()
                             .class("danger")
-                            .attr("aria-busy", move || workspace.trashing())
+                            .attr("aria-busy", {
+                                let busy = id.clone();
+                                move || workspace.changing(&busy)
+                            })
                             .on(ev::click, move |_| {
                                 overlays.dismiss();
                                 workspace.trash(id.clone());

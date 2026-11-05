@@ -41,7 +41,7 @@ impl AccountsCore {
             {
                 return Err(AccountsError::CodeWrong);
             }
-            self.commanded_in(transaction, &id, AccountCommand::Verify, &id.acting())
+            self.commanded_in(transaction, &id, None, AccountCommand::Verify, &id.acting())
                 .await?;
 
             Ok(())
@@ -86,6 +86,7 @@ impl AccountsCore {
                 self.commanded_in(
                     transaction,
                     &id,
+                    None,
                     AccountCommand::ResetPassword,
                     &id.acting(),
                 )

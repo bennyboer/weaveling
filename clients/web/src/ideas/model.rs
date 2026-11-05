@@ -70,46 +70,56 @@ impl Awaited {
     }
 }
 
-pub fn hold(held: &mut Vec<Idea>, newer: Idea) {
-    match held.iter_mut().find(|known| known.id == newer.id) {
-        Some(known) if known.version < newer.version => *known = newer,
-        Some(_) => {}
-        None => held.push(newer),
+/// What a change told of one idea makes of it, given the idea as held, if held at all.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Told {
+    Changed(Idea),
+    Discarded,
+    Unchanged,
+}
+
+pub fn told_about(held: Option<&Idea>, told: FrameDTO) -> Option<Told> {
+    let id = IdeaId::from(told.of?);
+    let event = serde_json::from_value::<IdeaEventDTO>(told.event).ok()?;
+    let Some(held) = held else {
+        return match event {
+            IdeaEventDTO::Captured { project, title } if told.version == 1 => {
+                Some(Told::Changed(Idea {
+                    id,
+                    version: told.version,
+                    project: ProjectId::from(project),
+                    title,
+                }))
+            }
+            IdeaEventDTO::Discarded => Some(Told::Discarded),
+            _ => None,
+        };
+    };
+    if told.version <= held.version {
+        return Some(Told::Unchanged);
+    }
+    if told.version != held.version + 1 {
+        return None;
+    }
+    match event {
+        IdeaEventDTO::Retitled { title } => Some(Told::Changed(Idea {
+            title,
+            version: told.version,
+            ..held.clone()
+        })),
+        IdeaEventDTO::Discarded => Some(Told::Discarded),
+        IdeaEventDTO::Captured { .. } => None,
     }
 }
 
 pub fn taken_in(mut held: Vec<Idea>, told: FrameDTO) -> Option<Vec<Idea>> {
-    let id = IdeaId::from(told.of?);
-    let event = serde_json::from_value::<IdeaEventDTO>(told.event).ok()?;
-    let Some(at) = held.iter().position(|idea| idea.id == id) else {
-        match event {
-            IdeaEventDTO::Captured { project, title } if told.version == 1 => held.push(Idea {
-                id,
-                version: told.version,
-                project: ProjectId::from(project),
-                title,
-            }),
-            IdeaEventDTO::Discarded => {}
-            _ => return None,
-        }
-
-        return Some(held);
-    };
-    if told.version <= held[at].version {
-        return Some(held);
-    }
-    if told.version != held[at].version + 1 {
-        return None;
-    }
-    match event {
-        IdeaEventDTO::Retitled { title } => {
-            held[at].title = title;
-            held[at].version = told.version;
-        }
-        IdeaEventDTO::Discarded => {
-            held.remove(at);
-        }
-        IdeaEventDTO::Captured { .. } => return None,
+    let id = IdeaId::from(told.of.clone()?);
+    let at = held.iter().position(|idea| idea.id == id);
+    match (told_about(at.map(|at| &held[at]), told)?, at) {
+        (Told::Changed(idea), Some(at)) => held[at] = idea,
+        (Told::Changed(idea), None) => held.push(idea),
+        (Told::Discarded, Some(at)) => _ = held.remove(at),
+        (Told::Discarded | Told::Unchanged, _) => {}
     }
 
     Some(held)
@@ -138,65 +148,6 @@ mod tests {
     fn an_idea_without_a_title_is_shown_as_untitled() {
         // expect: an untitled idea shows as untitled
         assert_eq!(an_idea("").shown_as(), "Untitled");
-    }
-
-    mod hold_tests {
-        use super::*;
-
-        fn versioned(title: &str, version: u64) -> Idea {
-            Idea {
-                version,
-                ..an_idea(title)
-            }
-        }
-
-        #[test]
-        fn an_idea_not_held_is_added() {
-            // given: no ideas held
-            let mut held = Vec::new();
-
-            // when: an idea is held
-            hold(&mut held, versioned("The loom", 1));
-
-            // then: it is the one held
-            assert_eq!(held, vec![versioned("The loom", 1)]);
-        }
-
-        #[test]
-        fn an_idea_already_held_is_not_held_twice() {
-            // given: an idea held
-            let mut held = vec![versioned("The loom", 1)];
-
-            // when: the same is held again
-            hold(&mut held, versioned("The loom", 1));
-
-            // then: it is held once
-            assert_eq!(held, vec![versioned("The loom", 1)]);
-        }
-
-        #[test]
-        fn a_newer_version_replaces_the_one_held() {
-            // given: an idea held
-            let mut held = vec![versioned("The loom", 1)];
-
-            // when: a newer version of it is held
-            hold(&mut held, versioned("The weft", 2));
-
-            // then: only the newer one is held
-            assert_eq!(held, vec![versioned("The weft", 2)]);
-        }
-
-        #[test]
-        fn an_older_version_leaves_the_newer_one_held() {
-            // given: an idea held
-            let mut held = vec![versioned("The heddle", 3)];
-
-            // when: an older version of it is held
-            hold(&mut held, versioned("The weft", 2));
-
-            // then: the newer one is still the one held
-            assert_eq!(held, vec![versioned("The heddle", 3)]);
-        }
     }
 
     mod taken_in_tests {
@@ -373,6 +324,96 @@ mod tests {
             for (case, told) in cases {
                 assert_eq!(taken_in(held(1, "The loom"), told), None, "{case}");
             }
+        }
+    }
+
+    mod told_about_tests {
+        use serde_json::json;
+
+        use super::*;
+
+        fn told(version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
+                of: Some("idea_1".to_owned()),
+                version,
+                at: None,
+                event,
+            }
+        }
+
+        fn held(version: u64) -> Idea {
+            Idea {
+                version,
+                ..an_idea("The loom")
+            }
+        }
+
+        #[test]
+        fn a_retitle_that_follows_on_changes_the_idea_held() {
+            // when: a retitle of the next version is told of a held idea
+            let next = told_about(
+                Some(&held(1)),
+                told(2, json!({ "name": "RETITLED", "title": "The weft" })),
+            );
+
+            // then: the idea is changed to the new title at that version
+            assert_eq!(
+                next,
+                Some(Told::Changed(Idea {
+                    title: "The weft".to_owned(),
+                    ..held(2)
+                }))
+            );
+        }
+
+        #[test]
+        fn a_capture_of_an_idea_not_held_is_the_idea_at_its_first_version() {
+            // when: the capture of an idea not held is told
+            let next = told_about(
+                None,
+                told(
+                    1,
+                    json!({ "name": "CAPTURED", "project": "project_1", "title": "The loom" }),
+                ),
+            );
+
+            // then: it is the idea as captured
+            assert_eq!(next, Some(Told::Changed(held(1))));
+        }
+
+        #[test]
+        fn a_discard_of_an_idea_held_or_not_lets_it_go() {
+            // when: a discard is told of a held idea and of one not held
+            let of_held = told_about(Some(&held(1)), told(2, json!({ "name": "DISCARDED" })));
+            let of_none = told_about(None, told(2, json!({ "name": "DISCARDED" })));
+
+            // then: both are discarded
+            assert_eq!(of_held, Some(Told::Discarded));
+            assert_eq!(of_none, Some(Told::Discarded));
+        }
+
+        #[test]
+        fn a_change_already_held_leaves_the_idea_unchanged() {
+            // when: a change at the version held is told
+            let next = told_about(
+                Some(&held(3)),
+                told(3, json!({ "name": "RETITLED", "title": "The weft" })),
+            );
+
+            // then: the idea is unchanged
+            assert_eq!(next, Some(Told::Unchanged));
+        }
+
+        #[test]
+        fn a_change_further_on_than_the_next_cannot_be_told_about() {
+            // when: a change two versions on is told
+            let next = told_about(
+                Some(&held(1)),
+                told(3, json!({ "name": "RETITLED", "title": "The weft" })),
+            );
+
+            // then: it cannot be made out from the idea held
+            assert_eq!(next, None);
         }
     }
 

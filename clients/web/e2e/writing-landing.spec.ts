@@ -237,11 +237,19 @@ test("a project's details are fetched once while moving between its views", asyn
   // given: a book in german
   await aNewProject(page, "OnceOnly");
   await aBookWithScenes(page, { "Part One": 1 });
-  // and: every fetching of its details kept
+  // and: every fetching of its details kept, from the page the book opens on in german
   const project = projectOf(page);
   const asked: string[] = [];
+  let reloaded = false;
+  page.once("domcontentloaded", () => {
+    reloaded = true;
+  });
   page.on("request", (request) => {
-    if (request.method() === "GET" && request.url().endsWith(`/api/projects/${project}`)) {
+    if (
+      reloaded &&
+      request.method() === "GET" &&
+      request.url().endsWith(`/api/projects/${project}`)
+    ) {
       asked.push(request.url());
     }
   });

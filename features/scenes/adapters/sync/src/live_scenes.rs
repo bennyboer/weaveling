@@ -104,7 +104,7 @@ impl LiveScene {
 
     async fn tell_what_it_holds(&self, scenes: &ScenesCore) -> Result<(), ScenesError> {
         let id = self.id().to_string();
-        let as_of = scenes.version_of(&id).await?;
+        let as_of = scenes.prose_version_of(&id).await?;
         let opening = self.scene.opening();
         let changed = self
             .opening_told

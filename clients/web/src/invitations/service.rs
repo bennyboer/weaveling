@@ -1,4 +1,4 @@
-use gloo_net::http::Request;
+use gloo_net::http::{Request, RequestBuilder};
 use invitations_contract::{
     DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
     InviteRequest,
@@ -15,6 +15,14 @@ const INVITATIONS: &str = "/api/invitations";
 const MINE: &str = "/api/invitations/mine";
 const TURNED_DOWN: &str = "/api/invitations/decline";
 const INVITATION: &str = "invitation";
+const IF_MATCH: &str = "If-Match";
+
+fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
+    match on {
+        0 => request,
+        on => request.header(IF_MATCH, &format!("\"{on}\"")),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvitedInto {
@@ -90,9 +98,9 @@ pub async fn invite(email: &str, scope: &Scope) -> Result<ListedInvitation, ApiE
     listed::listed(invited)
 }
 
-pub async fn withdraw(id: &str) -> Result<(), ApiError> {
+pub async fn withdraw(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(Request::delete(&format!("{INVITATIONS}/{id}"))).await?,
+        http::sent(made_on(Request::delete(&format!("{INVITATIONS}/{id}")), on)).await?,
         INVITATION,
     )
     .await

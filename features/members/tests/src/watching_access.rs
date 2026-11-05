@@ -55,6 +55,7 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
         .remove(
             PROJECT,
             "account_grace",
+            None,
             &Agent::Account(AccountId::from("account_ada")),
         )
         .await

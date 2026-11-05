@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{AccountId, Agent, EventStore, ServiceError, Version};
+use eventsourcing::{AccountId, Agent, EventStore, ServiceError, Standing, Version};
 use transacting::{Transaction, Transactions};
 
 use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
@@ -46,12 +46,20 @@ impl MembersCore {
         &self,
         project: &str,
         agent: &Agent,
-    ) -> Result<Vec<ListedMember>, MembersCoreError> {
+    ) -> Result<Standing<Vec<ListedMember>>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Read, &project).await?;
-        let members = self.service.latest(&project).await?.state.members();
+        let standing = self.service.latest(&project).await?;
 
-        self.listed(&project, members, agent).await
+        self.listed(
+            &project,
+            Standing {
+                state: standing.state.members(),
+                version: standing.version,
+            },
+            agent,
+        )
+        .await
     }
 
     pub async fn change_role(
@@ -59,8 +67,9 @@ impl MembersCore {
         project: &str,
         account: &str,
         to: Role,
+        expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Vec<ListedMember>, MembersCoreError> {
+    ) -> Result<Standing<Vec<ListedMember>>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Manage, &project).await?;
         let members = self
@@ -70,6 +79,7 @@ impl MembersCore {
                     account: AccountId::from(account),
                     to,
                 },
+                expected,
                 agent,
             )
             .await?;
@@ -81,8 +91,9 @@ impl MembersCore {
         &self,
         project: &str,
         account: &str,
+        expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Vec<Member>, MembersCoreError> {
+    ) -> Result<Standing<Vec<Member>>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Manage, &project).await?;
 
@@ -91,12 +102,18 @@ impl MembersCore {
             MembersCommand::Remove {
                 account: AccountId::from(account),
             },
+            expected,
             agent,
         )
         .await
     }
 
-    pub async fn leave(&self, project: &str, agent: &Agent) -> Result<(), MembersCoreError> {
+    pub async fn leave(
+        &self,
+        project: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<(), MembersCoreError> {
         let Agent::Account(account) = agent else {
             return Err(MembersCoreError::Events(ServiceError::Refused(
                 MembersError::NotMember,
@@ -119,6 +136,7 @@ impl MembersCore {
             MembersCommand::Leave {
                 account: account.clone(),
             },
+            expected,
             agent,
         )
         .await?;
@@ -143,6 +161,7 @@ impl MembersCore {
                         account: AccountId::from(account),
                         role,
                     },
+                    None,
                     &Agent::System,
                 )
                 .await
@@ -150,7 +169,9 @@ impl MembersCore {
                 Err(MembersCoreError::Events(ServiceError::Refused(
                     MembersError::AlreadyMember | MembersError::Disbanded,
                 ))) => {}
-                joined => joined?,
+                joined => {
+                    joined?;
+                }
             }
 
             Ok(())
@@ -279,23 +300,36 @@ impl MembersCore {
         &self,
         project: &ProjectLink,
         command: MembersCommand,
+        expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Vec<Member>, MembersCoreError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service
-                .carry_out(transaction, project, command.clone(), agent)
-                .await
-        })?;
+    ) -> Result<Standing<Vec<Member>>, MembersCoreError> {
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .carry_out(transaction, project, command.clone(), expected, agent)
+                    .await
+            }
+        )?;
+        let standing = self.service.latest(project).await?;
 
-        Ok(self.service.latest(project).await?.state.members())
+        Ok(Standing {
+            state: standing.state.members(),
+            version: standing.version,
+        })
     }
 
     async fn listed(
         &self,
         project: &ProjectLink,
-        members: Vec<Member>,
+        members: Standing<Vec<Member>>,
         agent: &Agent,
-    ) -> Result<Vec<ListedMember>, MembersCoreError> {
+    ) -> Result<Standing<Vec<ListedMember>>, MembersCoreError> {
+        let Standing {
+            state: members,
+            version,
+        } = members;
         let accounts: Vec<AccountId> = members
             .iter()
             .map(|member| member.account.clone())
@@ -306,7 +340,7 @@ impl MembersCore {
             .may(agent, Act::Manage, project.as_str())
             .await?;
 
-        Ok(members
+        let state = members
             .into_iter()
             .map(|member| {
                 let person = people
@@ -320,7 +354,9 @@ impl MembersCore {
                     role: member.role,
                 }
             })
-            .collect())
+            .collect();
+
+        Ok(Standing { state, version })
     }
 
     async fn authorized(

@@ -9,9 +9,7 @@ use crate::speech;
 
 pub(super) fn leaving(people: People, left: impl Fn() + Clone + 'static) -> impl IntoView {
     let own = people.own();
-    let others: Vec<Member> = people
-        .members
-        .get_untracked()
+    let others: Vec<Member> = untrack(|| people.members())
         .into_iter()
         .filter(|member| own.as_deref() != Some(member.account.as_str()))
         .collect();

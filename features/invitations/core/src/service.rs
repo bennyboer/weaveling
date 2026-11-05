@@ -122,10 +122,17 @@ impl InvitationService {
         &self,
         transaction: &mut Transaction,
         invitation: &InvitationId,
+        expected: Option<Version>,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(transaction, invitation, InvitationCommand::Withdraw, agent)
-            .await
+        self.carry_out(
+            transaction,
+            invitation,
+            InvitationCommand::Withdraw,
+            expected,
+            agent,
+        )
+        .await
     }
 
     pub async fn retire(
@@ -134,8 +141,14 @@ impl InvitationService {
         invitation: &InvitationId,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(transaction, invitation, InvitationCommand::Retire, agent)
-            .await
+        self.carry_out(
+            transaction,
+            invitation,
+            InvitationCommand::Retire,
+            None,
+            agent,
+        )
+        .await
     }
 
     pub async fn accept(
@@ -144,8 +157,14 @@ impl InvitationService {
         invitation: &InvitationId,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(transaction, invitation, InvitationCommand::Accept, agent)
-            .await
+        self.carry_out(
+            transaction,
+            invitation,
+            InvitationCommand::Accept,
+            None,
+            agent,
+        )
+        .await
     }
 
     pub async fn decline(
@@ -159,6 +178,7 @@ impl InvitationService {
             transaction,
             invitation,
             InvitationCommand::Decline { reason },
+            None,
             agent,
         )
         .await
@@ -169,12 +189,22 @@ impl InvitationService {
         transaction: &mut Transaction,
         invitation: &InvitationId,
         command: InvitationCommand,
+        expected: Option<Version>,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        let _landed = self
-            .events
-            .execute(transaction, &AggregateId::from(invitation), command, agent)
-            .await?;
+        let key = AggregateId::from(invitation);
+        match expected {
+            Some(expected) => {
+                self.events
+                    .execute_at(transaction, &key, expected, command, agent)
+                    .await?
+            }
+            None => {
+                self.events
+                    .execute(transaction, &key, command, agent)
+                    .await?
+            }
+        };
 
         Ok(())
     }

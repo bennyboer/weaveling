@@ -56,6 +56,19 @@ impl Served {
             .await
             .expect("cataloguing should succeed");
     }
+
+    async fn standing_of(&self, notice: &NoticeId) -> (bool, Version) {
+        let standing = self
+            .notifications
+            .read(
+                &notice.to_string(),
+                &Agent::Account(AccountId::from("account_bo")),
+            )
+            .await
+            .expect("bo's notice is there");
+
+        (standing.state.is_dismissed(), standing.version)
+    }
 }
 
 fn a_workbench() -> Served {
@@ -115,6 +128,7 @@ async fn one_s_own_open_notices_are_listed_with_what_they_are_about() {
         listed(&served.as_account("account_bo")).await,
         vec![NoticeDTO {
             id: notice.to_string(),
+            version: 1,
             noted_at: "2023-11-14T22:13:20Z".to_owned(),
             about: AboutDTO::RoleChanged {
                 project: "project_1".to_owned(),
@@ -202,4 +216,62 @@ async fn another_s_notice_or_none_at_all_is_not_there_to_dismiss() {
         still[0].names.is_empty(),
         "nobody and no project known by name is named"
     );
+}
+
+#[tokio::test]
+async fn a_notice_dismissed_from_the_version_its_owner_saw_is_dismissed() {
+    // given: a listed notice for bo at its first version
+    let served = a_workbench();
+    let notice = served.a_listed_notice_for_bo(Role::Reader, None).await;
+
+    // when: bo dismisses it from that version
+    served
+        .as_account("account_bo")
+        .post(&format!("/notifications/{notice}/dismissed"))
+        .add_header("if-match", "\"1\"")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is dismissed at the next version
+    assert_eq!(served.standing_of(&notice).await, (true, Version::of(2)));
+}
+
+#[tokio::test]
+async fn a_notice_dismissed_from_a_version_it_has_moved_past_is_refused_and_changes_nothing() {
+    // given: a notice bo dismissed already, elsewhere
+    let served = a_workbench();
+    let notice = served.a_listed_notice_for_bo(Role::Reader, None).await;
+    let bo_s = served.as_account("account_bo");
+    bo_s.post(&format!("/notifications/{notice}/dismissed"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // when: bo dismisses it from the version it saw first
+    let answered = bo_s
+        .post(&format!("/notifications/{notice}/dismissed"))
+        .add_header("if-match", "\"1\"")
+        .await;
+
+    // then: it is refused as outdated
+    answered.assert_status(StatusCode::PRECONDITION_FAILED);
+    assert_eq!(answered.json::<Value>()["type"], "outdated");
+    // and: the notice stays as it was
+    assert_eq!(served.standing_of(&notice).await, (true, Version::of(2)));
+}
+
+#[tokio::test]
+async fn a_notice_dismissed_without_a_version_is_dismissed_whatever_it_stands_at() {
+    // given: a listed notice for bo
+    let served = a_workbench();
+    let notice = served.a_listed_notice_for_bo(Role::Reader, None).await;
+
+    // when: bo dismisses it naming no version
+    served
+        .as_account("account_bo")
+        .post(&format!("/notifications/{notice}/dismissed"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is dismissed
+    assert_eq!(served.standing_of(&notice).await, (true, Version::of(2)));
 }

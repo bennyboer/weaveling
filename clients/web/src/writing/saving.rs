@@ -8,6 +8,7 @@ use crate::scenes::model::SceneId;
 pub struct Saving {
     scenes: RwSignal<HashSet<SceneId>>,
     writes: RwSignal<usize>,
+    unanswered: StoredValue<Vec<Signal<bool>>>,
 }
 
 impl Saving {
@@ -15,6 +16,7 @@ impl Saving {
         Self {
             scenes: RwSignal::new(HashSet::new()),
             writes: RwSignal::new(0),
+            unanswered: StoredValue::new(Vec::new()),
         }
     }
 
@@ -48,7 +50,17 @@ impl Saving {
             .try_update(|writes| *writes = writes.saturating_sub(1));
     }
 
+    /// Counts what `unanswered` says is still on its way to the server as saving, for as long as it says so.
+    pub fn while_unanswered(self, unanswered: Signal<bool>) {
+        self.unanswered.update_value(|held| held.push(unanswered));
+    }
+
     pub fn is_saving(self) -> bool {
-        self.writes.get() > 0 || self.scenes.with(|scenes| !scenes.is_empty())
+        self.writes.get() > 0
+            || self.scenes.with(|scenes| !scenes.is_empty())
+            || self
+                .unanswered
+                .try_with_value(|held| held.iter().any(|unanswered| unanswered.get()))
+                .unwrap_or(false)
     }
 }

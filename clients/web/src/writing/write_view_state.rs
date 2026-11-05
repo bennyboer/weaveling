@@ -24,6 +24,7 @@ use crate::writing::margin::Margin;
 use crate::writing::moving::Moving;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
+use crate::writing::scene_copies::SceneCopies;
 use crate::writing::scene_ideas::SceneIdeas;
 use crate::writing::settings::Settings;
 use crate::writing::side::Side;
@@ -66,9 +67,10 @@ impl WriteViewState {
     pub fn open(project: &ProjectId, side: Side) -> Self {
         let problems = Problems::none();
         let saving = Saving::nothing();
-        let structure = Structure::open(project, problems, saving);
+        let scenes = SceneCopies::of(problems, saving);
+        let structure = Structure::open(project, problems, saving, scenes);
         let viewport = Viewport::around_the_window(saving);
-        let loose = LooseScenes::of(structure, problems, saving);
+        let loose = LooseScenes::of(structure, scenes);
         let editors = Editors::none();
         let walk = Walk::through(structure, viewport, side, loose, editors);
         let writing_in = WritingIn::of(structure);
@@ -79,8 +81,8 @@ impl WriteViewState {
             structure,
             walk,
             editors,
-            beginnings: Beginnings::of(structure, problems),
-            labels: Labels::of(problems, saving),
+            beginnings: Beginnings::of(structure, scenes, problems),
+            labels: Labels::of(scenes),
             margin: Margin::closed(),
             saving,
             writing_in,
@@ -89,7 +91,7 @@ impl WriteViewState {
             viewport,
             inspector: Inspector::as_last_left(),
             book_rail: BookRail::as_last_left(),
-            scene_ideas: SceneIdeas::of(project, problems, saving),
+            scene_ideas: SceneIdeas::of(project, scenes, problems),
             choosing,
             copying: Copying::of(choosing, structure, editors, problems),
             moving: Moving::nothing(choosing, structure),

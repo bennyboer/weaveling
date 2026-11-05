@@ -1,9 +1,10 @@
 use authorizing::AuthorizerError;
+use eventsourcing::Version;
 use ids::InvalidId;
 use thiserror::Error;
 use transacting::{Failure, LostRace};
 
-use crate::{CatalogError, InvalidSceneTitle, QuotationRestylingTaskError, StoreError};
+use crate::{CatalogError, InvalidSceneTitle, QuotationRestylingTaskError, SceneId, StoreError};
 
 #[derive(Debug, Error)]
 pub enum ScenesError {
@@ -23,6 +24,8 @@ pub enum ScenesError {
     ProjectNotThere,
     #[error("only an author of the project may do this")]
     NotAnAuthor,
+    #[error("scene {scene} has moved on from version {expected}")]
+    Outdated { scene: SceneId, expected: Version },
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
 }

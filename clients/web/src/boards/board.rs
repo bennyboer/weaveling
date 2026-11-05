@@ -47,19 +47,12 @@ pub fn BoardView(project: String) -> impl IntoView {
     let inspector = {
         let project = project.clone();
 
-        InspectorState::inspecting(Memo::new(move |_| project.clone()), selected.into())
+        InspectorState::inspecting_among(
+            Memo::new(move |_| project.clone()),
+            selected.into(),
+            state.ideas(),
+        )
     };
-
-    Effect::new(move || {
-        if let Some(newer) = inspector.opened() {
-            state.adopt(newer);
-        }
-    });
-    Effect::new(move || {
-        if let Some(newer) = selected.get().and_then(|id| state.idea(&id)) {
-            inspector.adopt(newer);
-        }
-    });
 
     html::section()
         .class("board")

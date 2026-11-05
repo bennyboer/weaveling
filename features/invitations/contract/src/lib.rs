@@ -26,6 +26,8 @@ pub enum ScopeDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InvitationSummaryDTO {
     pub id: String,
+    #[serde(default)]
+    pub version: u64,
     pub email: String,
     pub issued_at: String,
     pub until: String,

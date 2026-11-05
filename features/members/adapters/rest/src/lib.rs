@@ -4,10 +4,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use authorizing::AccessWatch;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::header::ETAG;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json, Router};
-use eventsourcing::{Agent, ServiceError};
+use eventsourcing::{Agent, ServiceError, Standing};
 use live::{About, Broadcaster, Gate, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
 use members_contract::{
@@ -40,13 +42,13 @@ async fn list(
     State(members): State<MembersCore>,
     Extension(agent): Extension<Agent>,
     Query(asked): Query<InProject>,
-) -> Result<Json<Vec<MemberDTO>>, Problem> {
+) -> Result<Response, Problem> {
     let listed = members
         .members(&asked.project, &agent)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(listed.iter().map(to_dto).collect()))
+    Ok(to_response(&listed))
 }
 
 async fn mine(
@@ -62,8 +64,9 @@ async fn change_role(
     State(members): State<MembersCore>,
     Extension(agent): Extension<Agent>,
     Path((project, account)): Path<(String, String)>,
+    headers: HeaderMap,
     Json(request): Json<ChangeRoleRequest>,
-) -> Result<Json<Vec<MemberDTO>>, Problem> {
+) -> Result<Response, Problem> {
     let to = to_role(&request.role).ok_or_else(|| {
         Problem::unprocessable(
             refused::ROLE_UNKNOWN,
@@ -71,29 +74,48 @@ async fn change_role(
         )
     })?;
     let changed = members
-        .change_role(&project, &account, to, &agent)
+        .change_role(&project, &account, to, serving::demanded(&headers)?, &agent)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(changed.iter().map(to_dto).collect()))
+    Ok(to_response(&changed))
 }
 
 async fn remove(
     State(members): State<MembersCore>,
     Extension(agent): Extension<Agent>,
     Path((project, account)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
+    let expected = serving::demanded(&headers)?;
     let leaving = matches!(&agent, Agent::Account(acting) if acting.as_str() == account);
     if leaving {
-        members.leave(&project, &agent).await.map_err(problem_of)?;
+        members
+            .leave(&project, expected, &agent)
+            .await
+            .map_err(problem_of)?;
     } else {
         members
-            .remove(&project, &account, &agent)
+            .remove(&project, &account, expected, &agent)
             .await
             .map_err(problem_of)?;
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn to_response(standing: &Standing<Vec<ListedMember>>) -> Response {
+    (
+        [(ETAG, serving::tag(standing.version))],
+        Json(
+            standing
+                .state
+                .iter()
+                .map(to_dto)
+                .collect::<Vec<MemberDTO>>(),
+        ),
+    )
+        .into_response()
 }
 
 fn to_dto(member: &ListedMember) -> MemberDTO {
@@ -148,6 +170,9 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
         }
         MembersCoreError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(serving::NOT_FOUND, "there is no such project")
+        }
+        MembersCoreError::Events(outdated @ ServiceError::Store(_)) => {
+            Problem::of(&outdated, |refusal| Problem::unexpected(refusal))
         }
         beyond_reach => Problem::unexpected(beyond_reach),
     }

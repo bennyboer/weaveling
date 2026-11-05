@@ -1,6 +1,7 @@
 use members_contract::{MemberDTO, role};
 
 use crate::http::ApiError;
+use crate::working_copy::Versioned;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -15,6 +16,18 @@ pub struct Member {
     pub role: Role,
     pub name: Option<String>,
     pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Members {
+    pub version: u64,
+    pub people: Vec<Member>,
+}
+
+impl Versioned for Members {
+    fn version(&self) -> u64 {
+        self.version
+    }
 }
 
 impl Role {

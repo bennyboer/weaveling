@@ -199,7 +199,7 @@ fn members_stack(project: String) -> impl IntoView {
     let id = route::project_id(&project).to_string();
     task::spawn_local(async move {
         if let Ok(found) = members::members_of(&id).await {
-            _ = known.try_set(found);
+            _ = known.try_set(found.people);
         }
     });
     let labelled = move || {

@@ -8,7 +8,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json, Router, routing};
 use clock::text;
 use email::{EmailAddress, InvalidEmailAddress};
-use eventsourcing::ServiceError;
+use eventsourcing::{ServiceError, StoreError};
 use invitations_contract::{
     DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
     InviteRequest, ScopeDTO, decline_reason, refused, role, status,
@@ -163,6 +163,7 @@ fn to_summary_dto(listed: &ListedInvitation) -> InvitationSummaryDTO {
 
     InvitationSummaryDTO {
         id: listed.summary.id.to_string(),
+        version: listed.summary.version.count(),
         email: listed.summary.to.to_string(),
         issued_at: text::serialize(listed.summary.issued_at),
         until: text::serialize(listed.summary.until),
@@ -217,11 +218,12 @@ async fn withdraw(
     State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
     Path(invitation): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     let invitation = invitation_named(&invitation)?;
 
     invitations
-        .withdraw(&acting, &invitation)
+        .withdraw(&acting, &invitation, serving::demanded(&headers)?)
         .await
         .map_err(problem_of)?;
 
@@ -256,6 +258,9 @@ fn problem_of(refusal: InvitationsError) -> Problem {
         InvitationsError::Events(ServiceError::Refused(InvitationError::AlreadyAccepted)) => {
             Problem::refused(refused::INVITATION_ALREADY_ACCEPTED, refusal)
         }
+        InvitationsError::Events(
+            ref outdated @ ServiceError::Store(StoreError::Outdated { .. }),
+        ) => Problem::of(outdated, |refusal| Problem::unexpected(refusal)),
         unserveable => Problem::unexpected(unserveable),
     }
 }

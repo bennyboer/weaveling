@@ -1,9 +1,10 @@
+use std::future::Future;
+
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
-use crate::accounts::service;
 use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
@@ -17,13 +18,16 @@ fn naming(key: &'static str, name: &str) -> String {
     speech::say_with(key, &args)
 }
 
-pub fn role_dialog(
+pub fn role_dialog<Changed>(
     account: ListedAccount,
     yourself: bool,
-    changed: impl Fn() + Clone + 'static,
+    change: impl Fn() -> Changed + 'static,
+    refused: RwSignal<Option<ApiError>>,
     close: impl Fn() + Copy + Send + Sync + 'static,
-) -> impl IntoView {
-    let refused = RwSignal::new(None::<ApiError>);
+) -> impl IntoView
+where
+    Changed: Future<Output = bool> + 'static,
+{
     let dismissing = account.operator;
     let (title_key, hint_key, confirm_key) = match (dismissing, yourself) {
         (false, _) => (
@@ -44,24 +48,13 @@ pub fn role_dialog(
     };
     let name = account.name.clone();
     let title = Signal::derive(move || naming(title_key, &name));
-    let id = account.id;
 
     let changing = Act::new(move |(), _: Here| {
-        refused.set(None);
-        let (id, changed) = (id.clone(), changed.clone());
+        let changed = change();
 
         async move {
-            let answer = if dismissing {
-                service::dismiss_operator(&id).await
-            } else {
-                service::appoint_operator(&id).await
-            };
-            match answer {
-                Ok(()) => {
-                    changed();
-                    close();
-                }
-                Err(failed) => refused.set(Some(failed)),
+            if changed.await {
+                close();
             }
         }
     });

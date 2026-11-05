@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { routingLive } from "./support/live";
+import { API } from "./support/shell";
 
 const aTitle = () => `The Loom ${crypto.randomUUID().slice(0, 8)}`;
 
@@ -278,6 +279,80 @@ test("a project's controls stay inside its row", async ({ page }) => {
     return mine.top >= around.top - 1 && mine.bottom <= around.bottom + 1;
   });
   expect(inside, "board styling must not float these over the page").toBe(true);
+});
+
+async function renaming(page: Page, from: string, to: string) {
+  await rowFor(page, from)
+    .getByRole("button", { name: "More actions" })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("listitem").getByRole("textbox").fill(to);
+  await page.getByRole("button", { name: "Save" }).click();
+}
+
+const versionIn = (tag: string | undefined) =>
+  Number((tag ?? "").replace(/"/g, ""));
+
+test("a project renamed twice close together keeps the later name, sent after the first is answered", async ({
+  page,
+}) => {
+  // given: a project in the list
+  const title = aTitle();
+  const first = `Warp ${crypto.randomUUID().slice(0, 8)}`;
+  const second = `Weft ${crypto.randomUUID().slice(0, 8)}`;
+  await aProjectCalled(page, title);
+  // and: the answer to the first rename held back
+  const sentOn: (string | undefined)[] = [];
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holding = true;
+  await page.route(
+    (url) => /^\/api\/projects\/[^/]+$/.test(url.pathname),
+    async (route) => {
+      if (route.request().method() !== "PATCH") {
+        return route.fallback();
+      }
+      sentOn.push(route.request().headers()["if-match"]);
+      const answer = await route.fetch();
+      if (holding) {
+        holding = false;
+        await held;
+      }
+      await route.fulfill({ response: answer });
+    },
+  );
+
+  // when: it is renamed
+  await renaming(page, title, first);
+  await expect.poll(() => sentOn.length).toBe(1);
+  // and: renamed again before the first is answered
+  await renaming(page, first, second);
+
+  // then: the later name shows at once
+  await expect(rowFor(page, second)).toBeVisible();
+  // and: nothing more is sent while the first is on its way
+  await page.waitForTimeout(300);
+  expect(sentOn, "one change at a time goes out per project").toHaveLength(1);
+
+  // when: the first is answered
+  release();
+
+  // then: the later name is sent on the version the first left
+  await expect.poll(() => sentOn.length).toBe(2);
+  expect(versionIn(sentOn[1])).toBe(versionIn(sentOn[0]) + 1);
+  // and: the list keeps the later name
+  await expect(rowFor(page, second)).toBeVisible();
+  await expect(rowFor(page, first)).toHaveCount(0);
+  // and: so does the server
+  await expect
+    .poll(async () =>
+      (await (await page.request.get(`${API}/projects`)).json()).some(
+        (project: { name: string }) => project.name === second,
+      ),
+    )
+    .toBe(true);
 });
 
 test("renaming a project shows Save and Cancel beside the field", async ({

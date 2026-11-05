@@ -3,6 +3,7 @@ CREATE TABLE scenes (
     project     TEXT COLLATE "C" NOT NULL,
     title       TEXT             NOT NULL,
     version     BIGINT           NOT NULL DEFAULT 0,
+    prose_version BIGINT         NOT NULL DEFAULT 0,
     uncounted   BOOLEAN          NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );

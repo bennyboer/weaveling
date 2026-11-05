@@ -82,6 +82,7 @@ pub struct CreateSceneRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SceneDTO {
     pub id: String,
+    pub version: u64,
     pub project: String,
     pub title: String,
     pub ideas: Vec<String>,

@@ -92,6 +92,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
             invitations: vec![
                 InvitationSummaryDTO {
                     id: open.id.to_string(),
+                    version: 1,
                     email: "grace@example.com".to_owned(),
                     issued_at: "2023-11-14T22:12:20Z".to_owned(),
                     until: "2023-11-21T22:12:20Z".to_owned(),
@@ -101,6 +102,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
                 },
                 InvitationSummaryDTO {
                     id: declined.id.to_string(),
+                    version: 1,
                     email: "ada@example.com".to_owned(),
                     issued_at: "2023-11-14T21:13:20Z".to_owned(),
                     until: "2023-11-21T21:13:20Z".to_owned(),
@@ -110,6 +112,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
                 },
                 InvitationSummaryDTO {
                     id: expired.id.to_string(),
+                    version: 1,
                     email: "old@example.com".to_owned(),
                     issued_at: "2023-11-06T22:13:20Z".to_owned(),
                     until: "2023-11-13T22:13:20Z".to_owned(),

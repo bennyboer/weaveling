@@ -151,7 +151,7 @@ async fn opening_a_scene_that_was_never_created_is_not_found() {
         .await
         .expect("should create");
     scenes
-        .delete(&never_created.id().to_string(), &Agent::Local)
+        .delete(&never_created.id().to_string(), None, &Agent::Local)
         .await
         .expect("should delete");
 
@@ -184,7 +184,7 @@ async fn a_deleted_scene_takes_its_prose_with_it() {
 
     // when: it is deleted
     scenes
-        .delete(&id, &Agent::Local)
+        .delete(&id, None, &Agent::Local)
         .await
         .expect("should delete");
 

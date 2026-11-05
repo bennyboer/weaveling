@@ -6,8 +6,7 @@ use leptos_router::components::A;
 
 use crate::act::{Act, Here};
 use crate::http::ApiError;
-use crate::ideas::followed;
-use crate::ideas::model;
+use crate::ideas::followed::FollowedIdeas;
 use crate::ideas::model::Idea;
 use crate::ideas::service;
 use crate::members::roles::Roles;
@@ -26,13 +25,10 @@ pub fn Pool(project: String) -> impl IntoView {
         Memo::new(move |_| roles.may_write(&whose))
     };
     let failed = RwSignal::new(None::<ApiError>);
-    let held = RwSignal::new(None::<Vec<Idea>>);
     let title: NodeRef<Input> = NodeRef::new();
-
-    let asking = followed::asking(&project, held, move |failure| {
+    let followed = FollowedIdeas::follow(&project, move |failure| {
         _ = failed.try_set(Some(failure));
     });
-    StoredValue::new_local(followed::following(&project, held, asking));
 
     let capturing = {
         let project = project.clone();
@@ -47,11 +43,7 @@ pub fn Pool(project: String) -> impl IntoView {
                 match service::capture(&project, &saying).await {
                     Ok(idea) => {
                         failed.set(None);
-                        held.update(|known| {
-                            if let Some(known) = known {
-                                model::hold(known, idea);
-                            }
-                        });
+                        followed.copies().take_in(idea.id.clone(), idea);
                     }
                     Err(failure) => failed.set(Some(failure)),
                 }
@@ -59,7 +51,7 @@ pub fn Pool(project: String) -> impl IntoView {
         })
     };
 
-    let ideas = move || held.get().unwrap_or_default();
+    let ideas = move || followed.copies().shown();
 
     html::section().class("pool").child((
         html::h2().child(speech::said("ideas")),
@@ -89,7 +81,7 @@ pub fn Pool(project: String) -> impl IntoView {
             (ideas().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child(speech::said(nothing_yet(held)))
+                    .child(speech::said(nothing_yet(followed)))
             })
         },
         html::ul()
@@ -104,11 +96,11 @@ pub fn Pool(project: String) -> impl IntoView {
     ))
 }
 
-fn nothing_yet(held: RwSignal<Option<Vec<Idea>>>) -> &'static str {
-    if held.with(Option::is_none) {
-        "loading"
-    } else {
+fn nothing_yet(followed: FollowedIdeas) -> &'static str {
+    if followed.is_read() {
         "ideas-empty"
+    } else {
+        "loading"
     }
 }
 
