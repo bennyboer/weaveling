@@ -123,15 +123,19 @@ impl InspectorState {
             }
         };
 
+        let inspecting = Owner::current().expect("the inspector is drawn inside a view");
         Effect::new(move || match inspected.get() {
             Some(asked) => {
                 if scenes_followed.with_value(Option::is_none) {
-                    let (followed, ask) = scenes_followed::follow(
-                        &route::project_id(&project.get_untracked()),
-                        move |listed| _ = scenes.try_set(listed.to_vec()),
-                        move |summary| scenes.update(|held| model::hold(held, summary.clone())),
-                        move |failure| _ = problem.try_set(Some(failure)),
-                    );
+                    let id = route::project_id(&project.get_untracked());
+                    let (followed, ask) = inspecting.with(|| {
+                        scenes_followed::follow(
+                            &id,
+                            move |listed| _ = scenes.try_set(listed.to_vec()),
+                            move |summary| scenes.update(|held| model::hold(held, summary.clone())),
+                            move |failure| _ = problem.try_set(Some(failure)),
+                        )
+                    });
                     scenes_followed.set_value(Some((followed, Box::new(ask))));
                 }
                 places.set(Vec::new());

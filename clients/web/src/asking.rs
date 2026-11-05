@@ -78,6 +78,8 @@ impl Future for Pause {
 }
 
 /// Asking again for something that changes, where the newest asking is the one whose answer counts: each asking takes the next number, and an answer is taken in only while no newer asking was made, so one read before a change and answered after it never stands over what came later. Acting once on a press is an `Act` instead.
+///
+/// Like every signal it belongs to the reactive owner current when it is made: one made inside an `Effect` is disposed when that effect runs again, and from then on no answer counts as the latest, so make it where whatever asks lives.
 #[derive(Clone, Copy)]
 pub struct Asking(StoredValue<u64>);
 
