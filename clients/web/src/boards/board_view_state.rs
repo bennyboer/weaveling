@@ -12,13 +12,13 @@ use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
+use crate::working_copy;
+use crate::working_copy::{Versioned, WorkingCopy};
 use boards_contract::BoardEventDTO;
 use live_contract::FrameDTO;
 
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
-
-type Ticket = u64;
 
 #[derive(Clone, Debug, PartialEq)]
 enum Intent {
@@ -37,82 +37,48 @@ enum Intent {
 }
 
 #[derive(Clone, Copy)]
-struct Intentions {
-    pending: RwSignal<Vec<(Ticket, Intent)>>,
-    issued: StoredValue<Ticket>,
-}
-
-#[derive(Clone, Copy)]
 pub struct BoardViewState {
     problem: RwSignal<Option<ApiError>>,
     board: Memo<Option<Board>>,
     pool: RwSignal<Option<Vec<Idea>>>,
+    working: WorkingCopy<Board, Intent>,
     capturing: Action<(String, Placement), ()>,
-    pinning: Action<(IdeaId, Viewport), ()>,
-    reshaping: Action<(IdeaId, Option<Spot>, Option<Size>), ()>,
-    unpinning: Action<IdeaId, ()>,
     retitling: Action<(IdeaId, String), ()>,
 }
 
 impl BoardViewState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
-        let confirmed = RwSignal::new(None::<Board>);
-        let intentions = Intentions {
-            pending: RwSignal::new(Vec::new()),
-            issued: StoredValue::new(0),
-        };
-        let board = Memo::new(move |_| {
-            confirmed.get().map(|mut open| {
-                intentions.pending.with(|pending| {
-                    for (_, intent) in pending {
-                        intent.apply(&mut open);
-                    }
-                });
+        let working = {
+            let (sending_to, reading) = (project.clone(), project.clone());
 
-                open
-            })
-        });
+            WorkingCopy::new(
+                move |on: Board, intent: Intent| {
+                    let project = sending_to.clone();
+
+                    async move { intent.made_on(&on, &project).await }
+                },
+                move || {
+                    let project = reading.clone();
+
+                    async move { service::open(&project).await }
+                },
+                move |failure| _ = problem.try_set(Some(failure)),
+            )
+        };
+        let board = Memo::new(move |_| working.shown());
         let pool = RwSignal::new(None::<Vec<Idea>>);
-
-        let arrived = move |open: Board| {
-            let known = confirmed.with_untracked(|held| held.as_ref().map(|held| held.version));
-
-            if known.is_none_or(|known| open.version >= known) {
-                intentions.pending.update(|pending| {
-                    pending.retain(|(_, intent)| match intent {
-                        Intent::Unpin { idea } => open.holds(idea),
-                        Intent::Pin { .. } | Intent::Reshape { .. } => true,
-                    });
-                });
-                confirmed.set(Some(open));
-            }
-        };
-
-        let settled = move |answer: Result<Board, ApiError>| match answer {
-            Ok(open) => arrived(open),
-            Err(failure) => problem.set(Some(failure)),
-        };
 
         let listing = followed::asking(project, pool, move |failure| {
             _ = problem.try_set(Some(failure));
         });
         StoredValue::new_local(followed::following(project, pool, listing));
 
-        let opening = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move { settled(service::open(&id).await) }
-            })
-        };
-        opening.dispatch(());
+        working.read_again();
 
         let following = StoredValue::new_local(None::<Subscription>);
         Effect::new(move || {
-            let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
+            let Some(id) = working.confirmed().map(|held| held.id) else {
                 return;
             };
             if following.with_value(Option::is_some) {
@@ -122,7 +88,7 @@ impl BoardViewState {
                 "boards",
                 &[("board", id.to_string().as_str())],
                 move |told: FrameDTO| {
-                    let Some(Some(held)) = confirmed.try_get_untracked() else {
+                    let Some(held) = working.confirmed_untracked() else {
                         return;
                     };
                     if told.version <= held.version {
@@ -133,8 +99,8 @@ impl BoardViewState {
                         .flatten()
                         .and_then(|event| held.taken_in(event));
                     match next {
-                        Some(next) => arrived(next),
-                        None => _ = opening.dispatch(()),
+                        Some(next) => working.take_in(next),
+                        None => working.read_again(),
                     }
                 },
                 || {},
@@ -143,18 +109,15 @@ impl BoardViewState {
 
         let listed_again_at = StoredValue::new(None::<u64>);
         Effect::new(move || {
-            let Some(version) = confirmed.with(|held| held.as_ref().map(|held| held.version))
-            else {
+            let Some(version) = working.confirmed().map(|held| held.version) else {
                 return;
             };
             let unknown = pool.with(|held| {
                 held.as_ref().is_some_and(|known| {
-                    confirmed.with_untracked(|open| {
-                        open.as_ref().is_some_and(|open| {
-                            open.ideas
-                                .iter()
-                                .any(|pinned| known.iter().all(|idea| idea.id != pinned.idea))
-                        })
+                    working.confirmed_untracked().is_some_and(|open| {
+                        open.ideas
+                            .iter()
+                            .any(|pinned| known.iter().all(|idea| idea.id != pinned.idea))
                     })
                 })
             });
@@ -173,9 +136,9 @@ impl BoardViewState {
                 let at = *at;
 
                 async move {
-                    let Some(open) = board.get_untracked() else {
+                    if board.get_untracked().is_none() {
                         return;
-                    };
+                    }
 
                     let caught = match ideas::capture(&project, &title).await {
                         Ok(caught) => caught,
@@ -188,79 +151,10 @@ impl BoardViewState {
                         }
                     });
 
-                    match service::pin(&open.id, &idea, at).await {
-                        Ok(pinned) => arrived(pinned),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
+                    working.intend(Intent::Pin { idea, at });
                 }
             })
         };
-
-        let pinning = Action::new_local(move |(idea, seen): &(IdeaId, Viewport)| {
-            let idea = idea.clone();
-            let at = Placement {
-                spot: next_spot(board.get_untracked().as_ref(), *seen),
-                size: CARD,
-            };
-            let ticket = intentions.intend(Intent::Pin {
-                idea: idea.clone(),
-                at,
-            });
-
-            async move {
-                let Some(open) = board.get_untracked() else {
-                    return;
-                };
-
-                match service::pin(&open.id, &idea, at).await {
-                    Ok(pinned) => arrived(pinned),
-                    Err(failure) => problem.set(Some(failure)),
-                }
-                intentions.settle(ticket);
-            }
-        });
-
-        let reshaping = Action::new_local(
-            move |(idea, to, size): &(IdeaId, Option<Spot>, Option<Size>)| {
-                let idea = idea.clone();
-                let to = *to;
-                let size = *size;
-                let ticket = intentions.intend(Intent::Reshape {
-                    idea: idea.clone(),
-                    to,
-                    size,
-                });
-
-                async move {
-                    let Some(open) = board.get_untracked() else {
-                        return;
-                    };
-
-                    match service::reshape(&open.id, &idea, to, size).await {
-                        Ok(moved) => arrived(moved),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                    intentions.settle(ticket);
-                }
-            },
-        );
-
-        let unpinning = Action::new_local(move |idea: &IdeaId| {
-            let idea = idea.clone();
-
-            async move {
-                let Some(open) = board.get_untracked() else {
-                    return;
-                };
-
-                match service::unpin(&open.id, &idea).await {
-                    Ok(()) => {
-                        intentions.intend(Intent::Unpin { idea });
-                    }
-                    Err(failure) => problem.set(Some(failure)),
-                }
-            }
-        });
 
         let retitling = Action::new_local(move |(idea, title): &(IdeaId, String)| {
             let idea = idea.clone();
@@ -282,10 +176,8 @@ impl BoardViewState {
             problem,
             board,
             pool,
+            working,
             capturing,
-            pinning,
-            reshaping,
-            unpinning,
             retitling,
         }
     }
@@ -332,15 +224,20 @@ impl BoardViewState {
     }
 
     pub fn pin(&self, idea: IdeaId, seen: Viewport) {
-        self.pinning.dispatch((idea, seen));
+        let at = Placement {
+            spot: next_spot(self.board.get_untracked().as_ref(), seen),
+            size: CARD,
+        };
+
+        self.working.intend(Intent::Pin { idea, at });
     }
 
     pub fn reshape(&self, idea: IdeaId, to: Option<Spot>, size: Option<Size>) {
-        self.reshaping.dispatch((idea, to, size));
+        self.working.intend(Intent::Reshape { idea, to, size });
     }
 
     pub fn unpin(&self, idea: IdeaId) {
-        self.unpinning.dispatch(idea);
+        self.working.intend(Intent::Unpin { idea });
     }
 
     pub fn retitle(&self, idea: IdeaId, title: String) {
@@ -388,31 +285,14 @@ fn drawn(held: &PositionedIdea, pool: &[Idea]) -> Option<(Idea, Placement)> {
     })
 }
 
-impl Intentions {
-    fn intend(self, intent: Intent) -> Ticket {
-        let ticket = self.issued.get_value() + 1;
-        self.issued.set_value(ticket);
-
-        self.pending.update(|pending| {
-            if let Intent::Pin { idea, .. } = &intent {
-                pending.retain(|(_, earlier)| {
-                    !matches!(earlier, Intent::Unpin { idea: unpinned } if unpinned == idea)
-                });
-            }
-            pending.push((ticket, intent));
-        });
-
-        ticket
-    }
-
-    fn settle(self, ticket: Ticket) {
-        self.pending
-            .update(|pending| pending.retain(|(issued, _)| *issued != ticket));
+impl Versioned for Board {
+    fn version(&self) -> u64 {
+        self.version
     }
 }
 
-impl Intent {
-    fn apply(&self, open: &mut Board) {
+impl working_copy::Intent<Board> for Intent {
+    fn lay_over(&self, open: &mut Board) {
         match self {
             Self::Pin { idea, at } => {
                 if !open.holds(idea) {
@@ -443,6 +323,39 @@ impl Intent {
                 }
             }
             Self::Unpin { idea } => open.ideas.retain(|held| &held.idea != idea),
+        }
+    }
+
+    fn merged_after(&self, earlier: &Self) -> Option<Self> {
+        match (self, earlier) {
+            (
+                Self::Reshape { idea, to, size },
+                Self::Reshape {
+                    idea: before,
+                    to: earlier_to,
+                    size: earlier_size,
+                },
+            ) if idea == before => Some(Self::Reshape {
+                idea: idea.clone(),
+                to: to.or(*earlier_to),
+                size: size.or(*earlier_size),
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl Intent {
+    async fn made_on(&self, on: &Board, project: &ProjectId) -> Result<Board, ApiError> {
+        match self {
+            Self::Pin { idea, at } => service::pin(&on.id, idea, *at, on.version).await,
+            Self::Reshape { idea, to, size } => {
+                service::reshape(&on.id, idea, *to, *size, on.version).await
+            }
+            Self::Unpin { idea } => {
+                service::unpin(&on.id, idea, on.version).await?;
+                service::open(project).await
+            }
         }
     }
 }

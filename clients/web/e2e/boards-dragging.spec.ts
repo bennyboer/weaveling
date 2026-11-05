@@ -37,6 +37,53 @@ test("a card can be nudged with the arrow keys", async ({ page }) => {
   );
 });
 
+test("a card nudged by a held key ends where the last nudge put it, though the server hears them out of turn", async ({
+  page,
+}) => {
+  // given: a card on the board
+  await anOpenProject(page, "NudgingHeld");
+  await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
+  await openTheBoard(page);
+  await page.getByRole("button", { name: "Pin The loom remembers" }).click();
+  await pinHeld(page);
+  const card = corkboard(page).locator(".pinned");
+  await expect(card).toHaveAttribute("style", /top: 40px/);
+  // and: each move reaching the server later the earlier it was made
+  let moves = 0;
+  await page.route(
+    (url) => /\/api\/boards\/[^/]+\/ideas\/[^/]+$/.test(url.pathname),
+    async (route) => {
+      if (route.request().method() !== "PATCH") {
+        return route.fallback();
+      }
+      moves += 1;
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, 400 - moves * 20)));
+      await route.fallback();
+    },
+  );
+
+  // when: it is nudged down twenty times in a row
+  await card.focus();
+  for (let nudge = 0; nudge < 20; nudge += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  // then: it shows where the last nudge put it
+  await expect(card).toHaveAttribute("style", /top: 140px/);
+  // and: fewer moves were sent than were made
+  await saved();
+  expect(moves, "nudges made while one is on its way are sent as one").toBeLessThan(20);
+  // when: the board is reloaded
+  await page.reload();
+  await onTheBoard(page);
+  // then: the card is still where the last nudge put it
+  await expect(
+    corkboard(page).locator(".pinned"),
+    "moves heard out of turn would leave it where an earlier nudge put it",
+  ).toHaveAttribute("style", /top: 140px/);
+});
+
 test("a nudge survives a reload", async ({ page }) => {
   // given: a card nudged on the board
   await anOpenProject(page, "NudgeLasts");

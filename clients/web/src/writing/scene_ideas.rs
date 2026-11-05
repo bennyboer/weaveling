@@ -120,7 +120,7 @@ impl SceneIdeas {
     }
 
     pub fn link(self, scene: SceneId, chosen: Vec<IdeaId>) {
-        let before = self.linked_to(&scene);
+        let before = self.linked_to(&scene).unwrap_or_default();
         self.linked.update(|linked| {
             let ideas = linked.entry(scene.clone()).or_default();
             ideas.extend(
@@ -134,16 +134,21 @@ impl SceneIdeas {
         self.saving.write_begun();
 
         task::spawn_local(async move {
-            for idea in &chosen {
+            for (at, idea) in chosen.iter().enumerate() {
                 match scenes::link(&scene, idea).await {
                     Ok(found) => self
                         .linked
                         .update(|linked| _ = linked.insert(scene.clone(), found.ideas)),
                     Err(failure) => {
-                        if let Some(before) = before {
-                            self.linked
-                                .update(|linked| _ = linked.insert(scene.clone(), before));
-                        }
+                        let unlinked: Vec<&IdeaId> = chosen[at..]
+                            .iter()
+                            .filter(|idea| !before.contains(idea))
+                            .collect();
+                        self.linked.update(|linked| {
+                            if let Some(ideas) = linked.get_mut(&scene) {
+                                ideas.retain(|held| !unlinked.contains(&held));
+                            }
+                        });
                         self.problems.report(failure);
                         break;
                     }
@@ -154,7 +159,9 @@ impl SceneIdeas {
     }
 
     pub fn unlink(self, scene: SceneId, idea: IdeaId) {
-        let before = self.linked_to(&scene);
+        let at = self
+            .linked_to(&scene)
+            .and_then(|ideas| ideas.iter().position(|held| held == &idea));
         self.linked.update(|linked| {
             if let Some(ideas) = linked.get_mut(&scene) {
                 ideas.retain(|held| held != &idea);
@@ -168,9 +175,13 @@ impl SceneIdeas {
                     .linked
                     .update(|linked| _ = linked.insert(scene, found.ideas)),
                 Err(failure) => {
-                    if let Some(before) = before {
-                        self.linked
-                            .update(|linked| _ = linked.insert(scene, before));
+                    if let Some(at) = at {
+                        self.linked.update(|linked| {
+                            let ideas = linked.entry(scene).or_default();
+                            if !ideas.contains(&idea) {
+                                ideas.insert(at.min(ideas.len()), idea);
+                            }
+                        });
                     }
                     self.problems.report(failure);
                 }

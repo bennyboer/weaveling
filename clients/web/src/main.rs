@@ -32,6 +32,7 @@ mod speech;
 mod statistics;
 mod theme;
 mod tray;
+mod working_copy;
 mod writing;
 
 use leptos::prelude::*;

@@ -23,14 +23,22 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     Ok(as_board(http::parsed(response, OPENED_IN).await?))
 }
 
-pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board, ApiError> {
+pub async fn pin(
+    board: &BoardId,
+    idea: &IdeaId,
+    at: Placement,
+    on: u64,
+) -> Result<Board, ApiError> {
     let payload = PinIdeaRequest {
         idea: idea.to_string(),
         spot: to_spot_dto(at.spot),
         size: to_size_dto(at.size),
     };
-    let response =
-        http::sent_with(Request::post(&format!("{BOARDS}/{board}/ideas")), &payload).await?;
+    let response = http::sent_with(
+        Request::post(&format!("{BOARDS}/{board}/ideas")).header("If-Match", &matching(on)),
+        &payload,
+    )
+    .await?;
 
     Ok(as_board(http::parsed(response, SUBJECT).await?))
 }
@@ -40,13 +48,14 @@ pub async fn reshape(
     idea: &IdeaId,
     to: Option<Spot>,
     size: Option<Size>,
+    on: u64,
 ) -> Result<Board, ApiError> {
     let payload = ReshapeIdeaRequest {
         spot: to.map(to_spot_dto),
         size: size.map(to_size_dto),
     };
     let response = http::sent_with(
-        Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")),
+        Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")).header("If-Match", &matching(on)),
         &payload,
     )
     .await?;
@@ -54,14 +63,22 @@ pub async fn reshape(
     Ok(as_board(http::parsed(response, SUBJECT).await?))
 }
 
-pub async fn unpin(board: &BoardId, idea: &IdeaId) -> Result<(), ApiError> {
-    let response = http::sent(Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))).await?;
+pub async fn unpin(board: &BoardId, idea: &IdeaId, on: u64) -> Result<(), ApiError> {
+    let response = http::sent(
+        Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))
+            .header("If-Match", &matching(on)),
+    )
+    .await?;
 
-    if response.ok() {
-        return Ok(());
+    match response.status() {
+        _ if response.ok() => Ok(()),
+        412 => Err(ApiError::Outdated(SUBJECT)),
+        _ => Err(ApiError::Unexpected),
     }
+}
 
-    Err(ApiError::Unexpected)
+fn matching(version: u64) -> String {
+    format!("\"{version}\"")
 }
 
 fn as_board(dto: BoardDTO) -> Board {

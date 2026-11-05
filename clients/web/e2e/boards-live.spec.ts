@@ -107,6 +107,53 @@ test("a card another author unpins goes back beside the board", async ({
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
 });
 
+test("a move made on a board another author changed meanwhile is made again on theirs, and both stand", async ({
+  page,
+}) => {
+  // given: a board followed live with two cards on it
+  const { board, loom } = await aBoardFollowedLive(page, "BoardLiveRaced");
+  const shuttle = await anIdea(page, "The shuttle");
+  await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
+  await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(shuttle, 400, 400));
+  await expect(cardNamed(page, "The loom remembers")).toBeVisible();
+  await expect(cardNamed(page, "The shuttle")).toBeVisible();
+  // and: another author moving the other card just as a move of mine goes out
+  let mine = 0;
+  await page.route(
+    (url) => url.pathname === `/api/boards/${board}/ideas/${loom}`,
+    async (route) => {
+      if (route.request().method() !== "PATCH") {
+        return route.fallback();
+      }
+      mine += 1;
+      if (mine === 1) {
+        await anotherAuthor(page, "patch", `/boards/${board}/ideas/${shuttle}`, {
+          spot: { x: 600, y: 400 },
+        });
+      }
+      await route.fallback();
+    },
+  );
+
+  // when: I nudge my card
+  await cardNamed(page, "The loom remembers").focus();
+  await page.keyboard.press("ArrowRight");
+
+  // then: my move is refused once, as made on a board that moved on, and made again
+  await expect.poll(() => mine).toBe(2);
+  // and: the board holds both moves
+  await expect
+    .poll(async () => {
+      const held = (await (await page.request.post(`${API}/boards`, { data: { project: projectOf(page) } })).json())
+        .ideas as { idea: string; spot: { x: number; y: number } }[];
+      return held.map((pinned) => [pinned.idea, pinned.spot.x]).sort();
+    })
+    .toEqual([
+      [loom, 405],
+      [shuttle, 600],
+    ].sort());
+});
+
 test("an idea captured and pinned elsewhere shows on the board by its name", async ({
   page,
 }) => {

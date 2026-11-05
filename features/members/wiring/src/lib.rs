@@ -330,6 +330,8 @@ mod tests {
 
 #[cfg(all(test, feature = "postgres"))]
 mod postgres_tests {
+    use eventsourcing::{AccountId, Agent};
+    use members_core::Person;
     use test_harness::PostgresFixture;
 
     use super::*;
@@ -363,6 +365,115 @@ mod postgres_tests {
             kept, 1,
             "the list is kept in the feature's database, not in memory"
         );
+
+        fixture.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn founding_a_project_already_founded_leaves_the_transaction_it_shares_whole() {
+        // given: the feature on a database
+        let fixture = PostgresFixture::setup().await;
+        let pool = fixture.create_schema("members").await;
+        for schema in MembersFeature::postgres_schema() {
+            schema.run(&pool).await.expect("the schema lays down");
+        }
+        let ports = MembersFeature::on_postgres(pool, &super::tests::a_context())
+            .expect("wiring should succeed");
+        let members = core(&ports, &super::tests::a_context());
+
+        // when: a project is founded twice in one transaction
+        let mut transaction = ports
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
+        for _ in 0..2 {
+            members
+                .found(Some(&mut transaction), "project_1", "account_ada")
+                .await
+                .expect("founding again is no failure");
+        }
+        let finished = transaction.finish().await;
+
+        // then: the transaction commits
+        assert!(finished.is_ok(), "{finished:?}");
+        // and: the project has its owner
+        assert_eq!(
+            members
+                .members("project_1", &Agent::System)
+                .await
+                .expect("a founded project has members")
+                .len(),
+            1,
+            "a second founding that fails inside the transaction would take the first and everything beside it down with it"
+        );
+
+        fixture.cleanup().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_founding_that_loses_a_race_never_answers_success_over_a_lost_transaction() {
+        // given: the feature on a database
+        let fixture = PostgresFixture::setup().await;
+        let pool = fixture.create_schema("members").await;
+        for schema in MembersFeature::postgres_schema() {
+            schema.run(&pool).await.expect("the schema lays down");
+        }
+        let ports = MembersFeature::on_postgres(pool, &super::tests::a_context())
+            .expect("wiring should succeed");
+        let members = core(&ports, &super::tests::a_context());
+        // and: a project being founded in a transaction not yet committed
+        let mut first = ports
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
+        members
+            .found(Some(&mut first), "project_1", "account_ada")
+            .await
+            .expect("the first founding lands");
+
+        // when: it is founded again in another transaction at the same time
+        let racing = tokio::spawn({
+            let (members, transactions) = (members.clone(), ports.transactions.clone());
+            async move {
+                let mut second = transactions
+                    .begin()
+                    .await
+                    .expect("beginning should succeed");
+                let founded = members
+                    .found(Some(&mut second), "project_1", "account_ada")
+                    .await;
+                let beside = match &founded {
+                    Ok(()) => Some(
+                        members
+                            .remember_person(
+                                Some(&mut second),
+                                &Person {
+                                    account: AccountId::from("account_ada"),
+                                    name: "Ada".to_owned(),
+                                    email: "ada@example.com".to_owned(),
+                                },
+                            )
+                            .await,
+                    ),
+                    Err(_) => None,
+                };
+
+                (founded, beside)
+            }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        first.finish().await.expect("the first commits");
+        let (founded, beside) = racing.await.expect("the second finishes");
+
+        // then: the second either fails, to be tried again, or what is written beside it lands
+        if founded.is_ok() {
+            assert!(
+                matches!(beside, Some(Ok(()))),
+                "a founding answered as done over a transaction the database already gave up loses whatever is written beside it: {beside:?}"
+            );
+        }
 
         fixture.cleanup().await;
     }

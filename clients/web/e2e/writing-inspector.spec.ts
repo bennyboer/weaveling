@@ -650,6 +650,49 @@ test("ideas linked from the tray are listed in the order they were picked, and k
     .toEqual([winter, loom]);
 });
 
+test("ideas linked from the tray, one of them refused, keep the ones that were linked", async ({
+  page,
+}) => {
+  // given: the tray open on a scene, with two ideas in the project
+  await aNewProject(page, "TrayLinkingRefused");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await anIdea(page, "The loom remembers");
+  const winter = await anIdea(page, "Winter comes early");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await inspectorTab(page).click();
+  // and: the second link refused
+  let linking = 0;
+  await page.route(
+    (url) => url.pathname === `/api/scenes/${first}/ideas`,
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        return route.fallback();
+      }
+      linking += 1;
+      if (linking === 2) {
+        return route.fulfill({ status: 500, body: "refused" });
+      }
+      return route.fallback();
+    },
+  );
+
+  // when: two ideas are picked and linked
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
+  await linkDialog(page).getByLabel("Winter comes early").check();
+  await linkDialog(page).getByLabel("The loom remembers").check();
+  await linkDialog(page).getByRole("button", { name: "Link 2" }).click();
+
+  // then: the tray keeps the one that was linked
+  await expect.poll(() => linking).toBe(2);
+  await expect(
+    drawnFrom(page).getByRole("link"),
+    "the first link landed, so taking it back with the refused one would show less than the scene holds",
+  ).toHaveText(["Winter comes early"]);
+  // and: the scene holds it
+  expect((await (await page.request.get(`${API}/scenes/${first}`)).json()).ideas).toEqual([winter]);
+});
+
 test("the tray's dialog offers only ideas the scene does not draw on yet", async ({
   page,
 }) => {

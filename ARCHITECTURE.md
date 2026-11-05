@@ -843,6 +843,39 @@ What keeps such tests from rotting is the selector discipline: **role plus acces
 
 Two traps found while setting it up, both worth remembering. **Playwright must write its output outside the Trunk watch root** (`outputDir` points at `target/`), and `e2e/`, `node_modules/` and the JS manifests must be in `[watch] ignore` — otherwise a test run triggers a rebuild, the page reloads mid-test, and elements detach under the cursor. That produced a one-in-five flake in a different test each time, and 257 spurious rebuilds; it is the same class of mistake as the spike's rebuild loop. And **`hasText` matches substrings**, so a renamed-to value must not contain the original or the "old name is gone" assertion silently passes against the new row.
 
+### What the client changes, and what it is told — decided
+
+*Written 2026-11-05, the user asking after a held arrow key made a card snap back, and settled with them the same day: it is called a `WorkingCopy`, every aggregate gets one, and every change carries `If-Match`. Not built yet; it replaces the hand-written handling each view grew on its own.*
+
+Three streams meet in the client, and every view that changes something has to bring them together:
+
+1. **What the author does**, often fast: a card nudged by a held arrow key, a section moved up three times, a title typed.
+2. **What the client asks the server**, the requests those turn into.
+3. **What the client is told**: the answers to its own requests, and the changes of other authors over the live socket. Both carry the aggregate's version.
+
+**What is shown is the confirmed state with the pending changes laid over it.** The client keeps, per aggregate, the last state the server confirmed with its version, and over it the changes of its own still on their way. Whatever arrives, its own answer or someone else's change, goes into the confirmed state by version, older or repeated versions changing nothing, and the pending changes are laid over it again. An answer is then nothing special: one more version. This is how Figma and Linear keep their screens immediate and right at once, and the board has half of it already, `confirmed` with its version and `Intentions` with their tickets; the outline has the same for retitles only.
+
+**One request at a time per aggregate, in the order they were made.** Requests sent side by side reach the server in any order, and their answers come back in any order, which is the whole of the snapping back. So each aggregate sends one request and the next only once it is answered; the next is worked out then, from what is shown at that moment.
+
+**Merged, not debounced.** A debounce waits a fixed while before sending, which delays every single press and loses a change if the tab closes in between. Merging does the same work without the wait: with nothing on its way, a change goes out at once; while one is on its way, the next collect, and of those only the newest of each kind goes out. A held arrow key sends the first nudge at once and one more with where the card ended up. What may be merged is what sets something outright, a card's spot and size, a title, a role: the newest wins, keyed by what it is about. What builds on the step before, moving a section up one, promoting it, cannot be merged; it is sent in turn, or better, turned into an outright change when it is sent, "place it after the section now above it", worked out from what is shown then.
+
+**Every change says what it was made on: `If-Match`, always.** The server takes `If-Match` on every aggregate and decides a command without it against whatever it holds (`serving::demanded`); the client sent it only for a project's details. With one request at a time the client always knows the version it builds on, so every change sends it. Landing on that version, it lands; finding a newer one, another author having got in between, the server refuses it with 412, and the working copy takes in the newer state, lays its pending changes over it again and sends the change worked out anew. The outline shows why: the author sees A, B, C and moves C up, which goes out as "C after A"; another author meanwhile moved A to the end, so the server holds B, C, A, and without `If-Match` "C after A" gives B, A, C, C gone down where the author moved it up. Refused instead, it is worked out again from B, C, A as "C before B". An outright change, a card's spot, comes out the same the second time, so for it a refusal costs one round trip, and only when someone did get in between; one rule for every change is worth that.
+
+**Where it applies: every aggregate.** Nothing is counted simple until it proves to be; an aggregate that turns out not to need it can be decided again then.
+
+| Aggregate | Changes made fast or in a row | Merged by | Today |
+|---|---|---|---|
+| Board | reshape (spot, size), pin, unpin | card | **on its `WorkingCopy` since 2026-11-05** |
+| Outline | retitle; move up and down, promote, demote, place; add, remove; attach, detach | section, for retitles; the rest in turn | `confirmed` and pending retitles, everything else side by side |
+| Ideas | retitle, discard | idea | sent and answered as they come |
+| Scenes | retitle, link and unlink ideas | scene, for titles; links in turn | sent and answered as they come; a refused link now takes back only its own |
+| Projects | rename, details | project | details carry `If-Match`; rename does not |
+| Members | change of role, removal | member | each answer taken whole; `Asking` keeps the newest list |
+
+So the accounts, invitations, notifications and the rest go through one too, what is done once included, creating, trashing, inviting, answering: a change like any other, which the working copy sends in its turn. Left out is only a scene's prose, which is not an aggregate but a CRDT, kept right by its own socket. Where an `Act` or an `Asking` stands today, the working copy takes its place as each aggregate moves over, and they go once nothing uses them.
+
+**Built once, used by each: the `WorkingCopy`.** `WorkingCopy<Board>`, `WorkingCopy<Outline>`, in `clients/web/src/working_copy.rs`, holds an aggregate's confirmed state, its pending `Intent`s, the one request on its way and the merging, and answers a 412 by laying the pending changes over the newer state. The name is version control's: what the author works on, the confirmed state with their own changes over it, matched with everyone else's as they go out. A pending one is an `Intent`, `boards::Intent`, `outline::Intent`, what the author means to do and the server has yet to confirm, kept apart by its name from a change the server tells, `OutlineChange`, which is confirmed and carries a version. Each view says what its changes are, how one lays over the state, which merge, and how an answer and a told change are taken in; it no longer writes any of it by hand. To be built aggregate by aggregate, the board first, where the bug shows, then the outline, where moving in a row needs it most, then the rest, each with a browser test that holds a key or moves in a row.
+
 ## Export
 
 This is **manuscript export** — turning a project into something a reader can read. It is unrelated to the **project export** in [Two Ways to Run It](#two-ways-to-run-it), which turns a project into a file its author can carry.
