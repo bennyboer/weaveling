@@ -1,6 +1,8 @@
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll, Waker};
 
 use leptos::prelude::*;
 use leptos::task;
@@ -32,6 +34,7 @@ pub struct WorkingCopy<A: Send + Sync + 'static, I: Send + Sync + 'static> {
     confirmed: RwSignal<Option<A>>,
     pending: RwSignal<Vec<I>>,
     sending: RwSignal<bool>,
+    awaited: StoredValue<Vec<Option<Rc<Landing>>>, LocalStorage>,
     send: StoredValue<Sending<A, I>, LocalStorage>,
     read: StoredValue<Reading<A>, LocalStorage>,
     failed: StoredValue<Failing, LocalStorage>,
@@ -64,6 +67,7 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
             confirmed: RwSignal::new(None),
             pending: RwSignal::new(Vec::new()),
             sending: RwSignal::new(false),
+            awaited: StoredValue::new_local(Vec::new()),
             send: StoredValue::new_local(send),
             read: StoredValue::new_local(read),
             failed: StoredValue::new_local(failed),
@@ -92,22 +96,40 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
     }
 
     pub fn intend(self, intent: I) {
-        self.pending.update(|pending| {
+        let awaited_last = self
+            .awaited
+            .with_value(|awaited| awaited.last().is_some_and(Option::is_some));
+        let merged = self.pending.with_untracked(|pending| {
             let waiting_last = pending.len() > usize::from(self.sending.get_untracked());
-            let merged = waiting_last
+
+            (waiting_last && !awaited_last)
                 .then(|| pending.last().and_then(|last| intent.merged_after(last)))
-                .flatten();
-            match merged {
-                Some(merged) => {
-                    if let Some(last) = pending.last_mut() {
-                        *last = merged;
-                    }
-                }
-                None => pending.push(intent),
-            }
+                .flatten()
         });
 
+        match merged {
+            Some(merged) => self.pending.update(|pending| {
+                if let Some(last) = pending.last_mut() {
+                    *last = merged;
+                }
+            }),
+            None => self.queue(intent, None),
+        }
         self.send_next();
+    }
+
+    /// Intends as `intend` does, and answers once the server took it in, `true`, or refused it, `false`; never merged, as what waits on it has to hear of this one.
+    pub fn intended(self, intent: I) -> Landed {
+        let landing = Rc::new(Landing::default());
+        self.queue(intent, Some(landing.clone()));
+        self.send_next();
+
+        Landed(landing)
+    }
+
+    fn queue(self, intent: I, landing: Option<Rc<Landing>>) {
+        self.pending.update(|pending| pending.push(intent));
+        self.awaited.update_value(|awaited| awaited.push(landing));
     }
 
     /// Takes in the aggregate at a version the server told, older or repeated versions changing nothing.
@@ -175,8 +197,13 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
                 }
             };
 
+            let landed = answered.is_ok();
             match answered {
                 Ok(answer) => self.take_in_quietly(answer),
+                Err(ApiError::Overtaken) => {
+                    self.fail(ApiError::Overtaken);
+                    self.read_again();
+                }
                 Err(failure) => self.fail(failure),
             }
             _ = self.pending.try_update(|pending| {
@@ -184,6 +211,14 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
                     pending.remove(0);
                 }
             });
+            let landing = self
+                .awaited
+                .try_update_value(|awaited| (!awaited.is_empty()).then(|| awaited.remove(0)))
+                .flatten()
+                .flatten();
+            if let Some(landing) = landing {
+                landing.land(landed);
+            }
             _ = self.sending.try_set(false);
             if self.sending.try_get_untracked().is_some() {
                 self.send_next();
@@ -205,6 +240,38 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
     fn fail(self, failure: ApiError) {
         if let Some(failed) = self.failed.try_get_value() {
             failed(failure);
+        }
+    }
+}
+
+#[derive(Default)]
+struct Landing {
+    landed: Cell<Option<bool>>,
+    waker: RefCell<Option<Waker>>,
+}
+
+impl Landing {
+    fn land(&self, landed: bool) {
+        self.landed.set(Some(landed));
+        if let Some(waker) = self.waker.borrow_mut().take() {
+            waker.wake();
+        }
+    }
+}
+
+/// Whether an intent landed, once the server answered it.
+pub struct Landed(Rc<Landing>);
+
+impl Future for Landed {
+    type Output = bool;
+
+    fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<bool> {
+        match self.0.landed.get() {
+            Some(landed) => Poll::Ready(landed),
+            None => {
+                *self.0.waker.borrow_mut() = Some(context.waker().clone());
+                Poll::Pending
+            }
         }
     }
 }

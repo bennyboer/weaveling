@@ -6,7 +6,7 @@ use crate::http::ApiError;
 use crate::ideas::followed;
 use crate::ideas::model::Idea;
 use crate::live::Subscription;
-use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
+use crate::outline::model::{Attachment, Outline, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::route;
@@ -14,6 +14,8 @@ use crate::scenes::followed as scenes_followed;
 use crate::scenes::model;
 use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
+use crate::working_copy;
+use crate::working_copy::{Versioned, WorkingCopy};
 use live_contract::FrameDTO;
 use outline_contract::OutlineEventDTO;
 
@@ -24,17 +26,43 @@ pub struct OutlineViewState {
     scenes: RwSignal<Option<Vec<SceneSummary>>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
-    adding: Action<(Option<SectionId>, Option<SectionId>, String), ()>,
-    retitling: Action<(SectionId, String), ()>,
-    urging: Action<(SectionId, Urge), ()>,
-    placing: Action<(SectionId, Option<SectionId>, Option<SectionId>), ()>,
-    removing: Action<SectionId, ()>,
-    attaching: Action<(Attachment, SectionId), ()>,
-    detaching: Action<Attachment, ()>,
+    working: WorkingCopy<Outline, Intent>,
     writing: Act<SectionId>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
+enum Intent {
+    Add {
+        under: Option<SectionId>,
+        after: Option<SectionId>,
+        title: String,
+    },
+    Retitle {
+        section: SectionId,
+        title: String,
+    },
+    Urge {
+        section: SectionId,
+        urge: Urge,
+    },
+    Place {
+        section: SectionId,
+        under: Option<SectionId>,
+        after: Option<SectionId>,
+    },
+    Remove {
+        section: SectionId,
+    },
+    Attach {
+        attachment: Attachment,
+        to: SectionId,
+    },
+    Detach {
+        attachment: Attachment,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Urge {
     Earlier,
     Later,
@@ -45,81 +73,28 @@ pub enum Urge {
 impl OutlineViewState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
-        let confirmed = RwSignal::new(None::<Outline>);
-        let retitles = RwSignal::new(Vec::<(u64, SectionId, String)>::new());
-        let issued = StoredValue::new(0_u64);
-        let outline = Memo::new(move |_| {
-            confirmed.get().map(|mut open| {
-                retitles.with(|pending| {
-                    for (_, section, title) in pending {
-                        if let Some(held) =
-                            open.sections.iter_mut().find(|held| &held.id == section)
-                        {
-                            held.title = title.clone();
-                        }
-                    }
-                });
+        let added = RwSignal::new(None::<SectionId>);
+        let working = {
+            let (sending_to, reading) = (project.clone(), project.clone());
 
-                open
-            })
-        });
+            WorkingCopy::new(
+                move |on: Outline, intent: Intent| {
+                    let project = sending_to.clone();
+
+                    async move { intent.made_on(&on, &project, added).await }
+                },
+                move || {
+                    let project = reading.clone();
+
+                    async move { service::open(&project).await }
+                },
+                move |failure| _ = problem.try_set(Some(failure)),
+            )
+        };
+        let outline = Memo::new(move |_| working.shown());
         let scenes = RwSignal::new(None::<Vec<SceneSummary>>);
         let ideas = RwSignal::new(None::<Vec<Idea>>);
-        let added = RwSignal::new(None::<SectionId>);
-
-        let arrived = move |told: Outline| {
-            let known = confirmed.with_untracked(|held| held.as_ref().map(|held| held.version));
-
-            if known.is_none_or(|known| told.version >= known) {
-                confirmed.set(Some(told));
-            }
-        };
-
-        let opening = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move {
-                    match service::open(&id).await {
-                        Ok(told) => arrived(told),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                }
-            })
-        };
-        opening.dispatch(());
-
-        let changed = move |told: OutlineChange| {
-            let stale = confirmed.with_untracked(|held| {
-                held.as_ref()
-                    .is_some_and(|held| told.version >= held.version && !held.fits(&told))
-            });
-            if stale {
-                opening.dispatch(());
-                return;
-            }
-            confirmed.update(|held| {
-                if let Some(held) = held
-                    && told.version >= held.version
-                {
-                    *held = held.changed_by(told);
-                }
-            });
-        };
-
-        let failed = move |failure: ApiError| {
-            if failure == ApiError::Overtaken {
-                opening.dispatch(());
-            }
-            problem.set(Some(failure));
-        };
-
-        let settled = move |answer: Result<OutlineChange, ApiError>| match answer {
-            Ok(told) => changed(told),
-            Err(failure) => failed(failure),
-        };
+        working.read_again();
 
         let (scenes_followed, listing_scenes) = scenes_followed::follow(
             project,
@@ -140,134 +115,6 @@ impl OutlineViewState {
         });
         StoredValue::new_local(followed::following(project, ideas, listing_ideas));
 
-        let adding = Action::new_local(
-            move |(under, after, title): &(Option<SectionId>, Option<SectionId>, String)| {
-                let under = under.clone();
-                let after = after.clone();
-                let title = title.clone();
-
-                async move {
-                    let Some(open) = outline.get_untracked() else {
-                        return;
-                    };
-
-                    match service::add(&open.id, under, after, &title).await {
-                        Ok((section, told)) => {
-                            changed(told);
-                            added.set(Some(section));
-                        }
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                }
-            },
-        );
-
-        let retitling = Action::new_local(move |(section, title): &(SectionId, String)| {
-            let section = section.clone();
-            let title = title.clone();
-            let ticket = issued.get_value() + 1;
-            issued.set_value(ticket);
-            retitles.update(|pending| pending.push((ticket, section.clone(), title.clone())));
-
-            async move {
-                let Some(open) = outline.get_untracked() else {
-                    return;
-                };
-
-                settled(service::retitle(&open.id, &section, &title).await);
-                retitles.update(|pending| pending.retain(|(issued, _, _)| *issued != ticket));
-            }
-        });
-
-        let urging = Action::new_local(move |(section, urge): &(SectionId, Urge)| {
-            let section = section.clone();
-            let urge = *urge;
-
-            async move {
-                let Some(open) = outline.get_untracked() else {
-                    return;
-                };
-
-                settled(match urge {
-                    Urge::Promote => service::promote(&open.id, &section).await,
-                    Urge::Demote => service::demote(&open.id, &section).await,
-                    shifted => {
-                        let later = shifted == Urge::Later;
-
-                        service::place(
-                            &open.id,
-                            &section,
-                            open.parent_of(&section),
-                            open.landing_for(&section, later),
-                        )
-                        .await
-                    }
-                });
-            }
-        });
-
-        let placing = Action::new_local(
-            move |(section, under, after): &(SectionId, Option<SectionId>, Option<SectionId>)| {
-                let section = section.clone();
-                let under = under.clone();
-                let after = after.clone();
-
-                async move {
-                    let Some(open) = outline.get_untracked() else {
-                        return;
-                    };
-
-                    settled(service::place(&open.id, &section, under, after).await);
-                }
-            },
-        );
-
-        let removing = Action::new_local(move |section: &SectionId| {
-            let section = section.clone();
-
-            async move {
-                let Some(open) = outline.get_untracked() else {
-                    return;
-                };
-
-                settled(service::remove(&open.id, &section).await);
-            }
-        });
-
-        let attaching = Action::new_local(move |(attachment, to): &(Attachment, SectionId)| {
-            let attachment = attachment.clone();
-            let to = to.clone();
-
-            async move {
-                let Some(open) = outline.get_untracked() else {
-                    return;
-                };
-
-                settled(attach_at_the_end(open, attachment, to).await);
-            }
-        });
-
-        let detaching = Action::new_local(move |attachment: &Attachment| {
-            let attachment = attachment.clone();
-
-            async move {
-                let Some(open) = outline.get_untracked() else {
-                    return;
-                };
-
-                match service::detach(&open.id, &attachment).await {
-                    Ok(()) => confirmed.update(|held| {
-                        if let Some(held) = held {
-                            for section in &mut held.sections {
-                                section.attachments.retain(|held| held != &attachment);
-                            }
-                        }
-                    }),
-                    Err(failure) => problem.set(Some(failure)),
-                }
-            }
-        });
-
         let writing = {
             let id = project.clone();
             let opening = hooks::use_navigate();
@@ -285,15 +132,14 @@ impl OutlineViewState {
                     scenes.update(|held| {
                         model::hold(held.get_or_insert_default(), started.summarized())
                     });
-                    let Some(open) = outline.get_untracked() else {
-                        return;
-                    };
-                    let placed =
-                        attach_at_the_end(open, Attachment::Scene(started.id.clone()), to).await;
-                    let held = placed.is_ok();
+                    let placed = working
+                        .intended(Intent::Attach {
+                            attachment: Attachment::Scene(started.id.clone()),
+                            to,
+                        })
+                        .await;
 
-                    settled(placed);
-                    if held && here.still() {
+                    if placed && here.still() {
                         opening(
                             &route::writing_at(&id.to_string(), &started.id),
                             Default::default(),
@@ -305,7 +151,7 @@ impl OutlineViewState {
 
         let following = StoredValue::new_local(None::<Subscription>);
         Effect::new(move || {
-            let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
+            let Some(id) = working.confirmed().map(|held| held.id) else {
                 return;
             };
             if following.with_value(Option::is_some) {
@@ -315,7 +161,7 @@ impl OutlineViewState {
                 "outlines",
                 &[("outline", id.to_string().as_str())],
                 move |told: FrameDTO| {
-                    let Some(Some(held)) = confirmed.try_get_untracked() else {
+                    let Some(held) = working.confirmed_untracked() else {
                         return;
                     };
                     if told.version <= held.version {
@@ -326,8 +172,8 @@ impl OutlineViewState {
                         .flatten()
                         .and_then(|event| held.taken_in(event));
                     match next {
-                        Some(next) => arrived(next),
-                        None => _ = opening.dispatch(()),
+                        Some(next) => working.take_in(next),
+                        None => working.read_again(),
                     }
                 },
                 || {},
@@ -335,13 +181,11 @@ impl OutlineViewState {
         });
 
         Effect::new(move || {
-            let Some(attached) = confirmed.with(|held| {
-                held.as_ref().map(|held| {
-                    held.sections
-                        .iter()
-                        .flat_map(|section| section.attachments.clone())
-                        .collect::<Vec<_>>()
-                })
+            let Some(attached) = working.confirmed().map(|held| {
+                held.sections
+                    .iter()
+                    .flat_map(|section| section.attachments.clone())
+                    .collect::<Vec<_>>()
             }) else {
                 return;
             };
@@ -379,13 +223,7 @@ impl OutlineViewState {
             scenes,
             ideas,
             added,
-            adding,
-            retitling,
-            urging,
-            placing,
-            removing,
-            attaching,
-            detaching,
+            working,
             writing,
         }
     }
@@ -504,15 +342,23 @@ impl OutlineViewState {
     }
 
     pub fn add(&self, under: Option<SectionId>, after: Option<SectionId>, title: String) {
-        self.adding.dispatch((under, after, title));
+        self.working.intend(Intent::Add {
+            under,
+            after,
+            title,
+        });
     }
 
     pub fn retitle(&self, section: SectionId, title: String) {
-        self.retitling.dispatch((section, title));
+        self.working.intend(Intent::Retitle { section, title });
     }
 
     pub fn place(&self, section: SectionId, under: Option<SectionId>, after: Option<SectionId>) {
-        self.placing.dispatch((section, under, after));
+        self.working.intend(Intent::Place {
+            section,
+            under,
+            after,
+        });
     }
 
     pub fn landing_into(&self, section: &SectionId) -> Option<SectionId> {
@@ -540,19 +386,19 @@ impl OutlineViewState {
     }
 
     pub fn urge(&self, section: SectionId, urge: Urge) {
-        self.urging.dispatch((section, urge));
+        self.working.intend(Intent::Urge { section, urge });
     }
 
     pub fn remove(&self, section: SectionId) {
-        self.removing.dispatch(section);
+        self.working.intend(Intent::Remove { section });
     }
 
     pub fn attach(&self, attachment: Attachment, to: SectionId) {
-        self.attaching.dispatch((attachment, to));
+        self.working.intend(Intent::Attach { attachment, to });
     }
 
     pub fn detach(&self, attachment: Attachment) {
-        self.detaching.dispatch(attachment);
+        self.working.intend(Intent::Detach { attachment });
     }
 
     pub fn write_in(&self, section: SectionId) {
@@ -564,16 +410,107 @@ impl OutlineViewState {
     }
 }
 
-async fn attach_at_the_end(
-    open: Outline,
-    attachment: Attachment,
-    to: SectionId,
-) -> Result<OutlineChange, ApiError> {
-    let behind = open
-        .sections
-        .iter()
-        .find(|section| section.id == to)
-        .and_then(|section| section.attachments.last().cloned());
+impl Versioned for Outline {
+    fn version(&self) -> u64 {
+        self.version
+    }
+}
 
-    service::attach(&open.id, &attachment, &to, behind).await
+impl working_copy::Intent<Outline> for Intent {
+    fn lay_over(&self, open: &mut Outline) {
+        match self {
+            Self::Retitle { section, title } => {
+                if let Some(held) = open.sections.iter_mut().find(|held| &held.id == section) {
+                    held.title = title.clone();
+                }
+            }
+            Self::Detach { attachment } => {
+                for section in &mut open.sections {
+                    section.attachments.retain(|held| held != attachment);
+                }
+            }
+            Self::Add { .. }
+            | Self::Urge { .. }
+            | Self::Place { .. }
+            | Self::Remove { .. }
+            | Self::Attach { .. } => {}
+        }
+    }
+
+    fn merged_after(&self, earlier: &Self) -> Option<Self> {
+        match (self, earlier) {
+            (
+                Self::Retitle { section, .. },
+                Self::Retitle {
+                    section: before, ..
+                },
+            ) if section == before => Some(self.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl Intent {
+    async fn made_on(
+        &self,
+        on: &Outline,
+        project: &ProjectId,
+        added: RwSignal<Option<SectionId>>,
+    ) -> Result<Outline, ApiError> {
+        let version = Some(on.version);
+        let told = match self {
+            Self::Add {
+                under,
+                after,
+                title,
+            } => {
+                let (section, told) =
+                    service::add(&on.id, under.clone(), after.clone(), title, version).await?;
+                _ = added.try_set(Some(section));
+                told
+            }
+            Self::Retitle { section, title } => {
+                service::retitle(&on.id, section, title, version).await?
+            }
+            Self::Urge { section, urge } => match urge {
+                Urge::Promote => service::promote(&on.id, section, version).await?,
+                Urge::Demote => service::demote(&on.id, section, version).await?,
+                shifted => {
+                    service::place(
+                        &on.id,
+                        section,
+                        on.parent_of(section),
+                        on.landing_for(section, *shifted == Urge::Later),
+                        version,
+                    )
+                    .await?
+                }
+            },
+            Self::Place {
+                section,
+                under,
+                after,
+            } => service::place(&on.id, section, under.clone(), after.clone(), version).await?,
+            Self::Remove { section } => service::remove(&on.id, section, version).await?,
+            Self::Attach { attachment, to } => {
+                let behind = on
+                    .sections
+                    .iter()
+                    .find(|section| &section.id == to)
+                    .and_then(|section| section.attachments.last().cloned());
+
+                service::attach(&on.id, attachment, to, behind, version).await?
+            }
+            Self::Detach { attachment } => {
+                service::detach(&on.id, attachment, version).await?;
+
+                return service::open(project).await;
+            }
+        };
+
+        match on.fits(&told) {
+            true => Ok(on.changed_by(told)),
+            false => service::open(project).await,
+        }
+    }
 }

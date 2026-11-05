@@ -866,7 +866,7 @@ Three streams meet in the client, and every view that changes something has to b
 | Aggregate | Changes made fast or in a row | Merged by | Today |
 |---|---|---|---|
 | Board | reshape (spot, size), pin, unpin | card | **on its `WorkingCopy` since 2026-11-05** |
-| Outline | retitle; move up and down, promote, demote, place; add, remove; attach, detach | section, for retitles; the rest in turn | `confirmed` and pending retitles, everything else side by side |
+| Outline | retitle; move up and down, promote, demote, place; add, remove; attach, detach | section, for retitles; the rest in turn | **the outline view on its `WorkingCopy` since 2026-11-05**; the writing view still keeps its own copy and queue (`writing/structure.rs`), sending no `If-Match` |
 | Ideas | retitle, discard | idea | sent and answered as they come |
 | Scenes | retitle, link and unlink ideas | scene, for titles; links in turn | sent and answered as they come; a refused link now takes back only its own |
 | Projects | rename, details | project | details carry `If-Match`; rename does not |

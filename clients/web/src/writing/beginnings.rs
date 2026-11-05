@@ -137,7 +137,7 @@ impl Beginnings {
         self.beginning_section.set_value(true);
 
         self.structure.in_turn(async move {
-            match service::add(&outline, under, after.clone(), "").await {
+            match service::add(&outline, under, after.clone(), "", None).await {
                 Ok((section, opened)) => {
                     self.focus_next.set_value(Some(section.clone()));
                     self.pending.set(None);
@@ -210,6 +210,7 @@ impl Beginnings {
                 &Attachment::Scene(made.id.clone()),
                 &section,
                 after.map(Attachment::Scene),
+                None,
             )
             .await
             {

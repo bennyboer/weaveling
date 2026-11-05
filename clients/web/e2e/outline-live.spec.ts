@@ -369,7 +369,75 @@ async function anOutlineThatHearsNothing(
   return book;
 }
 
-test("a move placed after a section removed meanwhile is refused gently", async ({
+test("a section moved up twice in a row ends two places up", async ({ page }) => {
+  // given: an outline of three sections
+  const { outline } = await anOutlineThatHearsNothing(page, "OutlineUpTwice", [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+    { title: "Part Three", after: "Part Two" },
+  ]);
+  // and: moves slow to answer
+  await page.route(
+    (url) => url.pathname.startsWith(`/api/outlines/${outline}/sections/`) && url.pathname.endsWith("/place"),
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.fallback();
+    },
+  );
+
+  // when: the last is moved up twice in a row
+  await titleOf(page, "Part Three").click();
+  await page.keyboard.press("Alt+ArrowUp");
+  await page.keyboard.press("Alt+ArrowUp");
+
+  // then: it is saved two places up
+  await expect
+    .poll(() => savedTitles(page), {
+      message: "each move up is worked out from where the one before left it",
+    })
+    .toEqual(["Part Three", "Part One", "Part Two"]);
+});
+
+test("a section moved up while another author moved the one above it away is moved up among what is there now", async ({
+  page,
+}) => {
+  // given: an outline of three sections that hears nothing
+  const { outline, ids } = await anOutlineThatHearsNothing(page, "OutlineUpRaced", [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+    { title: "Part Three", after: "Part Two" },
+  ]);
+  // and: another author moving the first to the end just as my move goes out
+  let mine = 0;
+  await page.route(
+    (url) => url.pathname === `/api/outlines/${outline}/sections/${ids["Part Three"]}/place`,
+    async (route) => {
+      mine += 1;
+      if (mine === 1) {
+        await anotherAuthor(page, "put", `/outlines/${outline}/sections/${ids["Part One"]}/place`, {
+          under: null,
+          after: ids["Part Three"],
+        });
+      }
+      await route.fallback();
+    },
+  );
+
+  // when: the last is moved up
+  await titleOf(page, "Part Three").click();
+  await page.keyboard.press("Alt+ArrowUp");
+
+  // then: it is moved up among the sections as they now stand
+  await expect
+    .poll(() => savedTitles(page), {
+      message: "worked out on the order it was shown, it would land after the section moved away and so go down",
+    })
+    .toEqual(["Part Three", "Part Two", "Part One"]);
+  // and: my move was refused once, as made on an outline that had moved on, and made again
+  expect(mine).toBe(2);
+});
+
+test("a move worked out on a section removed meanwhile is worked out again on what remains", async ({
   page,
 }) => {
   // given: an outline that hears nothing
@@ -388,17 +456,19 @@ test("a move placed after a section removed meanwhile is refused gently", async 
     "delete",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
   );
-  // when: a section is moved to after it
+  // when: the last is moved up, which on what was shown places it after the removed one
   await titleOf(page, "Part Three").click();
 
   await page.keyboard.press("Alt+ArrowUp");
 
-  // then: it is refused gently
-  await expect(
-    page.getByText("Someone else changed this meanwhile"),
-  ).toBeVisible();
+  // then: it is moved up among the sections that remain
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part Three", "Part Two"]);
   // and: the outline catches up
   await expect(titleOf(page, "Part One")).toHaveCount(0);
+  // and: nothing is refused
+  await expect(page.getByText("Someone else changed this meanwhile")).toHaveCount(0);
 });
 
 test("asked which name stays, the question follows the language chosen meanwhile", async ({

@@ -1,4 +1,4 @@
-use gloo_net::http::{Request, Response};
+use gloo_net::http::{Request, RequestBuilder, Response};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -32,6 +32,7 @@ pub async fn add(
     under: Option<SectionId>,
     after: Option<SectionId>,
     title: &str,
+    on: Option<u64>,
 ) -> Result<(SectionId, OutlineChange), ApiError> {
     let payload = AddSectionRequest {
         under: under.map(|under| under.to_string()),
@@ -39,7 +40,7 @@ pub async fn add(
         title: title.to_owned(),
     };
     let response = http::sent_with(
-        Request::post(&format!("{OUTLINES}/{outline}/sections")),
+        made_on(Request::post(&format!("{OUTLINES}/{outline}/sections")), on),
         &payload,
     )
     .await?;
@@ -52,12 +53,16 @@ pub async fn retitle(
     outline: &OutlineId,
     section: &SectionId,
     title: &str,
+    on: Option<u64>,
 ) -> Result<OutlineChange, ApiError> {
     let payload = RetitleSectionRequest {
         title: title.to_owned(),
     };
     let response = http::sent_with(
-        Request::patch(&format!("{OUTLINES}/{outline}/sections/{section}")),
+        made_on(
+            Request::patch(&format!("{OUTLINES}/{outline}/sections/{section}")),
+            on,
+        ),
         &payload,
     )
     .await?;
@@ -70,13 +75,17 @@ pub async fn place(
     section: &SectionId,
     under: Option<SectionId>,
     after: Option<SectionId>,
+    on: Option<u64>,
 ) -> Result<OutlineChange, ApiError> {
     let payload = MoveSectionRequest {
         under: under.map(|under| under.to_string()),
         after: after.map(|after| after.to_string()),
     };
     let response = http::sent_with(
-        Request::put(&format!("{OUTLINES}/{outline}/sections/{section}/place")),
+        made_on(
+            Request::put(&format!("{OUTLINES}/{outline}/sections/{section}/place")),
+            on,
+        ),
         &payload,
     )
     .await?;
@@ -84,18 +93,31 @@ pub async fn place(
     changed(response).await
 }
 
-pub async fn promote(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
-    urged(outline, section, "promote").await
+pub async fn promote(
+    outline: &OutlineId,
+    section: &SectionId,
+    on: Option<u64>,
+) -> Result<OutlineChange, ApiError> {
+    urged(outline, section, "promote", on).await
 }
 
-pub async fn demote(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
-    urged(outline, section, "demote").await
+pub async fn demote(
+    outline: &OutlineId,
+    section: &SectionId,
+    on: Option<u64>,
+) -> Result<OutlineChange, ApiError> {
+    urged(outline, section, "demote", on).await
 }
 
-pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
-    let response = http::sent(Request::delete(&format!(
-        "{OUTLINES}/{outline}/sections/{section}"
-    )))
+pub async fn remove(
+    outline: &OutlineId,
+    section: &SectionId,
+    on: Option<u64>,
+) -> Result<OutlineChange, ApiError> {
+    let response = http::sent(made_on(
+        Request::delete(&format!("{OUTLINES}/{outline}/sections/{section}")),
+        on,
+    ))
     .await?;
 
     changed(response).await
@@ -106,6 +128,7 @@ pub async fn attach(
     attachment: &Attachment,
     to: &SectionId,
     after: Option<Attachment>,
+    on: Option<u64>,
 ) -> Result<OutlineChange, ApiError> {
     let payload = AttachRequest {
         attachment: to_dto(attachment),
@@ -113,7 +136,10 @@ pub async fn attach(
         after: after.as_ref().map(to_dto),
     };
     let response = http::sent_with(
-        Request::post(&format!("{OUTLINES}/{outline}/attachments")),
+        made_on(
+            Request::post(&format!("{OUTLINES}/{outline}/attachments")),
+            on,
+        ),
         &payload,
     )
     .await?;
@@ -121,14 +147,19 @@ pub async fn attach(
     changed(response).await
 }
 
-pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), ApiError> {
+pub async fn detach(
+    outline: &OutlineId,
+    attachment: &Attachment,
+    on: Option<u64>,
+) -> Result<(), ApiError> {
     let (kind, id) = match attachment {
         Attachment::Scene(scene) => ("scenes", scene.to_string()),
         Attachment::Idea(idea) => ("ideas", idea.to_string()),
     };
-    let response = http::sent(Request::delete(&format!(
-        "{OUTLINES}/{outline}/attachments/{kind}/{id}"
-    )))
+    let response = http::sent(made_on(
+        Request::delete(&format!("{OUTLINES}/{outline}/attachments/{kind}/{id}")),
+        on,
+    ))
     .await?;
 
     http::checked(answered(response).await?, SUBJECT)
@@ -166,13 +197,22 @@ async fn urged(
     outline: &OutlineId,
     section: &SectionId,
     how: &str,
+    on: Option<u64>,
 ) -> Result<OutlineChange, ApiError> {
-    let response = http::sent(Request::post(&format!(
-        "{OUTLINES}/{outline}/sections/{section}/{how}"
-    )))
+    let response = http::sent(made_on(
+        Request::post(&format!("{OUTLINES}/{outline}/sections/{section}/{how}")),
+        on,
+    ))
     .await?;
 
     changed(response).await
+}
+
+fn made_on(request: RequestBuilder, on: Option<u64>) -> RequestBuilder {
+    match on {
+        Some(version) => request.header("If-Match", &format!("\"{version}\"")),
+        None => request,
+    }
 }
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {

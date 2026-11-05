@@ -425,7 +425,7 @@ impl Structure {
         };
 
         self.in_turn(async move {
-            match service::retitle(&outline, &section, &title).await {
+            match service::retitle(&outline, &section, &title, None).await {
                 Ok(renamed) => self.take(renamed),
                 Err(failure) => self.refused(failure),
             }
@@ -459,7 +459,7 @@ impl Structure {
         self.in_turn(async move {
             let behind = after.map(Attachment::Scene);
 
-            match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
+            match service::attach(&outline, &Attachment::Scene(scene), &to, behind, None).await {
                 Ok(placed) => {
                     self.take(placed);
                     then();
@@ -494,8 +494,8 @@ impl Structure {
 
         self.in_turn(async move {
             let moved = match towards {
-                Shift::In => service::demote(&outline, &section).await,
-                Shift::Out => service::promote(&outline, &section).await,
+                Shift::In => service::demote(&outline, &section, None).await,
+                Shift::Out => service::promote(&outline, &section, None).await,
             };
 
             match moved {
@@ -530,7 +530,7 @@ impl Structure {
             for idea in ideas {
                 let pinned = Attachment::Idea(idea);
 
-                match service::attach(&outline, &pinned, &section, behind.take()).await {
+                match service::attach(&outline, &pinned, &section, behind.take(), None).await {
                     Ok(placed) => {
                         self.take(placed);
                         behind = Some(pinned);
@@ -547,7 +547,7 @@ impl Structure {
         };
 
         self.in_turn(async move {
-            match service::detach(&outline, &Attachment::Idea(idea)).await {
+            match service::detach(&outline, &Attachment::Idea(idea), None).await {
                 Ok(()) => self.refresh().await,
                 Err(failure) => self.refused(failure),
             }
@@ -560,7 +560,7 @@ impl Structure {
         };
 
         self.in_turn(async move {
-            match service::detach(&outline, &Attachment::Scene(scene)).await {
+            match service::detach(&outline, &Attachment::Scene(scene), None).await {
                 Ok(()) => self.refresh().await,
                 Err(failure) => self.refused(failure),
             }
@@ -573,7 +573,8 @@ impl Structure {
         };
 
         self.in_turn(async move {
-            if let Err(failure) = service::detach(&outline, &Attachment::Scene(scene.clone())).await
+            if let Err(failure) =
+                service::detach(&outline, &Attachment::Scene(scene.clone()), None).await
             {
                 return self.refused(failure);
             }
@@ -590,7 +591,7 @@ impl Structure {
         };
 
         self.in_turn(async move {
-            match service::remove(&outline, &section).await {
+            match service::remove(&outline, &section, None).await {
                 Ok(removed) => self.take(removed),
                 Err(failure) => self.refused(failure),
             }
