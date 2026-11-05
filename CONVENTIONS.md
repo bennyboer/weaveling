@@ -143,6 +143,16 @@ The ROADMAP says the same in its notes, but a note is not read where the code is
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
 - Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.
 
+## Writes that hold together
+
+Checked in the review of every slice that writes or tells something; each line is a fault both integrity audits found more than once.
+
+- **More than one port, one transaction.** A write that touches two stores, an event and its secret, a row and its outbox entry, does it in one transaction, or says in a `// TODO` why it cannot yet.
+- **Check and act together.** A check that decides a write, is it there, is it still open, may they, is made inside the writing transaction or under a lock the other writer takes too, never before it.
+- **Effects after the commit.** What is told, published or navigated to after a write happens after it commits; ask what is left if the process dies in between, and whether the next pass or a retry finishes it.
+- **Heard twice, heard late.** A message may come again and may come after a newer one: the listener changes nothing the second time and lets the newer version stand.
+- **Answers out of order.** In the client, an asking again keeps the newest answer (`Asking`), and a press cannot start something twice (`Act`).
+
 ## Client
 
 - Whatever a click or key starts once that asks the server, saving, inviting, signing in, writing in a section, is an **`Act`** (`clients/web/src/act.rs`): built once with its body, started with `act.start(about)`, which does nothing while it runs, so a double click or a held key never does it twice. No flag of one's own, no `if busy { return }`. A run of small changes meant to add up, a card nudged by a held arrow key, is queued instead, not dropped.
