@@ -1,9 +1,10 @@
-use std::env;
 use std::fmt::{self, Display, Formatter};
 
 use accounts_contract::sign_up;
 use accounts_core::SigningUp;
 use thiserror::Error;
+
+use crate::settings::Setting;
 
 pub const WEAVELING_SIGN_UP: &str = "WEAVELING_SIGN_UP";
 
@@ -14,26 +15,22 @@ pub enum SignUp {
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-#[error("{WEAVELING_SIGN_UP} is '{given}'; set it to open or invitation")]
+#[error("{setting}; set it to open or invitation")]
 pub struct UnreadableSignUp {
-    pub given: String,
+    pub setting: Setting,
 }
 
 impl SignUp {
-    pub fn chosen(given: Option<String>) -> Result<Self, UnreadableSignUp> {
-        let Some(given) = given else {
+    pub fn chosen(setting: Option<Setting>) -> Result<Self, UnreadableSignUp> {
+        let Some(setting) = setting else {
             return Ok(Self::Open);
         };
 
-        match given.trim().to_lowercase().as_str() {
+        match setting.value.trim().to_lowercase().as_str() {
             "open" | "" => Ok(Self::Open),
             "invitation" => Ok(Self::ByInvitation),
-            _ => Err(UnreadableSignUp { given }),
+            _ => Err(UnreadableSignUp { setting }),
         }
-    }
-
-    pub fn from_environment() -> Result<Self, UnreadableSignUp> {
-        Self::chosen(env::var(WEAVELING_SIGN_UP).ok())
     }
 
     pub fn told(self) -> &'static str {
@@ -66,8 +63,8 @@ impl Display for SignUp {
 mod tests {
     use super::*;
 
-    fn set(value: &str) -> Option<String> {
-        Some(value.to_owned())
+    fn set(value: &str) -> Option<Setting> {
+        Some(Setting::new(WEAVELING_SIGN_UP, value))
     }
 
     #[test]
@@ -92,14 +89,14 @@ mod tests {
         assert_eq!(
             SignUp::chosen(set("invited")),
             Err(UnreadableSignUp {
-                given: "invited".to_owned()
+                setting: Setting::new(WEAVELING_SIGN_UP, "invited"),
             }),
             "a server meant to be closed must not start open because of a typo"
         );
         // and: the refusal names what was given and what would do
         assert_eq!(
             UnreadableSignUp {
-                given: "invited".to_owned()
+                setting: Setting::new(WEAVELING_SIGN_UP, "invited"),
             }
             .to_string(),
             "WEAVELING_SIGN_UP is 'invited'; set it to open or invitation"

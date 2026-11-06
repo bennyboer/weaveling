@@ -29,7 +29,9 @@ chores = { version = "0.1.0", path = "../../libraries/chores", package = "weavel
 mailing = { version = "0.1.0", path = "../../libraries/mailing", package = "weaveling-mailing" }
 live = { version = "0.1.0", path = "../../libraries/live", package = "weaveling-live" }
 live-contract = { version = "0.1.0", path = "../../libraries/live-contract", package = "weaveling-live-contract" }
+serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }
 outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weaveling-outbox" }
 

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,33 +10,30 @@ use tokio::net::TcpListener;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
 use tracing_subscriber::EnvFilter;
-use weaveling_service_api::{
-    Accounts, Adapters, Backend, Chores, Flakiness, Mailing, Relays, Settling, SignUp,
-    WEAVELING_FLAKY,
-};
+use weaveling_service_api::{Accounts, Adapters, Chores, Relays, Settings, Settling};
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 const SOCKETS_GIVEN_TO_CLOSE: Duration = Duration::from_secs(60);
 
-async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
-    let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
-    let accounts = Accounts::from_environment().unwrap_or_else(|why| panic!("{why}"));
-    let mailing = Mailing::from_environment();
-    let sign_up = SignUp::from_environment().unwrap_or_else(|why| panic!("{why}"));
+async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
+    let backend = or_stop(settings.backend());
+    let accounts = or_stop(settings.accounts());
+    let mailing = settings.mailing();
+    let sign_up = or_stop(settings.sign_up());
     match accounts {
         Accounts::On => {
             tracing::info!("keeping the work {backend}, {accounts}, {sign_up}, {mailing}")
         }
         Accounts::Off => tracing::info!("keeping the work {backend}, {accounts}, {mailing}"),
     }
-    let storage = backend.storage().unwrap_or_else(|why| panic!("{why}"));
+    let storage = or_stop(backend.storage());
     let mut adapters =
         Adapters::assembled(storage, accounts, mailing.mailer(), Arc::new(SystemClock))
             .await
             .unwrap_or_else(|why| panic!("{why}"));
     adapters = adapters.signing_up(sign_up);
-    if let Some(flakiness) = Flakiness::from_environment().unwrap_or_else(|why| panic!("{why}")) {
-        tracing::warn!("{WEAVELING_FLAKY} is set: listeners refuse messages on purpose");
+    if let Some(flakiness) = or_stop(settings.flakiness()) {
+        tracing::warn!("flakiness is set: listeners refuse messages on purpose");
         adapters = adapters.refusing_on_purpose(flakiness);
     }
     if let Some(code) = adapters
@@ -61,6 +60,13 @@ async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
     )
 }
 
+fn or_stop<T>(settled: Result<T, impl Display>) -> T {
+    settled.unwrap_or_else(|why| {
+        eprintln!("{why}");
+        process::exit(2)
+    })
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -70,13 +76,17 @@ async fn main() {
         )
         .init();
 
-    let (routes, relays, settling, chores) = serving().await;
+    let settings = or_stop(Settings::of_this_process());
+    let listen = or_stop(settings.listen());
+    let (routes, relays, settling, chores) = serving(&settings).await;
     let shutdown = Shutdown::new();
     let routes = routes.layer(Extension(shutdown.clone()));
 
-    let listener = TcpListener::bind("127.0.0.1:3000")
-        .await
-        .expect("should bind the listener");
+    let listener = or_stop(
+        TcpListener::bind(listen)
+            .await
+            .map_err(|why| format!("cannot listen at {listen}: {why}")),
+    );
     tracing::info!(
         "listening on http://{}",
         listener.local_addr().expect("should have a local address")

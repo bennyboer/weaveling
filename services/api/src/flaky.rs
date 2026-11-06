@@ -1,5 +1,4 @@
 use std::collections::hash_map::RandomState;
-use std::env;
 use std::hash::{BuildHasher, Hasher};
 use std::sync::Arc;
 
@@ -7,14 +6,18 @@ use async_trait::async_trait;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use thiserror::Error;
 
+use crate::settings::Setting;
+
 pub const WEAVELING_FLAKY: &str = "WEAVELING_FLAKY";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Flakiness(f64);
 
 #[derive(Debug, Error)]
-#[error("{WEAVELING_FLAKY} is the share of messages refused on purpose, from 0 to 1, not {0:?}")]
-pub struct Unflaky(String);
+#[error("{setting}; set it to the share of messages refused on purpose, from 0 to 1")]
+pub struct Unflaky {
+    pub setting: Setting,
+}
 
 #[derive(Debug, Error)]
 #[error("refused on purpose, because {WEAVELING_FLAKY} is set")]
@@ -26,17 +29,10 @@ pub struct FlakyListener {
 }
 
 impl Flakiness {
-    pub fn from_environment() -> Result<Option<Self>, Unflaky> {
-        env::var(WEAVELING_FLAKY)
-            .ok()
-            .map(|told| Self::parse(&told))
-            .transpose()
-    }
-
-    pub fn parse(told: &str) -> Result<Self, Unflaky> {
-        match told.trim().parse::<f64>() {
+    pub fn parse(setting: Setting) -> Result<Self, Unflaky> {
+        match setting.value.trim().parse::<f64>() {
             Ok(share) if (0.0..=1.0).contains(&share) => Ok(Self(share)),
-            _ => Err(Unflaky(told.to_owned())),
+            _ => Err(Unflaky { setting }),
         }
     }
 

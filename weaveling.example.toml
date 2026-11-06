@@ -1,0 +1,49 @@
+# Weaveling's settings, every one of them, as they would be written.
+#
+# Copy this file to weaveling.toml beside the server, or name it with
+# --config <path> or WEAVELING_CONFIG. Every key may be left out, and each
+# has a variable of the same meaning that wins over the file.
+#
+# A value the server cannot read stops it at start, saying which key in which
+# file holds it, and so does a key it does not know.
+
+[server]
+# Where the server listens, an address and a port. Left out, on this machine
+# only, at port 3000; "0.0.0.0:3000" listens on every address it has.
+# WEAVELING_LISTEN
+# listen = "127.0.0.1:3000"
+
+[storage]
+# Where the work is kept. Leave both out to keep it in memory, which a restart
+# empties; set one, never both.
+#
+# PostgreSQL, one database per feature beside the one named here.
+# WEAVELING_DATABASE_URL
+# database_url = "postgres://weaveling:weaveling@127.0.0.1:5432/weaveling"
+#
+# Local mode: one SQLite file per feature in this folder, made if missing.
+# WEAVELING_DATA
+# data = "/home/author/weaveling"
+
+[accounts]
+# Whether people sign in, and each book is seen only by those let into it.
+# Off, there is one person, who owns everything: local mode.
+# WEAVELING_ACCOUNTS
+# enabled = true
+#
+# Who may make an account: "open" for anyone, "invitation" for those invited
+# by the operator or into a project.
+# WEAVELING_SIGN_UP
+# sign_up = "open"
+
+[mail]
+# Where mail goes until there is a mail server to send it: left out, into the
+# log; named, each mail as a file in this folder.
+# WEAVELING_MAIL_DROP
+# drop = "target/mails"
+
+[testing]
+# The share of messages every listener refuses on purpose, from 0 to 1, so the
+# alarm and its dialog can be tried by hand. Never for an author.
+# WEAVELING_FLAKY
+# flaky = 0.5

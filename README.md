@@ -160,6 +160,8 @@ Then **open http://localhost:8080** — that's the one you want. Trunk rebuilds 
 
 Start the API first if you care about the first paint; otherwise the client shows its error banner until the API answers and a reload picks it up. Rust changes on the server need a manual restart (or `cargo watch -x 'run -p weaveling-service-api'`); client changes are live.
 
+**Settings are read once, at startup:** built-in defaults, then a `weaveling.toml` beside the server (or the file `--config <path>` or `WEAVELING_CONFIG` names), then the variables below, the later winning. [`weaveling.example.toml`](./weaveling.example.toml) names every key, each with the variable of the same meaning. A value the server cannot read stops it, saying which key in which file or which variable holds it. The API listens on `127.0.0.1:3000` unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port, `0.0.0.0:3000` to be reached from other machines.
+
 **Where the work is kept is chosen at startup**, and one binary carries every option:
 
 - **Nothing set** — in memory, so restarting the API empties it.

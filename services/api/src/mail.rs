@@ -1,9 +1,10 @@
-use std::env;
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use mailing::{DroppingMailer, LoggingMailer, Mailer};
+
+use crate::settings::Setting;
 
 pub const WEAVELING_MAIL_DROP: &str = "WEAVELING_MAIL_DROP";
 
@@ -14,15 +15,13 @@ pub enum Mailing {
 }
 
 impl Mailing {
-    pub fn chosen(drop: Option<String>) -> Self {
-        match drop.filter(|drop| !drop.trim().is_empty()) {
-            Some(into) => Self::Dropped { into: into.into() },
+    pub fn chosen(drop: Option<Setting>) -> Self {
+        match drop.filter(|drop| !drop.value.trim().is_empty()) {
+            Some(into) => Self::Dropped {
+                into: into.value.into(),
+            },
             None => Self::Logged,
         }
-    }
-
-    pub fn from_environment() -> Self {
-        Self::chosen(env::var(WEAVELING_MAIL_DROP).ok())
     }
 
     pub fn mailer(&self) -> Arc<dyn Mailer> {
@@ -50,14 +49,17 @@ mod tests {
     fn nothing_set_writes_mails_to_the_log() {
         // expect: nothing set writes mails to the log
         assert_eq!(Mailing::chosen(None), Mailing::Logged);
-        assert_eq!(Mailing::chosen(Some("  ".to_owned())), Mailing::Logged);
+        assert_eq!(
+            Mailing::chosen(Some(Setting::new(WEAVELING_MAIL_DROP, "  "))),
+            Mailing::Logged
+        );
     }
 
     #[test]
     fn a_drop_named_keeps_each_mail_there() {
         // expect: a named drop keeps each mail there
         assert_eq!(
-            Mailing::chosen(Some("target/mails".to_owned())),
+            Mailing::chosen(Some(Setting::new(WEAVELING_MAIL_DROP, "target/mails"))),
             Mailing::Dropped {
                 into: PathBuf::from("target/mails")
             }

@@ -1,4 +1,3 @@
-use std::env;
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -6,6 +5,8 @@ use std::time::Duration;
 use outbox::Cadence;
 use thiserror::Error;
 use wiring::Storage;
+
+use crate::settings::Setting;
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 use std::sync::Arc;
@@ -30,31 +31,27 @@ pub enum Backend {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Unchosen {
-    #[error(
-        "both {WEAVELING_DATABASE_URL} and {WEAVELING_DATA} name somewhere to keep the work; set only one"
-    )]
-    Ambiguous,
+    #[error("both {one} and {other} name somewhere to keep the work; set only one")]
+    Ambiguous { one: String, other: String },
     #[error("{backend} was asked for, but this build left it out")]
     NotBuiltIn { backend: &'static str },
 }
 
 impl Backend {
-    pub fn chosen(database_url: Option<String>, data: Option<String>) -> Result<Self, Unchosen> {
+    pub fn chosen(database_url: Option<Setting>, data: Option<Setting>) -> Result<Self, Unchosen> {
         match (given(database_url), given(data)) {
-            (Some(_), Some(_)) => Err(Unchosen::Ambiguous),
-            (Some(server), None) => Ok(Self::Postgres { server }),
+            (Some(server), Some(directory)) => Err(Unchosen::Ambiguous {
+                one: server.source,
+                other: directory.source,
+            }),
+            (Some(server), None) => Ok(Self::Postgres {
+                server: server.value,
+            }),
             (None, Some(directory)) => Ok(Self::Sqlite {
-                directory: directory.into(),
+                directory: directory.value.into(),
             }),
             (None, None) => Ok(Self::InMemory),
         }
-    }
-
-    pub fn from_environment() -> Result<Self, Unchosen> {
-        Self::chosen(
-            env::var(WEAVELING_DATABASE_URL).ok(),
-            env::var(WEAVELING_DATA).ok(),
-        )
     }
 
     pub fn storage(&self) -> Result<Storage, Unchosen> {
@@ -88,8 +85,8 @@ impl Display for Backend {
     }
 }
 
-fn given(value: Option<String>) -> Option<String> {
-    value.filter(|value| !value.trim().is_empty())
+fn given(setting: Option<Setting>) -> Option<Setting> {
+    setting.filter(|setting| !setting.value.trim().is_empty())
 }
 
 #[cfg(feature = "postgres")]
@@ -118,8 +115,8 @@ fn on_sqlite(_directory: &Path) -> Result<Storage, Unchosen> {
 mod tests {
     use super::*;
 
-    fn set(value: &str) -> Option<String> {
-        Some(value.to_owned())
+    fn set(value: &str) -> Option<Setting> {
+        Some(Setting::new("a setting", value))
     }
 
     #[test]
@@ -158,7 +155,10 @@ mod tests {
                 set("postgres://somewhere/weaveling"),
                 set("/home/author/weaveling")
             ),
-            Err(Unchosen::Ambiguous),
+            Err(Unchosen::Ambiguous {
+                one: "a setting".to_owned(),
+                other: "a setting".to_owned()
+            }),
             "picking one silently would put an author's work somewhere they did not expect"
         );
     }

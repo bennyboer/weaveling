@@ -1,7 +1,8 @@
-use std::env;
 use std::fmt::{self, Display, Formatter};
 
 use thiserror::Error;
+
+use crate::settings::Setting;
 
 pub const WEAVELING_ACCOUNTS: &str = "WEAVELING_ACCOUNTS";
 
@@ -12,26 +13,22 @@ pub enum Accounts {
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-#[error("{WEAVELING_ACCOUNTS} is '{given}'; set it to on or off")]
+#[error("{setting}; set it to on or off")]
 pub struct UnreadableAccounts {
-    pub given: String,
+    pub setting: Setting,
 }
 
 impl Accounts {
-    pub fn chosen(given: Option<String>) -> Result<Self, UnreadableAccounts> {
-        let Some(given) = given else {
+    pub fn chosen(setting: Option<Setting>) -> Result<Self, UnreadableAccounts> {
+        let Some(setting) = setting else {
             return Ok(Self::Off);
         };
 
-        match given.trim().to_lowercase().as_str() {
+        match setting.value.trim().to_lowercase().as_str() {
             "on" => Ok(Self::On),
             "off" | "" => Ok(Self::Off),
-            _ => Err(UnreadableAccounts { given }),
+            _ => Err(UnreadableAccounts { setting }),
         }
-    }
-
-    pub fn from_environment() -> Result<Self, UnreadableAccounts> {
-        Self::chosen(env::var(WEAVELING_ACCOUNTS).ok())
     }
 }
 
@@ -48,8 +45,8 @@ impl Display for Accounts {
 mod tests {
     use super::*;
 
-    fn set(value: &str) -> Option<String> {
-        Some(value.to_owned())
+    fn set(value: &str) -> Option<Setting> {
+        Some(Setting::new(WEAVELING_ACCOUNTS, value))
     }
 
     #[test]
@@ -83,7 +80,7 @@ mod tests {
         assert_eq!(
             Accounts::chosen(set("yes")),
             Err(UnreadableAccounts {
-                given: "yes".to_owned()
+                setting: Setting::new(WEAVELING_ACCOUNTS, "yes"),
             }),
             "a server meant to require signing in must not start open because of a typo"
         );
@@ -94,7 +91,7 @@ mod tests {
         // expect: a refusal names what was given and what would do
         assert_eq!(
             UnreadableAccounts {
-                given: "yes".to_owned()
+                setting: Setting::new(WEAVELING_ACCOUNTS, "yes"),
             }
             .to_string(),
             "WEAVELING_ACCOUNTS is 'yes'; set it to on or off"

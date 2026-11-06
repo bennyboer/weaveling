@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use messaging::{Listener, ListenerName, Message, NotHandled, RoutingKey, Subscription};
 use time::macros::datetime;
 
-use crate::flaky::{Flakiness, FlakyListener};
+use crate::flaky::{Flakiness, FlakyListener, WEAVELING_FLAKY};
+use crate::settings::Setting;
 
 struct Willing;
 
@@ -38,7 +39,8 @@ fn a_message() -> Message {
 async fn refused_out_of(share: &str, tries: usize) -> usize {
     let flaky = FlakyListener::wrapping(
         Arc::new(Willing),
-        Flakiness::parse(share).expect("a share from 0 to 1 is fine"),
+        Flakiness::parse(Setting::new(WEAVELING_FLAKY, share))
+            .expect("a share from 0 to 1 is fine"),
     );
     let mut refused = 0;
 
@@ -80,7 +82,7 @@ async fn a_flaky_listener_is_still_the_listener_it_wraps() {
     // given: a flaky listener
     let flaky = FlakyListener::wrapping(
         Arc::new(Willing),
-        Flakiness::parse("1").expect("a share from 0 to 1 is fine"),
+        Flakiness::parse(Setting::new(WEAVELING_FLAKY, "1")).expect("a share from 0 to 1 is fine"),
     );
 
     // then: it is named and refuses in the words of the listener it wraps
@@ -93,7 +95,7 @@ fn a_share_outside_nought_to_one_is_refused() {
     // expect: a share outside nought to one is refused
     for nonsense in ["1.5", "-0.1", "half", ""] {
         assert!(
-            Flakiness::parse(nonsense).is_err(),
+            Flakiness::parse(Setting::new(WEAVELING_FLAKY, nonsense)).is_err(),
             "{nonsense:?} should not start a service"
         );
     }
