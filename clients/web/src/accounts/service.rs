@@ -2,12 +2,13 @@ use accounts_contract::{
     AccountPageDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockRequest,
     NewPasswordRequest, PasswordResetRequest, SendCodeRequest, ServiceModeDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    VerifyEmailRequest,
+    VerifyEmailRequest, refused,
 };
 use gloo_net::http::{Request, RequestBuilder};
 
 use crate::accounts::listed::AccountPage;
 use crate::accounts::{SignInState, SignedInAccount};
+use crate::asking;
 use crate::http;
 use crate::http::ApiError;
 
@@ -92,13 +93,27 @@ fn answered_at(invitation: &str, answer: Answer) -> String {
     format!("{MY_INVITATIONS}/{invitation}/{answered}")
 }
 
+/// Answers an invitation to the account, asking again a few times while it is refused as invalid: the list of one's invitations can show an invitation a moment before it can be taken up.
 pub async fn answer_invitation(invitation: &str, answer: Answer) -> Result<(), ApiError> {
+    asking::until_it_holds(
+        || answered(invitation, answer),
+        |answered| !not_yet_takeable(answered),
+        asking::paused,
+    )
+    .await
+}
+
+async fn answered(invitation: &str, answer: Answer) -> Result<(), ApiError> {
     http::checked(
         http::sent(Request::post(&answered_at(invitation, answer))).await?,
         ACCOUNT,
     )
     .await
     .map(|_| ())
+}
+
+fn not_yet_takeable(answered: &Result<(), ApiError>) -> bool {
+    matches!(answered, Err(ApiError::Rejected(refusal)) if refusal.kind.as_deref() == Some(refused::INVITATION_INVALID))
 }
 
 pub async fn sign_up_by_invitation(

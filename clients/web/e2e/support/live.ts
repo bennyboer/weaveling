@@ -1,4 +1,4 @@
-import type { Page, WebSocketRoute } from "@playwright/test";
+import { expect, type Page, type WebSocketRoute } from "@playwright/test";
 
 const LIVE = /\/api\/live$/;
 
@@ -80,6 +80,34 @@ export function heardOn(page: Page, topic: string, heard: () => void, about: Abo
       }
     },
   );
+}
+
+export type Told = { version: number; event?: unknown };
+
+/** Every frame told on a topic, in the order heard: a live view is told first where it stands, a frame with no event, and after that each change by its version. */
+export function framesOn(page: Page, topic: string, about: About = {}): Told[] {
+  const frames: Told[] = [];
+  onLive(
+    page,
+    () => {},
+    (told, topics) => {
+      const subscription = topics.get(told.id);
+      if (told.told === "frame" && subscription && matches(subscription, topic, about)) {
+        frames.push(told.frame as unknown as Told);
+      }
+    },
+  );
+
+  return frames;
+}
+
+/** How many changes newer than where the view was told it stands have been heard: what a setup wrote before the view opened can still be on its way, and is older. */
+export async function followedFrom(frames: Told[], message: string): Promise<() => number> {
+  const standingOnly = (frame: Told) => frame.event === undefined || frame.event === null;
+  await expect.poll(() => frames.some(standingOnly), { message }).toBe(true);
+  const standing = frames.find(standingOnly)!.version;
+
+  return () => frames.filter((frame) => !standingOnly(frame) && frame.version > standing).length;
 }
 
 export function subscribing(

@@ -15,14 +15,11 @@ import {
   sectionActions,
   shown,
 } from "./support/writing";
-import { heardOn, routingLive } from "./support/live";
+import { followedFrom, framesOn, routingLive } from "./support/live";
 
 async function followingLive(page: Page, { routed = false } = {}) {
   let opened = 0;
-  let told = 0;
-  heardOn(page, "outlines", () => {
-    told += 1;
-  });
+  const frames = framesOn(page, "outlines");
   page.on("response", (response) => {
     if (
       response.request().method() === "POST" &&
@@ -32,16 +29,15 @@ async function followingLive(page: Page, { routed = false } = {}) {
     }
   });
   await openTheWritingView(page);
+  let heard = () => frames.length;
   if (routed) {
     await expect.poll(() => opened).toBe(1);
   } else {
-    await expect
-      .poll(() => told, { message: "followed live, told first where it stands" })
-      .toBe(1);
+    heard = await followedFrom(frames, "followed live, told first where it stands");
   }
   expect(opened, "loaded once, and not again as it is followed").toBe(1);
 
-  return { reloads: () => opened, heard: () => told };
+  return { reloads: () => opened, heard };
 }
 
 async function aBookFollowedLive(

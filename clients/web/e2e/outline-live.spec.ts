@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { aBookShaped } from "./support/book";
 import { aNewProject, aSceneMade, API, openTheOutline } from "./support/shell";
 import { projectOf, savedTitles, titled } from "./support/writing";
-import { heardOn, routingLive } from "./support/live";
+import { followedFrom, framesOn, routingLive } from "./support/live";
 
 async function anOutlineFollowedLive(
   page: Page,
@@ -16,10 +16,7 @@ async function anOutlineFollowedLive(
     { title: "Part Two", after: "Part One" },
   ]);
   let opened = 0;
-  let heard = 0;
-  heardOn(page, "outlines", () => {
-    heard += 1;
-  });
+  const frames = framesOn(page, "outlines");
   page.on("response", (response) => {
     if (
       response.request().method() === "POST" &&
@@ -29,16 +26,15 @@ async function anOutlineFollowedLive(
     }
   });
   await openTheOutline(page);
+  let heard = () => frames.length;
   if (routed) {
     await expect.poll(() => opened).toBe(1);
   } else {
-    await expect
-      .poll(() => heard, { message: "followed live, told first where it stands" })
-      .toBe(1);
+    heard = await followedFrom(frames, "followed live, told first where it stands");
   }
   expect(opened, "loaded once, and not again as it is followed").toBe(1);
 
-  return { ...book, reloads: () => opened, heard: () => heard };
+  return { ...book, reloads: () => opened, heard };
 }
 
 async function anotherAuthor(

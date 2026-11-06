@@ -98,6 +98,43 @@ test("joining from the bell takes the invitation up and says so quietly", async 
   await expect(bell(page)).toHaveAccessibleName("Notifications");
 });
 
+test("joining an invitation a moment before it can be taken up joins it once it can", async ({
+  page,
+}) => {
+  // given: the bell open on an invitation
+  const server = await signedInInvitedTo(page, [SHARED]);
+  await bell(page).click();
+  // and: the first taking up refused, as the invitation is not yet one that can be taken up
+  let tries = 0;
+  await page.route(
+    (url) => url.pathname.endsWith("/invitations/invitation_7/accept"),
+    async (route) => {
+      tries += 1;
+      if (tries === 1) {
+        return route.fulfill({
+          status: 422,
+          contentType: "application/problem+json",
+          body: JSON.stringify({ type: "invitation-invalid", status: 422, detail: "invitation-invalid" }),
+        });
+      }
+      return route.fallback();
+    },
+  );
+
+  // when: it is joined
+  await notifications(page).getByRole("button", { name: "Join" }).click();
+
+  // then: it is joined
+  await expect(page.getByRole("status")).toContainText(
+    "You joined Shared. It appears in your list in a moment.",
+  );
+  expect(server.answered, "listed a moment before it could be taken up, it is taken up on trying again").toEqual([
+    "accept:invitation_7",
+  ]);
+  // and: no refusal is shown
+  await expect(notifications(page).getByRole("alert")).toHaveCount(0);
+});
+
 test("declining from the bell turns the invitation down and says so quietly", async ({
   page,
 }) => {
