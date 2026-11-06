@@ -38,8 +38,8 @@ pub use password::{InvalidPassword, Password, PasswordHash};
 pub use recovery_code::{RecoveryCode, RecoveryCodeHash};
 pub use second_factor::SecondFactor;
 pub use secrets::{
-    Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
-    SecretsError, Sessions, Verifications,
+    Attempt, Dismissal, EmailAddresses, InvitationTickets, KeptSecondFactor, Operators, Passwords,
+    SecondFactors, SecretStores, SecretsError, Sessions, Verifications,
 };
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use signing_up::SigningUp;

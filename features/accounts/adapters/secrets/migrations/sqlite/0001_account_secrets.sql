@@ -50,3 +50,16 @@ CREATE TABLE account_trashed_projects (
     version       INTEGER NOT NULL,
     in_the_trash  BOOLEAN NOT NULL
 );
+
+CREATE TABLE account_second_factors (
+    account              TEXT PRIMARY KEY,
+    secret_in_use        BLOB,
+    last_step            INTEGER,
+    secret_being_set_up  BLOB
+);
+
+CREATE TABLE account_recovery_codes (
+    account    TEXT NOT NULL,
+    code_hash  TEXT NOT NULL,
+    PRIMARY KEY (account, code_hash)
+);

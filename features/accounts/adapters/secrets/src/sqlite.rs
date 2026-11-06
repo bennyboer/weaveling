@@ -3,8 +3,9 @@ use transacting::Transaction;
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
+    InvitationTicket, InvitationTickets, KeptSecondFactor, Operators, PasswordHash, Passwords,
+    PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session,
+    Sessions, Stage, TokenDigest, TotpStep, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use clock::text;
@@ -142,6 +143,42 @@ const FORGET_TICKET: &str = "
     ON CONFLICT (invitation) DO UPDATE
     SET ended = TRUE
 ";
+
+const BEGIN_SETTING_UP: &str = "
+    INSERT INTO account_second_factors (account, secret_being_set_up)
+    VALUES (?1, ?2)
+    ON CONFLICT (account) DO UPDATE
+    SET secret_being_set_up = EXCLUDED.secret_being_set_up
+";
+
+const SECOND_FACTOR_BEING_SET_UP: &str = "SELECT secret_being_set_up FROM account_second_factors WHERE account = ?1 AND secret_being_set_up IS NOT NULL";
+
+const FINISH_SETTING_UP: &str = "
+    UPDATE account_second_factors
+    SET secret_in_use = secret_being_set_up, secret_being_set_up = NULL, last_step = ?3
+    WHERE account = ?1 AND secret_being_set_up = ?2
+";
+
+const SECOND_FACTOR_OF: &str = "SELECT secret_in_use, last_step FROM account_second_factors WHERE account = ?1 AND secret_in_use IS NOT NULL";
+
+const ACCEPT_STEP: &str = "
+    UPDATE account_second_factors
+    SET last_step = ?2
+    WHERE account = ?1 AND secret_in_use IS NOT NULL AND last_step < ?2
+";
+
+const FORGET_RECOVERY_CODES: &str = "DELETE FROM account_recovery_codes WHERE account = ?1";
+
+const KEEP_RECOVERY_CODE: &str =
+    "INSERT INTO account_recovery_codes (account, code_hash) VALUES (?1, ?2)";
+
+const RECOVERY_CODES_OF: &str =
+    "SELECT code_hash FROM account_recovery_codes WHERE account = ?1 ORDER BY code_hash";
+
+const USE_RECOVERY_CODE: &str =
+    "DELETE FROM account_recovery_codes WHERE account = ?1 AND code_hash = ?2";
+
+const FORGET_SECOND_FACTOR: &str = "DELETE FROM account_second_factors WHERE account = ?1";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
@@ -687,5 +724,173 @@ impl InvitationTickets for SqliteSecrets {
             .map_err(unreachable)?;
 
         Ok(kept.unwrap_or(false))
+    }
+}
+
+fn to_step(step: i64) -> Result<TotpStep, SecretsError> {
+    u64::try_from(step).map(TotpStep::kept).map_err(unreachable)
+}
+
+fn written_step(step: TotpStep) -> Result<i64, SecretsError> {
+    i64::try_from(step.get()).map_err(unreachable)
+}
+
+fn to_second_factor(row: &SqliteRow) -> Result<KeptSecondFactor, SecretsError> {
+    let secret: Vec<u8> = row.try_get("secret_in_use").map_err(unreachable)?;
+    let last_step: i64 = row.try_get("last_step").map_err(unreachable)?;
+
+    Ok(KeptSecondFactor {
+        secret: SealedTotpSecret::kept(secret),
+        last_accepted: to_step(last_step)?,
+    })
+}
+
+#[async_trait]
+impl SecondFactors for SqliteSecrets {
+    async fn begin_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        secret: &SealedTotpSecret,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(BEGIN_SETTING_UP)
+            .bind(account.to_string())
+            .bind(secret.as_bytes())
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn second_factor_being_set_up(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SealedTotpSecret>, SecretsError> {
+        let being_set_up: Option<Vec<u8>> = sqlx::query_scalar(SECOND_FACTOR_BEING_SET_UP)
+            .bind(account.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(being_set_up.map(SealedTotpSecret::kept))
+    }
+
+    async fn finish_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        being_set_up: &SealedTotpSecret,
+        accepted: TotpStep,
+    ) -> Result<bool, SecretsError> {
+        let done = sqlx::query(FINISH_SETTING_UP)
+            .bind(account.to_string())
+            .bind(being_set_up.as_bytes())
+            .bind(written_step(accepted)?)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected() == 1)
+    }
+
+    async fn second_factor_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<KeptSecondFactor>, SecretsError> {
+        sqlx::query(SECOND_FACTOR_OF)
+            .bind(account.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .map(|row| to_second_factor(&row))
+            .transpose()
+    }
+
+    async fn accept_step(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        step: TotpStep,
+    ) -> Result<bool, SecretsError> {
+        let done = sqlx::query(ACCEPT_STEP)
+            .bind(account.to_string())
+            .bind(written_step(step)?)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected() == 1)
+    }
+
+    async fn keep_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        codes: &[RecoveryCodeHash],
+    ) -> Result<(), SecretsError> {
+        sqlx::query(FORGET_RECOVERY_CODES)
+            .bind(account.to_string())
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        for code in codes {
+            sqlx::query(KEEP_RECOVERY_CODE)
+                .bind(account.to_string())
+                .bind(code.as_str())
+                .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+                .await
+                .map_err(unreachable)?;
+        }
+
+        Ok(())
+    }
+
+    async fn recovery_codes_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<RecoveryCodeHash>, SecretsError> {
+        let kept: Vec<String> = sqlx::query_scalar(RECOVERY_CODES_OF)
+            .bind(account.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.into_iter().map(RecoveryCodeHash::kept).collect())
+    }
+
+    async fn use_recovery_code(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        code: &RecoveryCodeHash,
+    ) -> Result<bool, SecretsError> {
+        let done = sqlx::query(USE_RECOVERY_CODE)
+            .bind(account.to_string())
+            .bind(code.as_str())
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected() == 1)
+    }
+
+    async fn forget_second_factor(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(FORGET_SECOND_FACTOR)
+            .bind(account.to_string())
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_RECOVERY_CODES)
+            .bind(account.to_string())
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 }

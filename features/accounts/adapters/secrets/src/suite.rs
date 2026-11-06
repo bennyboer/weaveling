@@ -1,8 +1,8 @@
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
     InvitationTicket, InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Session, SessionToken, Sessions, Stage, TokenDigest, VerificationCode,
-    Verifications,
+    SecondFactors, SecretsError, Session, SessionToken, Sessions, Stage, TokenDigest,
+    VerificationCode, Verifications,
 };
 use std::ops::Deref;
 
@@ -10,13 +10,30 @@ use futures_util::future;
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions, Tried};
 
+mod second_factors;
+
+pub use second_factors::*;
+
 pub trait Secrets:
-    EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications
+    EmailAddresses
+    + InvitationTickets
+    + Operators
+    + Passwords
+    + SecondFactors
+    + Sessions
+    + Verifications
 {
 }
 
-impl<S: EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications>
-    Secrets for S
+impl<
+    S: EmailAddresses
+        + InvitationTickets
+        + Operators
+        + Passwords
+        + SecondFactors
+        + Sessions
+        + Verifications,
+> Secrets for S
 {
 }
 
@@ -2860,6 +2877,45 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             a_code_for_one_purpose_is_no_code_for_another
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_second_factor_being_set_up_is_in_use_only_once_finished
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            only_the_latest_setup_is_finished_and_only_once
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_second_factor_set_up_anew_stays_in_use_until_the_new_one_is_finished
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_step_is_accepted_only_after_the_last_accepted
+        );
+        $crate::secrets_conformance_case!($workbench, a_step_accepted_by_many_at_once_goes_to_one);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            no_step_is_accepted_without_a_second_factor_in_use
+        );
+        $crate::secrets_conformance_case!($workbench, recovery_codes_kept_replace_the_ones_before);
+        $crate::secrets_conformance_case!($workbench, a_recovery_code_is_used_once);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_recovery_code_used_by_many_at_once_goes_to_one
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            forgetting_a_second_factor_takes_its_setup_and_codes_along
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            second_factor_writes_in_a_dropped_transaction_leave_it_as_it_was
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_first_setup_begun_in_a_dropped_transaction_was_never_begun
         );
     };
 }

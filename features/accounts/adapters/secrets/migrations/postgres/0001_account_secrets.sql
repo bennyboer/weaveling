@@ -50,3 +50,16 @@ CREATE TABLE account_trashed_projects (
     version       BIGINT  NOT NULL,
     in_the_trash  BOOLEAN NOT NULL
 );
+
+CREATE TABLE account_second_factors (
+    account              TEXT COLLATE "C" PRIMARY KEY,
+    secret_in_use        BYTEA,
+    last_step            BIGINT,
+    secret_being_set_up  BYTEA
+);
+
+CREATE TABLE account_recovery_codes (
+    account    TEXT COLLATE "C" NOT NULL,
+    code_hash  TEXT COLLATE "C" NOT NULL,
+    PRIMARY KEY (account, code_hash)
+);

@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
-    Session, Sessions, TokenDigest, VerificationCode, Verifications,
+    InvitationTickets, KeptSecondFactor, Operators, PasswordHash, Passwords, PendingVerification,
+    RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session, Sessions,
+    TokenDigest, TotpStep, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -21,6 +23,14 @@ struct Kept {
     invitation_tickets: HashMap<String, (TokenDigest, InvitationTicket)>,
     ended_invitations: HashSet<String>,
     trashed_projects: HashMap<String, (u64, bool)>,
+    second_factors: HashMap<AccountId, KeptFactor>,
+    recovery_codes: HashMap<AccountId, Vec<RecoveryCodeHash>>,
+}
+
+#[derive(Clone, Default)]
+struct KeptFactor {
+    in_use: Option<KeptSecondFactor>,
+    being_set_up: Option<SealedTotpSecret>,
 }
 
 #[derive(Default)]
@@ -44,6 +54,33 @@ impl InMemorySecrets {
             restore(&mut kept.lock().expect("the secrets are not poisoned"));
         })
         .map_err(|failure| SecretsError::Backend(Box::new(failure)))
+    }
+
+    fn undo_second_factor_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+        kept: &Kept,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let holder = *account;
+        let factor = kept.second_factors.get(account).cloned();
+        let codes = kept.recovery_codes.get(account).cloned();
+
+        self.undo_on_rollback(transaction, move |kept| {
+            restore(&mut kept.second_factors, holder, factor);
+            restore(&mut kept.recovery_codes, holder, codes);
+        })
+    }
+}
+
+fn restore<K: Eq + Hash, V>(map: &mut HashMap<K, V>, key: K, before: Option<V>) {
+    match before {
+        Some(before) => {
+            map.insert(key, before);
+        }
+        None => {
+            map.remove(&key);
+        }
     }
 }
 
@@ -542,5 +579,163 @@ impl InvitationTickets for InMemorySecrets {
             .trashed_projects
             .get(project)
             .is_some_and(|(_, in_the_trash)| *in_the_trash))
+    }
+}
+
+#[async_trait]
+impl SecondFactors for InMemorySecrets {
+    async fn begin_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        secret: &SealedTotpSecret,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        kept.second_factors
+            .entry(*account)
+            .or_default()
+            .being_set_up = Some(secret.clone());
+
+        Ok(())
+    }
+
+    async fn second_factor_being_set_up(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SealedTotpSecret>, SecretsError> {
+        Ok(self
+            .kept()
+            .second_factors
+            .get(account)
+            .and_then(|factor| factor.being_set_up.clone()))
+    }
+
+    async fn finish_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        being_set_up: &SealedTotpSecret,
+        accepted: TotpStep,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        let still_being_set_up = kept
+            .second_factors
+            .get(account)
+            .is_some_and(|factor| factor.being_set_up.as_ref() == Some(being_set_up));
+        if !still_being_set_up {
+            return Ok(false);
+        }
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        kept.second_factors.insert(
+            *account,
+            KeptFactor {
+                in_use: Some(KeptSecondFactor {
+                    secret: being_set_up.clone(),
+                    last_accepted: accepted,
+                }),
+                being_set_up: None,
+            },
+        );
+
+        Ok(true)
+    }
+
+    async fn second_factor_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<KeptSecondFactor>, SecretsError> {
+        Ok(self
+            .kept()
+            .second_factors
+            .get(account)
+            .and_then(|factor| factor.in_use.clone()))
+    }
+
+    async fn accept_step(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        step: TotpStep,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        let later = kept
+            .second_factors
+            .get(account)
+            .and_then(|factor| factor.in_use.as_ref())
+            .is_some_and(|in_use| step > in_use.last_accepted);
+        if !later {
+            return Ok(false);
+        }
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        if let Some(in_use) = kept
+            .second_factors
+            .get_mut(account)
+            .and_then(|factor| factor.in_use.as_mut())
+        {
+            in_use.last_accepted = step;
+        }
+
+        Ok(true)
+    }
+
+    async fn keep_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        codes: &[RecoveryCodeHash],
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        kept.recovery_codes.insert(*account, codes.to_vec());
+
+        Ok(())
+    }
+
+    async fn recovery_codes_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<RecoveryCodeHash>, SecretsError> {
+        Ok(self
+            .kept()
+            .recovery_codes
+            .get(account)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn use_recovery_code(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        code: &RecoveryCodeHash,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        let held = kept
+            .recovery_codes
+            .get(account)
+            .is_some_and(|codes| codes.contains(code));
+        if !held {
+            return Ok(false);
+        }
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        if let Some(codes) = kept.recovery_codes.get_mut(account) {
+            codes.retain(|kept| kept != code);
+        }
+
+        Ok(true)
+    }
+
+    async fn forget_second_factor(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        kept.second_factors.remove(account);
+        kept.recovery_codes.remove(account);
+
+        Ok(())
     }
 }

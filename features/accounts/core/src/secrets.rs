@@ -9,8 +9,11 @@ use time::OffsetDateTime;
 use crate::code::{CodePurpose, PendingVerification, VerificationCode};
 use crate::id::AccountId;
 use crate::password::PasswordHash;
+use crate::recovery_code::RecoveryCodeHash;
 use crate::session::{Session, TokenDigest};
 use crate::ticket::InvitationTicket;
+use crate::totp::TotpStep;
+use crate::totp_key::SealedTotpSecret;
 use email::EmailAddress;
 use throttling::Throttles;
 
@@ -31,6 +34,7 @@ pub struct SecretStores {
     pub throttles: Arc<dyn Throttles>,
     pub operators: Arc<dyn Operators>,
     pub invitation_tickets: Arc<dyn InvitationTickets>,
+    pub second_factors: Arc<dyn SecondFactors>,
 }
 
 impl SecretStores {
@@ -42,6 +46,7 @@ impl SecretStores {
             + Sessions
             + Operators
             + InvitationTickets
+            + SecondFactors
             + 'static,
     {
         Self {
@@ -51,7 +56,8 @@ impl SecretStores {
             sessions: secrets.clone(),
             throttles,
             operators: secrets.clone(),
-            invitation_tickets: secrets,
+            invitation_tickets: secrets.clone(),
+            second_factors: secrets,
         }
     }
 }
@@ -241,6 +247,74 @@ pub trait InvitationTickets: Send + Sync {
         transaction: &mut Transaction,
         project: &str,
     ) -> Result<bool, SecretsError>;
+}
+
+/// A second factor as it is kept: its sealed secret, and the step of the last code it accepted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeptSecondFactor {
+    pub secret: SealedTotpSecret,
+    pub last_accepted: TotpStep,
+}
+
+/// An account's second factor: a secret being set up until a code of it is confirmed, then the one in use for signing in, which setting up anew leaves in use until the new one is finished; and its recovery codes, kept hashed.
+#[async_trait]
+pub trait SecondFactors: Send + Sync {
+    async fn begin_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        secret: &SealedTotpSecret,
+    ) -> Result<(), SecretsError>;
+
+    async fn second_factor_being_set_up(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SealedTotpSecret>, SecretsError>;
+
+    async fn finish_setting_up(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        being_set_up: &SealedTotpSecret,
+        accepted: TotpStep,
+    ) -> Result<bool, SecretsError>;
+
+    async fn second_factor_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<KeptSecondFactor>, SecretsError>;
+
+    async fn accept_step(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        step: TotpStep,
+    ) -> Result<bool, SecretsError>;
+
+    async fn keep_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        codes: &[RecoveryCodeHash],
+    ) -> Result<(), SecretsError>;
+
+    async fn recovery_codes_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<RecoveryCodeHash>, SecretsError>;
+
+    async fn use_recovery_code(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        code: &RecoveryCodeHash,
+    ) -> Result<bool, SecretsError>;
+
+    async fn forget_second_factor(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
