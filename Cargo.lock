@@ -3694,6 +3694,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-ending",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-invitations-contract",
@@ -3819,6 +3820,7 @@ dependencies = [
  "weaveling-appearances-rest",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-inbox",
@@ -3833,7 +3835,6 @@ dependencies = [
 name = "weaveling-appearances-wiring"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "sqlx",
  "time",
  "tokio",
@@ -3907,7 +3908,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde",
- "serde_json",
  "time",
  "weaveling-boards-contract",
  "weaveling-boards-core",
@@ -3963,6 +3963,7 @@ dependencies = [
  "weaveling-boards-messaging",
  "weaveling-boards-wiring",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-inbox",
@@ -3980,7 +3981,6 @@ dependencies = [
 name = "weaveling-boards-wiring"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "sqlx",
  "time",
  "tokio",
@@ -4200,6 +4200,7 @@ dependencies = [
  "tokio",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-catalog",
  "weaveling-ideas-contract",
@@ -4220,7 +4221,6 @@ dependencies = [
 name = "weaveling-ideas-wiring"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "sqlx",
  "time",
  "weaveling-chores",
@@ -4315,7 +4315,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde",
- "serde_json",
  "time",
  "weaveling-accounts-contract",
  "weaveling-clock",
@@ -4377,6 +4376,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-email",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-invitations-catalog",
@@ -4567,6 +4567,7 @@ dependencies = [
  "tokio",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-live",
@@ -4728,6 +4729,7 @@ dependencies = [
  "tokio",
  "weaveling-accounts-contract",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-live",
@@ -4772,6 +4774,7 @@ name = "weaveling-outbox"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "serde_json",
  "sqlx",
  "thiserror",
@@ -4832,7 +4835,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde",
- "serde_json",
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
@@ -4886,6 +4888,7 @@ dependencies = [
  "tokio",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-inbox",
@@ -4910,7 +4913,6 @@ dependencies = [
 name = "weaveling-outline-wiring"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "sqlx",
  "time",
  "tokio",
@@ -5012,6 +5014,7 @@ dependencies = [
  "serde",
  "serde_json",
  "time",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-projects-core",
 ]
@@ -5096,6 +5099,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-scenes-core",
  "weaveling-test-harness",
  "weaveling-transacting",
@@ -5218,6 +5222,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-ending",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-inbox",
@@ -5329,6 +5334,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-statistics-core",
  "weaveling-test-harness",
  "weaveling-transacting",
@@ -5411,7 +5417,6 @@ dependencies = [
 name = "weaveling-statistics-wiring"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "sqlx",
  "time",
  "tokio",
@@ -5438,6 +5443,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "weaveling-clock",
 ]
 
 [[package]]

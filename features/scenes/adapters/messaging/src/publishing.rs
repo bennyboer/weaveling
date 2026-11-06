@@ -110,16 +110,11 @@ fn to_payload(dto: &impl serde::Serialize) -> Value {
 mod tests {
     use scenes_core::{IdeaLink, ProjectLink, SceneId, SceneTitle};
     use serde_json::json;
-    use time::Duration;
 
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn a_scene() -> SceneId {
-        SceneId::generate(at(1_000))
+        SceneId::generate(clock::at(1_000))
     }
 
     #[test]
@@ -135,7 +130,7 @@ mod tests {
                 idea: IdeaLink::from("idea_1"),
                 version: 3,
             },
-            at(2_000),
+            clock::at(2_000),
         );
 
         // then: it goes under the link's key
@@ -152,7 +147,7 @@ mod tests {
             "a listener cannot ask scenes which idea it was, so both ends travel in the message,              and the version tells a late link from a newer unlink"
         );
         // and: when it happened
-        assert_eq!(told.occurred_at, at(2_000));
+        assert_eq!(told.occurred_at, clock::at(2_000));
     }
 
     #[test]
@@ -165,7 +160,7 @@ mod tests {
                 idea: IdeaLink::from("idea_1"),
                 version: 4,
             },
-            at(2_000),
+            clock::at(2_000),
         );
 
         // then: it goes under the unlink's key
@@ -183,7 +178,7 @@ mod tests {
                 scene,
                 project: ProjectLink::from("project_1"),
             },
-            at(2_000),
+            clock::at(2_000),
         );
 
         // then: it goes under the deletion's key
@@ -207,7 +202,7 @@ mod tests {
                 project: ProjectLink::from("project_1"),
                 words: 42,
             },
-            at(2_000),
+            clock::at(2_000),
         );
 
         // then: it goes under the count's key
@@ -238,7 +233,7 @@ mod tests {
                 scene,
                 project: project.clone(),
             },
-            at(2_000),
+            clock::at(2_000),
         );
         let retitled = message_for(
             &SceneChange::Retitled {
@@ -247,7 +242,7 @@ mod tests {
                 title: SceneTitle::new("The loom").expect("a plain title"),
                 version: 4,
             },
-            at(2_000),
+            clock::at(2_000),
         );
         let opened = message_for(
             &SceneChange::OpeningChanged {
@@ -255,7 +250,7 @@ mod tests {
                 project,
                 opening: "The loom stood silent.".to_owned(),
             },
-            at(2_000),
+            clock::at(2_000),
         );
 
         // then: the creation reads back with its project
@@ -304,7 +299,7 @@ mod tests {
                     idea: IdeaLink::from("idea_1"),
                     version: 3,
                 },
-                at(2_000),
+                clock::at(2_000),
             )
             .payload,
         )
@@ -315,7 +310,7 @@ mod tests {
                     scene,
                     project: ProjectLink::from("project_1"),
                 },
-                at(2_000),
+                clock::at(2_000),
             )
             .payload,
         )
@@ -373,7 +368,7 @@ mod tests {
                 project: project.clone(),
             },
         ] {
-            let told = message_for(&change, at(2_000));
+            let told = message_for(&change, clock::at(2_000));
 
             // then: it carries the project as its context
             assert_eq!(

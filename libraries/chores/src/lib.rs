@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-pub use tombstones::{ForgetOldTombstones, TOMBSTONES_KEPT_FOR, Tombstones};
+pub use tombstones::{ForgetOldTombstones, TOMBSTONES_KEPT_FOR, Tombstones, tombstones_by};
 
 #[async_trait]
 pub trait Chore: Send + Sync {

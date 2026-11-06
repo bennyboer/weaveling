@@ -10,6 +10,8 @@ use outbox::{Origin, Outbox};
 use projects_contract::{DELETED, ProjectEventDTO, RENAMED, RESTORED, STARTED, TRASHED};
 use transacting::Transaction;
 
+use crate::sweeping::{SWEEP_PROJECT, SweepProjectDTO};
+
 pub struct RememberProjectNamesListener {
     invitations: InvitationsCore,
     outbox: Arc<dyn Outbox>,
@@ -61,10 +63,15 @@ impl KeptHandler for RememberProjectNamesListener {
                     .lay_project_tombstone(Some(&mut *transaction), &project, message.occurred_at)
                     .await?;
                 self.outbox
-                    .enqueue_within(
+                    .enqueue_follow_up_within(
                         transaction,
                         Origin::unversioned(project.as_str(), "project"),
-                        &crate::sweeping::sweep_project(message, &project, self.clock.now()),
+                        message,
+                        SWEEP_PROJECT,
+                        &SweepProjectDTO {
+                            project: project.to_string(),
+                        },
+                        self.clock.now(),
                     )
                     .await?;
 

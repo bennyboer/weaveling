@@ -12,7 +12,6 @@ use boards_core::BoardsCore;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use serde_json::Value;
-use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
 
@@ -28,16 +27,12 @@ fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
     told
 }
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_server() -> TestServer {
     a_server_and_its_boards().0
 }
 
 fn a_server_and_its_boards() -> (TestServer, BoardsCore) {
-    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
 
     (
         TestServer::new(wired.routes.layer(Extension(Agent::Local))),

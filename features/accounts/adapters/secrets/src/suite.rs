@@ -388,10 +388,6 @@ impl<S> Deref for Committing<'_, S> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 fn an_address(raw: &str) -> EmailAddress {
     EmailAddress::new(raw).expect("a plain address")
 }
@@ -403,16 +399,16 @@ fn a_hash(phc: &str) -> PasswordHash {
 fn a_pending_code(code: &str, until: i64) -> PendingVerification {
     PendingVerification {
         code: VerificationCode::kept(code.to_owned()),
-        until: at(until),
+        until: clock::at(until),
         tried: 0,
     }
 }
 
 pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an address claimed by an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &account, at(1_000))
+        .claim(&an_address("ada@example.com"), &account, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -439,9 +435,9 @@ pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &Committ
 
 pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an address claimed by an account
-    let first = AccountId::generate(at(1_000));
+    let first = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &first, at(1_000))
+        .claim(&an_address("ada@example.com"), &first, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -449,8 +445,8 @@ pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &Commit
     let second = secrets
         .claim(
             &an_address("ada@example.com"),
-            &AccountId::generate(at(2_000)),
-            at(1_000),
+            &AccountId::generate(clock::at(2_000)),
+            clock::at(1_000),
         )
         .await;
 
@@ -469,11 +465,11 @@ pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &Commit
 
 pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     // when: it claims two addresses
     for address in ["ada@example.com", "ada@example.org"] {
         secrets
-            .claim(&an_address(address), &account, at(1_000))
+            .claim(&an_address(address), &account, clock::at(1_000))
             .await
             .expect("claiming should succeed");
     }
@@ -493,9 +489,9 @@ pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &Committing
 
 pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an address claimed by an account
-    let first = AccountId::generate(at(1_000));
+    let first = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &first, at(1_000))
+        .claim(&an_address("ada@example.com"), &first, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -517,8 +513,8 @@ pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &Commi
     secrets
         .claim(
             &an_address("ada@example.com"),
-            &AccountId::generate(at(2_000)),
-            at(1_000),
+            &AccountId::generate(clock::at(2_000)),
+            clock::at(1_000),
         )
         .await
         .expect("a released address is free again");
@@ -528,9 +524,9 @@ pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an address claimed by an account
-    let holder = AccountId::generate(at(1_000));
+    let holder = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &holder, at(1_000))
+        .claim(&an_address("ada@example.com"), &holder, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -538,7 +534,7 @@ pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(
     secrets
         .release(
             &an_address("ada@example.com"),
-            &AccountId::generate(at(2_000)),
+            &AccountId::generate(clock::at(2_000)),
         )
         .await
         .expect("releasing what is not held is harmless");
@@ -558,7 +554,7 @@ pub async fn a_kept_password_is_read_back_until_a_new_one_replaces_it<S: Secrets
     secrets: &Committing<'_, S>,
 ) {
     // given: an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     // when: a password is kept for it
     secrets
         .keep(&account, &a_hash("$argon2id$first"))
@@ -587,7 +583,7 @@ pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: a password kept for one account
-    let ada = AccountId::generate(at(1_000));
+    let ada = AccountId::generate(clock::at(1_000));
     secrets
         .keep(&ada, &a_hash("$argon2id$ada"))
         .await
@@ -596,7 +592,7 @@ pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(
     // then: another account has none
     assert_eq!(
         secrets
-            .of(&AccountId::generate(at(2_000)))
+            .of(&AccountId::generate(clock::at(2_000)))
             .await
             .expect("reading should succeed"),
         None,
@@ -608,7 +604,7 @@ pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Sec
     secrets: &Committing<'_, S>,
 ) {
     // given: a code issued to an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -651,7 +647,7 @@ pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>
     secrets: &Committing<'_, S>,
 ) {
     // given: a code issued to an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -683,7 +679,7 @@ pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>
 
 pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: a code issued to an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -713,7 +709,7 @@ pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &
 
 pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: a code issued to an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -755,8 +751,8 @@ pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &Committ
 
 pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: a code issued to each of two accounts
-    let ada = AccountId::generate(at(1_000));
-    let bea = AccountId::generate(at(2_000));
+    let ada = AccountId::generate(clock::at(1_000));
+    let bea = AccountId::generate(clock::at(2_000));
     secrets
         .issue(
             &ada,
@@ -798,7 +794,7 @@ pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secre
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with no code
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
 
     // then: attempting finds nothing
     assert_eq!(
@@ -822,7 +818,7 @@ pub async fn a_code_is_closed_only_by_itself_and_only_once<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an issued code
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -856,10 +852,10 @@ pub async fn a_code_is_closed_only_by_itself_and_only_once<S: Secrets>(
 
 fn a_session(stage: Stage) -> Session {
     Session {
-        account: AccountId::generate(at(1_000)),
+        account: AccountId::generate(clock::at(1_000)),
         stage,
-        begun: at(1_699_000_000),
-        until: at(1_700_000_000),
+        begun: clock::at(1_699_000_000),
+        until: clock::at(1_700_000_000),
     }
 }
 
@@ -972,7 +968,7 @@ pub async fn a_code_for_one_purpose_is_no_code_for_another<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: a code issued for each of two purposes
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
     secrets
         .issue(
             &account,
@@ -1163,7 +1159,7 @@ pub async fn an_operator_is_appointed_until_dismissed<S: Secrets>(secrets: &Comm
     // given: two operators and an account never appointed
     let ada = an_operator_appointed_at(secrets, 1_000).await;
     let grace = an_operator_appointed_at(secrets, 2_000).await;
-    let nobody = AccountId::generate(at(3_000));
+    let nobody = AccountId::generate(clock::at(3_000));
 
     // when: one operator is dismissed
     secrets
@@ -1237,7 +1233,7 @@ pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &Committ
 
     // when: an account is appointed
     secrets
-        .appoint(&AccountId::generate(at(1_000)))
+        .appoint(&AccountId::generate(clock::at(1_000)))
         .await
         .expect("appointing should succeed");
 
@@ -1252,7 +1248,7 @@ pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &Committ
 
 pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an account
-    let account = AccountId::generate(at(1_000));
+    let account = AccountId::generate(clock::at(1_000));
 
     // when: it is appointed twice
     for _ in 0..2 {
@@ -1275,7 +1271,7 @@ async fn an_operator_appointed_at<S: Secrets>(
     secrets: &Committing<'_, S>,
     seconds: i64,
 ) -> AccountId {
-    let account = AccountId::generate(at(seconds));
+    let account = AccountId::generate(clock::at(seconds));
     secrets
         .appoint(&account)
         .await
@@ -1345,7 +1341,7 @@ pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &Comm
     // then: dismissing an account never appointed finds it not appointed
     assert_eq!(
         secrets
-            .dismiss(&AccountId::generate(at(3_000)))
+            .dismiss(&AccountId::generate(clock::at(3_000)))
             .await
             .expect("dismissing should succeed"),
         Dismissal::NotAppointed
@@ -1395,7 +1391,7 @@ fn a_ticket(invitation: &str, to: &str) -> InvitationTicket {
     InvitationTicket {
         invitation: invitation.to_owned(),
         to: an_address(to),
-        until: at(5_000),
+        until: clock::at(5_000),
         scope: InvitationScope::Instance,
         by_an_operator: true,
     }
@@ -1968,10 +1964,10 @@ pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<
     secrets: &Committing<'_, S>,
 ) {
     // given: an address claimed by an account
-    let abandoned = AccountId::generate(at(1_000));
-    let taking = AccountId::generate(at(3_000));
+    let abandoned = AccountId::generate(clock::at(1_000));
+    let taking = AccountId::generate(clock::at(3_000));
     secrets
-        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .claim(&an_address("ada@example.com"), &abandoned, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -1982,8 +1978,8 @@ pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<
                 &an_address("ada@example.com"),
                 &abandoned,
                 &taking,
-                at(2_000),
-                at(3_000)
+                clock::at(2_000),
+                clock::at(3_000)
             )
             .await
             .expect("taking over should succeed")
@@ -2000,22 +1996,22 @@ pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<
 
 pub async fn a_claim_made_since_the_moment_given_is_kept<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an address claimed by an account
-    let recent = AccountId::generate(at(1_000));
+    let recent = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &recent, at(1_000))
+        .claim(&an_address("ada@example.com"), &recent, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
     // then: it is not taken over as claimed before a moment no later than its claim
-    for claimed_before in [at(1_000), at(500)] {
+    for claimed_before in [clock::at(1_000), clock::at(500)] {
         assert!(
             !secrets
                 .take_over(
                     &an_address("ada@example.com"),
                     &recent,
-                    &AccountId::generate(at(3_000)),
+                    &AccountId::generate(clock::at(3_000)),
                     claimed_before,
-                    at(3_000),
+                    clock::at(3_000),
                 )
                 .await
                 .expect("taking over should succeed"),
@@ -2036,9 +2032,9 @@ pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an address claimed by an account
-    let holder = AccountId::generate(at(1_000));
+    let holder = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &holder, at(1_000))
+        .claim(&an_address("ada@example.com"), &holder, clock::at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -2047,10 +2043,10 @@ pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(
         !secrets
             .take_over(
                 &an_address("ada@example.com"),
-                &AccountId::generate(at(1_500)),
-                &AccountId::generate(at(3_000)),
-                at(2_000),
-                at(3_000),
+                &AccountId::generate(clock::at(1_500)),
+                &AccountId::generate(clock::at(3_000)),
+                clock::at(2_000),
+                clock::at(3_000),
             )
             .await
             .expect("taking over should succeed")
@@ -2061,9 +2057,9 @@ pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(
             .take_over(
                 &an_address("nobody@example.com"),
                 &holder,
-                &AccountId::generate(at(3_000)),
-                at(2_000),
-                at(3_000),
+                &AccountId::generate(clock::at(3_000)),
+                clock::at(2_000),
+                clock::at(3_000),
             )
             .await
             .expect("an address nobody claimed is not taken over"),
@@ -2080,10 +2076,10 @@ pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(
 
 pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an address taken over
-    let abandoned = AccountId::generate(at(1_000));
-    let taking = AccountId::generate(at(3_000));
+    let abandoned = AccountId::generate(clock::at(1_000));
+    let taking = AccountId::generate(clock::at(3_000));
     secrets
-        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .claim(&an_address("ada@example.com"), &abandoned, clock::at(1_000))
         .await
         .expect("claiming should succeed");
     secrets
@@ -2091,8 +2087,8 @@ pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &Committin
             &an_address("ada@example.com"),
             &abandoned,
             &taking,
-            at(2_000),
-            at(3_000),
+            clock::at(2_000),
+            clock::at(3_000),
         )
         .await
         .expect("taking over should succeed");
@@ -2103,9 +2099,9 @@ pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &Committin
             .take_over(
                 &an_address("ada@example.com"),
                 &taking,
-                &AccountId::generate(at(4_000)),
-                at(2_500),
-                at(4_000),
+                &AccountId::generate(clock::at(4_000)),
+                clock::at(2_500),
+                clock::at(4_000),
             )
             .await
             .expect("taking over should succeed"),
@@ -2117,21 +2113,27 @@ pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an address claimed by an account
-    let abandoned = AccountId::generate(at(1_000));
+    let abandoned = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .claim(&an_address("ada@example.com"), &abandoned, clock::at(1_000))
         .await
         .expect("claiming should succeed");
     // and: many who would take it over
-    let takers: Vec<AccountId> = (0..8).map(|n| AccountId::generate(at(3_000 + n))).collect();
+    let takers: Vec<AccountId> = (0..8)
+        .map(|n| AccountId::generate(clock::at(3_000 + n)))
+        .collect();
     let address = an_address("ada@example.com");
 
     // when: they take it over at once
-    let taken = future::join_all(
-        takers
-            .iter()
-            .map(|taker| secrets.take_over(&address, &abandoned, taker, at(2_000), at(3_000))),
-    )
+    let taken = future::join_all(takers.iter().map(|taker| {
+        secrets.take_over(
+            &address,
+            &abandoned,
+            taker,
+            clock::at(2_000),
+            clock::at(3_000),
+        )
+    }))
     .await;
 
     // then: one of them gets it
@@ -2386,8 +2388,8 @@ pub async fn an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_a
 ) {
     // given: an address claimed in a transaction that is dropped
     let (ada, bob) = (
-        AccountId::generate(at(1_000)),
-        AccountId::generate(at(1_001)),
+        AccountId::generate(clock::at(1_000)),
+        AccountId::generate(clock::at(1_001)),
     );
     let mut claiming = secrets.begun().await.expect("beginning should succeed");
     secrets
@@ -2396,7 +2398,7 @@ pub async fn an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_a
             &mut claiming,
             &an_address("ada@example.com"),
             &ada,
-            at(1_000),
+            clock::at(1_000),
         )
         .await
         .expect("claiming should succeed");
@@ -2407,7 +2409,7 @@ pub async fn an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_a
         .expect("reading should succeed");
     // and: claimed for good
     secrets
-        .claim(&an_address("ada@example.com"), &ada, at(1_000))
+        .claim(&an_address("ada@example.com"), &ada, clock::at(1_000))
         .await
         .expect("claiming should succeed");
     // and: taken over in another transaction
@@ -2419,8 +2421,8 @@ pub async fn an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_a
             &an_address("ada@example.com"),
             &ada,
             &bob,
-            at(2_000),
-            at(2_000),
+            clock::at(2_000),
+            clock::at(2_000),
         )
         .await
         .expect("taking over should succeed");
@@ -2449,9 +2451,9 @@ pub async fn an_address_released_or_a_password_kept_in_a_dropped_transaction_is_
     secrets: &Committing<'_, S>,
 ) {
     // given: an address claimed and a password kept
-    let ada = AccountId::generate(at(1_000));
+    let ada = AccountId::generate(clock::at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &ada, at(1_000))
+        .claim(&an_address("ada@example.com"), &ada, clock::at(1_000))
         .await
         .expect("claiming should succeed");
     secrets
@@ -2496,7 +2498,7 @@ pub async fn a_first_password_kept_in_a_dropped_transaction_was_never_kept<S: Se
     secrets: &Committing<'_, S>,
 ) {
     // given: a first password kept in a transaction
-    let ada = AccountId::generate(at(1_000));
+    let ada = AccountId::generate(clock::at(1_000));
     let mut keeping = secrets.begun().await.expect("beginning should succeed");
     secrets
         .store
@@ -2559,7 +2561,7 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with an issued code and an open session, and two operators
-    let ada = AccountId::generate(at(1_000));
+    let ada = AccountId::generate(clock::at(1_000));
     let grace = an_operator_appointed_at(secrets, 2_000).await;
     an_operator_appointed_at(secrets, 3_000).await;
     secrets

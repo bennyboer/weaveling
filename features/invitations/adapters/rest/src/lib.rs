@@ -258,9 +258,9 @@ fn problem_of(refusal: InvitationsError) -> Problem {
         InvitationsError::Events(ServiceError::Refused(InvitationError::AlreadyAccepted)) => {
             Problem::refused(refused::INVITATION_ALREADY_ACCEPTED, refusal)
         }
-        InvitationsError::Events(
-            ref outdated @ ServiceError::Store(StoreError::Outdated { .. }),
-        ) => Problem::of(outdated, |refusal| Problem::unexpected(refusal)),
+        InvitationsError::Events(ServiceError::Store(StoreError::Outdated {
+            ref kind, ..
+        })) => Problem::outdated(kind),
         unserveable => Problem::unexpected(unserveable),
     }
 }

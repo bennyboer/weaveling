@@ -8,23 +8,18 @@ use projects_core::{
     InvalidProjectName, ProjectError, ProjectEvent, ProjectId, ProjectSummary, ProjectsCore,
     ProjectsError, RawDetails,
 };
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use trash::InMemoryTrash;
 
 use crate::wiring;
 use crate::wiring::Wired;
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn nobody() -> Agent {
     Agent::Local
 }
 
 fn a_service() -> Wired {
-    a_service_on(Arc::new(FixedClock::new(at(1_000))))
+    a_service_on(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn a_service_on(clock: Arc<FixedClock>) -> Wired {
@@ -68,8 +63,8 @@ async fn a_started_project_records_when_it_began() {
         .read(&id, &nobody())
         .await
         .expect("it should be there");
-    assert_eq!(standing.state.created_at(), at(1_000));
-    assert_eq!(standing.state.updated_at(), at(1_000));
+    assert_eq!(standing.state.created_at(), clock::at(1_000));
+    assert_eq!(standing.state.updated_at(), clock::at(1_000));
     assert_eq!(standing.version, Version::of(1));
 }
 
@@ -135,12 +130,12 @@ async fn a_started_project_is_catalogued_without_anyone_asking() {
 #[tokio::test]
 async fn renaming_moves_the_moment_the_project_was_last_touched() {
     // given: a started project
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let wired = a_service_on(clock.clone());
     let id = a_project(&wired, "Working Title").await;
 
     // when: it is renamed later
-    clock.set(at(2_000));
+    clock.set(clock::at(2_000));
     wired
         .projects
         .rename(&id, "The Weaver's Apprentice", None, &nobody())
@@ -154,8 +149,8 @@ async fn renaming_moves_the_moment_the_project_was_last_touched() {
         .await
         .expect("it should be there");
     assert_eq!(standing.state.name().as_str(), "The Weaver's Apprentice");
-    assert_eq!(standing.state.created_at(), at(1_000));
-    assert_eq!(standing.state.updated_at(), at(2_000));
+    assert_eq!(standing.state.created_at(), clock::at(1_000));
+    assert_eq!(standing.state.updated_at(), clock::at(2_000));
 }
 
 #[tokio::test]
@@ -212,7 +207,7 @@ async fn renaming_to_a_blank_name_leaves_the_project_as_it_was() {
 async fn renaming_a_project_nobody_started_is_not_found() {
     // given: a project nobody started
     let wired = a_service();
-    let missing = ProjectId::generate(at(1_000));
+    let missing = ProjectId::generate(clock::at(1_000));
 
     // when: it is renamed
     let refused = wired
@@ -325,7 +320,7 @@ async fn a_purged_project_cannot_be_renamed_afterwards() {
 async fn trashing_a_project_nobody_started_is_not_found() {
     // given: a project nobody started
     let wired = a_service();
-    let missing = ProjectId::generate(at(1_000));
+    let missing = ProjectId::generate(clock::at(1_000));
 
     // when: it is trashed
     let refused = wired
@@ -347,11 +342,11 @@ async fn trashing_a_project_nobody_started_is_not_found() {
 #[tokio::test]
 async fn the_project_started_most_recently_is_listed_first() {
     // given: a project started
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let wired = a_service_on(clock.clone());
     a_project(&wired, "First").await;
     // and: another started later
-    clock.set(at(2_000));
+    clock.set(clock::at(2_000));
     a_project(&wired, "Second").await;
 
     // when: the projects are listed
@@ -410,7 +405,7 @@ async fn renaming_a_project_while(
             Arc::new(InMemoryProjectCatalog::new()),
             Arc::new(InMemoryTrash::new()),
             Arc::new(AllowingEverything),
-            Arc::new(FixedClock::new(at(1_000))),
+            Arc::new(FixedClock::new(clock::at(1_000))),
         )
     };
     let (id, _) = core_over(store.clone())

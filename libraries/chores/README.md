@@ -13,7 +13,10 @@ use chores::{Chores, ForgetOldTombstones};
 
 let forget = ForgetOldTombstones::new(
     "forget-old-board-tombstones",
-    Arc::new(BoardTombstones::of(boards)),
+    chores::tombstones_by(move |before, at_most| {
+        let boards = boards.clone();
+        async move { boards.forget_tombstones_laid_before(before, at_most).await }
+    }),
     clock.clone(),
 );
 
@@ -23,4 +26,4 @@ chores.stop().await;
 
 A chore is for upkeep nobody asked for at a given moment, forgetting what is long settled, say. Work that must happen before the server stops is `wiring::Settling` instead.
 
-**Tombstones.** A feature that keeps a tombstone of what was discarded, so a late message cannot bring it back, implements **`Tombstones`**, `forget_laid_before(at)`, and hands over a **`ForgetOldTombstones`** named for it. Hourly, it forgets the tombstones laid more than `TOMBSTONES_KEPT_FOR` ago, a day longer than `messaging::RETRIABLE_FOR`: a refused change older than that is not tried again, and the day covers a change that happened a little after the tombstone was laid, a scene linking an idea just discarded, say, so no message about a forgotten tombstone can still arrive. A tombstone is laid when what it marks went, the `occurred_at` of the message saying so. It forgets in batches: `forget_laid_before(at, at_most)` forgets at most `at_most` of each kind of tombstone, the oldest first, in one short transaction, and the chore asks for `TOMBSTONES_EACH_BATCH` at a time until a batch comes back short, so a backlog, a whole project deleted a month ago say, never holds a feature's store for long, yet is cleared in one round.
+**Tombstones.** A feature that keeps a tombstone of what was discarded, so a late message cannot bring it back, hands over a **`ForgetOldTombstones`** named for it, with the **`Tombstones`** to forget, `forget_laid_before(at)`; **`chores::tombstones_by(…)`** makes them of the core's own method, so the core needs no chores of its own. Hourly, it forgets the tombstones laid more than `TOMBSTONES_KEPT_FOR` ago, a day longer than `messaging::RETRIABLE_FOR`: a refused change older than that is not tried again, and the day covers a change that happened a little after the tombstone was laid, a scene linking an idea just discarded, say, so no message about a forgotten tombstone can still arrive. A tombstone is laid when what it marks went, the `occurred_at` of the message saying so. It forgets in batches: `forget_laid_before(at, at_most)` forgets at most `at_most` of each kind of tombstone, the oldest first, in one short transaction, and the chore asks for `TOMBSTONES_EACH_BATCH` at a time until a batch comes back short, so a backlog, a whole project deleted a month ago say, never holds a feature's store for long, yet is cleared in one round.

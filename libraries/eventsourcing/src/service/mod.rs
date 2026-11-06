@@ -141,47 +141,37 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        let standing = self
-            .standing_within(transaction, aggregate)
-            .await?
-            .ok_or_else(|| self.nothing_there(aggregate))?;
-        let reached = standing.version;
-
-        self.appended_within(
-            transaction,
-            aggregate,
-            Some(standing),
-            reached,
-            command,
-            agent,
-        )
-        .await
+        self.execute_at(transaction, aggregate, None, command, agent)
+            .await
     }
 
     pub async fn execute_at(
         &self,
         transaction: &mut Transaction,
         aggregate: &AggregateId,
-        expected: Version,
+        expected: Option<Version>,
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
         match self.standing_within(transaction, aggregate).await? {
             None => Err(self.nothing_there(aggregate)),
-            Some(standing) if standing.version != expected => Err(ServiceError::Store(
-                StoreError::outdated(aggregate, A::KIND, expected),
-            )),
-            Some(standing) => {
-                self.appended_within(
-                    transaction,
-                    aggregate,
-                    Some(standing),
-                    expected,
-                    command,
-                    agent,
-                )
-                .await
-            }
+            Some(standing) => match expected {
+                Some(expected) if standing.version != expected => Err(ServiceError::Store(
+                    StoreError::outdated(aggregate, A::KIND, expected),
+                )),
+                _ => {
+                    let reached = standing.version;
+                    self.appended_within(
+                        transaction,
+                        aggregate,
+                        Some(standing),
+                        reached,
+                        command,
+                        agent,
+                    )
+                    .await
+                }
+            },
         }
     }
 

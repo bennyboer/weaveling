@@ -38,6 +38,7 @@ test("a project's members are listed by name and role, with whoever is me marked
           },
           { account: "account_3", role: "reader" },
         ],
+        headers: { ETag: '"1"' },
       });
     },
   );
@@ -79,7 +80,12 @@ test("without accounts a project has no members to show", async ({ page }) => {
 type Listed = { account: string; role: string; name?: string; email?: string };
 
 async function membersServed(page: Page, listed: Listed[]) {
-  const asked = { patched: [] as { account: string; role: string }[], deleted: [] as string[] };
+  const asked = {
+    patched: [] as { account: string; role: string }[],
+    deleted: [] as string[],
+    version: 1,
+  };
+  const versioned = () => ({ ETag: `"${asked.version}"` });
   await page.route(
     (url) => url.pathname.startsWith("/api/members"),
     async (route) => {
@@ -101,7 +107,8 @@ async function membersServed(page: Page, listed: Listed[]) {
           return lastOwnerRefused();
         }
         listed = listed.map((member) => (member.account === account ? { ...member, role } : member));
-        return route.fulfill({ json: listed });
+        asked.version += 1;
+        return route.fulfill({ json: listed, headers: versioned() });
       }
       if (request.method() === "DELETE") {
         asked.deleted.push(account);
@@ -109,9 +116,10 @@ async function membersServed(page: Page, listed: Listed[]) {
           return lastOwnerRefused();
         }
         listed = listed.filter((member) => member.account !== account);
+        asked.version += 1;
         return route.fulfill({ status: 204 });
       }
-      return route.fulfill({ json: listed });
+      return route.fulfill({ json: listed, headers: versioned() });
     },
   );
 
@@ -168,7 +176,7 @@ test("two role changes close together leave the later one standing, whichever an
   page,
 }) => {
   // given: an owner on the members page with an author
-  await onTheMembersPage(page, [
+  const served = await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
   ]);
@@ -190,11 +198,13 @@ test("two role changes close together leave the later one standing, whichever an
       }
       holding = false;
       await held;
+      served.version += 1;
       await route.fulfill({
         json: [
           { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
           { ...GRACE, role: "reader" },
         ],
+        headers: { ETag: `"${served.version}"` },
       });
       await (await route.request().response())?.finished();
       lateAnswerTakenIn();

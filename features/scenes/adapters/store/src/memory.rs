@@ -391,7 +391,7 @@ mod tests {
         type Store = InMemorySceneStore;
 
         async fn setup() -> Self {
-            let clock = Arc::new(FixedClock::new(suite::at(2_000)));
+            let clock = Arc::new(FixedClock::new(clock::at(2_000)));
             let heard = Arc::new(FakePublisher::default());
             let outbox = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
 

@@ -143,14 +143,13 @@ mod tests {
     }
 
     fn told(routing: &str, name: &str, version: u64) -> Message {
-        Message::opening(
-            RoutingKey::parse(routing).expect("a declared key"),
-            json!({
-                "event": { "version": 0, "name": name, "until": "1970-01-31T00:00:00Z" },
-                "aggregate": { "id": "project_1", "kind": "project", "version": version },
-                "agent": { "kind": "account", "id": "account_ada" },
-                "occurred_at": "1970-01-01T00:00:00Z",
-            }),
+        eventpublishing::published(
+            routing,
+            "project",
+            "project_1",
+            version,
+            json!({ "version": 0, "name": name, "until": "1970-01-31T00:00:00Z" }),
+            &Agent::Account(AccountId::from("account_ada")),
             OffsetDateTime::UNIX_EPOCH,
         )
     }

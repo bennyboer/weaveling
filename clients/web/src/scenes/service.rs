@@ -1,4 +1,4 @@
-use gloo_net::http::{Request, RequestBuilder, Response};
+use gloo_net::http::{Request, Response};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO,
@@ -27,7 +27,7 @@ pub async fn retitle(id: &SceneId, title: &str, on: u64) -> Result<Scene, ApiErr
         title: title.to_owned(),
     };
     let response = http::sent_with(
-        made_on(Request::patch(&format!("{SCENES}/{id}")), on),
+        http::made_on(Request::patch(&format!("{SCENES}/{id}")), on),
         &payload,
     )
     .await?;
@@ -40,7 +40,7 @@ pub async fn link(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiErro
         idea: idea.to_string(),
     };
     let response = http::sent_with(
-        made_on(Request::post(&format!("{SCENES}/{id}/ideas")), on),
+        http::made_on(Request::post(&format!("{SCENES}/{id}/ideas")), on),
         &payload,
     )
     .await?;
@@ -49,7 +49,7 @@ pub async fn link(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiErro
 }
 
 pub async fn unlink(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiError> {
-    let response = http::sent(made_on(
+    let response = http::sent(http::made_on(
         Request::delete(&format!("{SCENES}/{id}/ideas/{idea}")),
         on,
     ))
@@ -59,7 +59,11 @@ pub async fn unlink(id: &SceneId, idea: &IdeaId, on: u64) -> Result<Scene, ApiEr
 }
 
 pub async fn delete(id: &SceneId, on: u64) -> Result<(), ApiError> {
-    let response = http::sent(made_on(Request::delete(&format!("{SCENES}/{id}")), on)).await?;
+    let response = http::sent(http::made_on(
+        Request::delete(&format!("{SCENES}/{id}")),
+        on,
+    ))
+    .await?;
     http::checked(response, SUBJECT).await?;
     written::forget(id);
 
@@ -122,8 +126,4 @@ async fn told(response: Response) -> Result<Scene, ApiError> {
         text: dto.text,
         version: dto.version,
     })
-}
-
-fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
-    request.header("If-Match", &format!("\"{on}\""))
 }

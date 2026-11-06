@@ -1,5 +1,3 @@
-mod tombstones;
-
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
@@ -9,13 +7,11 @@ use ideas_core::{IdeaCatalog, IdeaEvent, IdeasCore};
 use ideas_messaging::{
     BroadcastIdeaChangesListener, CatalogueIdeasListener, DiscardOnProjectDeletedListener,
 };
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
-
-use crate::tombstones::IdeaTombstones;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<IdeaEvent>>,
@@ -36,6 +32,7 @@ pub fn core(ports: &Ports, context: &Context) -> IdeasCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let ideas = core(ports, context);
     let sweep = DiscardOnProjectDeletedListener::new(
         ideas.clone(),
@@ -54,27 +51,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .followed_live(vec![ideas_rest::topic(ideas.clone(), broadcaster)])
         .listening(vec![
             Arc::new(broadcast),
-            Arc::new(Inboxed::new(
-                CatalogueIdeasListener::new(ideas.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
+            Arc::new(hearing.inboxed(CatalogueIdeasListener::new(ideas.clone()))),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-idea-tombstones",
-                Arc::new(IdeaTombstones::of(ideas)),
+                chores::tombstones_by(move |before, at_most| {
+                    let ideas = ideas.clone();
+                    async move { ideas.forget_tombstones_laid_before(before, at_most).await }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-idea-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-idea-hearings", context.clock.clone())),
         ])
 }
 

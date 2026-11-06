@@ -1,4 +1,4 @@
-use time::{Duration, OffsetDateTime};
+use time::Duration;
 
 use crate::delivering;
 use crate::delivering::{ATTEMPTS, CLAIM_FOR, Claim, DeadLetter, Deliveries, Queued};
@@ -17,10 +17,6 @@ pub trait Workbench: Sized {
     async fn cleanup(self);
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 pub fn a_listener(named: &str) -> ListenerName {
     ListenerName::parse(named).expect("a plain name is fine")
 }
@@ -29,7 +25,7 @@ pub fn a_message(routing: &str) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a plain key is fine"),
         serde_json::json!({ "nothing": "much" }),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -42,7 +38,7 @@ pub async fn an_enqueued_delivery_is_claimed_when_it_is_due(deliveries: &impl De
 
     // when: what is due is claimed
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
@@ -64,7 +60,7 @@ pub async fn one_message_becomes_one_delivery_per_listener(deliveries: &impl Del
 
     // when: what is due is claimed
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
@@ -83,7 +79,7 @@ pub async fn a_handled_delivery_is_gone(deliveries: &impl Deliveries) {
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
@@ -104,13 +100,13 @@ pub async fn a_claimed_delivery_is_not_handed_out_twice(deliveries: &impl Delive
         .await
         .expect("enqueuing should succeed");
     deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
     // when: what is due is claimed again
     let again = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
@@ -128,20 +124,24 @@ pub async fn a_refused_delivery_waits_and_counts_the_attempt(deliveries: &impl D
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
     // when: it is refused until a later moment
     deliveries
-        .mark_as_refused(&claimed[0], "the projection had not landed", at(1_010))
+        .mark_as_refused(
+            &claimed[0],
+            "the projection had not landed",
+            clock::at(1_010),
+        )
         .await
         .expect("nacking should succeed");
 
     // then: it is not due before then
     assert!(
         deliveries
-            .claim_due(at(1_005), 16)
+            .claim_due(clock::at(1_005), 16)
             .await
             .expect("claiming should succeed")
             .is_empty(),
@@ -151,7 +151,7 @@ pub async fn a_refused_delivery_waits_and_counts_the_attempt(deliveries: &impl D
 
     // and: is claimed again then, its attempt counted
     let again = deliveries
-        .claim_due(at(1_010), 16)
+        .claim_due(clock::at(1_010), 16)
         .await
         .expect("claiming should succeed");
 
@@ -169,13 +169,13 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
     // when: it is given up on
     deliveries
-        .give_up(&claimed[0], "it refused five times", at(1_001))
+        .give_up(&claimed[0], "it refused five times", clock::at(1_001))
         .await
         .expect("dead-lettering should succeed");
 
@@ -191,7 +191,7 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
     assert_eq!(dead[0].why, "it refused five times");
     assert_eq!(
         dead[0].given_up_at,
-        at(1_001),
+        clock::at(1_001),
         "an author told something was refused needs to know when, to tell it from what they did since"
     );
     assert_eq!(dead[0].acknowledged_at, None);
@@ -203,11 +203,11 @@ async fn a_dead_letter(deliveries: &impl Deliveries, routing: &str) -> DeadLette
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
     deliveries
-        .give_up(&claimed[0], "it refused five times", at(1_001))
+        .give_up(&claimed[0], "it refused five times", clock::at(1_001))
         .await
         .expect("dead-lettering should succeed");
 
@@ -226,7 +226,7 @@ pub async fn a_retried_dead_letter_is_delivered_afresh(deliveries: &impl Deliver
 
     // when: it is retried for a later moment
     deliveries
-        .retry(dead.id, at(2_000))
+        .retry(dead.id, clock::at(2_000))
         .await
         .expect("retrying should succeed");
 
@@ -242,14 +242,14 @@ pub async fn a_retried_dead_letter_is_delivered_afresh(deliveries: &impl Deliver
     // and: it is not due before that moment
     assert!(
         deliveries
-            .claim_due(at(1_999), 16)
+            .claim_due(clock::at(1_999), 16)
             .await
             .expect("claiming should succeed")
             .is_empty()
     );
     // and: then it is delivered afresh to its listener
     let again = deliveries
-        .claim_due(at(2_000), 16)
+        .claim_due(clock::at(2_000), 16)
         .await
         .expect("claiming should succeed");
     assert_eq!(again.len(), 1);
@@ -275,7 +275,7 @@ pub async fn a_retried_dead_letter_wakes_whoever_is_waiting(deliveries: &impl De
 
     // when: it is retried
     deliveries
-        .retry(dead.id, at(2_000))
+        .retry(dead.id, clock::at(2_000))
         .await
         .expect("retrying should succeed");
     // then: whoever waits is woken
@@ -294,7 +294,7 @@ pub async fn an_acknowledged_dead_letter_is_kept_and_marked(deliveries: &impl De
 
     // when: one is acknowledged
     deliveries
-        .acknowledge(acknowledged.id, at(3_000))
+        .acknowledge(acknowledged.id, clock::at(3_000))
         .await
         .expect("acknowledging should succeed");
 
@@ -307,7 +307,7 @@ pub async fn an_acknowledged_dead_letter_is_kept_and_marked(deliveries: &impl De
         dead,
         vec![
             DeadLetter {
-                acknowledged_at: Some(at(3_000)),
+                acknowledged_at: Some(clock::at(3_000)),
                 ..acknowledged
             },
             untouched,
@@ -325,11 +325,11 @@ pub async fn acknowledging_again_keeps_the_first_moment(deliveries: &impl Delive
 
     // when: it is acknowledged twice
     deliveries
-        .acknowledge(dead.id, at(3_000))
+        .acknowledge(dead.id, clock::at(3_000))
         .await
         .expect("acknowledging should succeed");
     deliveries
-        .acknowledge(dead.id, at(4_000))
+        .acknowledge(dead.id, clock::at(4_000))
         .await
         .expect("acknowledging again should succeed");
 
@@ -338,20 +338,20 @@ pub async fn acknowledging_again_keeps_the_first_moment(deliveries: &impl Delive
         .dead_letters()
         .await
         .expect("reading the dead letters should succeed");
-    assert_eq!(acknowledged[0].acknowledged_at, Some(at(3_000)));
+    assert_eq!(acknowledged[0].acknowledged_at, Some(clock::at(3_000)));
 }
 
 pub async fn an_acknowledged_dead_letter_can_still_be_retried(deliveries: &impl Deliveries) {
     // given: an acknowledged dead letter
     let dead = a_dead_letter(deliveries, "idea.captured").await;
     deliveries
-        .acknowledge(dead.id, at(3_000))
+        .acknowledge(dead.id, clock::at(3_000))
         .await
         .expect("acknowledging should succeed");
 
     // when: it is retried
     deliveries
-        .retry(dead.id, at(4_000))
+        .retry(dead.id, clock::at(4_000))
         .await
         .expect("retrying should succeed");
 
@@ -366,7 +366,7 @@ pub async fn an_acknowledged_dead_letter_can_still_be_retried(deliveries: &impl 
     // and: it is delivered again
     assert_eq!(
         deliveries
-            .claim_due(at(4_000), 16)
+            .claim_due(clock::at(4_000), 16)
             .await
             .expect("claiming should succeed")
             .len(),
@@ -381,7 +381,7 @@ pub async fn retrying_one_dead_letter_leaves_the_others(deliveries: &impl Delive
 
     // when: one is retried
     deliveries
-        .retry(retried.id, at(2_000))
+        .retry(retried.id, clock::at(2_000))
         .await
         .expect("retrying should succeed");
 
@@ -414,19 +414,19 @@ pub async fn handling_something_already_gone_is_harmless(deliveries: &impl Deliv
         .await
         .expect("acking an unknown delivery should not fail");
     deliveries
-        .mark_as_refused(&a_delivery_never_claimed(), "nothing", at(1_000))
+        .mark_as_refused(&a_delivery_never_claimed(), "nothing", clock::at(1_000))
         .await
         .expect("nacking an unknown delivery should not fail");
     deliveries
-        .give_up(&a_delivery_never_claimed(), "nothing", at(1_000))
+        .give_up(&a_delivery_never_claimed(), "nothing", clock::at(1_000))
         .await
         .expect("dead-lettering an unknown delivery should not fail");
     deliveries
-        .retry(404, at(1_000))
+        .retry(404, clock::at(1_000))
         .await
         .expect("retrying twice, as a double click does, should not fail");
     deliveries
-        .acknowledge(404, at(1_000))
+        .acknowledge(404, clock::at(1_000))
         .await
         .expect("acknowledging an unknown dead letter should not fail");
 }
@@ -465,7 +465,7 @@ pub async fn deliveries_are_claimed_in_the_order_they_were_enqueued(deliveries: 
 
     // when: what is due is claimed
     let claimed: Vec<_> = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed")
         .into_iter()
@@ -486,22 +486,22 @@ pub async fn a_holder_whose_claim_ran_out_settles_nothing(deliveries: &impl Deli
         .await
         .expect("enqueuing should succeed");
     let stale = deliveries
-        .claim_due(at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
     // and: a second claim holding it
     let holding = deliveries
-        .claim_due(at(1_001) + CLAIM_FOR, 16)
+        .claim_due(clock::at(1_001) + CLAIM_FOR, 16)
         .await
         .expect("claiming again once the first claim ran out should succeed");
 
     // when: the first holder refuses it, gives up on it and handles it
     deliveries
-        .mark_as_refused(&stale[0], "the first holder gave up", at(1_000))
+        .mark_as_refused(&stale[0], "the first holder gave up", clock::at(1_000))
         .await
         .expect("a stale refusal is no failure");
     deliveries
-        .give_up(&stale[0], "the first holder gave up", at(1_000))
+        .give_up(&stale[0], "the first holder gave up", clock::at(1_000))
         .await
         .expect("a stale giving up is no failure");
     deliveries
@@ -519,7 +519,7 @@ pub async fn a_holder_whose_claim_ran_out_settles_nothing(deliveries: &impl Deli
                 .expect("reading the dead letters should succeed")
                 .len(),
             deliveries
-                .claim_due(at(1_002) + CLAIM_FOR, 16)
+                .claim_due(clock::at(1_002) + CLAIM_FOR, 16)
                 .await
                 .expect("claiming should succeed")
                 .len(),
@@ -553,7 +553,7 @@ pub async fn a_message_queued_twice_for_a_listener_is_one_delivery(deliveries: &
     // then: one delivery is due
     assert_eq!(
         deliveries
-            .claim_due(at(1_000), 16)
+            .claim_due(clock::at(1_000), 16)
             .await
             .expect("claiming should succeed")
             .len(),
@@ -575,7 +575,7 @@ pub async fn a_dead_letter_retried_while_its_message_waits_again_stays_one_deliv
 
     // when: it is retried
     deliveries
-        .retry(dead.id, at(2_000))
+        .retry(dead.id, clock::at(2_000))
         .await
         .expect("retrying should succeed");
 

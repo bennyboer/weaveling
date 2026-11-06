@@ -22,15 +22,14 @@ use crate::wiring::{ORIGIN, Wired};
 const ADA: &str = "ada@example.com";
 
 fn a_message(routing: &str, invitation: &InvitationId) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "WHATEVER" },
-            "aggregate": { "id": invitation.to_string(), "kind": "invitation", "version": 1 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_000),
+    eventpublishing::published(
+        routing,
+        "invitation",
+        &invitation.to_string(),
+        1,
+        json!({ "version": 0, "name": "WHATEVER" }),
+        &Agent::System,
+        clock::at(1_700_000_000),
     )
 }
 
@@ -103,10 +102,10 @@ async fn an_invitation_issued_is_listed_as_it_stands() {
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, id);
     assert_eq!(listed[0].to.as_str(), ADA);
-    assert_eq!(listed[0].issued_at, wiring::at(1_700_000_000));
+    assert_eq!(listed[0].issued_at, clock::at(1_700_000_000));
     assert_eq!(
         listed[0].until,
-        wiring::at(1_700_000_000) + Duration::days(7)
+        clock::at(1_700_000_000) + Duration::days(7)
     );
     assert_eq!(listed[0].outcome, Outcome::Open);
 }
@@ -196,7 +195,7 @@ async fn a_message_about_no_invitation_is_refused() {
             .listener
             .handle(&a_message(
                 ISSUED,
-                &InvitationId::generate(wiring::at(1_000))
+                &InvitationId::generate(clock::at(1_000))
             ))
             .await
             .is_err(),
@@ -216,7 +215,7 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
         .expect("cataloguing should succeed");
     // and: it retired once listed long enough
     listing.wired.clock.set(
-        wiring::at(1_700_000_000)
+        clock::at(1_700_000_000)
             + Duration::days(7)
             + InvitationSummary::EXPIRED_LISTED_FOR
             + Duration::SECOND,

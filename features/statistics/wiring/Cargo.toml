@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
-async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 time = { workspace = true }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }

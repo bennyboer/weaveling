@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 const PROBLEM: &str = "application/problem+json";
+const IF_MATCH: &str = "If-Match";
 
 thread_local! {
     static NO_LONGER_SIGNED_IN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
@@ -49,6 +50,10 @@ pub struct Refusal {
 pub enum Particular {
     Count(i64),
     Text(String),
+}
+
+pub(crate) fn made_on(request: RequestBuilder, version: u64) -> RequestBuilder {
+    request.header(IF_MATCH, &format!("\"{version}\""))
 }
 
 pub(crate) async fn sent(request: RequestBuilder) -> Result<Response, ApiError> {

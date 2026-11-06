@@ -5,7 +5,7 @@ use scenes_core::{
     QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary,
     SceneTitle,
 };
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
@@ -197,12 +197,8 @@ impl<K> Deref for Committing<'_, K> {
     }
 }
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_scene(made_at: i64) -> SceneId {
-    SceneId::generate(at(made_at))
+    SceneId::generate(clock::at(made_at))
 }
 
 fn a_project(named: &str) -> ProjectLink {
@@ -248,7 +244,7 @@ async fn opened(
     seconds: i64,
 ) {
     catalog
-        .note_opening(id, &a_project("project_1"), opening, at(seconds))
+        .note_opening(id, &a_project("project_1"), opening, clock::at(seconds))
         .await
         .expect("noting an opening should succeed");
 }
@@ -259,7 +255,7 @@ async fn forgotten(catalog: &Committing<'_, impl SceneCatalog>, id: SceneId) {
 
 async fn forgotten_at(catalog: &Committing<'_, impl SceneCatalog>, id: SceneId, seconds: i64) {
     catalog
-        .forget(id, at(seconds))
+        .forget(id, clock::at(seconds))
         .await
         .expect("forgetting should succeed");
 }
@@ -270,7 +266,7 @@ async fn forget_long_gone(
     at_most: u64,
 ) -> u64 {
     catalog
-        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .forget_tombstones_laid_before(clock::at(before_seconds), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
@@ -845,7 +841,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
 
 async fn buried(catalog: &Committing<'_, impl SceneCatalog>, project: &str, seconds: i64) {
     catalog
-        .lay_project_tombstone(&a_project(project), at(seconds))
+        .lay_project_tombstone(&a_project(project), clock::at(seconds))
         .await
         .expect("laying a project's tombstone should succeed");
 }
@@ -933,11 +929,11 @@ pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("retitling should succeed");
     uncommitted
-        .forget(&mut transaction, kept, at(3_000))
+        .forget(&mut transaction, kept, clock::at(3_000))
         .await
         .expect("forgetting should succeed");
     uncommitted
-        .lay_project_tombstone(&mut transaction, &a_project("project_1"), at(3_000))
+        .lay_project_tombstone(&mut transaction, &a_project("project_1"), clock::at(3_000))
         .await
         .expect("laying a project's tombstone should succeed");
 

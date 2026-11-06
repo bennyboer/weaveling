@@ -26,7 +26,7 @@ struct OnSqlite {
 struct Compacting(OnSqlite);
 
 fn a_clock() -> Arc<FixedClock> {
-    Arc::new(FixedClock::new(suite::at(2_000)))
+    Arc::new(FixedClock::new(clock::at(2_000)))
 }
 
 fn enqueuing(store: SqliteSceneStore) -> SqliteSceneStore {

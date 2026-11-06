@@ -63,7 +63,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
     // when: invitations are remembered and forgotten at once, again and again
     for nth in 0..40 {
         let summary = suite::a_summary(
-            InvitationId::generate(suite::at(1_000 + nth)),
+            InvitationId::generate(clock::at(1_000 + nth)),
             "ada@example.com",
         );
         let (remembering, forgetting) = (catalog.clone(), catalog.clone());
@@ -88,7 +88,7 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
                     .await
                     .expect("beginning should succeed");
                 forgetting
-                    .forget(&mut transaction, &id, suite::at(5_000))
+                    .forget(&mut transaction, &id, clock::at(5_000))
                     .await?;
                 transaction
                     .finish()

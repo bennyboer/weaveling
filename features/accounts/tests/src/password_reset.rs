@@ -111,7 +111,7 @@ async fn an_address_held_but_not_the_accounts_own_gets_no_code() {
         .claim(
             &EmailAddress::new("ada@example.org").expect("a plain address"),
             &id,
-            wiring::at(1_700_000_000),
+            clock::at(1_700_000_000),
         )
         .await
         .expect("claiming should succeed");
@@ -401,7 +401,7 @@ async fn a_reset_ends_every_session_begun_before_it_on_every_device() {
     // when: its password is reset a minute later
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
+        .set(clock::at(1_700_000_000) + Duration::minutes(1));
     let code = a_reset_asked_for(&wired).await;
     wired
         .accounts
@@ -483,7 +483,7 @@ async fn a_reset_whose_new_password_cannot_be_kept_ends_no_session_until_it_is_f
     // and: a reset asked for a minute later
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
+        .set(clock::at(1_700_000_000) + Duration::minutes(1));
     accounts
         .ask_to_reset_password(ADA)
         .await
@@ -710,7 +710,7 @@ async fn a_session_begun_while_the_password_is_reset_does_not_outlive_the_reset(
     // and: the reset lands before the sign in goes on
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
+        .set(clock::at(1_700_000_000) + Duration::minutes(1));
     accounts
         .reset_password(ADA, &code, HER_NEW_PASSWORD)
         .await

@@ -11,14 +11,9 @@ use scenes_core::{IdeaLink, SceneId, ScenesCore};
 use scenes_messaging::UnlinkOnDiscardListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 const A_PROJECT: &str = "project_1";
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct Wired {
     scenes: ScenesCore,
@@ -27,7 +22,7 @@ struct Wired {
 
 fn a_workbench() -> Wired {
     let transactions = Arc::new(InMemoryTransactions::new());
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
         transactions.clone(),
@@ -77,15 +72,14 @@ impl Wired {
 }
 
 fn discarded(idea: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DISCARDED" },
-            "aggregate": { "id": idea, "kind": "idea", "version": 2 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        DISCARDED,
+        "idea",
+        idea,
+        2,
+        json!({ "version": 0, "name": "DISCARDED" }),
+        &Agent::System,
+        clock::at(1_000),
     )
 }
 
@@ -172,7 +166,7 @@ async fn a_message_about_no_idea_at_all_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it fails

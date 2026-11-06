@@ -2,10 +2,7 @@ use projects_contract::context::PROJECT;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version,
-};
-use time::{Duration, OffsetDateTime};
+use eventsourcing::{Aggregate, AggregateContext, AggregateId, EventMetadata, Version};
 
 use crate::id::SectionId;
 use crate::outline::{
@@ -17,21 +14,13 @@ thread_local! {
     static MINTED: RefCell<HashMap<String, SectionId>> = RefCell::new(HashMap::new());
 }
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_metadata() -> EventMetadata {
     EventMetadata {
         aggregate: AggregateId::from("outline_1"),
         kind: KIND,
         version: Version::of(1),
-        agent: an_author(),
-        occurred_at: at(1_000),
+        agent: eventsourcing::an_author(),
+        occurred_at: clock::at(1_000),
         is_snapshot: false,
         context: AggregateContext::default(),
     }
@@ -44,7 +33,7 @@ fn a_section(named: &str) -> SectionId {
 
         *minted
             .entry(named.to_owned())
-            .or_insert_with(|| SectionId::generate(at(next)))
+            .or_insert_with(|| SectionId::generate(clock::at(next)))
     })
 }
 
@@ -76,7 +65,7 @@ impl Book {
             OutlineCommand::Start {
                 project: "project_1".into(),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("an outline should start");
         let outline = Outline::from_first(&happened[0], &a_metadata())
@@ -88,7 +77,7 @@ impl Book {
     fn does(&mut self, command: OutlineCommand) -> Vec<OutlineEvent> {
         let happened = self
             .outline
-            .decide(command, &an_author())
+            .decide(command, &eventsourcing::an_author())
             .expect("the command should be accepted");
 
         for event in &happened {
@@ -100,7 +89,7 @@ impl Book {
 
     fn refuses(&self, command: OutlineCommand) -> OutlineError {
         self.outline
-            .decide(command, &an_author())
+            .decide(command, &eventsourcing::an_author())
             .expect_err("the command should be refused")
     }
 
@@ -787,7 +776,7 @@ fn a_discarded_outline_refuses_everything() {
         OutlineCommand::Discard,
     ] {
         assert_eq!(
-            book.outline.decide(command, &an_author()),
+            book.outline.decide(command, &eventsourcing::an_author()),
             Err(OutlineError::Discarded),
             "an outline is discarded when its project is deleted, so anything still holding a \
              reference to it must be refused rather than quietly allowed"

@@ -4,9 +4,9 @@ use accounts_contract::{
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
     VerifyEmailRequest, refused,
 };
-use gloo_net::http::{Request, RequestBuilder};
+use gloo_net::http::Request;
 
-use crate::accounts::listed::AccountPage;
+use crate::accounts::listed::{AccountPage, ListedAccount};
 use crate::accounts::{SignInState, SignedInAccount};
 use crate::asking;
 use crate::http;
@@ -28,14 +28,6 @@ const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
-const IF_MATCH: &str = "If-Match";
-
-fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
-    match on {
-        0 => request,
-        on => request.header(IF_MATCH, &format!("\"{on}\"")),
-    }
-}
 
 pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
@@ -241,13 +233,24 @@ pub async fn list_accounts(after: Option<&str>) -> Result<AccountPage, ApiError>
     AccountPage::of(page)
 }
 
+pub async fn listed_account(id: &str) -> Result<ListedAccount, ApiError> {
+    let mut after = None;
+    loop {
+        let page = list_accounts(after.as_deref()).await?;
+        if let Some(found) = page.accounts.into_iter().find(|account| account.id == id) {
+            return Ok(found);
+        }
+        after = Some(page.next.ok_or(ApiError::NotFound(ACCOUNT))?);
+    }
+}
+
 pub async fn lock_account(id: &str, reason: &str, on: u64) -> Result<(), ApiError> {
     let payload = LockRequest {
         reason: reason.to_owned(),
     };
 
     http::checked(
-        http::sent_with(made_on(Request::put(&locked(id)), on), &payload).await?,
+        http::sent_with(http::made_on(Request::put(&locked(id)), on), &payload).await?,
         ACCOUNT,
     )
     .await
@@ -256,7 +259,7 @@ pub async fn lock_account(id: &str, reason: &str, on: u64) -> Result<(), ApiErro
 
 pub async fn unlock_account(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(Request::delete(&locked(id)), on)).await?,
+        http::sent(http::made_on(Request::delete(&locked(id)), on)).await?,
         ACCOUNT,
     )
     .await
@@ -265,7 +268,7 @@ pub async fn unlock_account(id: &str, on: u64) -> Result<(), ApiError> {
 
 pub async fn appoint_operator(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(Request::put(&role(id)), on)).await?,
+        http::sent(http::made_on(Request::put(&role(id)), on)).await?,
         ACCOUNT,
     )
     .await
@@ -274,7 +277,7 @@ pub async fn appoint_operator(id: &str, on: u64) -> Result<(), ApiError> {
 
 pub async fn dismiss_operator(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(Request::delete(&role(id)), on)).await?,
+        http::sent(http::made_on(Request::delete(&role(id)), on)).await?,
         ACCOUNT,
     )
     .await

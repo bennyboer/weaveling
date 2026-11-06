@@ -1,5 +1,8 @@
+use crate::http::ApiError;
 use crate::projects::model::{DescribedProject, Project, ProjectDetails, TrashedProject};
 use crate::working_copy;
+
+const SUBJECT: &str = "project";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Intent {
@@ -40,6 +43,15 @@ impl working_copy::Intent<DescribedProject> for Intent {
     fn merged_after(&self, earlier: &Self) -> Option<Self> {
         self.outright_after(earlier)
     }
+
+    fn still_fits(&self, on: &DescribedProject) -> Result<(), ApiError> {
+        match self {
+            Self::ChangeDetails { seen, .. } if *seen != on.details => {
+                Err(ApiError::Outdated(SUBJECT))
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 impl working_copy::Intent<TrashedProject> for Intent {
@@ -66,10 +78,6 @@ impl Intent {
             }
             _ => None,
         }
-    }
-
-    pub fn changed_meanwhile(&self, on: &DescribedProject) -> bool {
-        matches!(self, Self::ChangeDetails { seen, .. } if *seen != on.details)
     }
 }
 
@@ -258,20 +266,23 @@ mod tests {
         };
 
         // then: an open project still holding what was seen takes them
-        assert!(!changing.changed_meanwhile(&an_open_project()));
+        assert_eq!(changing.still_fits(&an_open_project()), Ok(()));
         // and: one whose details changed elsewhere meanwhile does not
         let elsewhere = DescribedProject {
             details: some_details("Written in another tab"),
             ..an_open_project()
         };
-        assert!(changing.changed_meanwhile(&elsewhere));
+        assert_eq!(
+            changing.still_fits(&elsewhere),
+            Err(ApiError::Outdated("project"))
+        );
         // and: a rename meanwhile stands in the way of nothing
         let renamed = DescribedProject {
             name: "The Weft".to_owned(),
             ..an_open_project()
         };
-        assert!(!changing.changed_meanwhile(&renamed));
+        assert_eq!(changing.still_fits(&renamed), Ok(()));
         // and: a rename never was changed meanwhile
-        assert!(!renaming("The Weft").changed_meanwhile(&elsewhere));
+        assert_eq!(renaming("The Weft").still_fits(&elsewhere), Ok(()));
     }
 }

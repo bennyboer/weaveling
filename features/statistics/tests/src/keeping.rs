@@ -8,12 +8,8 @@ use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transactions};
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct Wired {
     catalog: Arc<InMemoryWordCountCatalog>,
@@ -68,7 +64,7 @@ fn counted(scene: &str, words: u64, seconds: i64) -> Message {
             words,
         })
         .expect("a count is plain data"),
-        at(seconds),
+        clock::at(seconds),
     )
 }
 
@@ -79,7 +75,7 @@ fn deleted(scene: &str) -> Message {
             scene: scene.to_owned(),
         })
         .expect("a deletion is plain data"),
-        at(5_000),
+        clock::at(5_000),
     )
 }
 
@@ -165,7 +161,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
     // then: no tombstone was laid before the deletion
     assert_eq!(
         statistics
-            .forget_tombstones_laid_before(at(5_000), u64::MAX)
+            .forget_tombstones_laid_before(clock::at(5_000), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         0,
@@ -174,7 +170,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
     // and: one was laid at it
     assert_eq!(
         statistics
-            .forget_tombstones_laid_before(at(5_001), u64::MAX)
+            .forget_tombstones_laid_before(clock::at(5_001), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         1
@@ -182,7 +178,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
     // and: once forgotten it is gone
     assert_eq!(
         statistics
-            .forget_tombstones_laid_before(at(5_001), u64::MAX)
+            .forget_tombstones_laid_before(clock::at(5_001), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         0,
@@ -206,7 +202,7 @@ async fn a_deletion_whose_hearing_does_not_commit_is_undone_with_it() {
             &SceneLink::from("scene_1"),
             &ProjectLink::from("project_1"),
             42,
-            at(1_000),
+            clock::at(1_000),
         )
         .await
         .expect("keeping should succeed");

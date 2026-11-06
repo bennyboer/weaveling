@@ -5,7 +5,7 @@ use accounts_core::{
     InvitationTicket, InvitationToken, KIND, TokenDigest,
 };
 use accounts_messaging::KeepInvitationTicketsListener;
-use eventsourcing::{AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use inbox::{InMemoryInbox, Inboxed};
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use messaging::{Listener, Message, Publisher, RoutingKey};
@@ -25,15 +25,14 @@ fn heard_by(wired: &Wired, accounts: AccountsCore) -> Inboxed<KeepInvitationTick
 }
 
 fn told(routing: &str, invitation: &str, event: Value) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        json!({
-            "event": event,
-            "aggregate": { "id": invitation, "kind": "invitation", "version": 1 },
-            "agent": { "kind": "account", "id": "account_operator" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_000),
+    eventpublishing::published(
+        routing,
+        "invitation",
+        invitation,
+        1,
+        event,
+        &Agent::Account(AccountId::from("account_operator")),
+        clock::at(1_700_000_000),
     )
 }
 
@@ -99,7 +98,7 @@ async fn an_issued_invitation_leaves_a_ticket_for_its_address_until_it_ends() {
         Some(InvitationTicket {
             invitation: "invitation_ada".to_owned(),
             to: EmailAddress::new(ADA).expect("a plain address"),
-            until: wiring::at(1_700_000_000) + Duration::days(7),
+            until: clock::at(1_700_000_000) + Duration::days(7),
             scope: InvitationScope::Instance,
             by_an_operator: true,
         }),
@@ -255,7 +254,7 @@ async fn an_invitation_into_a_project_keeps_its_ticket_even_for_an_address_with_
             Some(InvitationTicket {
                 invitation: invitation.to_owned(),
                 to: EmailAddress::new(to).expect("a plain address"),
-                until: wiring::at(1_700_000_000) + Duration::days(7),
+                until: clock::at(1_700_000_000) + Duration::days(7),
                 scope: InvitationScope::Project {
                     project: "project_loom".to_owned(),
                 },
@@ -385,7 +384,7 @@ async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
                 &InvitationTicket {
                     invitation: "invitation_ada".to_owned(),
                     to: EmailAddress::new(ADA).expect("a plain address"),
-                    until: wiring::at(1_700_000_000),
+                    until: clock::at(1_700_000_000),
                     scope: InvitationScope::Instance,
                     by_an_operator: true,
                 },

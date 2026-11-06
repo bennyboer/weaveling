@@ -1,12 +1,11 @@
 mod counting;
-mod tombstones;
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use chores::ForgetOldTombstones;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
@@ -21,7 +20,6 @@ use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Settling, Wired};
 
 use crate::counting::CountTheUncounted;
-use crate::tombstones::SceneTombstones;
 
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
@@ -33,6 +31,7 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let scenes_told = Broadcaster::new();
     let catalog: Arc<dyn SceneCatalog> = Arc::new(scenes_rest::TellingScenes::around(
         ports.catalog.clone(),
@@ -53,21 +52,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    let unlink = Inboxed::new(
-        UnlinkOnDiscardListener::new(core.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
+    let unlink = hearing.inboxed(UnlinkOnDiscardListener::new(core.clone()));
     let sweep = DeleteOnProjectDeletedListener::new(
         core.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
-    let catalogue = Inboxed::new(
-        CatalogueScenesListener::new(core.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
+    let catalogue = hearing.inboxed(CatalogueScenesListener::new(core.clone()));
     let live = LiveScenes::new(core.clone());
     let restyle = RestyleOnQuotationChangedListener::new(
         core.clone(),
@@ -96,17 +87,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(CountTheUncounted::of(live)),
         Arc::new(ForgetOldTombstones::new(
             "forget-old-scene-tombstones",
-            Arc::new(SceneTombstones::of(core)),
+            chores::tombstones_by(move |before, at_most| {
+                let core = core.clone();
+                async move { core.forget_tombstones_laid_before(before, at_most).await }
+            }),
             context.clock.clone(),
         )),
-        Arc::new(ForgetOldTombstones::new(
-            "forget-old-scene-hearings",
-            Arc::new(HeardMessages::of(
-                ports.inbox.clone(),
-                ports.transactions.clone(),
-            )),
-            context.clock.clone(),
-        )),
+        Arc::new(hearing.forgetting("forget-old-scene-hearings", context.clock.clone())),
     ])
 }
 
@@ -222,7 +209,7 @@ mod tests {
     use std::sync::Arc;
 
     use authorizing::AllowingEverything;
-    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use scenes_core::SceneId;
@@ -290,49 +277,5 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-    }
-
-    #[tokio::test]
-    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        // given: two old tombstones
-        let context = a_context();
-        let ports = SceneFeature::in_memory(&context);
-        for made in [1, 2] {
-            let mut transaction = ports
-                .transactions
-                .begin()
-                .await
-                .expect("beginning should succeed");
-            ports
-                .catalog
-                .forget(
-                    &mut transaction,
-                    SceneId::generate(NOW + Duration::seconds(made)),
-                    NOW,
-                )
-                .await
-                .expect("forgetting should succeed");
-            transaction
-                .finish()
-                .await
-                .expect("finishing should succeed");
-        }
-        let scenes = ScenesCore::new(
-            ports.store.clone(),
-            ports.transactions.clone(),
-            ports.catalog.clone(),
-            ports.quotation_restyling_tasks.clone(),
-            context.authorizer.clone(),
-            context.clock.clone(),
-        );
-
-        // when: a batch of one is forgotten
-        let forgotten = SceneTombstones::of(scenes)
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
-
-        // then: one is forgotten
-        assert_eq!(forgotten, 1);
     }
 }

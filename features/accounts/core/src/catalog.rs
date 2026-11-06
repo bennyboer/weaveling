@@ -64,15 +64,10 @@ impl AccountSummary {
 #[cfg(test)]
 mod tests {
     use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata};
-    use time::Duration;
 
     use super::*;
     use crate::account::{AccountEvent, KIND};
     use crate::lock::LockReason;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
 
     fn stamped(version: u64, seconds: i64) -> EventMetadata {
         EventMetadata {
@@ -80,7 +75,7 @@ mod tests {
             kind: KIND,
             version: Version::of(version),
             agent: Agent::System,
-            occurred_at: at(seconds),
+            occurred_at: clock::at(seconds),
             is_snapshot: false,
             context: AggregateContext::default(),
         }
@@ -108,7 +103,7 @@ mod tests {
             },
             &stamped(3, 3_000),
         );
-        let id = AccountId::generate(at(1_000));
+        let id = AccountId::generate(clock::at(1_000));
 
         // expect: its summary tells all of that
         assert_eq!(
@@ -120,12 +115,12 @@ mod tests {
                 email,
                 verified: false,
                 operator: true,
-                signed_up_at: at(1_000),
+                signed_up_at: clock::at(1_000),
                 locks: BTreeMap::from([(
                     LockKind::Operator,
                     Lock {
                         reason,
-                        since: at(3_000),
+                        since: clock::at(3_000),
                     }
                 )]),
             }

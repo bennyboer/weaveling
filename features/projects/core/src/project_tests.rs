@@ -1,23 +1,13 @@
-use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
-};
+use eventsourcing::{Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version};
 use projects_contract::context::PROJECT;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
 use crate::name::ProjectName;
 use crate::project::*;
 
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_name(saying: &str) -> ProjectName {
     ProjectName::new(saying).expect("a plain name is fine")
-}
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
 fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
@@ -25,7 +15,7 @@ fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
         aggregate: AggregateId::from("project_1"),
         kind: KIND,
         version: Version::of(version),
-        agent: an_author(),
+        agent: eventsourcing::an_author(),
         occurred_at,
         is_snapshot: false,
         context: AggregateContext::default(),
@@ -39,7 +29,8 @@ fn a_start() -> ProjectCommand {
 fn a_started_project() -> Project {
     let events = ProjectEvent::Started(a_name("The Weaver's Apprentice"));
 
-    Project::from_first(&events, &stamped(1, at(1_000))).expect("the first event gives birth")
+    Project::from_first(&events, &stamped(1, clock::at(1_000)))
+        .expect("the first event gives birth")
 }
 
 #[test]
@@ -49,7 +40,7 @@ fn a_project_is_started_with_a_name() {
 
     // expect: starting a project gives just that
     assert_eq!(
-        Project::begin(a_start(), &an_author()).expect("starting should succeed"),
+        Project::begin(a_start(), &eventsourcing::an_author()).expect("starting should succeed"),
         vec![events]
     );
 }
@@ -62,7 +53,7 @@ fn nothing_but_starting_can_be_the_first_thing_that_happens() {
         ProjectCommand::Delete,
     ] {
         assert_eq!(
-            Project::begin(command, &an_author()),
+            Project::begin(command, &eventsourcing::an_author()),
             Err(ProjectError::NotStartedYet)
         );
     }
@@ -74,8 +65,8 @@ fn a_started_project_is_created_and_updated_at_the_same_moment() {
     let project = a_started_project();
 
     // then: it was created and updated as it started
-    assert_eq!(project.created_at(), at(1_000));
-    assert_eq!(project.updated_at(), at(1_000));
+    assert_eq!(project.created_at(), clock::at(1_000));
+    assert_eq!(project.updated_at(), clock::at(1_000));
     // and: it is not deleted
     assert!(!project.is_deleted());
 }
@@ -87,21 +78,24 @@ fn renaming_replaces_the_name_and_moves_updated_at_to_when_it_happened() {
 
     // when: it is renamed
     let events = project
-        .decide(ProjectCommand::Rename(a_name("Renamed")), &an_author())
+        .decide(
+            ProjectCommand::Rename(a_name("Renamed")),
+            &eventsourcing::an_author(),
+        )
         .expect("renaming should succeed");
     // then: it says it was renamed
     assert_eq!(events, vec![ProjectEvent::Renamed(a_name("Renamed"))]);
 
     // when: the renaming happens later
-    project.apply(&events[0], &stamped(2, at(2_000)));
+    project.apply(&events[0], &stamped(2, clock::at(2_000)));
 
     // then: it has the new name, updated as of then
     assert_eq!(project.name().as_str(), "Renamed");
-    assert_eq!(project.updated_at(), at(2_000));
+    assert_eq!(project.updated_at(), clock::at(2_000));
     // and: it was still created when it started
     assert_eq!(
         project.created_at(),
-        at(1_000),
+        clock::at(1_000),
         "renaming leaves the moment the project began untouched"
     );
 }
@@ -116,7 +110,7 @@ fn renaming_to_the_name_it_already_has_happens_not_at_all() {
         project
             .decide(
                 ProjectCommand::Rename(a_name("The Weaver's Apprentice")),
-                &an_author()
+                &eventsourcing::an_author()
             )
             .expect("an unchanged name is not a refusal"),
         vec![],
@@ -128,7 +122,7 @@ fn renaming_to_the_name_it_already_has_happens_not_at_all() {
 fn a_project_cannot_be_started_twice() {
     // expect: a started project refuses another start
     assert_eq!(
-        a_started_project().decide(a_start(), &an_author()),
+        a_started_project().decide(a_start(), &eventsourcing::an_author()),
         Err(ProjectError::AlreadyStarted)
     );
 }
@@ -136,8 +130,10 @@ fn a_project_cannot_be_started_twice() {
 fn a_trashed_project() -> Project {
     let mut project = a_started_project();
     project.apply(
-        &ProjectEvent::Trashed { until: at(9_000) },
-        &stamped(2, at(2_000)),
+        &ProjectEvent::Trashed {
+            until: clock::at(9_000),
+        },
+        &stamped(2, clock::at(2_000)),
     );
 
     project
@@ -150,13 +146,13 @@ fn deleting_marks_the_project_without_erasing_what_it_was() {
 
     // when: it is deleted
     let events = project
-        .decide(ProjectCommand::Delete, &an_author())
+        .decide(ProjectCommand::Delete, &eventsourcing::an_author())
         .expect("deleting should succeed");
     // then: it says it was deleted
     assert_eq!(events, vec![ProjectEvent::Deleted]);
 
     // when: the deleting happens
-    project.apply(&events[0], &stamped(3, at(3_000)));
+    project.apply(&events[0], &stamped(3, clock::at(3_000)));
 
     // then: it is deleted
     assert!(project.is_deleted());
@@ -172,7 +168,7 @@ fn deleting_marks_the_project_without_erasing_what_it_was() {
 fn a_deleted_project_refuses_everything() {
     // given: a deleted project
     let mut project = a_started_project();
-    project.apply(&ProjectEvent::Deleted, &stamped(2, at(2_000)));
+    project.apply(&ProjectEvent::Deleted, &stamped(2, clock::at(2_000)));
 
     // expect: every command is refused
     for command in [
@@ -181,7 +177,7 @@ fn a_deleted_project_refuses_everything() {
         a_start(),
     ] {
         assert_eq!(
-            project.decide(command, &an_author()),
+            project.decide(command, &eventsourcing::an_author()),
             Err(ProjectError::Deleted)
         );
     }
@@ -193,7 +189,7 @@ fn a_snapshot_carries_everything_replay_would_otherwise_have_to_find() {
     let mut project = a_started_project();
     project.apply(
         &ProjectEvent::Renamed(a_name("Renamed")),
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
 
     // when: it is snapshotted
@@ -203,7 +199,8 @@ fn a_snapshot_carries_everything_replay_would_otherwise_have_to_find() {
     assert!(snapshot.is_snapshot());
     // and: a project born of it, however late, is the same project
     assert_eq!(
-        Project::from_first(&snapshot, &stamped(3, at(9_999))).expect("a snapshot gives birth"),
+        Project::from_first(&snapshot, &stamped(3, clock::at(9_999)))
+            .expect("a snapshot gives birth"),
         project,
         "a snapshot is written long after the fact, so its own timestamp must not become the \
          project's — the moments have to travel in the body"
@@ -220,7 +217,12 @@ fn every_event_says_its_own_name() {
             ProjectEvent::QuotationChanged(QuotationMarks::Curly),
             "QUOTATION_CHANGED",
         ),
-        (ProjectEvent::Trashed { until: at(9_000) }, "TRASHED"),
+        (
+            ProjectEvent::Trashed {
+                until: clock::at(9_000),
+            },
+            "TRASHED",
+        ),
         (ProjectEvent::Restored, "RESTORED"),
         (ProjectEvent::Deleted, "DELETED"),
         (a_started_project().snapshot(), "SNAPSHOTTED"),
@@ -244,7 +246,7 @@ fn a_project_started_with_details_has_them_at_once() {
     assert_eq!(
         Project::begin(
             ProjectCommand::Start(a_name("The Weaver's Apprentice"), some_details()),
-            &an_author()
+            &eventsourcing::an_author()
         )
         .expect("starting should succeed"),
         vec![
@@ -258,7 +260,7 @@ fn a_project_started_with_details_has_them_at_once() {
 fn a_project_started_without_details_is_only_started() {
     // expect: starting without details gives the start alone
     assert_eq!(
-        Project::begin(a_start(), &an_author()).expect("starting should succeed"),
+        Project::begin(a_start(), &eventsourcing::an_author()).expect("starting should succeed"),
         vec![ProjectEvent::Started(a_name("The Weaver's Apprentice"))],
         "no details means no event saying so"
     );
@@ -271,14 +273,17 @@ fn changing_a_project_s_details_moves_when_it_was_updated() {
 
     // when: its details are changed later
     let events = project
-        .decide(ProjectCommand::ChangeDetails(some_details()), &an_author())
+        .decide(
+            ProjectCommand::ChangeDetails(some_details()),
+            &eventsourcing::an_author(),
+        )
         .expect("changing the details should succeed");
-    project.apply(&events[0], &stamped(2, at(2_000)));
+    project.apply(&events[0], &stamped(2, clock::at(2_000)));
 
     // then: it has the new details
     assert_eq!(project.details(), &some_details());
     // and: it was updated as of then
-    assert_eq!(project.updated_at(), at(2_000));
+    assert_eq!(project.updated_at(), clock::at(2_000));
 }
 
 #[test]
@@ -287,19 +292,25 @@ fn changing_a_project_s_details_to_what_they_are_records_nothing() {
     let mut project = a_started_project();
     project.apply(
         &ProjectEvent::DetailsChanged(some_details()),
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
 
     // expect: changing them to the same details records nothing
     assert_eq!(
-        project.decide(ProjectCommand::ChangeDetails(some_details()), &an_author()),
+        project.decide(
+            ProjectCommand::ChangeDetails(some_details()),
+            &eventsourcing::an_author()
+        ),
         Ok(vec![])
     );
 }
 
 fn changing_details(project: &Project, details: ProjectDetails) -> Vec<ProjectEvent> {
     project
-        .decide(ProjectCommand::ChangeDetails(details), &an_author())
+        .decide(
+            ProjectCommand::ChangeDetails(details),
+            &eventsourcing::an_author(),
+        )
         .expect("changing the details should succeed")
 }
 
@@ -307,7 +318,7 @@ fn a_project_with(details: ProjectDetails) -> Project {
     let mut project = a_started_project();
     project.apply(
         &ProjectEvent::DetailsChanged(details),
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
     project
 }
@@ -384,11 +395,14 @@ fn details_that_leave_the_marks_as_they_look_do_not_restyle_the_book() {
 fn a_deleted_project_s_details_cannot_change() {
     // given: a deleted project
     let mut project = a_started_project();
-    project.apply(&ProjectEvent::Deleted, &stamped(2, at(2_000)));
+    project.apply(&ProjectEvent::Deleted, &stamped(2, clock::at(2_000)));
 
     // expect: changing its details is refused
     assert_eq!(
-        project.decide(ProjectCommand::ChangeDetails(some_details()), &an_author()),
+        project.decide(
+            ProjectCommand::ChangeDetails(some_details()),
+            &eventsourcing::an_author()
+        ),
         Err(ProjectError::Deleted)
     );
 }
@@ -399,11 +413,11 @@ fn a_project_s_details_survive_its_snapshot() {
     let mut project = a_started_project();
     project.apply(
         &ProjectEvent::DetailsChanged(some_details()),
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
 
     // when: it is restored from its snapshot
-    let restored = Project::from_first(&project.snapshot(), &stamped(2, at(2_000)))
+    let restored = Project::from_first(&project.snapshot(), &stamped(2, clock::at(2_000)))
         .expect("a snapshot gives birth");
 
     // then: it has its details
@@ -416,7 +430,7 @@ fn a_project_is_its_own_context_and_stays_so_through_a_snapshot() {
     let project = a_started_project();
 
     // when: it is rebuilt from its snapshot
-    let rebuilt = Project::from_first(&project.snapshot(), &stamped(9, at(5_000)))
+    let rebuilt = Project::from_first(&project.snapshot(), &stamped(9, clock::at(5_000)))
         .expect("a snapshot gives birth");
 
     // then: both are their own context
@@ -431,17 +445,27 @@ fn trashing_keeps_the_project_until_the_moment_it_is_told() {
 
     // when: it is trashed until a moment
     let events = project
-        .decide(ProjectCommand::Trash { until: at(9_000) }, &an_author())
+        .decide(
+            ProjectCommand::Trash {
+                until: clock::at(9_000),
+            },
+            &eventsourcing::an_author(),
+        )
         .expect("trashing should succeed");
     // then: it says it was trashed until then
-    assert_eq!(events, vec![ProjectEvent::Trashed { until: at(9_000) }]);
+    assert_eq!(
+        events,
+        vec![ProjectEvent::Trashed {
+            until: clock::at(9_000)
+        }]
+    );
 
     // when: the trashing happens
-    project.apply(&events[0], &stamped(2, at(2_000)));
+    project.apply(&events[0], &stamped(2, clock::at(2_000)));
 
     // then: it is in the trash until that moment
     assert!(project.is_trashed());
-    assert_eq!(project.trashed_until(), Some(at(9_000)));
+    assert_eq!(project.trashed_until(), Some(clock::at(9_000)));
     // and: it is not deleted
     assert!(!project.is_deleted(), "in the trash is not deleted yet");
 }
@@ -457,13 +481,18 @@ fn a_project_in_the_trash_takes_no_change_and_is_not_trashed_twice() {
         ProjectCommand::ChangeDetails(some_details()),
     ] {
         assert_eq!(
-            project.decide(command, &an_author()),
+            project.decide(command, &eventsourcing::an_author()),
             Err(ProjectError::Trashed)
         );
     }
     // and: trashing it again is refused
     assert_eq!(
-        project.decide(ProjectCommand::Trash { until: at(99_000) }, &an_author()),
+        project.decide(
+            ProjectCommand::Trash {
+                until: clock::at(99_000)
+            },
+            &eventsourcing::an_author()
+        ),
         Err(ProjectError::AlreadyTrashed),
         "trashing again would move when it is purged"
     );
@@ -476,20 +505,23 @@ fn restoring_takes_the_project_out_of_the_trash_as_it_was() {
 
     // when: it is restored
     let events = project
-        .decide(ProjectCommand::Restore, &an_author())
+        .decide(ProjectCommand::Restore, &eventsourcing::an_author())
         .expect("restoring should succeed");
     // then: it says it was restored
     assert_eq!(events, vec![ProjectEvent::Restored]);
 
     // when: the restoring happens
-    project.apply(&events[0], &stamped(3, at(3_000)));
+    project.apply(&events[0], &stamped(3, clock::at(3_000)));
 
     // then: it is out of the trash
     assert!(!project.is_trashed());
     assert_eq!(project.trashed_until(), None);
     // and: it takes changes again
     assert_eq!(
-        project.decide(ProjectCommand::Rename(a_name("Renamed")), &an_author()),
+        project.decide(
+            ProjectCommand::Rename(a_name("Renamed")),
+            &eventsourcing::an_author()
+        ),
         Ok(vec![ProjectEvent::Renamed(a_name("Renamed"))]),
         "a project restored takes changes again"
     );
@@ -503,7 +535,7 @@ fn only_a_project_in_the_trash_is_restored_or_deleted() {
     // expect: restoring and deleting it are refused
     for command in [ProjectCommand::Restore, ProjectCommand::Delete] {
         assert_eq!(
-            project.decide(command, &an_author()),
+            project.decide(command, &eventsourcing::an_author()),
             Err(ProjectError::NotTrashed),
             "a project is deleted only once its time in the trash is over"
         );
@@ -517,9 +549,9 @@ fn a_snapshot_of_a_project_in_the_trash_keeps_until_when() {
 
     // expect: a project born of its snapshot is in the trash until the same moment
     assert_eq!(
-        Project::from_first(&project.snapshot(), &stamped(3, at(9_999)))
+        Project::from_first(&project.snapshot(), &stamped(3, clock::at(9_999)))
             .expect("a snapshot gives birth")
             .trashed_until(),
-        Some(at(9_000))
+        Some(clock::at(9_000))
     );
 }

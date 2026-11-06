@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use accounts_contract::{SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use clock::FixedClock;
-use eventsourcing::{AccountId, InMemoryEventStore, Version};
+use eventsourcing::{AccountId, Agent, InMemoryEventStore, Version};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use notifications_catalog::InMemoryNoticeCatalog;
@@ -52,14 +52,13 @@ fn a_workbench() -> Naming {
 }
 
 fn a_message(key: &str, kind: &str, id: &str, version: u64, body: Value) -> Message {
-    Message::opening(
-        RoutingKey::parse(key).expect("a declared key"),
-        json!({
-            "event": body,
-            "aggregate": { "id": id, "kind": kind, "version": version },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:00:00Z",
-        }),
+    eventpublishing::published(
+        key,
+        kind,
+        id,
+        version,
+        body,
+        &Agent::System,
         OffsetDateTime::UNIX_EPOCH,
     )
 }

@@ -53,24 +53,19 @@ pub fn accounts_listing() -> impl IntoView {
         move || {
             roster.locking.get().map(|account| {
                 let id = account.id.clone();
+                let locked = id.clone();
                 lock_dialog::lock_dialog(
                     account,
                     move |typed| {
-                        let landed = roster.intended(
+                        roster.intended(
                             &id,
                             Intent::Lock {
                                 typed,
                                 since: roster::now(),
                             },
-                        );
-
-                        async move {
-                            match landed {
-                                Some(landed) => landed.await,
-                                None => false,
-                            }
-                        }
+                        )
                     },
+                    move || roster.changing(&locked),
                     roster.refused,
                     move || {
                         roster.refused.set(None);
@@ -82,6 +77,7 @@ pub fn accounts_listing() -> impl IntoView {
         move || {
             roster.changing_role.get().map(|account| {
                 let id = account.id.clone();
+                let changed = id.clone();
                 let yourself = own_email().as_deref() == Some(account.email.as_str());
                 let intent = if account.operator {
                     Intent::Dismiss
@@ -95,16 +91,14 @@ pub fn accounts_listing() -> impl IntoView {
                         let landed = roster.intended(&id, intent.clone());
 
                         async move {
-                            let landed = match landed {
-                                Some(landed) => landed.await,
-                                None => false,
-                            };
+                            let landed = landed.await;
                             if landed && yourself {
                                 session.ask_again();
                             }
                             landed
                         }
                     },
+                    move || roster.changing(&changed),
                     roster.refused,
                     move || {
                         roster.refused.set(None);

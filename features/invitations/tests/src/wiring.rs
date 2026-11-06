@@ -14,14 +14,9 @@ use mailing::{FakeMailbox, Mail};
 use messaging::{FakePublisher, Listener, Message};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 pub const ORIGIN: &str = "https://weaveling.example.com";
-
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 pub struct Wired {
     pub invitations: InvitationsCore,
@@ -43,7 +38,7 @@ pub fn a_workbench() -> Wired {
 }
 
 pub fn a_workbench_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
-    let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let told = Arc::new(FakePublisher::default());
     let events = Arc::new(InMemoryOutbox::new(told.clone(), clock.clone()));
     let store = Arc::new(InMemoryEventStore::enqueuing_to(
@@ -91,7 +86,7 @@ pub fn inboxed_in<H: KeptHandler>(handler: H, hearings: InMemoryTransactions) ->
     Inboxed::new(
         handler,
         Arc::new(hearings),
-        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(at(
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(clock::at(
             1_700_000_000,
         ))))),
     )
@@ -101,7 +96,7 @@ pub fn inboxed_effect<H: EffectHandler>(handler: H) -> InboxedEffect<H> {
     InboxedEffect::new(
         handler,
         Arc::new(InMemoryTransactions::new()),
-        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(at(
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(clock::at(
             1_700_000_000,
         ))))),
     )

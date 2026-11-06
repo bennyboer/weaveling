@@ -52,22 +52,17 @@ impl MembersService {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, MembersCoreError> {
-        let key = AggregateId::from(project);
-
-        let landed = match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        };
-
-        Ok(landed.version)
+        Ok(self
+            .events
+            .execute_at(
+                transaction,
+                &AggregateId::from(project),
+                expected,
+                command,
+                agent,
+            )
+            .await?
+            .version)
     }
 
     pub async fn disband(

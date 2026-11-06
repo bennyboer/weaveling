@@ -279,14 +279,14 @@ async fn a_session_is_over_after_thirty_days_and_ended_once_found_so() {
     // when: thirty days pass
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(30));
+        .set(clock::at(1_700_000_000) + Duration::days(30));
     // then: she is still signed in
     current_with(&server, &cookie).await.assert_status_ok();
 
     // when: a second more passes
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(30) + Duration::seconds(1));
+        .set(clock::at(1_700_000_000) + Duration::days(30) + Duration::seconds(1));
     // then: she is signed in no longer
     refused_as(
         &current_with(&server, &cookie).await,
@@ -349,7 +349,7 @@ async fn a_wait_part_way_through_a_second_is_rounded_up() {
     // and: half a second gone since
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::milliseconds(500));
+        .set(clock::at(1_700_000_000) + Duration::milliseconds(500));
 
     // when: she signs in again
     let response = server

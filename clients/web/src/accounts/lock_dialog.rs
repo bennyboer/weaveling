@@ -2,10 +2,10 @@ use std::future::Future;
 
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
+use leptos::task;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
-use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -21,6 +21,7 @@ fn naming(key: &'static str, name: &str) -> String {
 pub fn lock_dialog<Locked>(
     account: ListedAccount,
     lock: impl Fn(String) -> Locked + 'static,
+    locking: impl Fn() -> bool + Send + Sync + 'static,
     refused: RwSignal<Option<ApiError>>,
     close: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView
@@ -31,15 +32,14 @@ where
     let name = account.name.clone();
     let title = Signal::derive(move || naming("instance-lock-dialog", &name));
 
-    let locking = Act::new(move |(), _: Here| {
+    let start = move || {
         let locked = lock(reason.get_untracked());
-
-        async move {
+        task::spawn_local(async move {
             if locked.await {
                 close();
             }
-        }
-    });
+        });
+    };
 
     dialog::modal(
         title,
@@ -52,7 +52,7 @@ where
             html::form()
                 .on(ev::submit, move |event| {
                     event.prevent_default();
-                    locking.start(());
+                    start();
                 })
                 .child((
                     html::label().class("field").child((
@@ -73,7 +73,7 @@ where
                         html::button()
                             .r#type("submit")
                             .class("danger")
-                            .attr("aria-busy", move || locking.busy())
+                            .attr("aria-busy", move || locking().then_some("true"))
                             .child(speech::said("instance-lock-confirm")),
                     )),
                 )),

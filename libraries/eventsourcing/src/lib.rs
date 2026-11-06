@@ -25,6 +25,8 @@ mod stored_agent;
 #[cfg(test)]
 mod testing;
 
+#[cfg(any(test, feature = "testing"))]
+pub use agent::an_author;
 pub use agent::{AccountId, Agent};
 pub use aggregate::{Aggregate, AggregateId, AggregateType};
 pub use codec::Codec;

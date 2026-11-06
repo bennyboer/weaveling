@@ -6,18 +6,13 @@ use eventsourcing::Agent;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore, ScenesError, StoreError};
 use scenes_store::InMemorySceneStore;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_core() -> ScenesCore {
-    a_core_with(Arc::new(FixedClock::new(at(1_000))))
+    a_core_with(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn a_core_with(clock: Arc<FixedClock>) -> ScenesCore {
@@ -68,7 +63,7 @@ async fn a_new_scene_starts_empty_and_can_be_opened_again() {
 #[tokio::test]
 async fn a_scene_id_records_when_it_was_created() {
     // given: scenes at a known moment
-    let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let scenes = a_core_with(clock);
 
     // when: a scene is created
@@ -256,7 +251,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
     // and: the same scenes refusing every commit
     let refusing = ScenesCore::new(
@@ -265,7 +260,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
     // and: a scene
     let scene = committing

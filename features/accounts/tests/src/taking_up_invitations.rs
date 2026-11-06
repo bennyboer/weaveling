@@ -15,7 +15,7 @@ fn a_ticket_into_a_project(to: &str) -> InvitationTicket {
     InvitationTicket {
         invitation: "invitation_1".to_owned(),
         to: EmailAddress::new(to).expect("a plain address"),
-        until: wiring::at(1_700_000_000) + Duration::days(7),
+        until: clock::at(1_700_000_000) + Duration::days(7),
         scope: InvitationScope::Project {
             project: "project_loom".to_owned(),
         },
@@ -194,7 +194,7 @@ async fn a_token_nobody_was_given_or_one_withdrawn_takes_nothing_up() {
 #[tokio::test]
 async fn an_invitation_is_taken_up_to_its_last_moment_and_no_longer() {
     // given: an account invited at the invitation's last moment
-    let last = wiring::at(1_700_000_000) + Duration::days(7);
+    let last = clock::at(1_700_000_000) + Duration::days(7);
     let on_time = wiring::wired();
     let ada_on_time = an_account(&on_time, ADA).await;
     an_invitation(&on_time, &a_ticket_into_a_project(ADA)).await;
@@ -303,7 +303,7 @@ async fn by_its_id_an_invitation_run_out_is_told_so() {
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
+        .set(clock::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
 
     // then: taking it up by its id is refused as expired
     assert!(matches!(
@@ -462,7 +462,7 @@ async fn an_invitation_run_out_is_not_turned_down() {
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
+        .set(clock::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
 
     // then: turning it down is refused as expired
     assert!(matches!(

@@ -35,16 +35,12 @@ pub async fn retitle(id: &IdeaId, title: &str, on: u64) -> Result<Idea, ApiError
         title: title.to_owned(),
     };
     let response = http::sent_with(
-        Request::patch(&format!("{IDEAS}/{id}")).header("If-Match", &matching(on)),
+        http::made_on(Request::patch(&format!("{IDEAS}/{id}")), on),
         &payload,
     )
     .await?;
 
     Ok(kept(as_idea(http::parsed(response, SUBJECT).await?)))
-}
-
-fn matching(version: u64) -> String {
-    format!("\"{version}\"")
 }
 
 fn kept(idea: Idea) -> Idea {

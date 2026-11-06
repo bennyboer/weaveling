@@ -275,7 +275,7 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
         .begin_session(ADA, HER_PASSWORD)
         .await
         .expect("she signs in before she is locked");
-    wired.clock.set(wiring::at(1_700_000_060));
+    wired.clock.set(clock::at(1_700_000_060));
     wired
         .accounts
         .lock(&grace, &ada, "Sent spam.", None)
@@ -283,7 +283,7 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
         .expect("an operator may lock an account");
 
     // when: the operator unlocks the account later
-    wired.clock.set(wiring::at(1_700_000_120));
+    wired.clock.set(clock::at(1_700_000_120));
     wired
         .accounts
         .unlock(&grace, &ada, None)

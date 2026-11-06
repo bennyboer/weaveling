@@ -42,7 +42,7 @@ mod tests {
 
     use authorizing::AllowingEverything;
     use clock::FixedClock;
-    use eventsourcing::{Agent, AggregateId, EventStore, InMemoryEventStore, Version};
+    use eventsourcing::{AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, Version};
     use members_catalog::InMemoryMembershipCatalog;
     use members_core::{KIND, MembersEvent, ProjectLink, Role};
     use messaging::{Listener, RoutingKey};
@@ -88,14 +88,13 @@ mod tests {
     }
 
     fn a_deletion() -> Message {
-        Message::opening(
-            RoutingKey::parse(DELETED).expect("a declared key"),
-            json!({
-                "event": { "version": 0, "name": "DELETED" },
-                "aggregate": { "id": "project_1", "kind": "project", "version": 4 },
-                "agent": { "kind": "account", "id": "account_ada" },
-                "occurred_at": "1970-01-01T00:00:00Z",
-            }),
+        eventpublishing::published(
+            DELETED,
+            "project",
+            "project_1",
+            4,
+            json!({ "version": 0, "name": "DELETED" }),
+            &Agent::Account(AccountId::from("account_ada")),
             OffsetDateTime::UNIX_EPOCH,
         )
     }

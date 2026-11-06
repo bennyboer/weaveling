@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use thiserror::Error;
@@ -137,18 +138,22 @@ impl Message {
             payload,
         }
     }
+
+    pub fn follow_up(&self, routing: &str, payload: &impl Serialize, now: OffsetDateTime) -> Self {
+        self.answering(
+            RoutingKey::parse(routing).expect("a follow-up's routing key holds no wildcards"),
+            serde_json::to_value(payload)
+                .expect("a follow-up is plain data and cannot fail to serialize"),
+            now,
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use time::Duration;
 
     use super::*;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
 
     fn a_key(of: &str) -> RoutingKey {
         RoutingKey::parse(of).expect("a plain key is fine")
@@ -158,7 +163,7 @@ mod tests {
         Message::opening(
             a_key("idea.captured"),
             json!({ "idea": "idea_1" }),
-            at(1_000),
+            clock::at(1_000),
         )
     }
 
@@ -182,7 +187,7 @@ mod tests {
         let asked = an_opening_message();
 
         // when: it is answered
-        let answered = asked.answering(a_key("board.pinned"), json!({}), at(1_001));
+        let answered = asked.answering(a_key("board.pinned"), json!({}), clock::at(1_001));
 
         // then: the answer is in its conversation
         assert_eq!(answered.conversation, asked.conversation);
@@ -196,20 +201,37 @@ mod tests {
         let asked = an_opening_message();
 
         // when: it is answered
-        let answered = asked.answering(a_key("board.pinned"), json!({}), at(1_001));
+        let answered = asked.answering(a_key("board.pinned"), json!({}), clock::at(1_001));
 
         // then: the answer names it as its cause
         assert_eq!(answered.caused_by, Some(asked.id));
     }
 
     #[test]
+    fn a_follow_up_answers_what_it_follows_with_its_key_and_its_data() {
+        // given: an opening message
+        let asked = an_opening_message();
+
+        // when: it is followed up
+        let followed = asked.follow_up("follow-up.board.sweep", &["idea_1"], clock::at(1_001));
+
+        // then: the follow-up answers it
+        assert_eq!(followed.caused_by, Some(asked.id));
+        assert_eq!(followed.conversation, asked.conversation);
+        // and: carries its key, its data and its moment
+        assert_eq!(followed.routing, a_key("follow-up.board.sweep"));
+        assert_eq!(followed.payload, json!(["idea_1"]));
+        assert_eq!(followed.occurred_at, clock::at(1_001));
+    }
+
+    #[test]
     fn a_conversation_survives_more_than_one_hop() {
         // given: an opening message and an answer to it
         let first = an_opening_message();
-        let second = first.answering(a_key("board.pinned"), json!({}), at(1_001));
+        let second = first.answering(a_key("board.pinned"), json!({}), clock::at(1_001));
 
         // when: the answer is answered
-        let third = second.answering(a_key("idea.settled"), json!({}), at(1_002));
+        let third = second.answering(a_key("idea.settled"), json!({}), clock::at(1_002));
 
         // then: the third is still in the first's conversation
         assert_eq!(
@@ -228,16 +250,16 @@ mod tests {
     fn two_messages_made_at_the_same_moment_still_differ() {
         // expect: two ids made at one moment differ
         assert_ne!(
-            MessageId::generate(at(1_000)),
-            MessageId::generate(at(1_000))
+            MessageId::generate(clock::at(1_000)),
+            MessageId::generate(clock::at(1_000))
         );
     }
 
     #[test]
     fn message_ids_sort_by_the_moment_they_were_made() {
         // given: an id made late and one made early
-        let latest = MessageId::generate(at(3_000));
-        let earliest = MessageId::generate(at(1_000));
+        let latest = MessageId::generate(clock::at(3_000));
+        let earliest = MessageId::generate(clock::at(1_000));
 
         // when: they are sorted
         let mut made = vec![latest, earliest];
@@ -250,7 +272,7 @@ mod tests {
     #[test]
     fn a_message_id_says_what_it_is() {
         // when: an id is made
-        let id = MessageId::generate(at(1_000));
+        let id = MessageId::generate(clock::at(1_000));
 
         // then: it says it is a message's
         assert!(
@@ -267,7 +289,7 @@ mod tests {
         // then: it carries its key, its payload and its moment
         assert_eq!(opening.routing, a_key("idea.captured"));
         assert_eq!(opening.payload, json!({ "idea": "idea_1" }));
-        assert_eq!(opening.occurred_at, at(1_000));
+        assert_eq!(opening.occurred_at, clock::at(1_000));
     }
 
     #[derive(Debug, serde::Deserialize, PartialEq)]
@@ -300,7 +322,7 @@ mod tests {
         let unshaped = Message::opening(
             a_key("account.signed.up"),
             json!({ "idea": "Ada \"the first\" Lovelace" }),
-            at(1_000),
+            clock::at(1_000),
         )
         .payload_as::<Counted>()
         .expect_err("a name is no count");
@@ -321,7 +343,7 @@ mod tests {
     #[test]
     fn what_was_missing_is_still_named() {
         // when: a message is read in a shape whose field it lacks
-        let unshaped = Message::opening(a_key("idea.captured"), json!({}), at(1_000))
+        let unshaped = Message::opening(a_key("idea.captured"), json!({}), clock::at(1_000))
             .payload_as::<Counted>()
             .expect_err("nothing is no count");
 

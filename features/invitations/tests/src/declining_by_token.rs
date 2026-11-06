@@ -87,7 +87,7 @@ async fn a_link_nobody_was_given_or_one_taken_up_or_withdrawn_turns_nothing_down
     let accepted_link = the_token(&wired).await;
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(2));
+        .set(clock::at(1_700_000_000) + Duration::minutes(2));
     // and: the link of one withdrawn
     let withdrawn = a_mailed_invitation(&wired).await;
     let withdrawn_link = the_token(&wired).await;
@@ -130,12 +130,12 @@ async fn a_link_is_turned_down_to_its_last_moment_and_run_out_no_longer() {
     let in_time = a_mailed_invitation(&on_time).await;
     on_time
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(7));
+        .set(clock::at(1_700_000_000) + Duration::days(7));
     // and: another past it
     let late = wiring::a_workbench();
     let ran_out = a_mailed_invitation(&late).await;
     late.clock
-        .set(wiring::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
+        .set(clock::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
 
     // when: each is turned down by its link
     on_time
@@ -197,7 +197,7 @@ async fn a_link_run_out_is_refused_by_its_kind() {
     a_mailed_invitation(&wired).await;
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(8));
+        .set(clock::at(1_700_000_000) + Duration::days(8));
     let server = TestServer::new(invitations_rest::router_for_anyone(
         wired.invitations.clone(),
     ));

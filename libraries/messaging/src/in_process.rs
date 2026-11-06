@@ -78,7 +78,6 @@ mod tests {
 
     use serde_json::json;
     use thiserror::Error;
-    use time::{Duration, OffsetDateTime};
 
     use clock::FixedClock;
 
@@ -215,7 +214,7 @@ mod tests {
 
     fn a_workbench() -> Wired {
         let deliveries = Arc::new(InMemoryDeliveries::new());
-        let clock = Arc::new(FixedClock::new(at(2_000)));
+        let clock = Arc::new(FixedClock::new(clock::at(2_000)));
 
         Wired {
             dispatcher: Arc::new(InProcessDispatcher::queueing_to(deliveries.clone())),
@@ -224,15 +223,11 @@ mod tests {
         }
     }
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn a_message(routing: &str) -> Message {
         Message::opening(
             RoutingKey::parse(routing).expect("a plain key is fine"),
             json!({}),
-            at(1_000),
+            clock::at(1_000),
         )
     }
 
@@ -448,7 +443,7 @@ mod tests {
                 let answer = message.answering(
                     RoutingKey::parse("board.pinned").expect("a plain key is fine"),
                     json!({}),
-                    at(1_001),
+                    clock::at(1_001),
                 );
                 let _ = self.dispatcher.publish(answer).await;
 
@@ -524,7 +519,7 @@ mod tests {
             .publish(opening.answering(
                 RoutingKey::parse("board.pinned").expect("a plain key is fine"),
                 json!({}),
-                at(1_001),
+                clock::at(1_001),
             ))
             .await
             .expect("publishing should succeed");

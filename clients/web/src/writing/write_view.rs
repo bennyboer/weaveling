@@ -14,8 +14,6 @@ use crate::route;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
 use crate::speech;
-use crate::writing::asking;
-use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back;
 use crate::writing::bringing_back::Landing;
@@ -30,6 +28,8 @@ use crate::writing::margin::Edge;
 use crate::writing::menus;
 use crate::writing::opening;
 use crate::writing::placing;
+use crate::writing::question;
+use crate::writing::question::Question;
 use crate::writing::quiet_note;
 use crate::writing::scene_in_flow;
 use crate::writing::settings_dialog;
@@ -240,7 +240,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     (
         focus::focus_line(state),
         book_view,
-        asking::asking(state),
+        question::asking(state),
         bringing_back::bringing_back(state),
         status_note::status_note(state),
         inspecting::inspecting(state, segment),
@@ -310,7 +310,7 @@ fn choosing(event: &KeyboardEvent, state: WriteViewState) {
     }
 }
 
-fn removing(chosen: Vec<Stop>, state: WriteViewState) -> Asking {
+fn removing(chosen: Vec<Stop>, state: WriteViewState) -> Question {
     let mut scenes = Vec::new();
     let mut sections = Vec::new();
 
@@ -334,7 +334,7 @@ fn removing(chosen: Vec<Stop>, state: WriteViewState) -> Asking {
         }
     }
 
-    Asking::RemoveChosen { scenes, sections }
+    Question::RemoveChosen { scenes, sections }
 }
 
 fn drawn(stop: &Stop) -> Option<Element> {

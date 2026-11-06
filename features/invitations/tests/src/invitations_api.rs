@@ -194,7 +194,7 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
         &server
             .delete(&format!(
                 "/invitations/{}",
-                InvitationId::generate(wiring::at(1_000))
+                InvitationId::generate(clock::at(1_000))
             ))
             .await,
         StatusCode::NOT_FOUND,

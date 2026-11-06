@@ -1,4 +1,4 @@
-use eventsourcing::Version;
+use eventsourcing::{AccountId, Agent, Version};
 use inbox::Inboxed;
 use invitations_core::{InvitationCatalog, ProjectLink, ProjectName};
 use invitations_messaging::RememberProjectNamesListener;
@@ -11,14 +11,13 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 fn a_message(routing: &str, version: u64, event: Value, at: OffsetDateTime) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        json!({
-            "event": event,
-            "aggregate": { "id": "project_loom", "kind": "project", "version": version },
-            "agent": { "kind": "account", "id": "account_ada" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
+    eventpublishing::published(
+        routing,
+        "project",
+        "project_loom",
+        version,
+        event,
+        &Agent::Account(AccountId::from("account_ada")),
         at,
     )
 }

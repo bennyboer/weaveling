@@ -1,9 +1,7 @@
-mod tombstones;
-
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
@@ -12,8 +10,6 @@ use statistics_messaging::ProjectWordCountsListener;
 use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
 
-use crate::tombstones::StatisticsTombstones;
-
 pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn WordCountCatalog>,
@@ -21,6 +17,7 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let broadcaster = Broadcaster::new();
     let telling: Arc<dyn WordCountCatalog> = Arc::new(statistics_rest::TellingWordCounts::around(
         ports.catalog.clone(),
@@ -38,25 +35,23 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             statistics.clone(),
             broadcaster,
         )])
-        .listening(vec![Arc::new(Inboxed::new(
-            ProjectWordCountsListener::new(statistics.clone()),
-            ports.transactions.clone(),
-            ports.inbox.clone(),
-        ))])
+        .listening(vec![Arc::new(
+            hearing.inboxed(ProjectWordCountsListener::new(statistics.clone())),
+        )])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-statistics-tombstones",
-                Arc::new(StatisticsTombstones::of(statistics)),
+                chores::tombstones_by(move |before, at_most| {
+                    let statistics = statistics.clone();
+                    async move {
+                        statistics
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-statistics-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-statistics-hearings", context.clock.clone())),
         ])
 }
 
@@ -123,7 +118,7 @@ mod tests {
     use std::sync::Arc;
 
     use authorizing::AllowingEverything;
-    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use statistics_core::SceneLink;
@@ -184,30 +179,5 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-    }
-
-    #[tokio::test]
-    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        // given: two deleted scenes
-        let statistics = StatisticsCore::new(
-            Arc::new(InMemoryTransactions::new()),
-            Arc::new(InMemoryWordCountCatalog::new()),
-            Arc::new(AllowingEverything),
-        );
-        for scene in ["scene_1", "scene_2"] {
-            statistics
-                .scene_deleted(None, scene, NOW)
-                .await
-                .expect("forgetting should succeed");
-        }
-
-        // when: their tombstones are forgotten in batches of one
-        let forgotten = StatisticsTombstones::of(statistics)
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
-
-        // then: one is forgotten
-        assert_eq!(forgotten, 1);
     }
 }

@@ -88,7 +88,6 @@ mod tests {
     use outline_core::{
         Attachment, KIND, OutlineId, PlacedSection, ProjectLink, SectionId, SectionTitle,
     };
-    use time::{Duration, OffsetDateTime};
 
     use super::*;
 
@@ -100,16 +99,12 @@ mod tests {
         })
     }
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn an_outline() -> OutlineId {
-        OutlineId::generate(at(1_000))
+        OutlineId::generate(clock::at(1_000))
     }
 
     fn a_section() -> SectionId {
-        SectionId::generate(at(2_000))
+        SectionId::generate(clock::at(2_000))
     }
 
     fn a_title(what: &str) -> SectionTitle {
@@ -123,7 +118,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: Agent::Account(AccountId::from("author-7")),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },

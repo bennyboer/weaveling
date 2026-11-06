@@ -131,7 +131,7 @@ async fn tombstones_forgotten_are_forgotten_for_good() {
     let wired = wiring::a_workbench();
     wired
         .invitations
-        .lay_project_tombstone(None, &ProjectLink::from("project_gone"), wiring::at(1_000))
+        .lay_project_tombstone(None, &ProjectLink::from("project_gone"), clock::at(1_000))
         .await
         .expect("laying a tombstone should succeed");
 
@@ -141,7 +141,7 @@ async fn tombstones_forgotten_are_forgotten_for_good() {
         forgotten.push(
             wired
                 .invitations
-                .forget_tombstones_laid_before(wiring::at(2_000), 10)
+                .forget_tombstones_laid_before(clock::at(2_000), 10)
                 .await
                 .expect("forgetting tombstones should succeed"),
         );

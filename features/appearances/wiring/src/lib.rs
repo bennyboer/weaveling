@@ -1,5 +1,3 @@
-mod tombstones;
-
 use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
@@ -8,13 +6,11 @@ use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
 use chores::ForgetOldTombstones;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::Outbox;
 use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
-
-use crate::tombstones::AppearanceTombstones;
 
 pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
@@ -23,6 +19,7 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let broadcaster = Broadcaster::new();
     let telling: Arc<dyn AppearanceCatalog> = Arc::new(
         appearances_rest::TellingAppearances::around(ports.catalog.clone(), broadcaster.clone()),
@@ -40,36 +37,24 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             broadcaster,
         ))])
         .listening(vec![
-            Arc::new(Inboxed::new(
-                ProjectOutlineAppearancesListener::new(appearances.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
-            Arc::new(Inboxed::new(
-                ProjectSceneAppearancesListener::new(appearances.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
-            Arc::new(Inboxed::new(
-                ForgetDiscardedIdeaListener::new(appearances.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
+            Arc::new(hearing.inboxed(ProjectOutlineAppearancesListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(ProjectSceneAppearancesListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(ForgetDiscardedIdeaListener::new(appearances.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-appearance-tombstones",
-                Arc::new(AppearanceTombstones::of(appearances)),
+                chores::tombstones_by(move |before, at_most| {
+                    let appearances = appearances.clone();
+                    async move {
+                        appearances
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-appearance-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-appearance-hearings", context.clock.clone())),
         ])
 }
 
@@ -137,7 +122,7 @@ mod tests {
 
     use appearances_core::{IdeaLink, Subject};
     use authorizing::AllowingEverything;
-    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::{Duration, OffsetDateTime};
@@ -197,30 +182,5 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-    }
-
-    #[tokio::test]
-    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        // given: two discarded ideas
-        let appearances = AppearancesCore::new(
-            Arc::new(InMemoryTransactions::new()),
-            Arc::new(InMemoryAppearanceCatalog::new()),
-            Arc::new(AllowingEverything),
-        );
-        for idea in ["idea_1", "idea_2"] {
-            appearances
-                .idea_discarded(None, idea, NOW)
-                .await
-                .expect("forgetting should succeed");
-        }
-
-        // when: tombstones are forgotten a batch of one at a time
-        let forgotten = AppearanceTombstones::of(appearances)
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
-
-        // then: one is forgotten
-        assert_eq!(forgotten, 1);
     }
 }

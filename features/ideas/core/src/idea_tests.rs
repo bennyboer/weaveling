@@ -1,15 +1,9 @@
-use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
-};
+use eventsourcing::{Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version};
 use projects_contract::context::PROJECT;
 use time::OffsetDateTime;
 
 use crate::idea::*;
 use crate::title::IdeaTitle;
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
 
 fn a_title(saying: &str) -> IdeaTitle {
     IdeaTitle::new(saying).expect("a plain title is fine")
@@ -20,7 +14,7 @@ fn stamped(version: u64) -> EventMetadata {
         aggregate: AggregateId::from("idea_1"),
         kind: KIND,
         version: Version::of(version),
-        agent: an_author(),
+        agent: eventsourcing::an_author(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         is_snapshot: false,
         context: AggregateContext::default(),
@@ -35,7 +29,8 @@ fn a_capture() -> IdeaCommand {
 }
 
 fn a_captured_idea() -> Idea {
-    let events = Idea::begin(a_capture(), &an_author()).expect("capturing should succeed");
+    let events =
+        Idea::begin(a_capture(), &eventsourcing::an_author()).expect("capturing should succeed");
 
     grown(&events)
 }
@@ -54,7 +49,8 @@ fn grown(events: &[IdeaEvent]) -> Idea {
 #[test]
 fn an_idea_is_captured_with_a_project_and_a_title() {
     // when: an idea is captured
-    let events = Idea::begin(a_capture(), &an_author()).expect("capturing should succeed");
+    let events =
+        Idea::begin(a_capture(), &eventsourcing::an_author()).expect("capturing should succeed");
 
     // then: its project and title are recorded
     assert_eq!(
@@ -74,7 +70,7 @@ fn an_idea_may_be_captured_with_no_title_at_all() {
             project: ProjectLink::from("project_1"),
             title: IdeaTitle::untitled(),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     )
     .expect("an idea arrives before its name");
 
@@ -86,11 +82,14 @@ fn an_idea_may_be_captured_with_no_title_at_all() {
 fn nothing_but_a_capture_can_start_an_idea() {
     // expect: anything but a capture is refused before there is an idea
     assert_eq!(
-        Idea::begin(IdeaCommand::Discard, &an_author()),
+        Idea::begin(IdeaCommand::Discard, &eventsourcing::an_author()),
         Err(IdeaError::NotCapturedYet)
     );
     assert_eq!(
-        Idea::begin(IdeaCommand::Retitle(a_title("Too soon")), &an_author()),
+        Idea::begin(
+            IdeaCommand::Retitle(a_title("Too soon")),
+            &eventsourcing::an_author()
+        ),
         Err(IdeaError::NotCapturedYet)
     );
 }
@@ -101,7 +100,7 @@ fn retitling_records_the_title_it_became() {
     let decided = a_captured_idea()
         .decide(
             IdeaCommand::Retitle(a_title("The Silent Loom")),
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("retitling should succeed");
 
@@ -116,7 +115,10 @@ fn retitling_records_the_title_it_became() {
 fn retitling_to_the_same_title_records_nothing() {
     // when: a captured idea is retitled to the title it has
     let decided = a_captured_idea()
-        .decide(IdeaCommand::Retitle(a_title("The Loom")), &an_author())
+        .decide(
+            IdeaCommand::Retitle(a_title("The Loom")),
+            &eventsourcing::an_author(),
+        )
         .expect("retitling should succeed");
 
     // then: nothing is recorded
@@ -132,7 +134,10 @@ fn an_idea_can_be_given_a_title_it_never_had() {
     let mut idea = a_captured_idea();
     // when: its title is cleared
     let decided = idea
-        .decide(IdeaCommand::Retitle(IdeaTitle::untitled()), &an_author())
+        .decide(
+            IdeaCommand::Retitle(IdeaTitle::untitled()),
+            &eventsourcing::an_author(),
+        )
         .expect("clearing a title is a legal change");
 
     for event in &decided {
@@ -147,7 +152,7 @@ fn an_idea_can_be_given_a_title_it_never_had() {
 fn what_exists_cannot_be_captured_again() {
     // expect: a captured idea cannot be captured again
     assert_eq!(
-        a_captured_idea().decide(a_capture(), &an_author()),
+        a_captured_idea().decide(a_capture(), &eventsourcing::an_author()),
         Err(IdeaError::AlreadyCaptured)
     );
 }
@@ -160,11 +165,14 @@ fn a_discarded_idea_accepts_nothing_further() {
 
     // then: it refuses a retitling and a discarding
     assert_eq!(
-        idea.decide(IdeaCommand::Retitle(a_title("Too late")), &an_author()),
+        idea.decide(
+            IdeaCommand::Retitle(a_title("Too late")),
+            &eventsourcing::an_author()
+        ),
         Err(IdeaError::Discarded)
     );
     assert_eq!(
-        idea.decide(IdeaCommand::Discard, &an_author()),
+        idea.decide(IdeaCommand::Discard, &eventsourcing::an_author()),
         Err(IdeaError::Discarded)
     );
 }

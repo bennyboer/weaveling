@@ -225,7 +225,7 @@ async fn a_code_lasts_a_quarter_of_an_hour() {
     // when: a second more than a quarter of an hour has gone by
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(15) + Duration::seconds(1));
+        .set(clock::at(1_700_000_000) + Duration::minutes(15) + Duration::seconds(1));
 
     // then: the code has expired
     assert!(matches!(
@@ -238,7 +238,7 @@ async fn a_code_lasts_a_quarter_of_an_hour() {
     // when: exactly a quarter of an hour has gone by
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::minutes(15));
+        .set(clock::at(1_700_000_000) + Duration::minutes(15));
 
     // then: the code still verifies
     wired

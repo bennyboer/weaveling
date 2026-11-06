@@ -15,7 +15,7 @@ use crate::writing::side::Side;
 use crate::writing::write_view_state::WriteViewState;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Asking {
+pub enum Question {
     DeleteScene(SceneId),
     RemoveSection(SectionId),
     RemoveChosen {
@@ -52,7 +52,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
     Effect::new(move || {
         if let Some(unplaced) = state.beginnings.unplaced() {
             state.beginnings.let_unplaced_be_asked();
-            state.margin.ask(Asking::PlaceGone(unplaced));
+            state.margin.ask(Question::PlaceGone(unplaced));
         }
     });
 
@@ -98,10 +98,10 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
     }
 }
 
-fn way_back(question: &Asking) -> Option<&'static str> {
+fn way_back(question: &Question) -> Option<&'static str> {
     match question {
-        Asking::RemovedMeanwhile { .. } => Some("asked-keep-writing"),
-        Asking::PlaceGone(_) => None,
+        Question::RemovedMeanwhile { .. } => Some("asked-keep-writing"),
+        Question::PlaceGone(_) => None,
         _ => Some("cancel"),
     }
 }
@@ -113,20 +113,20 @@ fn loose_and_at(scene: &SceneId) -> String {
     format!("{book}/loose?scene={scene}")
 }
 
-fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answer)> {
+fn offered(question: &Question, state: WriteViewState) -> Vec<(&'static str, Answer)> {
     match question {
-        Asking::DeleteScene(_) => vec![("answer-delete", Answer::DeletedForGood)],
-        Asking::RemoveSection(_) => vec![("answer-remove", Answer::Confirmed)],
-        Asking::RemovedMeanwhile { .. } => vec![("answer-show-it", Answer::ShownElsewhere)],
-        Asking::PlaceGone(_) => vec![
+        Question::DeleteScene(_) => vec![("answer-delete", Answer::DeletedForGood)],
+        Question::RemoveSection(_) => vec![("answer-remove", Answer::Confirmed)],
+        Question::RemovedMeanwhile { .. } => vec![("answer-show-it", Answer::ShownElsewhere)],
+        Question::PlaceGone(_) => vec![
             ("answer-discard", Answer::Discarded),
             ("answer-put-at-end", Answer::PutAtTheEnd),
         ],
-        Asking::RenamedMeanwhile { .. } => vec![
+        Question::RenamedMeanwhile { .. } => vec![
             ("renamed-meanwhile-theirs", Answer::TakenTheirs),
             ("renamed-meanwhile-mine", Answer::KeptMine),
         ],
-        Asking::RemoveChosen { .. } => match state.side {
+        Question::RemoveChosen { .. } => match state.side {
             Side::Book => vec![
                 ("answer-take-out", Answer::TakenOut),
                 ("answer-delete-for-good", Answer::DeletedForGood),
@@ -136,9 +136,9 @@ fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answe
     }
 }
 
-fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
+fn worded(question: &Question, state: WriteViewState) -> (&'static str, String) {
     match question {
-        Asking::DeleteScene(scene) => {
+        Question::DeleteScene(scene) => {
             let shown = untrack(|| state.labels.of_scene(scene)).shown;
             let told = match shown.trim() {
                 "" => speech::say("asked-delete-scene-told-unnamed"),
@@ -147,7 +147,7 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
 
             ("asked-delete-scene", told)
         }
-        Asking::RemovedMeanwhile { title, scene } => {
+        Question::RemovedMeanwhile { title, scene } => {
             let shown = untrack(|| state.labels.of_scene(scene)).shown;
             let mut args = FluentArgs::new();
             args.set("section", title.trim().to_owned());
@@ -162,15 +162,15 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
 
             ("removed-meanwhile", told)
         }
-        Asking::PlaceGone(Unplaced::Scene { begins, .. }) => (
+        Question::PlaceGone(Unplaced::Scene { begins, .. }) => (
             "place-gone",
             speech::say_about("place-gone-scene", "begins", begins.trim()),
         ),
-        Asking::PlaceGone(Unplaced::Section { titled }) => (
+        Question::PlaceGone(Unplaced::Section { titled }) => (
             "place-gone",
             speech::say_about("place-gone-section", "section", titled.trim()),
         ),
-        Asking::RenamedMeanwhile { mine, theirs, .. } => {
+        Question::RenamedMeanwhile { mine, theirs, .. } => {
             let mut args = FluentArgs::new();
             args.set("theirs", theirs.clone());
             args.set("mine", mine.clone());
@@ -180,11 +180,11 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
                 speech::say_with("renamed-meanwhile-heading-told", &args),
             )
         }
-        Asking::RemoveSection(_) => (
+        Question::RemoveSection(_) => (
             "asked-remove-section",
             speech::say("asked-remove-section-told"),
         ),
-        Asking::RemoveChosen { scenes, sections } => {
+        Question::RemoveChosen { scenes, sections } => {
             let mut args = FluentArgs::new();
             args.set("scenes", scenes.len());
             args.set("sections", sections.len());
@@ -213,18 +213,18 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
     }
 }
 
-fn answered(question: Asking, answer: Answer, state: WriteViewState, go_to: impl Fn(&str)) {
+fn answered(question: Question, answer: Answer, state: WriteViewState, go_to: impl Fn(&str)) {
     match question {
-        Asking::DeleteScene(scene) => match state.side {
+        Question::DeleteScene(scene) => match state.side {
             Side::Book => state.structure.delete(scene),
             Side::Loose => state.loose.delete(scene),
         },
-        Asking::RemovedMeanwhile { scene, .. } => go_to(&loose_and_at(&scene)),
-        Asking::PlaceGone(unplaced) => match answer {
+        Question::RemovedMeanwhile { scene, .. } => go_to(&loose_and_at(&scene)),
+        Question::PlaceGone(unplaced) => match answer {
             Answer::PutAtTheEnd => state.beginnings.put_at_the_end(unplaced),
             _ => state.beginnings.discard(unplaced),
         },
-        Asking::RenamedMeanwhile {
+        Question::RenamedMeanwhile {
             section,
             mine,
             theirs,
@@ -243,13 +243,13 @@ fn answered(question: Asking, answer: Answer, state: WriteViewState, go_to: impl
                 }
             }
         },
-        Asking::RemoveSection(section) => {
+        Question::RemoveSection(section) => {
             state
                 .loose
                 .include(untrack(|| state.structure.scenes_within(&section)));
             state.structure.remove(section);
         }
-        Asking::RemoveChosen { scenes, sections } => {
+        Question::RemoveChosen { scenes, sections } => {
             state.choosing.let_go();
             match (answer, state.side) {
                 (Answer::TakenOut, _) => {

@@ -3,8 +3,8 @@ use web_sys::HtmlElement;
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
-use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
+use crate::writing::question::Question;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Marked {
@@ -30,7 +30,7 @@ pub enum Menu {
 pub struct Margin {
     open: RwSignal<Option<(Marked, Menu)>>,
     renaming: RwSignal<Option<SceneId>>,
-    asking: RwSignal<Option<Asking>>,
+    asking: RwSignal<Option<Question>>,
     bringing_back: RwSignal<Option<Landing>>,
     placing: RwSignal<Option<SceneId>>,
     writing: StoredValue<Option<HtmlElement>, LocalStorage>,
@@ -112,7 +112,7 @@ impl Margin {
         was
     }
 
-    pub fn asking(self) -> Option<Asking> {
+    pub fn asking(self) -> Option<Question> {
         self.asking.get()
     }
 
@@ -120,7 +120,7 @@ impl Margin {
         self.asking.with_untracked(Option::is_some)
     }
 
-    pub fn ask(self, question: Asking) {
+    pub fn ask(self, question: Question) {
         self.close();
         self.asking.set(Some(question));
     }

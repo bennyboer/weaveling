@@ -10,17 +10,14 @@ use appearances_messaging::{
 };
 use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
 use serde_json::{Value, json};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct Wired {
     catalog: Arc<InMemoryAppearanceCatalog>,
@@ -89,15 +86,14 @@ fn published(routing: &str, aggregate: &str, kind: &str, body: Value) -> Message
     let mut event = body;
     event["version"] = json!(0);
 
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        json!({
-            "event": event,
-            "aggregate": { "id": aggregate, "kind": kind, "version": 2 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        routing,
+        kind,
+        aggregate,
+        2,
+        event,
+        &Agent::System,
+        clock::at(1_000),
     )
 }
 
@@ -154,7 +150,7 @@ fn from_scenes(routing: &str, payload: Value) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key is fine"),
         payload,
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -524,7 +520,7 @@ async fn a_message_no_listener_can_read_is_refused() {
         Message::opening(
             RoutingKey::parse(routing).expect("a declared routing key is fine"),
             json!({ "nothing": "useful" }),
-            at(1_000),
+            clock::at(1_000),
         )
     };
 
@@ -620,7 +616,7 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
         Arc::new(AllowingEverything),
     );
     let mut forgotten = Vec::new();
-    for moment in [at(1_000), at(1_001), at(1_001)] {
+    for moment in [clock::at(1_000), clock::at(1_001), clock::at(1_001)] {
         forgotten.push(
             appearances
                 .forget_tombstones_laid_before(moment, u64::MAX)

@@ -24,10 +24,6 @@ use crate::wiring::Wired;
 const ADA: &str = "account_ada";
 const GRACE: &str = "account_grace";
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn local() -> Agent {
     Agent::Local
 }
@@ -80,7 +76,7 @@ struct Bench {
 }
 
 fn bench() -> Bench {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
     Bench {
         wired: wiring::wired(clock.clone()),
@@ -145,7 +141,7 @@ fn a_project_trashed(id: &str) -> Trashed {
 }
 
 fn the_period() -> OffsetDateTime {
-    at(1_000) + KEPT_IN_THE_TRASH_FOR
+    clock::at(1_000) + KEPT_IN_THE_TRASH_FOR
 }
 
 #[tokio::test]
@@ -203,7 +199,7 @@ async fn trashing_a_project_twice_keeps_it_until_the_first_time_said() {
     let id = bench.a_project("Tapestry").await;
     bench.trashed(&id).await;
     // and: ten days gone by
-    bench.clock.set(at(1_000) + Duration::days(10));
+    bench.clock.set(clock::at(1_000) + Duration::days(10));
 
     // when: it is trashed again
     bench.trashed(&id).await;
@@ -228,7 +224,7 @@ async fn a_trashing_that_does_not_commit_leaves_neither_the_event_nor_the_entry(
             Arc::new(InMemoryProjectCatalog::new()),
             trash.clone(),
             Arc::new(AllowingEverything),
-            Arc::new(FixedClock::new(at(1_000))),
+            Arc::new(FixedClock::new(clock::at(1_000))),
         )
     };
     let (id, _) = core_on(InMemoryTransactions::new())
@@ -400,7 +396,8 @@ async fn a_purge_of_a_project_restored_meanwhile_only_takes_its_entry_out() {
 async fn only_an_owner_trashes_restores_and_sees_the_trash() {
     // given: a project ada owns and grace authors
     let roles = Arc::new(Roles::default());
-    let wired = wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), roles.clone());
+    let wired =
+        wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), roles.clone());
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))
@@ -456,7 +453,8 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
 async fn an_owner_changing_a_project_in_the_trash_hears_it_is_there_and_others_that_it_is_gone() {
     // given: a project ada owns, trashed
     let roles = Arc::new(Roles::default());
-    let wired = wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), roles.clone());
+    let wired =
+        wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), roles.clone());
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))

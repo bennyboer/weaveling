@@ -2,7 +2,7 @@ pub mod text;
 
 use std::sync::Mutex;
 
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 pub trait Clock: Send + Sync {
     fn now(&self) -> OffsetDateTime;
@@ -40,15 +40,14 @@ impl Clock for FixedClock {
     }
 }
 
+/// The moment `seconds` after the Unix epoch, as tests and their suites write an instant.
+pub fn at(seconds: i64) -> OffsetDateTime {
+    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
+}
+
 #[cfg(test)]
 mod tests {
-    use time::Duration;
-
     use super::*;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
 
     #[test]
     fn the_system_clock_reports_a_plausible_present() {

@@ -14,3 +14,4 @@ postgres = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }

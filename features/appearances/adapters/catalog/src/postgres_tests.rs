@@ -4,7 +4,6 @@ use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, SceneLi
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use time::{Duration, OffsetDateTime};
 use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
@@ -53,10 +52,6 @@ impl Workbench for OnPostgres {
 
 crate::suite::conformance_tests!(OnPostgres);
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 #[derive(Clone, Copy)]
 enum Gone {
     Subject,
@@ -90,12 +85,12 @@ async fn places_left_racing(gone: Gone) -> Vec<Place> {
                 transacting::retrying!(&*forgotten_in, |transaction| {
                     match gone {
                         Gone::Subject => forgetting
-                            .forget_subject(transaction, &gone_subject, at(5_000))
+                            .forget_subject(transaction, &gone_subject, clock::at(5_000))
                             .await
                             .map_err(Tried::Refused)?,
                         Gone::Place => {
                             forgetting
-                                .forget_place(transaction, &gone_place, at(5_000))
+                                .forget_place(transaction, &gone_place, clock::at(5_000))
                                 .await
                                 .map_err(Tried::Refused)?;
                         }

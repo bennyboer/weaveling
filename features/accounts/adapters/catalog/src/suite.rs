@@ -8,7 +8,6 @@ use accounts_core::{
     LockKind, LockReason,
 };
 use eventsourcing::Version;
-use time::OffsetDateTime;
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -72,10 +71,6 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(id: AccountId, email: &str) -> AccountSummary {
     AccountSummary {
         id,
@@ -84,13 +79,13 @@ pub fn a_summary(id: AccountId, email: &str) -> AccountSummary {
         email: EmailAddress::new(email).expect("a plain address"),
         verified: false,
         operator: false,
-        signed_up_at: at(1_000),
+        signed_up_at: clock::at(1_000),
         locks: BTreeMap::new(),
     }
 }
 
 fn an_account_signed_up_at(seconds: i64) -> AccountId {
-    AccountId::generate(at(seconds))
+    AccountId::generate(clock::at(seconds))
 }
 
 async fn listed(catalog: &Committing<'_, impl AccountCatalog>) -> Vec<AccountSummary> {
@@ -108,12 +103,12 @@ pub async fn a_remembered_account_is_listed_as_it_was(
         version: Version::of(4),
         verified: false,
         operator: true,
-        signed_up_at: at(1_700_000_000),
+        signed_up_at: clock::at(1_700_000_000),
         locks: BTreeMap::from([(
             LockKind::Operator,
             Lock {
                 reason: LockReason::new("Sent spam.\nTwice.").expect("a plain reason"),
-                since: at(1_700_086_400),
+                since: clock::at(1_700_086_400),
             },
         )]),
         ..a_summary(an_account_signed_up_at(1_000), "ada@example.com")

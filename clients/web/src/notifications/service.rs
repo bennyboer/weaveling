@@ -1,4 +1,4 @@
-use gloo_net::http::{Request, RequestBuilder};
+use gloo_net::http::Request;
 use notifications_contract::{AboutDTO, NoticeDTO};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -10,14 +10,6 @@ use crate::notifications::notice::RoleChange;
 
 const NOTIFICATIONS: &str = "/api/notifications";
 const NOTICE: &str = "notice";
-const IF_MATCH: &str = "If-Match";
-
-fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
-    match on {
-        0 => request,
-        on => request.header(IF_MATCH, &format!("\"{on}\"")),
-    }
-}
 
 fn read(told: NoticeDTO) -> Result<RoleChange, ApiError> {
     let AboutDTO::RoleChanged { project, role, by } = told.about;
@@ -42,7 +34,7 @@ pub async fn open() -> Result<Vec<RoleChange>, ApiError> {
 
 pub async fn dismiss(notice: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(
+        http::sent(http::made_on(
             Request::post(&format!("{NOTIFICATIONS}/{notice}/dismissed")),
             on,
         ))

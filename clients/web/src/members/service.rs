@@ -1,4 +1,4 @@
-use gloo_net::http::{Request, RequestBuilder, Response};
+use gloo_net::http::{Request, Response};
 use members_contract::{ChangeRoleRequest, MemberDTO, MembershipDTO};
 
 use crate::http;
@@ -8,7 +8,6 @@ use crate::members::listed::{Member, Members, Role};
 
 const MEMBERS: &str = "/api/members";
 const MEMBER: &str = "member";
-const IF_MATCH: &str = "If-Match";
 const ETAG: &str = "ETag";
 
 fn membership(project: &str, account: &str) -> String {
@@ -19,30 +18,20 @@ fn read(told: Vec<MemberDTO>) -> Result<Vec<Member>, ApiError> {
     told.into_iter().map(listed::listed).collect()
 }
 
-fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
-    match on {
-        0 => request,
-        on => request.header(IF_MATCH, &format!("\"{on}\"")),
-    }
-}
-
 fn version_in(tag: Option<String>) -> Option<u64> {
     tag?.trim().trim_matches('"').parse().ok()
 }
 
-async fn to_members(response: Response, otherwise: u64) -> Result<Members, ApiError> {
-    let version = version_in(response.headers().get(ETAG)).unwrap_or(otherwise);
+async fn to_members(response: Response) -> Result<Members, ApiError> {
+    let version = version_in(response.headers().get(ETAG));
     let people = read(http::parsed(response, MEMBER).await?)?;
+    let version = version.ok_or(ApiError::Unexpected)?;
 
     Ok(Members { version, people })
 }
 
 pub async fn members_of(project: &str) -> Result<Members, ApiError> {
-    to_members(
-        http::sent(Request::get(&format!("{MEMBERS}?project={project}"))).await?,
-        0,
-    )
-    .await
+    to_members(http::sent(Request::get(&format!("{MEMBERS}?project={project}"))).await?).await
 }
 
 pub async fn mine() -> Result<Vec<(String, Role)>, ApiError> {
@@ -70,18 +59,21 @@ pub async fn change_role(
 
     to_members(
         http::sent_with(
-            made_on(Request::patch(&membership(project, account)), on),
+            http::made_on(Request::patch(&membership(project, account)), on),
             &payload,
         )
         .await?,
-        on + 1,
     )
     .await
 }
 
 pub async fn remove(project: &str, account: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(Request::delete(&membership(project, account)), on)).await?,
+        http::sent(http::made_on(
+            Request::delete(&membership(project, account)),
+            on,
+        ))
+        .await?,
         MEMBER,
     )
     .await

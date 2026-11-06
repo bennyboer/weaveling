@@ -1,11 +1,10 @@
 mod retiring;
-mod tombstones;
 
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed, InboxedEffect};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys};
 use invitations_messaging::{
@@ -22,7 +21,6 @@ use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 use crate::retiring::RetireDueInvitations;
-use crate::tombstones::InvitationTombstones;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
@@ -173,6 +171,7 @@ impl Feature for InvitationFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
+        let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
         let broadcaster = Broadcaster::new();
         let invitations = InvitationsCore::new(
             ports.events.clone(),
@@ -195,49 +194,25 @@ impl Feature for InvitationFeature {
                 broadcaster,
             ))])
             .listening(vec![
-                Arc::new(InboxedEffect::new(
-                    MailIssuedInvitationListener::new(invitations.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    AcceptTakenUpInvitationListener::new(invitations.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    DeclineInvitationListener::new(invitations.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    CatalogueInvitationsListener::new(
-                        invitations.clone(),
-                        ports.outbox.clone(),
-                        context.clock.clone(),
-                    ),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    WithdrawIfProjectGoneListener::new(invitations.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    RememberWhoSignedUpListener::new(invitations.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    RememberProjectNamesListener::new(
-                        invitations.clone(),
-                        ports.outbox.clone(),
-                        context.clock.clone(),
-                    ),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
+                Arc::new(
+                    hearing.inboxed_effect(MailIssuedInvitationListener::new(invitations.clone())),
+                ),
+                Arc::new(
+                    hearing.inboxed(AcceptTakenUpInvitationListener::new(invitations.clone())),
+                ),
+                Arc::new(hearing.inboxed(DeclineInvitationListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(CatalogueInvitationsListener::new(
+                    invitations.clone(),
+                    ports.outbox.clone(),
+                    context.clock.clone(),
+                ))),
+                Arc::new(hearing.inboxed(WithdrawIfProjectGoneListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(RememberProjectNamesListener::new(
+                    invitations.clone(),
+                    ports.outbox.clone(),
+                    context.clock.clone(),
+                ))),
                 Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
                     invitations.clone(),
                 )),
@@ -246,17 +221,19 @@ impl Feature for InvitationFeature {
                 Arc::new(RetireDueInvitations::new(invitations.clone())),
                 Arc::new(ForgetOldTombstones::new(
                     "forget-old-invitation-tombstones",
-                    Arc::new(InvitationTombstones::of(invitations)),
+                    chores::tombstones_by(move |before, at_most| {
+                        let invitations = invitations.clone();
+                        async move {
+                            invitations
+                                .forget_tombstones_laid_before(before, at_most)
+                                .await
+                        }
+                    }),
                     context.clock.clone(),
                 )),
-                Arc::new(ForgetOldTombstones::new(
-                    "forget-old-invitation-hearings",
-                    Arc::new(HeardMessages::of(
-                        ports.inbox.clone(),
-                        ports.transactions.clone(),
-                    )),
-                    context.clock.clone(),
-                )),
+                Arc::new(
+                    hearing.forgetting("forget-old-invitation-hearings", context.clock.clone()),
+                ),
             ])
     }
 }

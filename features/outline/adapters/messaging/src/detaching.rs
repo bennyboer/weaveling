@@ -4,14 +4,12 @@ use async_trait::async_trait;
 use clock::Clock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use inbox::KeptHandler;
-use messaging::{Failure, Message, RoutingKey};
+use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
 use outline_contract::AttachmentDTO;
 use outline_core::{Attachment, OutlinesCore};
 use scenes_contract::{DELETED, SceneDeletedDTO};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::publishing;
@@ -57,10 +55,15 @@ impl KeptHandler for DetachOnDiscardListener {
             .lay_tombstone(Some(&mut *transaction), &gone, message.occurred_at)
             .await?;
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(gone.as_str(), "idea"),
-                &detach_everywhere(message, &gone, self.clock.now()),
+                message,
+                DETACH_EVERYWHERE,
+                &DetachEverywhereDTO {
+                    attachment: publishing::to_dto(&gone),
+                },
+                self.clock.now(),
             )
             .await?;
 
@@ -102,25 +105,20 @@ impl KeptHandler for DetachOnSceneDeletedListener {
             .lay_tombstone(Some(&mut *transaction), &gone, message.occurred_at)
             .await?;
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(gone.as_str(), "scene"),
-                &detach_everywhere(message, &gone, self.clock.now()),
+                message,
+                DETACH_EVERYWHERE,
+                &DetachEverywhereDTO {
+                    attachment: publishing::to_dto(&gone),
+                },
+                self.clock.now(),
             )
             .await?;
 
         Ok(())
     }
-}
-
-fn detach_everywhere(heard: &Message, gone: &Attachment, now: OffsetDateTime) -> Message {
-    heard.answering(
-        RoutingKey::parse(DETACH_EVERYWHERE).expect("a follow-up's routing key holds no wildcards"),
-        json!(DetachEverywhereDTO {
-            attachment: publishing::to_dto(gone),
-        }),
-        now,
-    )
 }
 
 pub struct DetachEverywhereListener {

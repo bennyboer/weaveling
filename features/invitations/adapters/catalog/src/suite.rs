@@ -190,10 +190,6 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
     InvitationSummary {
         id,
@@ -202,10 +198,10 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         digest: InvitationTokenDigest::kept(format!("digest of {id}")),
         scope: Scope::Instance,
         issued_by: Some(AccountId::from("account_grace")),
-        issued_at: at(1_000),
-        until: at(605_800),
+        issued_at: clock::at(1_000),
+        until: clock::at(605_800),
         outcome: Outcome::Open,
-        retire_after: at(605_800),
+        retire_after: clock::at(605_800),
     }
 }
 
@@ -305,7 +301,7 @@ pub async fn a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes
 }
 
 fn an_id_at(seconds: i64) -> InvitationId {
-    InvitationId::generate(at(seconds))
+    InvitationId::generate(clock::at(seconds))
 }
 
 fn declined() -> Outcome {
@@ -332,8 +328,8 @@ pub async fn a_remembered_invitation_is_listed_as_it_was(
     // given: a summary
     let summary = InvitationSummary {
         version: Version::of(3),
-        issued_at: at(1_700_000_000),
-        until: at(1_700_604_800),
+        issued_at: clock::at(1_700_000_000),
+        until: clock::at(1_700_604_800),
         ..a_summary(an_id_at(1_000), "ada@example.com")
     };
 
@@ -379,7 +375,7 @@ pub async fn an_invitation_is_found_by_its_token_s_digest_however_it_stands_unti
     );
     // when: the open one is forgotten
     catalog
-        .forget(&open.id, at(5_000))
+        .forget(&open.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
     // then: it is found no more
@@ -516,19 +512,19 @@ pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_mo
 ) {
     // given: invitations to retire after different moments
     let soonest = InvitationSummary {
-        retire_after: at(1_000),
+        retire_after: clock::at(1_000),
         ..a_summary(an_id_at(3_000), "soonest@example.com")
     };
     let next = InvitationSummary {
-        retire_after: at(1_500),
+        retire_after: clock::at(1_500),
         ..a_summary(an_id_at(1_000), "next@example.com")
     };
     let third = InvitationSummary {
-        retire_after: at(1_800),
+        retire_after: clock::at(1_800),
         ..a_summary(an_id_at(2_000), "third@example.com")
     };
     let at_its_moment = InvitationSummary {
-        retire_after: at(2_000),
+        retire_after: clock::at(2_000),
         ..a_summary(an_id_at(4_000), "now@example.com")
     };
     for summary in [&third, &soonest, &at_its_moment, &next] {
@@ -538,7 +534,7 @@ pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_mo
     // then: those past a moment are due soonest first, no more than asked
     assert_eq!(
         catalog
-            .due_for_retiring(at(2_000), 2)
+            .due_for_retiring(clock::at(2_000), 2)
             .await
             .expect("asking should succeed"),
         vec![soonest.id, next.id]
@@ -546,7 +542,7 @@ pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_mo
     // and: one at its very moment is not due
     assert_eq!(
         catalog
-            .due_for_retiring(at(2_000), 10)
+            .due_for_retiring(clock::at(2_000), 10)
             .await
             .expect("asking should succeed"),
         vec![soonest.id, next.id, third.id],
@@ -562,7 +558,7 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(
     remembered(
         catalog,
         &InvitationSummary {
-            retire_after: at(1_500),
+            retire_after: clock::at(1_500),
             ..a_summary(id, "ada@example.com")
         },
     )
@@ -573,7 +569,7 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(
         &InvitationSummary {
             version: Version::of(2),
             outcome: declined(),
-            retire_after: at(5_000),
+            retire_after: clock::at(5_000),
             ..a_summary(id, "ada@example.com")
         },
     )
@@ -582,7 +578,7 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(
     // then: it is not due
     assert!(
         catalog
-            .due_for_retiring(at(2_000), 10)
+            .due_for_retiring(clock::at(2_000), 10)
             .await
             .expect("asking should succeed")
             .is_empty(),
@@ -601,12 +597,12 @@ pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
 
     // when: one is forgotten
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
     // and: one never listed
     catalog
-        .forget(&an_id_at(9_000), at(5_000))
+        .forget(&an_id_at(9_000), clock::at(5_000))
         .await
         .expect("forgetting what was never listed is harmless");
 
@@ -621,7 +617,7 @@ pub async fn a_forgotten_invitation_heard_of_late_is_not_remembered_again(
     let gone = a_summary(an_id_at(1_000), "gone@example.com");
     remembered(catalog, &gone).await;
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -641,7 +637,7 @@ pub async fn a_forgotten_invitation_heard_of_late_is_not_remembered_again(
     // and: not due for retiring
     assert!(
         catalog
-            .due_for_retiring(at(1_000_000_000), 10)
+            .due_for_retiring(clock::at(1_000_000_000), 10)
             .await
             .expect("asking should succeed")
             .is_empty()
@@ -659,14 +655,14 @@ pub async fn an_invitation_s_tombstone_is_forgotten_oldest_first_and_at_most_so_
     );
     for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .forget(&summary.id, at(laid))
+            .forget(&summary.id, clock::at(laid))
             .await
             .expect("forgetting should succeed");
     }
 
     // when: at most one tombstone laid before a moment is forgotten
     let forgotten = catalog
-        .forget_invitation_tombstones_laid_before(at(8_000), 1)
+        .forget_invitation_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
     // and: each invitation is heard of late
@@ -835,7 +831,7 @@ pub async fn a_newer_name_replaces_the_older_and_an_older_one_heard_late_changes
 
 async fn tombstoned(catalog: &Committing<'_, impl InvitationCatalog>, project: &str, laid: i64) {
     catalog
-        .lay_project_tombstone(&ProjectLink::from(project), at(laid))
+        .lay_project_tombstone(&ProjectLink::from(project), clock::at(laid))
         .await
         .expect("laying a tombstone should succeed");
 }
@@ -846,7 +842,7 @@ async fn forget_long_gone(
     at_most: u64,
 ) -> u64 {
     catalog
-        .forget_project_tombstones_laid_before(at(before), at_most)
+        .forget_project_tombstones_laid_before(clock::at(before), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
@@ -944,9 +940,9 @@ pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_oth
     catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     // given: two open invitations to an address into projects
-    let older = InvitationId::generate(at(1_000));
-    let newer = InvitationId::generate(at(2_000));
-    let elsewhere = InvitationId::generate(at(3_000));
+    let older = InvitationId::generate(clock::at(1_000));
+    let newer = InvitationId::generate(clock::at(2_000));
+    let elsewhere = InvitationId::generate(clock::at(3_000));
     remembered(catalog, &a_summary_into("project_b", Role::Reader, older)).await;
     remembered(catalog, &a_summary_into("project_a", Role::Author, newer)).await;
     // and: one to another address
@@ -964,7 +960,7 @@ pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_oth
                 ..a_summary_into(
                     "project_a",
                     Role::Author,
-                    InvitationId::generate(at(seconds)),
+                    InvitationId::generate(clock::at(seconds)),
                 )
             },
         )
@@ -1064,7 +1060,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     uncommitted
-        .forget(&mut transaction, &kept.id, at(3_000))
+        .forget(&mut transaction, &kept.id, clock::at(3_000))
         .await
         .expect("forgetting should succeed");
     uncommitted
@@ -1075,7 +1071,11 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     uncommitted
-        .lay_project_tombstone(&mut transaction, &ProjectLink::from("project_1"), at(3_000))
+        .lay_project_tombstone(
+            &mut transaction,
+            &ProjectLink::from("project_1"),
+            clock::at(3_000),
+        )
         .await
         .expect("laying a tombstone should succeed");
 
@@ -1099,7 +1099,7 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     // given: an invitation's tombstone and a project's
     let gone = a_summary(an_id_at(1_000), "ada@example.com");
     catalog
-        .forget(&gone.id, at(2_000))
+        .forget(&gone.id, clock::at(2_000))
         .await
         .expect("forgetting should succeed");
     tombstoned(catalog, "project_1", 2_000).await;
@@ -1107,11 +1107,11 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     let mut transaction = catalog.begun().await;
     let uncommitted = catalog.uncommitted();
     uncommitted
-        .forget_invitation_tombstones_laid_before(&mut transaction, at(9_000), 10)
+        .forget_invitation_tombstones_laid_before(&mut transaction, clock::at(9_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
     uncommitted
-        .forget_project_tombstones_laid_before(&mut transaction, at(9_000), 10)
+        .forget_project_tombstones_laid_before(&mut transaction, clock::at(9_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 

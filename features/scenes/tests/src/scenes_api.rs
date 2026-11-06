@@ -21,7 +21,6 @@ use scenes_core::{
 use scenes_rest::{PAGE, TellingRestylingTasks};
 use scenes_store::InMemorySceneStore;
 use serde_json::Value;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -41,10 +40,6 @@ fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
 
 const A_PROJECT: &str = "project_1";
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_core_of(
     store: Arc<dyn SceneStore>,
     catalog: Arc<dyn SceneCatalog>,
@@ -56,7 +51,7 @@ fn a_core_of(
         catalog,
         tasks,
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_700_000_000))),
+        Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     )
 }
 
@@ -296,7 +291,10 @@ async fn a_catalog_holding(count: i64) -> Arc<InMemorySceneCatalog> {
 
     for made in 0..count {
         catalog
-            .remember_committed(SceneId::generate(at(made)), &ProjectLink::from(A_PROJECT))
+            .remember_committed(
+                SceneId::generate(clock::at(made)),
+                &ProjectLink::from(A_PROJECT),
+            )
             .await
             .expect("remembering should succeed");
     }
@@ -317,7 +315,7 @@ async fn page_after(server: &TestServer, after: Option<&str>) -> ScenePageDTO {
 async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
     // given: a catalog holding a titled scene with an opening
     let catalog = a_catalog_holding(0).await;
-    let scene = SceneId::generate(at(1_000));
+    let scene = SceneId::generate(clock::at(1_000));
     catalog
         .retitle_committed(
             scene,
@@ -332,7 +330,7 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
             scene,
             &ProjectLink::from(A_PROJECT),
             "The loom stood silent.",
-            at(1_000),
+            clock::at(1_000),
         )
         .await
         .expect("noting an opening should succeed");

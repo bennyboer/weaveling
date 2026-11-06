@@ -254,4 +254,41 @@ mod tests {
     }
 
     crate::outbox_conformance_tests!(InMemory);
+
+    #[tokio::test]
+    async fn a_follow_up_is_enqueued_as_an_answer_to_what_was_heard() {
+        // given: an outbox
+        let publisher = Arc::new(FakePublisher::default());
+        let outbox: Arc<dyn Outbox> = Arc::new(InMemoryOutbox::new(
+            publisher.clone(),
+            Arc::new(FixedClock::new(clock::at(3_000))),
+        ));
+        // and: a message heard
+        let heard = suite::a_link_message();
+
+        // when: a follow-up to it is enqueued and committed
+        let mut transaction = InMemoryTransactions::new()
+            .begin()
+            .await
+            .expect("a transaction opens");
+        outbox
+            .enqueue_follow_up_within(
+                &mut transaction,
+                suite::from_a_scene(),
+                &heard,
+                "follow-up.scene.sweep",
+                &["scene_1"],
+                clock::at(2_500),
+            )
+            .await
+            .expect("enqueueing should succeed");
+        transaction.finish().await.expect("the transaction commits");
+        outbox.deliver(10).await.expect("delivering should succeed");
+
+        // then: what is published answers the message heard
+        let [published] = publisher.heard().try_into().expect("one is published");
+        assert_eq!(published.caused_by, Some(heard.id));
+        assert_eq!(published.routing.to_string(), "follow-up.scene.sweep");
+        assert_eq!(published.payload, serde_json::json!(["scene_1"]));
+    }
 }

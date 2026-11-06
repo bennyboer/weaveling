@@ -56,7 +56,7 @@ crate::conformance_tests!(OnSqlite);
 async fn forgetting_a_board_leaves_no_half_of_it_behind() {
     // given: a board holding an idea
     let bench = OnSqlite::setup().await;
-    let board = BoardId::generate(crate::suite::at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     bench
         .committing()
         .remember(&crate::suite::a_summary(board, "project_1"))
@@ -71,7 +71,7 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
     // when: the board is forgotten
     bench
         .committing()
-        .forget(&board, suite::at(5_000))
+        .forget(&board, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -103,10 +103,10 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_board_stand
 
     // when: boards are remembered and forgotten at once
     for nth in 0..40 {
-        let summary = suite::a_summary(BoardId::generate(suite::at(1_000 + nth)), "project_1");
+        let summary = suite::a_summary(BoardId::generate(clock::at(1_000 + nth)), "project_1");
         let (remembered, forgotten) = tokio::join!(
             catalog.remember(&summary),
-            catalog.forget(&summary.id, suite::at(5_000)),
+            catalog.forget(&summary.id, clock::at(5_000)),
         );
         remembered.expect("remembering should succeed");
         forgotten.expect("forgetting should succeed");

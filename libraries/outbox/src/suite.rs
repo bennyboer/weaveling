@@ -31,15 +31,11 @@ pub trait Workbench: Sized {
     async fn cleanup(self);
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 pub fn a_link_message() -> Message {
     Message::opening(
         RoutingKey::parse("scene.idea.linked").expect("a plain key is fine"),
         serde_json::json!({ "scene": "scene_1", "idea": "idea_1" }),
-        at(2_000),
+        clock::at(2_000),
     )
 }
 
@@ -56,7 +52,7 @@ pub struct Bench<W> {
 impl<W: Workbench> Bench<W> {
     pub async fn setup() -> Self {
         let publisher = Arc::new(FakePublisher::default());
-        let clock = Arc::new(FixedClock::new(at(2_000)));
+        let clock = Arc::new(FixedClock::new(clock::at(2_000)));
         let workbench = W::setup(publisher.clone(), clock.clone()).await;
 
         Self {
@@ -202,7 +198,7 @@ pub async fn a_retried_message_keeps_the_id_it_was_written_with<W: Workbench>() 
     bench.publisher.refusing(false);
     bench
         .clock
-        .set(at(2_000) + CLAIM_FOR + Duration::seconds(1));
+        .set(clock::at(2_000) + CLAIM_FOR + Duration::seconds(1));
     bench.deliver(10).await;
 
     // then: it keeps the id it was written with
@@ -230,7 +226,7 @@ pub async fn a_claimed_message_is_left_alone_until_the_claim_runs_out<W: Workben
     // when: the claim runs out
     bench
         .clock
-        .set(at(2_000) + CLAIM_FOR + Duration::seconds(1));
+        .set(clock::at(2_000) + CLAIM_FOR + Duration::seconds(1));
     // then: it is published
     assert_eq!(
         bench.deliver(10).await,
@@ -259,11 +255,16 @@ pub async fn an_entry_published_longer_ago_than_we_keep_them_is_deleted<W: Workb
     bench.waiting(1).await;
     bench
         .workbench
-        .all_published_at(at(2_000) - KEPT_FOR - Duration::days(1))
+        .all_published_at(clock::at(2_000) - KEPT_FOR - Duration::days(1))
         .await;
 
     // then: it is deleted
-    assert_eq!(bench.delete_published(at(2_000) - KEPT_FOR, 100).await, 1);
+    assert_eq!(
+        bench
+            .delete_published(clock::at(2_000) - KEPT_FOR, 100)
+            .await,
+        1
+    );
 
     // and: no entry is left
     assert_eq!(bench.entries().await, 0);
@@ -277,10 +278,13 @@ pub async fn an_entry_written_after_a_sweep_is_published_once<W: Workbench>() {
     bench.deliver(10).await;
     bench
         .workbench
-        .all_published_at(at(2_000) - KEPT_FOR - Duration::days(1))
+        .all_published_at(clock::at(2_000) - KEPT_FOR - Duration::days(1))
         .await;
     // and: one of them deleted
-    assert_eq!(bench.delete_published(at(2_000) - KEPT_FOR, 1).await, 1);
+    assert_eq!(
+        bench.delete_published(clock::at(2_000) - KEPT_FOR, 1).await,
+        1
+    );
 
     // when: another is written
     bench.waiting(1).await;
@@ -302,11 +306,16 @@ pub async fn an_entry_published_recently_is_kept<W: Workbench>() {
     bench.waiting(1).await;
     bench
         .workbench
-        .all_published_at(at(2_000) - Duration::days(1))
+        .all_published_at(clock::at(2_000) - Duration::days(1))
         .await;
 
     // then: it is not deleted
-    assert_eq!(bench.delete_published(at(2_000) - KEPT_FOR, 100).await, 0);
+    assert_eq!(
+        bench
+            .delete_published(clock::at(2_000) - KEPT_FOR, 100)
+            .await,
+        0
+    );
 
     // and: its entry stays
     assert_eq!(bench.entries().await, 1);
@@ -321,7 +330,7 @@ pub async fn an_entry_never_published_is_kept_however_old_it_is<W: Workbench>() 
     // then: deleting even years later takes nothing
     assert_eq!(
         bench
-            .delete_published(at(2_000) + Duration::days(3_650), 100)
+            .delete_published(clock::at(2_000) + Duration::days(3_650), 100)
             .await,
         0
     );
@@ -341,11 +350,14 @@ pub async fn deleting_takes_no_more_than_it_was_asked_for<W: Workbench>() {
     bench.waiting(3).await;
     bench
         .workbench
-        .all_published_at(at(2_000) - KEPT_FOR - Duration::days(1))
+        .all_published_at(clock::at(2_000) - KEPT_FOR - Duration::days(1))
         .await;
 
     // then: deleting asked for two takes two
-    assert_eq!(bench.delete_published(at(2_000) - KEPT_FOR, 2).await, 2);
+    assert_eq!(
+        bench.delete_published(clock::at(2_000) - KEPT_FOR, 2).await,
+        2
+    );
 
     // and: one entry stays
     assert_eq!(bench.entries().await, 1);

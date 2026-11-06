@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
@@ -17,7 +17,7 @@ use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
-use crate::forgetting::{ForgetOldNotices, NoticeTombstones};
+use crate::forgetting::ForgetOldNotices;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<NoticeEvent>>,
@@ -37,6 +37,7 @@ pub fn core(ports: &Ports, context: &Context) -> NotificationsCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let broadcaster = Broadcaster::new();
     let notifications = NotificationsCore::new(
         ports.events.clone(),
@@ -51,42 +52,26 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     Wired::serving(notifications_rest::router(notifications.clone()))
         .followed_live(vec![Arc::new(NotificationsTopic::new(broadcaster))])
         .listening(vec![
-            Arc::new(Inboxed::new(
-                NoteRoleChangedListener::new(notifications.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
-            Arc::new(Inboxed::new(
-                CatalogueNoticeListener::new(notifications.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
-            Arc::new(Inboxed::new(
-                RememberWhoSignedUpListener::new(notifications.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
-            Arc::new(Inboxed::new(
-                RememberProjectNamesListener::new(notifications.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
+            Arc::new(hearing.inboxed(NoteRoleChangedListener::new(notifications.clone()))),
+            Arc::new(hearing.inboxed(CatalogueNoticeListener::new(notifications.clone()))),
+            Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(notifications.clone()))),
+            Arc::new(hearing.inboxed(RememberProjectNamesListener::new(notifications.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldNotices::new(notifications.clone())),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-notification-tombstones",
-                Arc::new(NoticeTombstones::of(notifications)),
+                chores::tombstones_by(move |before, at_most| {
+                    let notifications = notifications.clone();
+                    async move {
+                        notifications
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-notification-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-notification-hearings", context.clock.clone())),
         ])
 }
 

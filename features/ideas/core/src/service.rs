@@ -84,21 +84,16 @@ impl IdeaService {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, IdeasError> {
-        let key = AggregateId::from(id);
-
-        let landed = match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        };
-
-        Ok(landed.version)
+        Ok(self
+            .events
+            .execute_at(
+                transaction,
+                &AggregateId::from(id),
+                expected,
+                command,
+                agent,
+            )
+            .await?
+            .version)
     }
 }

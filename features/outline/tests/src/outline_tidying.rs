@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
+use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use ideas_contract::DISCARDED as IDEA_DISCARDED;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
@@ -18,26 +18,17 @@ use outline_messaging::{
 };
 use scenes_contract::{DELETED as SCENE_DELETED, SceneDeletedDTO};
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
 
 fn a_workbench() -> Wired {
     a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
 }
 
 fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
-    wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), authorizer)
+    wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), authorizer)
 }
 
 fn a_scene(named: &str) -> Attachment {
@@ -49,15 +40,14 @@ fn an_idea(named: &str) -> Attachment {
 }
 
 fn discarded(idea: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(IDEA_DISCARDED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DISCARDED" },
-            "aggregate": { "id": idea, "kind": "idea", "version": 2 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        IDEA_DISCARDED,
+        "idea",
+        idea,
+        2,
+        json!({ "version": 0, "name": "DISCARDED" }),
+        &Agent::System,
+        clock::at(1_000),
     )
 }
 
@@ -66,7 +56,7 @@ fn asked_to_detach_everywhere(attachment: AttachmentDTO) -> Message {
         RoutingKey::parse(DETACH_EVERYWHERE).expect("a follow-up's key holds no wildcards"),
         serde_json::to_value(DetachEverywhereDTO { attachment })
             .expect("a follow-up is plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -77,7 +67,7 @@ fn asked_to_detach_the_gone(outline: &OutlineId) -> Message {
             outline: outline.to_string(),
         })
         .expect("a follow-up is plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -94,7 +84,7 @@ async fn a_chapter(wired: &Wired, outline: &OutlineId, titled_as: &str) -> Secti
             None,
             a_title(titled_as),
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("adding a section should succeed")
@@ -104,7 +94,7 @@ async fn a_chapter(wired: &Wired, outline: &OutlineId, titled_as: &str) -> Secti
 async fn a_book_holding(wired: &Wired, scenes: &[&str]) -> (OutlineId, SectionId) {
     let outline = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -120,7 +110,7 @@ async fn a_book_holding(wired: &Wired, scenes: &[&str]) -> (OutlineId, SectionId
                 chapter,
                 behind.clone(),
                 None,
-                &an_author(),
+                &eventsourcing::an_author(),
             )
             .await
             .expect("attaching should succeed");
@@ -160,7 +150,12 @@ async fn detaching_a_scene_takes_it_out_of_the_index() {
     // when: the scene is detached
     wired
         .outlines
-        .detach(&outline.to_string(), a_scene("scene_1"), None, &an_author())
+        .detach(
+            &outline.to_string(),
+            a_scene("scene_1"),
+            None,
+            &eventsourcing::an_author(),
+        )
         .await
         .expect("detaching should succeed");
     wired.settle().await;
@@ -185,7 +180,12 @@ async fn removing_a_section_takes_its_scenes_out_of_the_index() {
     // when: the chapter is removed
     wired
         .outlines
-        .remove(&outline.to_string(), chapter, None, &an_author())
+        .remove(
+            &outline.to_string(),
+            chapter,
+            None,
+            &eventsourcing::an_author(),
+        )
         .await
         .expect("removing should succeed");
     wired.settle().await;
@@ -258,7 +258,7 @@ async fn a_book_noting(wired: &Wired, idea: &str) -> (OutlineId, SectionId) {
             chapter,
             Some(a_scene("scene_1")),
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("noting should succeed");
@@ -306,7 +306,7 @@ async fn a_discarded_idea_leaves_the_book() {
     // then: the book holds only the scene
     let standing = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -333,7 +333,7 @@ async fn discarding_an_idea_leaves_the_scenes_alone() {
     // then: the book still reads the scene
     let standing = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -525,7 +525,7 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(IDEA_DISCARDED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it fails
@@ -542,7 +542,7 @@ fn scene_deleted(scene: &str) -> Message {
             scene: scene.to_owned(),
         })
         .expect("a deletion is plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -563,7 +563,7 @@ async fn a_deleted_scene_is_taken_out_of_the_book() {
     // then: the book holds only the other
     let standing = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -576,7 +576,7 @@ async fn a_deleted_scene_is_taken_out_of_the_book() {
 async fn placed_but_not_yet_indexed(wired: &Wired, held: Attachment) -> (OutlineId, SectionId) {
     let outline = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -589,7 +589,7 @@ async fn placed_but_not_yet_indexed(wired: &Wired, held: Attachment) -> (Outline
             chapter,
             None,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("attaching should succeed");
@@ -614,7 +614,7 @@ async fn a_scene_deleted_before_its_placement_was_indexed_still_leaves_the_book(
     // then: the book holds nothing
     let standing = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert!(
@@ -640,7 +640,7 @@ async fn an_idea_discarded_before_its_placement_was_indexed_still_leaves_the_boo
     // then: the book holds nothing
     let standing = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert!(
@@ -686,7 +686,7 @@ async fn a_scene_deletion_that_is_not_shaped_like_one_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(SCENE_DELETED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it fails
@@ -728,7 +728,11 @@ async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() 
         .expect("the listener should take this message");
 
     // then: their tombstones were laid when they went, and are forgotten once
-    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 2), (at(1_001), 0)] {
+    for (before, forgotten) in [
+        (clock::at(1_000), 0),
+        (clock::at(1_001), 2),
+        (clock::at(1_001), 0),
+    ] {
         assert_eq!(
             wired
                 .outlines
@@ -758,7 +762,7 @@ async fn a_deletion_lays_the_tombstone_and_leaves_detaching_to_a_follow_up() {
     assert_eq!(
         wired
             .outlines
-            .read(&outline.to_string(), &an_author())
+            .read(&outline.to_string(), &eventsourcing::an_author())
             .await
             .expect("reading should succeed")
             .state
@@ -800,7 +804,7 @@ async fn a_deletion_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_not
     assert_eq!(
         wired
             .outlines
-            .forget_tombstones_laid_before(at(1_001), u64::MAX)
+            .forget_tombstones_laid_before(clock::at(1_001), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         0,
@@ -816,7 +820,7 @@ async fn a_book_holding_several_gone_scenes_lets_go_of_them_one_hearing_after_an
     for scene in ["scene_1", "scene_2"] {
         wired
             .outlines
-            .lay_tombstone(None, &a_scene(scene), at(1_000))
+            .lay_tombstone(None, &a_scene(scene), clock::at(1_000))
             .await
             .expect("laying a tombstone should succeed");
     }
@@ -833,7 +837,7 @@ async fn a_book_holding_several_gone_scenes_lets_go_of_them_one_hearing_after_an
         let outline = outline.to_string();
         async move {
             outlines
-                .read(&outline, &an_author())
+                .read(&outline, &eventsourcing::an_author())
                 .await
                 .expect("reading should succeed")
                 .state

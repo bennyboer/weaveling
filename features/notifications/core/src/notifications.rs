@@ -105,18 +105,9 @@ impl NotificationsCore {
             &*self.transactions,
             eventsourcing::tries_for(expected),
             |transaction| {
-                match expected {
-                    Some(expected) => {
-                        self.events
-                            .execute_at(transaction, &key, expected, NoticeCommand::Dismiss, agent)
-                            .await?
-                    }
-                    None => {
-                        self.events
-                            .execute(transaction, &key, NoticeCommand::Dismiss, agent)
-                            .await?
-                    }
-                };
+                self.events
+                    .execute_at(transaction, &key, expected, NoticeCommand::Dismiss, agent)
+                    .await?;
                 Ok(())
             }
         )

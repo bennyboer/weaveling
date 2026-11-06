@@ -54,7 +54,7 @@ mod tests {
 
     use authorizing::AllowingEverything;
     use clock::FixedClock;
-    use eventsourcing::InMemoryEventStore;
+    use eventsourcing::{AccountId, Agent, InMemoryEventStore};
     use members_catalog::InMemoryMembershipCatalog;
     use members_core::MembershipCatalog;
     use messaging::{Listener, RoutingKey};
@@ -94,14 +94,13 @@ mod tests {
     }
 
     fn told(routing: &str, event: Value) -> Message {
-        Message::opening(
-            RoutingKey::parse(routing).expect("a declared key"),
-            json!({
-                "event": event,
-                "aggregate": { "id": "account_ada", "kind": "account", "version": 1 },
-                "agent": { "kind": "account", "id": "account_ada" },
-                "occurred_at": "1970-01-01T00:00:00Z",
-            }),
+        eventpublishing::published(
+            routing,
+            "account",
+            "account_ada",
+            1,
+            event,
+            &Agent::Account(AccountId::from("account_ada")),
             OffsetDateTime::UNIX_EPOCH,
         )
     }

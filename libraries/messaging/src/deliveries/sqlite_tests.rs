@@ -90,14 +90,14 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
         .expect("enqueuing should succeed");
     let claimed = bench
         .store()
-        .claim_due(suite::at(1_000), 16)
+        .claim_due(clock::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
     // when: it is given up on
     bench
         .store()
-        .give_up(&claimed[0], "it refused five times", suite::at(1_001))
+        .give_up(&claimed[0], "it refused five times", clock::at(1_001))
         .await
         .expect("giving up should succeed");
 

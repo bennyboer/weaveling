@@ -23,15 +23,15 @@ fn served_to(wired: &Wired, acting: Acting) -> TestServer {
 
 fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
     InvitationSummary {
-        id: InvitationId::generate(wiring::at(seconds)),
+        id: InvitationId::generate(clock::at(seconds)),
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
         digest: InvitationTokenDigest::kept(format!("digest for {to} at {seconds}")),
         issued_by: None,
-        issued_at: wiring::at(seconds),
-        until: wiring::at(seconds) + Duration::days(7),
+        issued_at: clock::at(seconds),
+        until: clock::at(seconds) + Duration::days(7),
         outcome,
-        retire_after: wiring::at(seconds) + Duration::days(7),
+        retire_after: clock::at(seconds) + Duration::days(7),
         scope: Scope::Instance,
     }
 }

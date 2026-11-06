@@ -18,7 +18,6 @@ use scenes_messaging::RestyleOnQuotationChangedListener;
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use yrs::types::Attrs;
 use yrs::{
@@ -27,10 +26,6 @@ use yrs::{
 
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct Vanishing {
     gone: SceneId,
@@ -95,7 +90,7 @@ fn a_workbench(at_most: usize) -> Wired {
         Arc::new(InMemorySceneCatalog::new()),
         tasks.clone(),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
     let live = LiveScenes::new(scenes.clone());
 
@@ -109,7 +104,7 @@ fn restyling_with(
     restyler: Arc<dyn SceneRestyler>,
     at_most: usize,
 ) -> Wired {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
 
     Wired {
@@ -228,15 +223,14 @@ impl Wired {
 }
 
 fn restyled(project: &str, quotation: &str, change: u64) -> Message {
-    Message::opening(
-        RoutingKey::parse(QUOTATION_CHANGED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "QUOTATION_CHANGED", "quotation": quotation },
-            "aggregate": { "id": project, "kind": "project", "version": change },
-            "agent": { "kind": "account", "id": "author-7" },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        QUOTATION_CHANGED,
+        "project",
+        project,
+        change,
+        json!({ "version": 0, "name": "QUOTATION_CHANGED", "quotation": quotation }),
+        &eventsourcing::an_author(),
+        clock::at(1_000),
     )
 }
 
@@ -250,7 +244,7 @@ fn more_of(project: &str, quotation: &str, change: u64, after: SceneId) -> Messa
             after: after.to_string(),
         })
         .expect("plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -522,7 +516,7 @@ async fn a_message_about_no_project_at_all_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(QUOTATION_CHANGED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it fails
@@ -533,15 +527,14 @@ async fn a_message_about_no_project_at_all_is_refused() {
 async fn a_project_event_that_changes_no_style_is_refused() {
     // given: a project event that changes no style
     let wired = a_workbench(4);
-    let renamed = Message::opening(
-        RoutingKey::parse(QUOTATION_CHANGED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "RENAMED", "project_name": "Another title" },
-            "aggregate": { "id": A_PROJECT, "kind": "project", "version": 3 },
-            "agent": { "kind": "account", "id": "author-7" },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    let renamed = eventpublishing::published(
+        QUOTATION_CHANGED,
+        "project",
+        A_PROJECT,
+        3,
+        json!({ "version": 0, "name": "RENAMED", "project_name": "Another title" }),
+        &eventsourcing::an_author(),
+        clock::at(1_000),
     );
 
     // then: hearing it fails

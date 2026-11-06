@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
@@ -106,10 +106,6 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_scene(named: &str) -> SceneLink {
     SceneLink::from(named)
 }
@@ -132,7 +128,12 @@ async fn kept(
     seconds: i64,
 ) {
     catalog
-        .keep(&a_scene(scene), &a_project("project_1"), words, at(seconds))
+        .keep(
+            &a_scene(scene),
+            &a_project("project_1"),
+            words,
+            clock::at(seconds),
+        )
         .await
         .expect("keeping should succeed");
 }
@@ -153,7 +154,7 @@ async fn forgotten(catalog: &Committing<'_, impl WordCountCatalog>, scene: &str)
 
 async fn forgotten_at(catalog: &Committing<'_, impl WordCountCatalog>, scene: &str, seconds: i64) {
     catalog
-        .forget_scene(&a_scene(scene), at(seconds))
+        .forget_scene(&a_scene(scene), clock::at(seconds))
         .await
         .expect("forgetting should succeed");
 }
@@ -277,7 +278,7 @@ pub async fn keeping_says_what_is_kept(catalog: &Committing<'_, impl WordCountCa
                 &a_scene("scene_1"),
                 &a_project("project_1"),
                 words,
-                at(seconds),
+                clock::at(seconds),
             )
             .await
             .expect("keeping should succeed")
@@ -316,7 +317,7 @@ async fn forget_long_gone(
     at_most: u64,
 ) -> u64 {
     catalog
-        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .forget_tombstones_laid_before(clock::at(before_seconds), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
@@ -404,16 +405,16 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
             &a_scene("scene_new"),
             &a_project("project_1"),
             3,
-            at(2_000),
+            clock::at(2_000),
         )
         .await
         .expect("keeping should succeed");
     uncommitted
-        .forget_scene(&mut transaction, &a_scene("scene_kept"), at(2_000))
+        .forget_scene(&mut transaction, &a_scene("scene_kept"), clock::at(2_000))
         .await
         .expect("forgetting should succeed");
     uncommitted
-        .forget_tombstones_laid_before(&mut transaction, at(5_000), 10)
+        .forget_tombstones_laid_before(&mut transaction, clock::at(5_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 

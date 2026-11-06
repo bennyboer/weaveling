@@ -1,10 +1,8 @@
-mod tombstones;
-
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use outline_catalog::InMemoryOutlineCatalog;
@@ -18,8 +16,6 @@ use outline_messaging::{
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
-
-use crate::tombstones::OutlineTombstones;
 
 pub const LIVE: &str = "broadcast-outline-changes";
 
@@ -44,58 +40,31 @@ pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let outlines = core(ports, context);
-    let catalogue = Inboxed::new(
-        CatalogueOutlinesListener::new(outlines.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let index = Inboxed::new(
-        IndexAttachmentsListener::new(
-            outlines.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let detach_discarded_ideas = Inboxed::new(
-        DetachOnDiscardListener::new(
-            outlines.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let detach_deleted_scenes = Inboxed::new(
-        DetachOnSceneDeletedListener::new(
-            outlines.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let detach_everywhere = Inboxed::new(
-        DetachEverywhereListener::new(outlines.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let detach_gone = Inboxed::new(
-        DetachGoneAttachmentsListener::new(outlines.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let remember_deleted_projects = Inboxed::new(
-        RememberDeletedProjectsListener::new(
-            outlines.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
+    let catalogue = hearing.inboxed(CatalogueOutlinesListener::new(outlines.clone()));
+    let index = hearing.inboxed(IndexAttachmentsListener::new(
+        outlines.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
+    let detach_discarded_ideas = hearing.inboxed(DetachOnDiscardListener::new(
+        outlines.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
+    let detach_deleted_scenes = hearing.inboxed(DetachOnSceneDeletedListener::new(
+        outlines.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
+    let detach_everywhere = hearing.inboxed(DetachEverywhereListener::new(outlines.clone()));
+    let detach_gone = hearing.inboxed(DetachGoneAttachmentsListener::new(outlines.clone()));
+    let remember_deleted_projects = hearing.inboxed(RememberDeletedProjectsListener::new(
+        outlines.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -122,17 +91,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-outline-tombstones",
-                Arc::new(OutlineTombstones::of(outlines)),
+                chores::tombstones_by(move |before, at_most| {
+                    let outlines = outlines.clone();
+                    async move {
+                        outlines
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-outline-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-outline-hearings", context.clock.clone())),
         ])
 }
 
@@ -242,7 +211,7 @@ mod tests {
     use std::sync::Arc;
 
     use authorizing::AllowingEverything;
-    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use outline_core::Attachment;
@@ -298,27 +267,5 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-    }
-
-    #[tokio::test]
-    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        // given: two tombstones laid at the same moment
-        let context = a_context();
-        let ports = OutlineFeature::in_memory(&context);
-        for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
-            core(&ports, &context)
-                .lay_tombstone(None, &gone, NOW)
-                .await
-                .expect("laying a tombstone should succeed");
-        }
-
-        // when: tombstones are forgotten a batch of one at a time
-        let forgotten = OutlineTombstones::of(core(&ports, &context))
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
-
-        // then: one is forgotten
-        assert_eq!(forgotten, 1);
     }
 }

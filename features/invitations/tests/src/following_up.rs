@@ -1,5 +1,5 @@
 use acting::Acting;
-use eventsourcing::{Agent, AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use inbox::Inboxed;
 use invitations_contract::ISSUED;
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationId, KIND, Role};
@@ -24,28 +24,26 @@ fn an_owner() -> Acting {
 }
 
 fn an_issue_of(invitation: &InvitationId) -> Message {
-    Message::opening(
-        RoutingKey::parse(ISSUED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "WHATEVER" },
-            "aggregate": { "id": invitation.to_string(), "kind": "invitation", "version": 1 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_000),
+    eventpublishing::published(
+        ISSUED,
+        "invitation",
+        &invitation.to_string(),
+        1,
+        json!({ "version": 0, "name": "WHATEVER" }),
+        &Agent::System,
+        clock::at(1_700_000_000),
     )
 }
 
 fn a_deletion_of(project: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": project, "kind": "project", "version": 4 },
-            "agent": { "kind": "account", "id": "account_ada" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_050),
+    eventpublishing::published(
+        DELETED,
+        "project",
+        project,
+        4,
+        json!({ "version": 0, "name": "DELETED" }),
+        &Agent::Account(AccountId::from("account_ada")),
+        clock::at(1_700_000_050),
     )
 }
 
@@ -237,7 +235,7 @@ async fn the_follow_up_withdraws_an_invitation_whose_project_is_gone_and_leaves_
                         "invitation": id.to_string(),
                         "project": if id == &into_the_loom { "project_loom" } else { "project_weft" },
                     }),
-                    wiring::at(1_700_000_100),
+                    clock::at(1_700_000_100),
                 ),
             )
             .await;

@@ -30,16 +30,11 @@ mod tests {
     use ideas_core::{IdeaId, IdeaTitle, KIND, ProjectLink};
     use inbox::KeptHandler;
     use messaging::{RoutingKey, Subscription};
-    use time::{Duration, OffsetDateTime};
 
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn an_idea() -> IdeaId {
-        IdeaId::generate(at(1_000))
+        IdeaId::generate(clock::at(1_000))
     }
 
     fn a_title() -> IdeaTitle {
@@ -53,7 +48,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: Agent::Account(AccountId::from("author-7")),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },

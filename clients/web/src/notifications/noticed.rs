@@ -4,7 +4,6 @@ use leptos::task;
 use leptos::{IntoView, ev, html};
 use time::format_description::well_known::Rfc3339;
 
-use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::moment;
@@ -38,7 +37,7 @@ impl Noticed {
                     },
                 }
 
-                Ok(answered(on, &intent))
+                Ok(on)
             },
             move |id: String| async move {
                 service::open()
@@ -50,26 +49,21 @@ impl Noticed {
             },
             move |failure| _ = refused.try_set(Some(failure)),
         );
-        let asking = Asking::new();
-        let listing = Action::new_local(move |_: &()| {
-            let asked = asking.next();
-
-            async move {
-                let answer = service::open().await;
-                if !asking.is_latest(asked) {
-                    return;
-                }
-                if let Ok(listed) = answer {
-                    open.take_in_all(listed.into_iter().map(held).collect());
-                }
-            }
-        });
-        listing.dispatch(());
+        let listing = move || {
+            let reading = open.read_all(
+                || async { Ok(service::open().await?.into_iter().map(held).collect()) },
+                None,
+            );
+            task::spawn_local(async move {
+                _ = reading.await;
+            });
+        };
+        listing();
         StoredValue::new_local(Subscription::start(
             "notifications",
             &[("mine", "true")],
-            move |_| _ = listing.dispatch(()),
-            move || _ = listing.dispatch(()),
+            move |_| listing(),
+            listing,
         ));
 
         Self { open, refused }
@@ -88,19 +82,10 @@ impl Noticed {
     }
 
     fn dismiss(self, notice: String) {
-        let dismissed_or_gone =
-            untrack(|| !self.open.is_listed(&notice) || self.open.unanswered_on(&notice));
-        if dismissed_or_gone {
-            return;
-        }
         self.refused.set(None);
-        let Some(landed) = self.open.intended(&notice, Intent::Dismiss) else {
-            return;
-        };
+        let ending = self.open.ending(&notice, Intent::Dismiss);
         task::spawn_local(async move {
-            if landed.await {
-                self.open.forget(&notice);
-            }
+            ending.await;
         });
     }
 
@@ -125,14 +110,6 @@ impl working_copy::Intent<RoleChange> for Intent {
 
 fn held(change: RoleChange) -> (String, RoleChange) {
     (change.id.clone(), change)
-}
-
-fn answered(on: RoleChange, intent: &Intent) -> RoleChange {
-    let mut answered = on;
-    working_copy::Intent::lay_over(intent, &mut answered);
-    answered.version += 1;
-
-    answered
 }
 
 pub fn row(noticed: Noticed, change: RoleChange) -> impl IntoView {
@@ -211,14 +188,5 @@ mod tests {
 
         // then: it shows as it was
         assert_eq!(shown, noted);
-    }
-
-    #[test]
-    fn a_dismissal_landed_stands_one_version_on() {
-        // when: a notice at version one is dismissed
-        let answered = answered(a_role_changed(), &Intent::Dismiss);
-
-        // then: it stands at the next version
-        assert_eq!(answered.version(), 2);
     }
 }

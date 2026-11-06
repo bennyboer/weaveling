@@ -35,7 +35,7 @@ pub async fn pin(
         size: to_size_dto(at.size),
     };
     let response = http::sent_with(
-        Request::post(&format!("{BOARDS}/{board}/ideas")).header("If-Match", &matching(on)),
+        http::made_on(Request::post(&format!("{BOARDS}/{board}/ideas")), on),
         &payload,
     )
     .await?;
@@ -55,7 +55,10 @@ pub async fn reshape(
         size: size.map(to_size_dto),
     };
     let response = http::sent_with(
-        Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")).header("If-Match", &matching(on)),
+        http::made_on(
+            Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")),
+            on,
+        ),
         &payload,
     )
     .await?;
@@ -64,10 +67,10 @@ pub async fn reshape(
 }
 
 pub async fn unpin(board: &BoardId, idea: &IdeaId, on: u64) -> Result<(), ApiError> {
-    let response = http::sent(
-        Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))
-            .header("If-Match", &matching(on)),
-    )
+    let response = http::sent(http::made_on(
+        Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}")),
+        on,
+    ))
     .await?;
 
     match response.status() {
@@ -75,10 +78,6 @@ pub async fn unpin(board: &BoardId, idea: &IdeaId, on: u64) -> Result<(), ApiErr
         412 => Err(ApiError::Outdated(SUBJECT)),
         _ => Err(ApiError::Unexpected),
     }
-}
-
-fn matching(version: u64) -> String {
-    format!("\"{version}\"")
 }
 
 fn as_board(dto: BoardDTO) -> Board {

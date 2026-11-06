@@ -192,19 +192,15 @@ impl InvitationService {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        let key = AggregateId::from(invitation);
-        match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        };
+        self.events
+            .execute_at(
+                transaction,
+                &AggregateId::from(invitation),
+                expected,
+                command,
+                agent,
+            )
+            .await?;
 
         Ok(())
     }

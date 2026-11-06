@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing"] }
 
+serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true, optional = true, features = ["uuid"] }
 tokio = { workspace = true, features = ["rt", "time", "sync", "macros"] }

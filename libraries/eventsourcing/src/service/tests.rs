@@ -5,7 +5,6 @@ use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction, Transactions};
 
 use super::*;
-use crate::agent::AccountId;
 use crate::memory::InMemoryEventStore;
 use crate::patch::Patcher;
 use crate::testing::sample;
@@ -77,7 +76,7 @@ impl Committed for EventSourcingService<Sample> {
     ) -> Outcome<Sample> {
         let mut transaction = InMemoryTransactions::new().begin().await?;
         let appended = self
-            .execute_at(&mut transaction, aggregate, expected, command, agent)
+            .execute_at(&mut transaction, aggregate, Some(expected), command, agent)
             .await?;
         transaction.finish().await?;
 
@@ -112,10 +111,6 @@ fn a_creation() -> SampleCommand {
     }
 }
 
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn events_of(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {
     landed
         .events
@@ -131,7 +126,7 @@ fn a_retitling(to: &str) -> SampleCommand {
 async fn a_created_sample(service: &EventSourcingService<Sample>) -> AggregateId {
     let id = AggregateId::from("sample_1");
     service
-        .begin_committed(&id, a_creation(), &an_author())
+        .begin_committed(&id, a_creation(), &crate::an_author())
         .await
         .expect("creating should succeed");
 
@@ -146,7 +141,7 @@ async fn creating_lands_the_first_version() {
 
     // when: it is created
     let landed = service
-        .begin_committed(&id, a_creation(), &an_author())
+        .begin_committed(&id, a_creation(), &crate::an_author())
         .await
         .expect("creating should succeed");
 
@@ -172,7 +167,7 @@ async fn a_further_command_lands_the_next_version() {
 
     // when: it is retitled
     let landed = service
-        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
@@ -212,7 +207,7 @@ async fn a_command_on_something_that_does_not_exist_is_not_found() {
 
     // when: it is retitled
     let refused = service
-        .execute_committed(&missing, a_retitling("Too soon"), &an_author())
+        .execute_committed(&missing, a_retitling("Too soon"), &crate::an_author())
         .await
         .expect_err("nothing exists to update");
 
@@ -236,7 +231,7 @@ async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggrega
         .begin_committed(
             &AggregateId::from("sample_early"),
             a_retitling("Too soon"),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect_err("only a creation command can start a stream");
@@ -256,7 +251,7 @@ async fn beginning_something_that_already_exists_is_a_conflict() {
 
     // when: it is begun again
     let refused = service
-        .begin_committed(&id, a_creation(), &an_author())
+        .begin_committed(&id, a_creation(), &crate::an_author())
         .await
         .expect_err("it is already there");
 
@@ -273,13 +268,18 @@ async fn a_command_at_a_stale_version_is_refused() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, a_retitling("Second"), &an_author())
+        .execute_committed(&id, a_retitling("Second"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
     // when: a command expecting its first version is executed
     let refused = service
-        .execute_at_committed(&id, Version::of(1), a_retitling("Stale"), &an_author())
+        .execute_at_committed(
+            &id,
+            Version::of(1),
+            a_retitling("Stale"),
+            &crate::an_author(),
+        )
         .await
         .expect_err("the stream has moved on");
 
@@ -308,7 +308,7 @@ async fn a_command_at_the_current_version_is_accepted() {
             &id,
             Version::of(1),
             a_retitling("The Silent Loom"),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("the caller was up to date");
@@ -326,7 +326,12 @@ async fn beginning_within(
         .await
         .expect("beginning should succeed");
     let begun = service
-        .begin(&mut transaction, &sample::a_sample(), command, &an_author())
+        .begin(
+            &mut transaction,
+            &sample::a_sample(),
+            command,
+            &crate::an_author(),
+        )
         .await;
 
     (transaction, begun)
@@ -378,7 +383,7 @@ async fn something_begun_within_a_transaction_that_is_dropped_was_never_begun() 
     ));
     // and: it can be begun again
     service
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("it can be begun again");
 }
@@ -388,7 +393,7 @@ async fn beginning_within_a_transaction_what_already_exists_is_a_conflict() {
     // given: a created sample
     let service = a_workbench();
     service
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
 
@@ -423,13 +428,13 @@ async fn commands_after_deletion_are_refused() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, SampleCommand::Delete, &an_author())
+        .execute_committed(&id, SampleCommand::Delete, &crate::an_author())
         .await
         .expect("deleting should succeed");
 
     // when: it is retitled
     let refused = service
-        .execute_committed(&id, a_retitling("Too late"), &an_author())
+        .execute_committed(&id, a_retitling("Too late"), &crate::an_author())
         .await
         .expect_err("a deleted sample accepts nothing");
 
@@ -446,7 +451,7 @@ async fn an_older_version_can_still_be_read() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
@@ -473,15 +478,15 @@ async fn many_aggregates_do_not_interfere() {
 
     // when: two samples are created and one of them retitled
     service
-        .begin_committed(&one, a_creation(), &an_author())
+        .begin_committed(&one, a_creation(), &crate::an_author())
         .await
         .expect("creating should succeed");
     service
-        .begin_committed(&other, a_creation(), &an_author())
+        .begin_committed(&other, a_creation(), &crate::an_author())
         .await
         .expect("creating should succeed");
     service
-        .execute_committed(&other, a_retitling("Apart"), &an_author())
+        .execute_committed(&other, a_retitling("Apart"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
@@ -511,7 +516,7 @@ async fn one_command_may_land_several_events_at_once() {
                 title: "The Silent Loom".to_owned(),
                 description: "It remembers.".to_owned(),
             },
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("rewriting should succeed");
@@ -542,7 +547,7 @@ async fn what_landed_carries_the_events_that_were_appended() {
                 title: "The Silent Loom".to_owned(),
                 description: "It remembers.".to_owned(),
             },
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("rewriting should succeed");
@@ -578,14 +583,18 @@ async fn a_snapshot_is_not_something_that_happened() {
 
     for counted in 2..100 {
         service
-            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
+            .execute_committed(
+                &id,
+                a_retitling(&format!("Title {counted}")),
+                &crate::an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
 
     // when: the event that makes it due lands
     let landed = service
-        .execute_committed(&id, a_retitling("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
@@ -620,7 +629,11 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
 
     for counted in 2..100 {
         service
-            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
+            .execute_committed(
+                &id,
+                a_retitling(&format!("Title {counted}")),
+                &crate::an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
@@ -637,7 +650,7 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
 
     // when: the event that makes it due lands
     let landed = service
-        .execute_committed(&id, a_retitling("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
@@ -673,13 +686,13 @@ async fn collapsing_leaves_only_a_snapshot_behind() {
     let service = a_service(store.clone());
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, a_retitling("The Silent Loom"), &an_author())
+        .execute_committed(&id, a_retitling("The Silent Loom"), &crate::an_author())
         .await
         .expect("updating should succeed");
 
     // when: it is collapsed
     let taken = service
-        .compact_committed(&id, &an_author())
+        .compact_committed(&id, &crate::an_author())
         .await
         .expect("collapsing should succeed");
 
@@ -706,13 +719,13 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .compact_committed(&id, &an_author())
+        .compact_committed(&id, &crate::an_author())
         .await
         .expect("collapsing should succeed");
 
     // when: it is retitled
     let landed = service
-        .execute_committed(&id, a_retitling("After the compact"), &an_author())
+        .execute_committed(&id, a_retitling("After the compact"), &crate::an_author())
         .await
         .expect("a collapsed aggregate still accepts commands");
 
@@ -738,7 +751,7 @@ async fn who_acted_and_when_is_recorded() {
         .await
         .expect("reading should succeed");
 
-    assert_eq!(stream[0].metadata.agent, an_author());
+    assert_eq!(stream[0].metadata.agent, crate::an_author());
     assert_eq!(stream[0].metadata.occurred_at, OffsetDateTime::UNIX_EPOCH);
     assert_eq!(stream[0].metadata.kind, Sample::KIND);
     assert_eq!(stream[0].metadata.aggregate, id);
@@ -750,17 +763,22 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute_committed(&id, a_retitling("Second"), &an_author())
+        .execute_committed(&id, a_retitling("Second"), &crate::an_author())
         .await
         .expect("updating should succeed");
     service
-        .compact_committed(&id, &an_author())
+        .compact_committed(&id, &crate::an_author())
         .await
         .expect("collapsing should succeed");
 
     // when: a command expecting its first version is executed
     let refused = service
-        .execute_at_committed(&id, Version::of(1), a_retitling("Stale"), &an_author())
+        .execute_at_committed(
+            &id,
+            Version::of(1),
+            a_retitling("Stale"),
+            &crate::an_author(),
+        )
         .await
         .expect_err("version 1 was pruned away, but the aggregate is very much there");
 
@@ -894,7 +912,7 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
 
     // when: its aggregate is collapsed
     service
-        .compact_committed(&id, &an_author())
+        .compact_committed(&id, &crate::an_author())
         .await
         .expect("collapsing a patched stream should succeed");
 
@@ -1252,7 +1270,11 @@ async fn a_sample_one_short_of_a_snapshot(
     let id = a_created_sample(&service).await;
     for counted in 2..100 {
         service
-            .execute_committed(&id, a_retitling(&format!("Title {counted}")), &an_author())
+            .execute_committed(
+                &id,
+                a_retitling(&format!("Title {counted}")),
+                &crate::an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
@@ -1282,7 +1304,7 @@ async fn a_command_whose_snapshot_fails_lands_neither() {
 
     // when: the event that makes it due is executed
     let refused = a_service_over(broken.clone())
-        .execute_committed(&id, a_retitling("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &crate::an_author())
         .await;
 
     // then: it fails as the backend's failure
@@ -1320,7 +1342,7 @@ async fn a_command_whose_snapshot_lost_a_race_is_tried_again_whole() {
 
     // when: the event that makes it due is executed
     let refused = a_service_over(overtaken.clone())
-        .execute_committed(&id, a_retitling("Title 100"), &an_author())
+        .execute_committed(&id, a_retitling("Title 100"), &crate::an_author())
         .await;
 
     // then: it is refused as outdated
@@ -1361,7 +1383,7 @@ async fn a_command_executed_within_a_transaction_takes_its_snapshot_in_it() {
             &mut transaction,
             &id,
             a_retitling("Title 100"),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("updating should succeed");
@@ -1405,7 +1427,7 @@ async fn a_snapshot_taken_within_a_transaction_that_is_dropped_was_never_taken()
             &mut transaction,
             &id,
             a_retitling("Title 100"),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("updating should succeed");
@@ -1431,7 +1453,12 @@ async fn a_command_aimed_at_a_version_takes_the_snapshot_it_makes_due() {
 
     // when: the event that makes it due is executed at its version
     let landed = a_service(store.clone())
-        .execute_at_committed(&id, Version::of(99), a_retitling("Title 100"), &an_author())
+        .execute_at_committed(
+            &id,
+            Version::of(99),
+            a_retitling("Title 100"),
+            &crate::an_author(),
+        )
         .await
         .expect("updating should succeed");
 
@@ -1460,7 +1487,12 @@ async fn executing_within(
         .await
         .expect("beginning should succeed");
     let executed = service
-        .execute(&mut transaction, &sample::a_sample(), command, &an_author())
+        .execute(
+            &mut transaction,
+            &sample::a_sample(),
+            command,
+            &crate::an_author(),
+        )
         .await;
 
     (transaction, executed)
@@ -1468,7 +1500,7 @@ async fn executing_within(
 
 async fn a_sample_begun(service: &EventSourcingService<Sample>) {
     service
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
 }
@@ -1569,7 +1601,7 @@ async fn a_command_executed_within_a_transaction_that_changes_nothing_appends_no
     a_sample_begun(&service).await;
     let shelved = || SampleCommand::Shelve("shelf_1".to_owned());
     service
-        .execute_committed(&sample::a_sample(), shelved(), &an_author())
+        .execute_committed(&sample::a_sample(), shelved(), &crate::an_author())
         .await
         .expect("shelving should succeed");
 
@@ -1592,7 +1624,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     // given: a created sample
     let store = a_store();
     a_service(store.clone())
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     // and: a store refusing the next two appends as outdated
@@ -1607,7 +1639,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
         .execute_committed(
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("two refusals are ridden out");
@@ -1624,7 +1656,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
     // given: a created sample
     let store = a_store();
     a_service(store.clone())
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     // and: a store refusing every try as outdated
@@ -1638,7 +1670,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
         .execute_committed(
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await;
 
@@ -1654,7 +1686,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
     // given: a created sample
     let store = a_store();
     a_service(store.clone())
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     // and: a store refusing the next append as outdated
@@ -1669,7 +1701,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
             &sample::a_sample(),
             Version::of(1),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await;
 
@@ -1799,7 +1831,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
     // given: a created sample
     let store = a_store();
     a_service(store.clone())
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     // and: a store that yields while reading
@@ -1821,7 +1853,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
                         transaction,
                         &sample::a_sample(),
                         SampleCommand::UpdateTitle(format!("Rewoven {nth}")),
-                        &an_author(),
+                        &crate::an_author(),
                     )
                     .await
             });
@@ -1861,14 +1893,14 @@ async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregat
 
     // when: a sample is created and then shelved
     let created = service
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     let shelved = service
         .execute_committed(
             &sample::a_sample(),
             SampleCommand::Shelve("shelf_1".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("the sample is shelved");
@@ -1899,28 +1931,28 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
     let store = a_store();
     let service = a_service(store.clone());
     service
-        .begin_committed(&sample::a_sample(), a_creation(), &an_author())
+        .begin_committed(&sample::a_sample(), a_creation(), &crate::an_author())
         .await
         .expect("the sample is created");
     service
         .execute_committed(
             &sample::a_sample(),
             SampleCommand::Shelve("shelf_1".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("the sample is shelved");
 
     // when: it is collapsed and then retitled
     service
-        .compact_committed(&sample::a_sample(), &an_author())
+        .compact_committed(&sample::a_sample(), &crate::an_author())
         .await
         .expect("compacting should succeed");
     let retitled = service
         .execute_committed(
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
-            &an_author(),
+            &crate::an_author(),
         )
         .await
         .expect("the sample is retitled");

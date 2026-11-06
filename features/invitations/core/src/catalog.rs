@@ -218,17 +218,13 @@ mod tests {
     use crate::invitation::{InvitationEvent, KIND};
     use crate::token::InvitationTokenDigest;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn stamped(version: u64, seconds: i64) -> EventMetadata {
         EventMetadata {
             aggregate: AggregateId::from("invitation_1"),
             kind: KIND,
             version: Version::of(version),
             agent: Agent::System,
-            occurred_at: at(seconds),
+            occurred_at: clock::at(seconds),
             is_snapshot: false,
             context: AggregateContext::default(),
         }
@@ -245,7 +241,7 @@ mod tests {
             &InvitationEvent::Issued {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
-                until: at(5_000),
+                until: clock::at(5_000),
                 scope: Scope::Instance,
                 by_an_operator: true,
                 origin: "https://weaveling.example.com".to_owned(),
@@ -256,7 +252,7 @@ mod tests {
             },
         )
         .expect("issuing gives birth");
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // then: its summary tells to whom, by whom, since when, until when and that it is open
         assert_eq!(
@@ -267,10 +263,10 @@ mod tests {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 issued_by: Some(AccountId::from("account_grace")),
-                issued_at: at(1_000),
-                until: at(5_000),
+                issued_at: clock::at(1_000),
+                until: clock::at(5_000),
                 outcome: Outcome::Open,
-                retire_after: at(5_000) + Duration::days(30),
+                retire_after: clock::at(5_000) + Duration::days(30),
                 scope: Scope::Instance,
             }
         );
@@ -294,15 +290,15 @@ mod tests {
     fn only_an_invitation_open_or_declined_stays_on_the_list() {
         // given: a summary for each way an invitation stands
         let summary = |outcome| InvitationSummary {
-            id: InvitationId::generate(at(1_000)),
+            id: InvitationId::generate(clock::at(1_000)),
             version: Version::of(1),
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
-            issued_at: at(1_000),
-            until: at(5_000),
+            issued_at: clock::at(1_000),
+            until: clock::at(5_000),
             outcome,
-            retire_after: at(5_000),
+            retire_after: clock::at(5_000),
             scope: Scope::Instance,
         };
 
@@ -318,43 +314,43 @@ mod tests {
     fn an_open_invitation_is_listed_open_to_its_last_moment_and_expired_after() {
         // given: the summary of an open invitation
         let summary = InvitationSummary {
-            id: InvitationId::generate(at(1_000)),
+            id: InvitationId::generate(clock::at(1_000)),
             version: Version::of(1),
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
-            issued_at: at(1_000),
-            until: at(5_000),
+            issued_at: clock::at(1_000),
+            until: clock::at(5_000),
             outcome: Outcome::Open,
-            retire_after: at(5_000),
+            retire_after: clock::at(5_000),
             scope: Scope::Instance,
         };
 
         // then: it is open to its last moment
-        assert_eq!(summary.status(at(5_000)), Some(Status::Open));
+        assert_eq!(summary.status(clock::at(5_000)), Some(Status::Open));
         // and: expired after
-        assert_eq!(summary.status(at(5_001)), Some(Status::Expired));
+        assert_eq!(summary.status(clock::at(5_001)), Some(Status::Expired));
     }
 
     #[test]
     fn a_declined_invitation_is_listed_declined_whenever_and_the_settled_not_at_all() {
         // given: summaries of a declined, an accepted and a withdrawn invitation
         let summary = |outcome| InvitationSummary {
-            id: InvitationId::generate(at(1_000)),
+            id: InvitationId::generate(clock::at(1_000)),
             version: Version::of(1),
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
-            issued_at: at(1_000),
-            until: at(5_000),
+            issued_at: clock::at(1_000),
+            until: clock::at(5_000),
             outcome,
-            retire_after: at(5_000),
+            retire_after: clock::at(5_000),
             scope: Scope::Instance,
         };
         let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
 
         // then: before and after its last moment the declined is listed declined and the settled not at all
-        for now in [at(2_000), at(9_000)] {
+        for now in [clock::at(2_000), clock::at(9_000)] {
             assert_eq!(
                 summary(declined).status(now),
                 Some(Status::Declined(DeclineReason::AddressHasAccount)),
@@ -374,7 +370,7 @@ mod tests {
                 &InvitationEvent::Issued {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
-                    until: at(5_000),
+                    until: clock::at(5_000),
                     scope: Scope::Instance,
                     by_an_operator: true,
                     origin: "https://weaveling.example.com".to_owned(),
@@ -388,7 +384,7 @@ mod tests {
             let mut invitation = issued();
             invitation.apply(&event, &stamped(2, 2_000));
             InvitationSummary::of(
-                InvitationId::generate(at(1_000)),
+                InvitationId::generate(clock::at(1_000)),
                 Version::of(2),
                 &invitation,
             )
@@ -397,9 +393,13 @@ mod tests {
 
         // then: one left open retires a month after running out
         assert_eq!(
-            InvitationSummary::of(InvitationId::generate(at(1_000)), Version::of(1), &issued())
-                .retire_after,
-            at(5_000) + Duration::days(30),
+            InvitationSummary::of(
+                InvitationId::generate(clock::at(1_000)),
+                Version::of(1),
+                &issued()
+            )
+            .retire_after,
+            clock::at(5_000) + Duration::days(30),
             "an operator sees for a month that an invitation ran out"
         );
         // and: one declined, a month after its declining
@@ -407,7 +407,7 @@ mod tests {
             settled(InvitationEvent::Declined {
                 reason: DeclineReason::AddressHasAccount
             }),
-            at(2_000) + Duration::days(30),
+            clock::at(2_000) + Duration::days(30),
             "and for a month why one was declined"
         );
         // and: one taken up or withdrawn, a day after but never before it runs out
@@ -421,7 +421,7 @@ mod tests {
                 &InvitationEvent::Issued {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
-                    until: at(500_000),
+                    until: clock::at(500_000),
                     scope: Scope::Instance,
                     by_an_operator: true,
                     origin: "https://weaveling.example.com".to_owned(),
@@ -432,27 +432,27 @@ mod tests {
             holding_long.apply(&gone, &stamped(2, 2_000));
             assert_eq!(
                 InvitationSummary::of(
-                    InvitationId::generate(at(1_000)),
+                    InvitationId::generate(clock::at(1_000)),
                     Version::of(2),
                     &holding_long
                 )
                 .retire_after,
-                at(500_000),
+                clock::at(500_000),
                 "never before it runs out, or a late issue could open a withdrawn link again"
             );
-            assert_eq!(settled(gone), at(2_000) + Duration::days(1));
+            assert_eq!(settled(gone), clock::at(2_000) + Duration::days(1));
         }
         // and: one withdrawn after running out, a day after
         let mut long_after = issued();
         long_after.apply(&InvitationEvent::Withdrawn, &stamped(2, 9_000));
         assert_eq!(
             InvitationSummary::of(
-                InvitationId::generate(at(1_000)),
+                InvitationId::generate(clock::at(1_000)),
                 Version::of(2),
                 &long_after
             )
             .retire_after,
-            at(9_000) + Duration::days(1),
+            clock::at(9_000) + Duration::days(1),
             "withdrawn after it ran out, a day after"
         )
     }

@@ -17,4 +17,5 @@ words = { version = "0.1.0", path = "../../../libraries/words", package = "weave
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [dev-dependencies]
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 time = { workspace = true }

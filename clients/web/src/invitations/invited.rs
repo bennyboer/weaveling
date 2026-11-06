@@ -51,20 +51,12 @@ impl Invited {
                     Intent::Withdraw => service::withdraw(&id, on.version).await?,
                 }
 
-                Ok(answered(on, &intent))
+                Ok(on)
             },
             move |id: String| {
                 let into = into.get_value();
 
-                async move {
-                    service::list_invitations(&into, None)
-                        .await?
-                        .invitations
-                        .into_iter()
-                        .find(|invitation| invitation.id == id)
-                        .map(|invitation| held(invitation).1)
-                        .ok_or(ApiError::NotFound("invitation"))
-                }
+                async move { service::listed_invitation(&into, &id).await }
             },
             move |failure| _ = refused.try_set(Some(failure)),
         );
@@ -92,10 +84,10 @@ impl Invited {
                         listed.extend(still_listed(invitations));
                         invitations.take_in_all(listed);
                         if inviting == Inviting::Typed {
-                            email.set(String::new());
+                            _ = email.try_set(String::new());
                         }
                     }
-                    Err(failed) => invite_refused.set(Some(failed)),
+                    Err(failed) => _ = invite_refused.try_set(Some(failed)),
                 }
             }
         });
@@ -125,28 +117,19 @@ impl Invited {
                     let mut listed = still_listed(self.invitations);
                     listed.extend(page.invitations.into_iter().map(held));
                     self.invitations.take_in_all(listed);
-                    self.next.set(page.next);
+                    _ = self.next.try_set(page.next);
                 }
-                Err(failed) => self.refused.set(Some(failed)),
+                Err(failed) => _ = self.refused.try_set(Some(failed)),
             }
-            self.loading.set(false);
+            _ = self.loading.try_set(false);
         });
     }
 
     pub(super) fn withdraw(self, id: String) {
-        let withdrawn_or_gone =
-            untrack(|| !self.invitations.is_listed(&id) || self.invitations.unanswered_on(&id));
-        if withdrawn_or_gone {
-            return;
-        }
         self.refused.set(None);
-        let Some(landed) = self.invitations.intended(&id, Intent::Withdraw) else {
-            return;
-        };
+        let ending = self.invitations.ending(&id, Intent::Withdraw);
         task::spawn_local(async move {
-            if landed.await {
-                self.invitations.forget(&id);
-            }
+            ending.await;
         });
     }
 }
@@ -167,14 +150,6 @@ impl working_copy::Intent<ListedInvitation> for Intent {
 
 fn held(invitation: ListedInvitation) -> (String, ListedInvitation) {
     (invitation.id.clone(), invitation)
-}
-
-fn answered(on: ListedInvitation, intent: &Intent) -> ListedInvitation {
-    let mut answered = on;
-    working_copy::Intent::lay_over(intent, &mut answered);
-    answered.version += 1;
-
-    answered
 }
 
 fn still_listed(
@@ -225,18 +200,6 @@ mod tests {
 
         // then: it shows as it was
         assert_eq!(shown, open);
-    }
-
-    #[test]
-    fn a_withdrawal_answered_stands_one_version_after_the_one_it_was_sent_on() {
-        // given: an open invitation at version one
-        let open = an_open_invitation();
-
-        // when: its withdrawal is answered
-        let answered = answered(open, &Intent::Withdraw);
-
-        // then: it stands at the next version
-        assert_eq!(answered.version(), 2);
     }
 
     #[test]

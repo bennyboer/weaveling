@@ -58,7 +58,7 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
     bench
         .committing()
         .remember(&suite::a_summary(
-            IdeaId::generate(suite::at(1_000)),
+            IdeaId::generate(clock::at(1_000)),
             "project_1",
             "The Loom",
         ))
@@ -91,13 +91,13 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standi
     // when: ideas are remembered and forgotten at once
     for nth in 0..40 {
         let summary = suite::a_summary(
-            IdeaId::generate(suite::at(1_000 + nth)),
+            IdeaId::generate(clock::at(1_000 + nth)),
             "project_1",
             "The Loom",
         );
         let (remembered, forgotten) = tokio::join!(
             catalog.remember(&summary),
-            catalog.forget(&summary.id, suite::at(5_000)),
+            catalog.forget(&summary.id, clock::at(5_000)),
         );
         remembered.expect("remembering should succeed");
         forgotten.expect("forgetting should succeed");

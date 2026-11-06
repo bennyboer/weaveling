@@ -10,6 +10,12 @@ pub enum Agent {
     Account(AccountId),
 }
 
+/// The one author a test acts as, wherever who acted is not the point.
+#[cfg(any(test, feature = "testing"))]
+pub fn an_author() -> Agent {
+    Agent::Account(AccountId::from("author-7"))
+}
+
 impl AccountId {
     pub fn as_str(&self) -> &str {
         &self.0

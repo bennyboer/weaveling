@@ -68,13 +68,9 @@ mod tests {
     use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, RETIRED, WITHDRAWN};
     use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome, ProjectLink};
     use messaging::Subscription;
-    use time::{Duration, OffsetDateTime};
+    use time::Duration;
 
     use super::*;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
 
     fn ada() -> EmailAddress {
         EmailAddress::new("ada@example.com").expect("a plain address")
@@ -87,7 +83,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: Agent::Account("account_1".into()),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },
@@ -99,7 +95,7 @@ mod tests {
         InvitationEvent::Issued {
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
-            until: at(1_000) + Duration::days(7),
+            until: clock::at(1_000) + Duration::days(7),
             scope: Scope::Instance,
             by_an_operator: true,
             origin: "https://weaveling.example.com".to_owned(),
@@ -129,7 +125,7 @@ mod tests {
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // then: each event worth publishing lands on the key the contract declares, within every invitation's
         for (event, declared) in everything_worth_publishing() {
@@ -152,7 +148,7 @@ mod tests {
     #[test]
     fn an_issue_tells_to_whom_by_what_digest_and_until_when_and_nothing_else_tells_the_address() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // when: its issue is published
         let issued = body_published_for(&recorded(&id, an_issue()));
@@ -189,7 +185,7 @@ mod tests {
     #[test]
     fn an_acceptance_tells_into_which_project_as_what() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // when: its acceptance into a project is published
         let accepted = body_published_for(&recorded(
@@ -218,7 +214,7 @@ mod tests {
     #[test]
     fn an_issue_into_a_project_tells_which_as_what_and_whether_an_operator_issued_it() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // when: its issue into a project as each role is published
         for (role, named) in [
@@ -231,7 +227,7 @@ mod tests {
                 InvitationEvent::Issued {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
-                    until: at(1_000),
+                    until: clock::at(1_000),
                     scope: Scope::Project {
                         project: ProjectLink::from("project_1"),
                         role,
@@ -261,7 +257,7 @@ mod tests {
     #[test]
     fn a_decline_tells_why() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // then: its declining for each reason tells why
         for (reason, told) in [
@@ -289,7 +285,7 @@ mod tests {
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event_and_the_invitation_reads_back() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // when: each event worth publishing is published
         for (event, _) in everything_worth_publishing() {
@@ -309,7 +305,7 @@ mod tests {
     #[test]
     fn a_snapshot_is_not_published_at_all() {
         // given: an invitation
-        let id = InvitationId::generate(at(1_000));
+        let id = InvitationId::generate(clock::at(1_000));
 
         // then: its snapshot is not published
         assert!(
@@ -322,8 +318,8 @@ mod tests {
                     by_an_operator: true,
                     origin: "https://weaveling.example.com".to_owned(),
                     issued_by: None,
-                    issued_at: at(1_000),
-                    until: at(1_000) + Duration::days(7),
+                    issued_at: clock::at(1_000),
+                    until: clock::at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,
                     settled_at: None,
                     retired: false,

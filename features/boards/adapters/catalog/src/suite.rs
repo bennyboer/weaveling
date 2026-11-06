@@ -139,10 +139,6 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(id: BoardId, project: &str) -> BoardSummary {
     BoardSummary {
         id,
@@ -154,7 +150,7 @@ pub async fn a_remembered_board_is_listed_in_its_project(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board of a project
-    let summary = a_summary(BoardId::generate(at(1_000)), "project_1");
+    let summary = a_summary(BoardId::generate(clock::at(1_000)), "project_1");
 
     // when: it is remembered
     catalog
@@ -190,7 +186,10 @@ pub async fn a_project_that_never_opened_a_board_lists_nothing(
 pub async fn boards_of_other_projects_are_not_listed(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board of my project
     catalog
-        .remember(&a_summary(BoardId::generate(at(1_000)), "project_mine"))
+        .remember(&a_summary(
+            BoardId::generate(clock::at(1_000)),
+            "project_mine",
+        ))
         .await
         .expect("remembering should succeed");
 
@@ -208,7 +207,7 @@ pub async fn remembering_the_same_board_again_replaces_what_was_there(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a remembered board
-    let id = BoardId::generate(at(1_000));
+    let id = BoardId::generate(clock::at(1_000));
     catalog
         .remember(&a_summary(id, "project_1"))
         .await
@@ -238,7 +237,7 @@ pub async fn a_project_lists_its_boards_in_a_settled_order(
 ) {
     // given: boards of a project, remembered newest first
     let opened: Vec<BoardId> = (1..=6)
-        .map(|nth| BoardId::generate(at(nth * 1_000)))
+        .map(|nth| BoardId::generate(clock::at(nth * 1_000)))
         .collect();
 
     for id in opened.iter().rev() {
@@ -278,7 +277,7 @@ pub async fn an_idea_nobody_pinned_is_on_no_board(catalog: &Committing<'_, impl 
 
 pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
 
     // when: it holds an idea
     catalog
@@ -298,7 +297,7 @@ pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &Committing<'_, i
 
 pub async fn every_idea_on_a_board_names_it(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     // and: some ideas
     let ideas = ["idea_1", "idea_2", "idea_3"].map(IdeaLink::from);
 
@@ -323,8 +322,8 @@ pub async fn every_idea_on_a_board_names_it(catalog: &Committing<'_, impl BoardC
 
 pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: two boards
-    let earliest = BoardId::generate(at(1_000));
-    let latest = BoardId::generate(at(2_000));
+    let earliest = BoardId::generate(clock::at(1_000));
+    let latest = BoardId::generate(clock::at(2_000));
     // when: both hold an idea
     for board in [latest, earliest] {
         catalog
@@ -348,7 +347,7 @@ pub async fn what_a_board_holds_is_replaced_not_added_to(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board holding an idea
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     catalog
         .holds(board, &[IdeaLink::from("idea_1")])
         .await
@@ -383,8 +382,8 @@ pub async fn one_board_letting_an_idea_go_leaves_the_others_holding_it(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: two boards holding an idea
-    let keeping = BoardId::generate(at(1_000));
-    let dropping = BoardId::generate(at(2_000));
+    let keeping = BoardId::generate(clock::at(1_000));
+    let dropping = BoardId::generate(clock::at(2_000));
     for board in [keeping, dropping] {
         catalog
             .holds(board, &[IdeaLink::from("idea_1")])
@@ -411,8 +410,8 @@ pub async fn one_board_letting_an_idea_go_leaves_the_others_holding_it(
 
 pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: two boards of two projects holding an idea
-    let board = BoardId::generate(at(1_000));
-    let elsewhere = BoardId::generate(at(2_000));
+    let board = BoardId::generate(clock::at(1_000));
+    let elsewhere = BoardId::generate(clock::at(2_000));
     catalog
         .remember(&a_summary(board, "project_1"))
         .await
@@ -432,7 +431,7 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &Committing<'_, i
 
     // when: one board is forgotten
     catalog
-        .forget(&board, at(5_000))
+        .forget(&board, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -461,7 +460,7 @@ pub async fn forgetting_a_board_nobody_opened_is_harmless(
 ) {
     // expect: forgetting a board nobody opened succeeds
     catalog
-        .forget(&BoardId::generate(at(1_000)), at(5_000))
+        .forget(&BoardId::generate(clock::at(1_000)), clock::at(5_000))
         .await
         .expect("forgetting an unknown board should not fail");
 }
@@ -486,7 +485,7 @@ async fn tombstoned(catalog: &Committing<'_, impl BoardCatalog>, idea: &str) {
 
 async fn tombstoned_at(catalog: &Committing<'_, impl BoardCatalog>, idea: &str, seconds: i64) {
     catalog
-        .lay_tombstone(&an_idea(idea), at(seconds))
+        .lay_tombstone(&an_idea(idea), clock::at(seconds))
         .await
         .expect("laying a tombstone should succeed");
 }
@@ -501,7 +500,7 @@ async fn pinned(catalog: &Committing<'_, impl BoardCatalog>, board: BoardId, ide
 
 pub async fn nothing_pinned_is_gone_until_marked(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board holding an idea
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
     // then: nothing it holds is gone
@@ -510,7 +509,7 @@ pub async fn nothing_pinned_is_gone_until_marked(catalog: &Committing<'_, impl B
 
 pub async fn a_pinned_idea_marked_gone_is_named(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board holding two ideas
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(catalog, board, &["idea_1", "idea_2"]).await;
 
     // when: one of them is marked gone
@@ -527,7 +526,7 @@ pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: an idea marked gone
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     tombstoned(catalog, "idea_1").await;
 
     // when: a board holds it
@@ -543,7 +542,7 @@ pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(
 
 pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &Committing<'_, impl BoardCatalog>) {
     // given: a board holding an idea marked gone
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
     tombstoned(catalog, "idea_1").await;
 
@@ -558,7 +557,7 @@ pub async fn marking_the_same_idea_gone_twice_is_harmless(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board holding an idea
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
     // when: the idea is marked gone twice
@@ -578,7 +577,7 @@ async fn forget_long_gone(
     at_most: u64,
 ) -> u64 {
     catalog
-        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .forget_tombstones_laid_before(clock::at(before_seconds), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
@@ -587,7 +586,7 @@ pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board holding an idea gone long ago and one gone just now
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(catalog, board, &["idea_long_gone", "idea_just_gone"]).await;
     tombstoned_at(catalog, "idea_long_gone", 1_000).await;
     tombstoned_at(catalog, "idea_just_gone", 2_000).await;
@@ -622,7 +621,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board holding three ideas, gone at different times
-    let board = BoardId::generate(at(1_000));
+    let board = BoardId::generate(clock::at(1_000));
     pinned(
         catalog,
         board,
@@ -660,13 +659,13 @@ pub async fn a_forgotten_board_heard_of_late_is_not_remembered_again(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a forgotten board
-    let gone = a_summary(BoardId::generate(at(1_000)), "project_1");
+    let gone = a_summary(BoardId::generate(clock::at(1_000)), "project_1");
     catalog
         .remember(&gone)
         .await
         .expect("remembering should succeed");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -688,20 +687,20 @@ pub async fn board_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
 ) {
     // given: three forgotten boards
     let (older, newer, latest) = (
-        a_summary(BoardId::generate(at(1_000)), "project_1"),
-        a_summary(BoardId::generate(at(2_000)), "project_1"),
-        a_summary(BoardId::generate(at(3_000)), "project_1"),
+        a_summary(BoardId::generate(clock::at(1_000)), "project_1"),
+        a_summary(BoardId::generate(clock::at(2_000)), "project_1"),
+        a_summary(BoardId::generate(clock::at(3_000)), "project_1"),
     );
     for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .forget(&summary.id, at(laid))
+            .forget(&summary.id, clock::at(laid))
             .await
             .expect("forgetting should succeed");
     }
 
     // when: at most one tombstone laid before a moment is forgotten
     let forgotten = catalog
-        .forget_tombstones_laid_before(at(8_000), 1)
+        .forget_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
     // and: all three boards are remembered again
@@ -726,7 +725,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a board holding an idea
-    let kept = a_summary(BoardId::generate(at(1_000)), "project_1");
+    let kept = a_summary(BoardId::generate(clock::at(1_000)), "project_1");
     catalog
         .remember(&kept)
         .await
@@ -741,7 +740,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     uncommitted
         .remember(
             &mut transaction,
-            &a_summary(BoardId::generate(at(2_000)), "project_1"),
+            &a_summary(BoardId::generate(clock::at(2_000)), "project_1"),
         )
         .await
         .expect("remembering should succeed");
@@ -750,11 +749,15 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("holding should succeed");
     uncommitted
-        .lay_tombstone(&mut transaction, &IdeaLink::from("idea_1"), at(3_000))
+        .lay_tombstone(
+            &mut transaction,
+            &IdeaLink::from("idea_1"),
+            clock::at(3_000),
+        )
         .await
         .expect("laying a tombstone should succeed");
     uncommitted
-        .forget(&mut transaction, &kept.id, at(3_000))
+        .forget(&mut transaction, &kept.id, clock::at(3_000))
         .await
         .expect("forgetting should succeed");
 
@@ -791,16 +794,16 @@ pub async fn board_tombstones_forgotten_in_a_transaction_that_is_dropped_still_s
     catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     // given: a forgotten board
-    let gone = a_summary(BoardId::generate(at(1_000)), "project_1");
+    let gone = a_summary(BoardId::generate(clock::at(1_000)), "project_1");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
     // and: a transaction forgetting its tombstone
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .forget_tombstones_laid_before(&mut transaction, at(8_000), 10)
+        .forget_tombstones_laid_before(&mut transaction, clock::at(8_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -838,7 +841,7 @@ pub async fn a_project_has_no_tombstone_until_its_deletion_is_laid(
 
     // when: its deletion is laid
     catalog
-        .lay_project_tombstone(&deleted, at(5_000))
+        .lay_project_tombstone(&deleted, clock::at(5_000))
         .await
         .expect("laying a project's tombstone should succeed");
 
@@ -872,14 +875,14 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     );
     for (project, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .lay_project_tombstone(project, at(laid))
+            .lay_project_tombstone(project, clock::at(laid))
             .await
             .expect("laying a project's tombstone should succeed");
     }
 
     // when: at most one tombstone laid before a moment is forgotten
     let forgotten = catalog
-        .forget_tombstones_laid_before(at(8_000), 1)
+        .forget_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -910,7 +913,7 @@ pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_is_not_th
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .lay_project_tombstone(&mut transaction, &project, at(5_000))
+        .lay_project_tombstone(&mut transaction, &project, clock::at(5_000))
         .await
         .expect("laying a project's tombstone should succeed");
     drop(transaction);

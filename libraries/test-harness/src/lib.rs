@@ -207,14 +207,9 @@ async fn drop_stale(base: &PgPool, now: OffsetDateTime) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use time::Duration;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
 
     fn a_schema(seconds: i64, feature: &str) -> String {
-        format!("{}_{}", stem(at(seconds)), sanitized(feature))
+        format!("{}_{}", stem(clock::at(seconds)), sanitized(feature))
     }
 
     #[test]
@@ -230,7 +225,7 @@ mod tests {
     #[test]
     fn two_features_of_one_fixture_never_share_a_schema() {
         // given: one fixture
-        let stem = stem(at(1_000));
+        let stem = stem(clock::at(1_000));
 
         // then: two features' schemas in it are named apart
         assert_ne!(
@@ -242,7 +237,7 @@ mod tests {
     #[test]
     fn two_fixtures_made_together_are_still_distinct() {
         // expect: two fixtures made at one moment are named apart
-        assert_ne!(stem(at(1_000)), stem(at(1_000)));
+        assert_ne!(stem(clock::at(1_000)), stem(clock::at(1_000)));
     }
 
     #[test]
@@ -260,9 +255,12 @@ mod tests {
         // expect: a schema or a bare stem past the stale age is stale
         assert!(is_stale(
             &a_schema(1_000, "outline"),
-            at(1_000 + STALE_AFTER + 1)
+            clock::at(1_000 + STALE_AFTER + 1)
         ));
-        assert!(is_stale(&stem(at(1_000)), at(1_000 + STALE_AFTER + 1)));
+        assert!(is_stale(
+            &stem(clock::at(1_000)),
+            clock::at(1_000 + STALE_AFTER + 1)
+        ));
     }
 
     #[test]
@@ -270,19 +268,19 @@ mod tests {
         // expect: a schema no older than the stale age is not stale
         assert!(!is_stale(
             &a_schema(1_000, "outline"),
-            at(1_000 + STALE_AFTER)
+            clock::at(1_000 + STALE_AFTER)
         ));
     }
 
     #[test]
     fn a_schema_that_is_not_ours_is_left_alone() {
         // expect: no schema not named as a fixture's is stale
-        assert!(!is_stale("public", at(9_999)));
-        assert!(!is_stale("fixture_nonsense", at(9_999)));
-        assert!(!is_stale("fixture_", at(9_999)));
+        assert!(!is_stale("public", clock::at(9_999)));
+        assert!(!is_stale("fixture_nonsense", clock::at(9_999)));
+        assert!(!is_stale("fixture_", clock::at(9_999)));
         assert!(!is_stale(
             r#"fixture_1000_"; drop table events; --"#,
-            at(9_999)
+            clock::at(9_999)
         ));
     }
 }

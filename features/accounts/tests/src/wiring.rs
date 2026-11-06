@@ -21,16 +21,12 @@ use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction, Transactions};
 use wiring::Context;
 
 pub const ADA: &str = "ada@example.com";
 pub const HER_PASSWORD: &str = "correct horse battery";
-
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 pub struct Wired {
     pub accounts: AccountsCore,
@@ -58,7 +54,7 @@ impl Wired {
 }
 
 pub fn wired() -> Wired {
-    let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let told = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));

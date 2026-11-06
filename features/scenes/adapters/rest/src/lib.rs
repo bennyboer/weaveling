@@ -1,4 +1,3 @@
-use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -13,7 +12,7 @@ use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
-use eventsourcing::{Agent, AggregateId, AggregateType, ServiceError, Standing, Version};
+use eventsourcing::{Agent, Standing, Version};
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Teller, Topic};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
@@ -508,17 +507,6 @@ fn to_response(status: StatusCode, standing: &Standing<Scene>) -> Response {
         .into_response()
 }
 
-fn outdated(scene: SceneId, expected: Version) -> Problem {
-    let moved_on: ServiceError<Infallible> =
-        ServiceError::Store(eventsourcing::StoreError::outdated(
-            &AggregateId::from(scene.to_string()),
-            AggregateType::of("scene"),
-            expected,
-        ));
-
-    Problem::of(&moved_on, |never| match *never {})
-}
-
 fn problem_of(refusal: ScenesError) -> Problem {
     match refusal {
         ScenesError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
@@ -540,7 +528,7 @@ fn problem_of(refusal: ScenesError) -> Problem {
         ScenesError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, ScenesError::NotAnAuthor)
         }
-        ScenesError::Outdated { scene, expected } => outdated(scene, expected),
+        ScenesError::Outdated { .. } => Problem::outdated("scene"),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

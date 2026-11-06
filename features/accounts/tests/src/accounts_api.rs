@@ -180,7 +180,7 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
     // when: the code has expired
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::hours(1));
+        .set(clock::at(1_700_000_000) + Duration::hours(1));
 
     // then: verifying with it is refused as expired
     refused_as(
@@ -195,7 +195,7 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
     );
 
     // when: the code is good again but every try is spent on wrong guesses
-    wired.clock.set(wiring::at(1_700_000_000));
+    wired.clock.set(clock::at(1_700_000_000));
     let wrong = if code == "000000" { "000001" } else { "000000" };
     for _ in 0..5 {
         let _refused = server

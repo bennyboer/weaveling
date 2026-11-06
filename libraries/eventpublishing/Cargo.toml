@@ -7,10 +7,14 @@ edition.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
+[features]
+testing = []
+
 [dev-dependencies]
-time = { workspace = true }
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }

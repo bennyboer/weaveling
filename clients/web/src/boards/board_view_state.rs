@@ -11,12 +11,10 @@ use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
 use crate::ideas::working;
 use crate::ideas::working::Ideas;
-use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::working_copy;
 use crate::working_copy::{Versioned, WorkingCopy};
 use boards_contract::BoardEventDTO;
-use live_contract::FrameDTO;
 
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
@@ -73,36 +71,11 @@ impl BoardViewState {
 
         working.read_again();
 
-        let following = StoredValue::new_local(None::<Subscription>);
-        Effect::new(move || {
-            let Some(id) = working.confirmed().map(|held| held.id) else {
-                return;
-            };
-            if following.with_value(Option::is_some) {
-                return;
-            }
-            following.set_value(Some(Subscription::start(
-                "boards",
-                &[("board", id.to_string().as_str())],
-                move |told: FrameDTO| {
-                    let Some(held) = working.confirmed_untracked() else {
-                        return;
-                    };
-                    if told.version <= held.version {
-                        return;
-                    }
-                    let next = (told.version == held.version + 1)
-                        .then(|| serde_json::from_value::<BoardEventDTO>(told.event).ok())
-                        .flatten()
-                        .and_then(|event| held.taken_in(event));
-                    match next {
-                        Some(next) => working.take_in(next),
-                        None => working.read_again(),
-                    }
-                },
-                || {},
-            )));
-        });
+        working.following(
+            "boards",
+            |held| ("board", held.id.to_string()),
+            |held: Board, event: BoardEventDTO| held.taken_in(event),
+        );
 
         let listed_again_at = StoredValue::new(None::<u64>);
         Effect::new(move || {

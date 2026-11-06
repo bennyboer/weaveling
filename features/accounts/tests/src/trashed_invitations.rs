@@ -5,6 +5,7 @@ use accounts_core::{
     InvitationTickets, InvitationToken,
 };
 use accounts_messaging::RememberTrashedProjectsListener;
+use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, RESTORED, TRASHED};
@@ -22,7 +23,7 @@ fn a_ticket(scope: InvitationScope) -> InvitationTicket {
     InvitationTicket {
         invitation: "invitation_1".to_owned(),
         to: EmailAddress::new(ADA).expect("a plain address"),
-        until: wiring::at(1_700_000_000) + Duration::days(7),
+        until: clock::at(1_700_000_000) + Duration::days(7),
         scope,
         by_an_operator: true,
     }
@@ -57,15 +58,14 @@ async fn an_account(wired: &Wired) -> AccountId {
 }
 
 fn told(routing: &str, name: &str, version: u64) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared key"),
-        json!({
-            "event": { "version": 0, "name": name, "until": "2023-12-14T22:13:20Z" },
-            "aggregate": { "id": PROJECT, "kind": "project", "version": version },
-            "agent": { "kind": "account", "id": "account_owner" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_000),
+    eventpublishing::published(
+        routing,
+        "project",
+        PROJECT,
+        version,
+        json!({ "version": 0, "name": name, "until": "2023-12-14T22:13:20Z" }),
+        &Agent::Account("account_owner".into()),
+        clock::at(1_700_000_000),
     )
 }
 

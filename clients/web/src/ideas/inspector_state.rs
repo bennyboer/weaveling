@@ -3,6 +3,7 @@ use leptos::prelude::*;
 
 use crate::appearances::model::Place;
 use crate::appearances::service as appearance_service;
+use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
@@ -70,10 +71,10 @@ impl InspectorState {
             }
         });
 
-        let told_since = StoredValue::new(0_u64);
+        let asking = Asking::new();
         let asking_places = Action::new_local(move |asked: &IdeaId| {
             let asked = asked.clone();
-            let asked_at = told_since.get_value();
+            let asked_at = asking.next();
 
             async move {
                 let appearing = match appearance_service::of(&asked).await {
@@ -81,7 +82,7 @@ impl InspectorState {
                     Err(failure) => return problem.set(Some(failure)),
                 };
                 let still_asked = inspected.get_untracked().as_ref() == Some(&asked);
-                if still_asked && told_since.get_value() == asked_at {
+                if still_asked && asking.is_latest(asked_at) {
                     places.set(appearing);
                 }
             }
@@ -106,7 +107,7 @@ impl InspectorState {
             let Ok(found) = serde_json::from_value::<IdeaPlacesDTO>(told.event) else {
                 return;
             };
-            told_since.update_value(|since| *since += 1);
+            asking.next();
             let appearing: Vec<Place> = found.places.into_iter().map(Place::from).collect();
             let unknown = appearing.iter().any(|place| match place {
                 Place::Section(id) => {

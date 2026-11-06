@@ -5,21 +5,16 @@ use eventsourcing::{Agent, AggregateContext, AggregateId, EventMetadata, Recorde
 use messaging::{Message, RoutingKey};
 use projects_core::{KIND, ProjectCatalog, ProjectEvent, ProjectId, ProjectName, RawDetails};
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
 use crate::wiring::Wired;
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 fn an_author() -> Agent {
     Agent::Local
 }
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 async fn listed(wired: &Wired) -> Vec<String> {
@@ -59,7 +54,7 @@ fn message_about(id: &ProjectId, event: ProjectEvent) -> Message {
             kind: KIND,
             version: Version::of(1),
             agent: an_author(),
-            occurred_at: at(1_000),
+            occurred_at: clock::at(1_000),
             is_snapshot: false,
             context: AggregateContext::default(),
         },
@@ -99,7 +94,7 @@ async fn the_listing_carries_the_moments_the_project_stands_at() {
         found
             .first()
             .map(|listed| (listed.created_at, listed.updated_at)),
-        Some((at(1_000), at(1_000))),
+        Some((clock::at(1_000), clock::at(1_000))),
         "the listing is what an author sees, and it says when they last touched each project"
     );
 }
@@ -164,17 +159,17 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
         (
             wired
                 .projects
-                .forget_tombstones_laid_before(at(1_000), 10)
+                .forget_tombstones_laid_before(clock::at(1_000), 10)
                 .await
                 .expect("forgetting should succeed"),
             wired
                 .projects
-                .forget_tombstones_laid_before(at(1_001), 10)
+                .forget_tombstones_laid_before(clock::at(1_001), 10)
                 .await
                 .expect("forgetting should succeed"),
             wired
                 .projects
-                .forget_tombstones_laid_before(at(1_001), 10)
+                .forget_tombstones_laid_before(clock::at(1_001), 10)
                 .await
                 .expect("forgetting should succeed"),
         ),
@@ -217,7 +212,7 @@ async fn a_message_about_no_project_at_all_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse("project.started").expect("a plain key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // when: it is heard
@@ -234,7 +229,7 @@ async fn a_message_about_no_project_at_all_is_refused() {
 async fn a_message_about_a_project_that_was_never_stored_is_refused() {
     // given: a project never stored
     let wired = a_workbench();
-    let never_stored = ProjectId::generate(at(1_000));
+    let never_stored = ProjectId::generate(clock::at(1_000));
 
     // when: its start is heard
     let refused = wired

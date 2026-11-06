@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use messaging::{Failure, Handler, Message, MessageId, Publisher, RoutingKey, WithoutInbox};
+use messaging::{Failure, Handler, Message, MessageId, Publisher, WithoutInbox};
 use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
 use quotation::QuotationMarks;
 use scenes_contract::{MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
@@ -60,16 +60,14 @@ impl RestyleOnQuotationChangedListener {
     fn carry_on(&self, asked: &Message, task: &QuotationRestyling, after: SceneId) -> Message {
         Message {
             id: continuing(asked),
-            ..asked.answering(
-                RoutingKey::parse(MORE_QUOTATION_MARKS_TO_RESTYLE)
-                    .expect("a declared routing key holds no wildcards"),
-                serde_json::to_value(MoreQuotationMarksToRestyleDTO {
+            ..asked.follow_up(
+                MORE_QUOTATION_MARKS_TO_RESTYLE,
+                &MoreQuotationMarksToRestyleDTO {
                     project: task.project.clone(),
                     quotation: task.style.name().to_owned(),
                     change: task.change,
                     after: after.to_string(),
-                })
-                .expect("a continuation is plain data and cannot fail to serialize"),
+                },
                 self.clock.now(),
             )
         }

@@ -8,20 +8,15 @@ use boards_core::{
 };
 use clock::FixedClock;
 use eventsourcing::{
-    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, FailsAppending,
-    Recorded, RefusesAppending, ServiceError, StoreError, Version,
+    AggregateContext, AggregateId, EventMetadata, EventStore, FailsAppending, Recorded,
+    RefusesAppending, ServiceError, StoreError, Version,
 };
 use messaging::RoutingKey;
 use registry::Registry;
-use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::Wired;
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 fn an_idea() -> IdeaLink {
     IdeaLink::from("idea_1")
@@ -31,12 +26,8 @@ fn a_key(of: &str) -> RoutingKey {
     RoutingKey::parse(of).expect("a declared routing key is fine")
 }
 
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_workbench() -> (Wired, Arc<FixedClock>) {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
     (wiring::wired(clock.clone()), clock)
 }
@@ -44,7 +35,7 @@ fn a_workbench() -> (Wired, Arc<FixedClock>) {
 async fn an_open_board(wired: &Wired) -> BoardId {
     wired
         .boards
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id
@@ -56,8 +47,8 @@ fn a_start(id: &BoardId) -> Recorded<BoardEvent> {
             aggregate: AggregateId::from(id),
             kind: KIND,
             version: Version::of(1),
-            agent: an_author(),
-            occurred_at: at(500),
+            agent: eventsourcing::an_author(),
+            occurred_at: clock::at(500),
             is_snapshot: false,
             context: AggregateContext::default(),
         },
@@ -75,7 +66,7 @@ async fn opening_a_project_that_never_had_a_board_starts_one() {
     // when: it is opened
     let opened = wired
         .boards
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
 
@@ -94,7 +85,7 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
     // given: a project whose board is claimed
     let (wired, _) = a_workbench();
     // and: that board started
-    let known = BoardId::generate(at(500));
+    let known = BoardId::generate(clock::at(500));
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -136,7 +127,7 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
     // when: the project is opened
     let opened = wired
         .boards
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
 
@@ -153,7 +144,7 @@ async fn opening_the_same_project_again_finds_the_board_it_already_had() {
     // given: a project that was opened
     let (wired, clock) = a_workbench();
     let first = an_open_board(&wired).await;
-    clock.set(at(2_000));
+    clock.set(clock::at(2_000));
 
     // when: it is opened again
     let second = an_open_board(&wired).await;
@@ -171,12 +162,12 @@ async fn each_project_gets_a_board_of_its_own() {
     // given: a project that was opened
     let (wired, clock) = a_workbench();
     let mine = an_open_board(&wired).await;
-    clock.set(at(2_000));
+    clock.set(clock::at(2_000));
 
     // when: another project is opened
     let theirs = wired
         .boards
-        .open("project_2", &an_author())
+        .open("project_2", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
 
@@ -203,7 +194,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
             Spot::at(120, -40),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -211,7 +202,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
     // then: the board read again holds the idea at its spot
     let standing = wired
         .boards
-        .read(&id.to_string(), &an_author())
+        .read(&id.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
 
@@ -234,7 +225,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
             Spot::at(10, 10),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -248,7 +239,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
             Some(Spot::at(300, 20)),
             None,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("moving should succeed");
@@ -256,7 +247,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
     // then: the board read again holds it at the new spot
     let standing = wired
         .boards
-        .read(&id.to_string(), &an_author())
+        .read(&id.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -278,7 +269,7 @@ async fn an_unpinned_idea_leaves_the_board() {
             Spot::at(10, 10),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -286,14 +277,19 @@ async fn an_unpinned_idea_leaves_the_board() {
     // when: the idea is unpinned
     wired
         .boards
-        .unpin(&id.to_string(), an_idea(), None, &an_author())
+        .unpin(
+            &id.to_string(),
+            an_idea(),
+            None,
+            &eventsourcing::an_author(),
+        )
         .await
         .expect("unpinning should succeed");
 
     // then: the board read again holds nothing
     let standing = wired
         .boards
-        .read(&id.to_string(), &an_author())
+        .read(&id.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed");
     assert!(standing.state.ideas().is_empty());
@@ -312,7 +308,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
             Spot::ORIGIN,
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -326,7 +322,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
             Spot::at(9, 9),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await;
 
@@ -352,7 +348,7 @@ async fn a_move_against_a_stale_version_is_refused() {
             Spot::at(10, 10),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -366,7 +362,7 @@ async fn a_move_against_a_stale_version_is_refused() {
             Some(Spot::at(20, 20)),
             None,
             Some(Version::of(1)),
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await;
 
@@ -406,12 +402,12 @@ async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
 async fn a_board_nobody_started_is_not_found() {
     // given: a board id nobody started
     let (wired, _) = a_workbench();
-    let never_started = BoardId::generate(at(1_000));
+    let never_started = BoardId::generate(clock::at(1_000));
 
     // when: it is read
     let refused = wired
         .boards
-        .read(&never_started.to_string(), &an_author())
+        .read(&never_started.to_string(), &eventsourcing::an_author())
         .await;
 
     // then: it is not found
@@ -429,7 +425,7 @@ async fn an_id_that_is_not_a_board_is_refused() {
     // when: an id that is not a board's is read
     let refused = wired
         .boards
-        .read("idea_031VkO0hnpeQZUiAB7nDma", &an_author())
+        .read("idea_031VkO0hnpeQZUiAB7nDma", &eventsourcing::an_author())
         .await;
 
     // then: it is refused as invalid
@@ -450,7 +446,9 @@ async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_starte
     );
 
     // when: a project is opened
-    let refused = refusing.open("project_1", &an_author()).await;
+    let refused = refusing
+        .open("project_1", &eventsourcing::an_author())
+        .await;
     let held_after_refusal = wired
         .registry
         .holder(KIND.as_str(), "project_1")
@@ -499,13 +497,13 @@ async fn an_idea_pinned_while_losing_races(
             Spot::ORIGIN,
             Size::CARD,
             expected,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .map(|standing| standing.version);
     let on_board = wired
         .boards
-        .read(&board.to_string(), &an_author())
+        .read(&board.to_string(), &eventsourcing::an_author())
         .await
         .expect("the board is there")
         .state

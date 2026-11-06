@@ -67,7 +67,7 @@ async fn a_listed_invitation_into(
 }
 
 fn a_moment_later(wired: &Wired, seconds: i64) {
-    wired.clock.set(wiring::at(1_700_000_000 + seconds));
+    wired.clock.set(clock::at(1_700_000_000 + seconds));
 }
 
 async fn mine(wired: &Wired, acting: Acting) -> Vec<InvitationToYouDTO> {
@@ -144,7 +144,7 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
 
     // then: she is told the open ones into projects newest first, with who invited her and the project's name where known
     let until_of = |seconds: i64| {
-        clock::text::serialize(wiring::at(1_700_000_000 + seconds) + Invitation::LASTS)
+        clock::text::serialize(clock::at(1_700_000_000 + seconds) + Invitation::LASTS)
     };
     assert_eq!(
         told,

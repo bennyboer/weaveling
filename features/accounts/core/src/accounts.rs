@@ -118,19 +118,15 @@ impl AccountsCore {
         command: AccountCommand,
         agent: &Agent,
     ) -> Result<(), AccountsError> {
-        let key = AggregateId::from(account);
-        match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        };
+        self.events
+            .execute_at(
+                transaction,
+                &AggregateId::from(account),
+                expected,
+                command,
+                agent,
+            )
+            .await?;
 
         Ok(())
     }

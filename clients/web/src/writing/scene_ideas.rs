@@ -3,9 +3,8 @@ use std::collections::HashSet;
 use leptos::prelude::*;
 use leptos::task;
 
-use crate::ideas::followed;
-use crate::ideas::model::{Awaited, Idea, IdeaId};
-use crate::live::Subscription;
+use crate::ideas::followed::FollowedIdeas;
+use crate::ideas::model::{Idea, IdeaId};
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
@@ -17,25 +16,20 @@ pub struct SceneIdeas {
     project: StoredValue<ProjectId>,
     scenes: SceneCopies,
     asked: StoredValue<HashSet<SceneId>>,
-    ideas: RwSignal<Option<Vec<Idea>>>,
-    asking: Action<Option<Awaited>, ()>,
-    following: StoredValue<Option<Subscription>, LocalStorage>,
+    ideas: RwSignal<Option<FollowedIdeas>>,
+    owner: StoredValue<Owner, LocalStorage>,
     picking: RwSignal<bool>,
     problems: Problems,
 }
 
 impl SceneIdeas {
     pub fn of(project: &ProjectId, scenes: SceneCopies, problems: Problems) -> Self {
-        let ideas = RwSignal::new(None);
-        let following = StoredValue::new_local(None::<Subscription>);
-
         Self {
             project: StoredValue::new(project.clone()),
             scenes,
             asked: StoredValue::new(HashSet::new()),
-            ideas,
-            asking: followed::asking(project, ideas, move |failure| problems.report(failure)),
-            following,
+            ideas: RwSignal::new(None),
+            owner: StoredValue::new_local(Owner::current().unwrap_or_default()),
             picking: RwSignal::new(false),
             problems,
         }
@@ -46,31 +40,27 @@ impl SceneIdeas {
     }
 
     pub fn named(self, idea: &IdeaId) -> String {
-        self.ideas.with(|ideas| {
-            ideas
-                .iter()
-                .flatten()
-                .find(|held| &held.id == idea)
-                .map(|held| held.shown_as().to_owned())
-                .unwrap_or_default()
-        })
+        self.ideas
+            .get()
+            .and_then(|ideas| ideas.copies().shown_one(idea))
+            .map(|held| held.shown_as())
+            .unwrap_or_default()
     }
 
     pub fn every_idea(self) -> Vec<Idea> {
-        self.ideas.get().unwrap_or_default()
+        self.ideas
+            .get()
+            .map(|ideas| ideas.copies().shown())
+            .unwrap_or_default()
     }
 
     pub fn waiting_for(self, scene: &SceneId) -> Vec<Idea> {
         let linked = self.linked_to(scene).unwrap_or_default();
 
-        self.ideas.with(|ideas| {
-            ideas
-                .iter()
-                .flatten()
-                .filter(|idea| !linked.contains(&idea.id))
-                .cloned()
-                .collect()
-        })
+        self.every_idea()
+            .into_iter()
+            .filter(|idea| !linked.contains(&idea.id))
+            .collect()
     }
 
     pub fn is_picking(self) -> bool {
@@ -108,11 +98,14 @@ impl SceneIdeas {
     }
 
     pub fn know_the_ideas(self) {
-        if self.following.with_value(Option::is_none) {
-            let project = self.project.get_value();
-            self.following
-                .set_value(Some(followed::following(&project, self.ideas, self.asking)));
+        if self.ideas.with_untracked(Option::is_some) {
+            return;
         }
+        let (project, owner) = (self.project.get_value(), self.owner.get_value());
+        let problems = self.problems;
+        let followed =
+            owner.with(|| FollowedIdeas::follow(&project, move |failure| problems.report(failure)));
+        self.ideas.set(Some(followed));
     }
 
     pub fn link(self, scene: SceneId, chosen: Vec<IdeaId>) {

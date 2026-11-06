@@ -143,23 +143,23 @@ impl Beginnings {
             let added = adding.await;
             _ = self.beginning_section.try_set_value(false);
             match added {
-                Some(section) => {
+                Ok(section) => {
                     let typed = self.section_words.get_value();
                     if !typed.trim().is_empty() {
                         self.structure.retitle(section, typed);
                     }
                 }
-                None => {
-                    self.structure.caught_up().await;
+                Err(failure) => {
                     let gone = after
                         .as_ref()
                         .is_some_and(|after| self.structure.title_of(after).is_none());
-                    if gone {
-                        self.pending.set(None);
-                        self.unplaced.set(Some(Unplaced::Section {
-                            titled: self.section_words.get_value(),
-                        }));
+                    if !gone {
+                        return self.structure.refused(failure);
                     }
+                    self.pending.set(None);
+                    self.unplaced.set(Some(Unplaced::Section {
+                        titled: self.section_words.get_value(),
+                    }));
                 }
             }
         });
@@ -208,17 +208,16 @@ impl Beginnings {
             let scene = made.id.clone();
             self.scenes.hold(made);
 
-            if self
+            let Err(failure) = self
                 .structure
                 .brought_back(scene.clone(), section.clone(), after)
                 .await
-            {
+            else {
                 return;
-            }
-            self.structure.caught_up().await;
+            };
             self.opening.update(|opening| _ = opening.remove(&section));
             if self.structure.title_of(&section).is_some() {
-                return;
+                return self.structure.refused(failure);
             }
             let begins = self
                 .opening_words

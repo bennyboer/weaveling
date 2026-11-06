@@ -67,14 +67,10 @@ mod tests {
     const FIVE_FREE: Rule = Rule { free: 5 };
     const THREE_FREE: Rule = Rule { free: 3 };
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn tried(counted: u32) -> Tries {
         Tries {
             counted,
-            last: at(1_000),
+            last: clock::at(1_000),
         }
     }
 
@@ -82,10 +78,16 @@ mod tests {
     fn the_first_tries_are_free() {
         // expect: no wait within the free tries of either rule
         for counted in 0..5 {
-            assert_eq!(tried(counted).wait_before_next(FIVE_FREE, at(1_000)), None);
+            assert_eq!(
+                tried(counted).wait_before_next(FIVE_FREE, clock::at(1_000)),
+                None
+            );
         }
         for counted in 0..3 {
-            assert_eq!(tried(counted).wait_before_next(THREE_FREE, at(1_000)), None);
+            assert_eq!(
+                tried(counted).wait_before_next(THREE_FREE, clock::at(1_000)),
+                None
+            );
         }
     }
 
@@ -93,7 +95,7 @@ mod tests {
     fn past_the_free_tries_each_wait_is_twice_the_last() {
         // when: the waits past five free tries are read
         let waits: Vec<_> = (5..=9)
-            .map(|counted| tried(counted).wait_before_next(FIVE_FREE, at(1_000)))
+            .map(|counted| tried(counted).wait_before_next(FIVE_FREE, clock::at(1_000)))
             .collect();
 
         // then: each doubles the last, starting at a minute
@@ -103,7 +105,7 @@ mod tests {
         );
         // and: another rule starts at a minute too
         assert_eq!(
-            tried(3).wait_before_next(THREE_FREE, at(1_000)),
+            tried(3).wait_before_next(THREE_FREE, clock::at(1_000)),
             Some(Duration::minutes(1))
         );
     }
@@ -113,7 +115,7 @@ mod tests {
         // expect: however many tries, the wait is at most an hour
         for counted in [11, 12, 40, u32::MAX] {
             assert_eq!(
-                tried(counted).wait_before_next(FIVE_FREE, at(1_000)),
+                tried(counted).wait_before_next(FIVE_FREE, clock::at(1_000)),
                 Some(Duration::hours(1)),
                 "a wait without end would lock its owner out, which anyone typing their address could do"
             );
@@ -124,34 +126,34 @@ mod tests {
     fn a_wait_is_counted_from_the_last_try_and_shrinks_as_time_passes() {
         // expect: part way through a wait, what is left of it
         assert_eq!(
-            tried(6).wait_before_next(FIVE_FREE, at(1_090)),
+            tried(6).wait_before_next(FIVE_FREE, clock::at(1_090)),
             Some(Duration::seconds(30))
         );
         // and: once it has passed, none
-        assert_eq!(tried(6).wait_before_next(FIVE_FREE, at(1_120)), None);
+        assert_eq!(tried(6).wait_before_next(FIVE_FREE, clock::at(1_120)), None);
     }
 
     #[test]
     fn an_admitted_try_is_counted_on_what_came_before_and_a_refused_one_is_told_its_wait() {
         // expect: a first try is counted as one
         assert_eq!(
-            Tries::admitted(None, FIVE_FREE, at(1_000)),
+            Tries::admitted(None, FIVE_FREE, clock::at(1_000)),
             Ok(Tries {
                 counted: 1,
-                last: at(1_000)
+                last: clock::at(1_000)
             })
         );
         // and: a later one is counted on the tries before it
         assert_eq!(
-            Tries::admitted(Some(tried(4)), FIVE_FREE, at(1_010)),
+            Tries::admitted(Some(tried(4)), FIVE_FREE, clock::at(1_010)),
             Ok(Tries {
                 counted: 5,
-                last: at(1_010)
+                last: clock::at(1_010)
             })
         );
         // and: one past the free tries is told its wait
         assert_eq!(
-            Tries::admitted(Some(tried(5)), FIVE_FREE, at(1_010)),
+            Tries::admitted(Some(tried(5)), FIVE_FREE, clock::at(1_010)),
             Err(Duration::seconds(50))
         );
         // and: one a day on is counted as the first again
@@ -159,11 +161,11 @@ mod tests {
             Tries::admitted(
                 Some(tried(40)),
                 FIVE_FREE,
-                at(1_000) + Tries::FORGOTTEN_AFTER
+                clock::at(1_000) + Tries::FORGOTTEN_AFTER
             ),
             Ok(Tries {
                 counted: 1,
-                last: at(1_000) + Tries::FORGOTTEN_AFTER
+                last: clock::at(1_000) + Tries::FORGOTTEN_AFTER
             }),
             "tries a day old are counted from the start again"
         );
@@ -172,7 +174,7 @@ mod tests {
     #[test]
     fn tries_a_day_old_are_forgotten() {
         // given: a day after the last try
-        let quiet = at(1_000) + Tries::FORGOTTEN_AFTER;
+        let quiet = clock::at(1_000) + Tries::FORGOTTEN_AFTER;
 
         // then: the tries are forgotten, though not a second before
         assert!(tried(40).is_forgotten(quiet));

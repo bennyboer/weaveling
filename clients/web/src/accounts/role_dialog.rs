@@ -2,10 +2,10 @@ use std::future::Future;
 
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
+use leptos::task;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
-use crate::act::{Act, Here};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -22,6 +22,7 @@ pub fn role_dialog<Changed>(
     account: ListedAccount,
     yourself: bool,
     change: impl Fn() -> Changed + 'static,
+    changing: impl Fn() -> bool + Send + Sync + 'static,
     refused: RwSignal<Option<ApiError>>,
     close: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView
@@ -49,15 +50,14 @@ where
     let name = account.name.clone();
     let title = Signal::derive(move || naming(title_key, &name));
 
-    let changing = Act::new(move |(), _: Here| {
+    let start = move || {
         let changed = change();
-
-        async move {
+        task::spawn_local(async move {
             if changed.await {
                 close();
             }
-        }
-    });
+        });
+    };
 
     dialog::modal(
         title,
@@ -76,8 +76,8 @@ where
                 html::button()
                     .r#type("button")
                     .class(if dismissing { "danger" } else { "primary" })
-                    .attr("aria-busy", move || changing.busy())
-                    .on(ev::click, move |_| changing.start(()))
+                    .attr("aria-busy", move || changing().then_some("true"))
+                    .on(ev::click, move |_| start())
                     .child(speech::said(confirm_key)),
             )),
         ),

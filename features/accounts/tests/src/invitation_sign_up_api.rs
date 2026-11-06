@@ -20,7 +20,7 @@ async fn an_open_invitation() -> (Wired, TestServer) {
             &InvitationTicket {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(ADA).expect("a plain address"),
-                until: wiring::at(1_700_000_000) + Duration::days(7),
+                until: clock::at(1_700_000_000) + Duration::days(7),
                 scope: InvitationScope::Instance,
                 by_an_operator: true,
             },
@@ -108,7 +108,7 @@ async fn a_link_run_out_is_refused_by_its_kind() {
     // and: its last moment past
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(8));
+        .set(clock::at(1_700_000_000) + Duration::days(8));
 
     // then: signing up by its link is refused
     refused_as(
@@ -209,7 +209,7 @@ async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused
             &InvitationTicket {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(ADA).expect("a plain address"),
-                until: wiring::at(1_700_000_000) + Duration::days(7),
+                until: clock::at(1_700_000_000) + Duration::days(7),
                 scope: InvitationScope::Project {
                     project: "project_loom".to_owned(),
                 },

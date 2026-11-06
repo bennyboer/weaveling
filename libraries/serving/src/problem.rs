@@ -74,15 +74,19 @@ impl Problem {
         )
     }
 
+    pub fn outdated(kind: impl Display) -> Self {
+        Self::new(
+            StatusCode::PRECONDITION_FAILED,
+            OUTDATED,
+            format!("this {kind} has moved on since the version you asked for"),
+        )
+    }
+
     pub fn of<E: Display>(error: &ServiceError<E>, refused: impl FnOnce(&E) -> Self) -> Self {
         match error {
             ServiceError::NotFound { .. } => Self::new(StatusCode::NOT_FOUND, NOT_FOUND, error),
             ServiceError::Refused(refusal) => refused(refusal),
-            ServiceError::Store(StoreError::Outdated { kind, .. }) => Self::new(
-                StatusCode::PRECONDITION_FAILED,
-                OUTDATED,
-                format!("this {kind} has moved on since the version you asked for"),
-            ),
+            ServiceError::Store(StoreError::Outdated { kind, .. }) => Self::outdated(kind),
             unserveable => Self::unexpected(unserveable),
         }
     }

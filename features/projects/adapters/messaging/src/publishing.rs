@@ -45,16 +45,11 @@ mod tests {
     };
     use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
     use projects_core::{KIND, ProjectId, ProjectName};
-    use time::{Duration, OffsetDateTime};
 
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn a_project() -> ProjectId {
-        ProjectId::generate(at(1_000))
+        ProjectId::generate(clock::at(1_000))
     }
 
     fn a_name() -> ProjectName {
@@ -68,7 +63,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: Agent::Account(AccountId::from("author-7")),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },
@@ -92,7 +87,12 @@ mod tests {
                 ProjectEvent::QuotationChanged(QuotationMarks::Curly),
                 QUOTATION_CHANGED,
             ),
-            (ProjectEvent::Trashed { until: at(3_000) }, TRASHED),
+            (
+                ProjectEvent::Trashed {
+                    until: clock::at(3_000),
+                },
+                TRASHED,
+            ),
             (ProjectEvent::Restored, RESTORED),
             (ProjectEvent::Deleted, DELETED),
         ]
@@ -228,8 +228,8 @@ mod tests {
         let snapshot = ProjectEvent::Snapshotted {
             name: a_name(),
             details: ProjectDetails::default(),
-            created_at: at(1_000),
-            updated_at: at(2_000),
+            created_at: clock::at(1_000),
+            updated_at: clock::at(2_000),
             trashed_until: None,
             deleted: false,
         };

@@ -1,5 +1,5 @@
 use futures_util::future;
-use time::{Duration, OffsetDateTime};
+use time::Duration;
 
 use crate::{Admission, Rule, Throttles, Tries};
 
@@ -20,10 +20,6 @@ const ADA: &str = "ada@example.com";
 const BEA: &str = "bea@example.com";
 const FIVE_FREE: Rule = Rule { free: 5 };
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub async fn nothing_counted_is_no_tries<S: Throttles>(throttles: &S) {
     // expect: nothing counted reads as no tries
     assert_eq!(
@@ -42,7 +38,7 @@ async fn admitted<S: Throttles>(
     second: i64,
 ) -> Admission {
     throttles
-        .admit(guarded, about, FIVE_FREE, at(second))
+        .admit(guarded, about, FIVE_FREE, clock::at(second))
         .await
         .expect("admitting should succeed")
 }
@@ -65,7 +61,7 @@ pub async fn each_admitted_try_is_counted_and_keeps_its_moment<S: Throttles>(thr
             .expect("reading should succeed"),
         Some(Tries {
             counted: 3,
-            last: at(1_200),
+            last: clock::at(1_200),
         })
     );
 }
@@ -92,7 +88,7 @@ pub async fn a_try_refused_for_its_wait_is_told_it_and_not_counted<S: Throttles>
         counted_then,
         Some(Tries {
             counted: 5,
-            last: at(1_000),
+            last: clock::at(1_000),
         }),
         "a try refused for waiting must not count, or impatience alone would lengthen the wait"
     );
@@ -200,9 +196,10 @@ pub async fn tries_sent_at_once_are_admitted_no_more_than_the_rule_lets<S: Throt
     throttles: &S,
 ) {
     // when: twenty tries are sent at once
-    let told =
-        future::join_all((0..20).map(|_| throttles.admit(SIGNING_IN, ADA, FIVE_FREE, at(1_000))))
-            .await;
+    let told = future::join_all(
+        (0..20).map(|_| throttles.admit(SIGNING_IN, ADA, FIVE_FREE, clock::at(1_000))),
+    )
+    .await;
 
     // then: only the free ones are admitted
     let admitted = told

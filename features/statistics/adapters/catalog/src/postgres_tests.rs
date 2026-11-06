@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
 use test_harness::PostgresFixture;
-use time::{Duration, OffsetDateTime};
 use transacting::{PostgresTransactions, Transactions, Tried};
 
 use crate::postgres;
@@ -53,10 +52,6 @@ impl Workbench for OnPostgres {
 
 crate::suite::conformance_tests!(OnPostgres);
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_counted() {
     // given: a catalog on postgres
@@ -75,7 +70,7 @@ async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_cou
             tokio::spawn(async move {
                 transacting::retrying!(&*kept_in, |transaction| {
                     keeping
-                        .keep(transaction, &kept_scene, &of, 42, at(1_000))
+                        .keep(transaction, &kept_scene, &of, 42, clock::at(1_000))
                         .await
                         .map_err(Tried::Refused)?;
                     Ok::<_, Tried<CatalogError>>(())
@@ -84,7 +79,7 @@ async fn keeping_and_forgetting_a_scene_at_once_never_leaves_a_deleted_scene_cou
             tokio::spawn(async move {
                 transacting::retrying!(&*forgotten_in, |transaction| {
                     forgetting
-                        .forget_scene(transaction, &forgotten_scene, at(5_000))
+                        .forget_scene(transaction, &forgotten_scene, clock::at(5_000))
                         .await
                         .map_err(Tried::Refused)?;
                     Ok::<_, Tried<CatalogError>>(())

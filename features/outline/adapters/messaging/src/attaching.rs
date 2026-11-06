@@ -3,13 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clock::Clock;
 use inbox::KeptHandler;
-use messaging::{Failure, Message, RoutingKey};
+use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
 use outline_contract::{ATTACHED, DETACHED, SECTION_REMOVED};
 use outline_core::{KIND, OutlineId, OutlinesCore};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 pub const DETACH_THE_GONE: &str = "follow-up.outline.detach-gone";
@@ -53,25 +51,20 @@ impl KeptHandler for IndexAttachmentsListener {
             .index_attachments(Some(&mut *transaction), &outline)
             .await?;
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(&outline.to_string(), KIND.as_str()),
-                &detach_the_gone(message, &outline, self.clock.now()),
+                message,
+                DETACH_THE_GONE,
+                &DetachTheGoneDTO {
+                    outline: outline.to_string(),
+                },
+                self.clock.now(),
             )
             .await?;
 
         Ok(())
     }
-}
-
-fn detach_the_gone(heard: &Message, outline: &OutlineId, now: OffsetDateTime) -> Message {
-    heard.answering(
-        RoutingKey::parse(DETACH_THE_GONE).expect("a follow-up's routing key holds no wildcards"),
-        json!(DetachTheGoneDTO {
-            outline: outline.to_string(),
-        }),
-        now,
-    )
 }
 
 pub struct DetachGoneAttachmentsListener {

@@ -72,16 +72,11 @@ mod tests {
     use accounts_core::{AccountId, KIND, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
-    use time::{Duration, OffsetDateTime};
 
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn an_account() -> AccountId {
-        AccountId::generate(at(1_000))
+        AccountId::generate(clock::at(1_000))
     }
 
     fn recorded(id: &AccountId, event: AccountEvent) -> Recorded<AccountEvent> {
@@ -91,7 +86,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: id.acting(),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },
@@ -351,7 +346,7 @@ mod tests {
             email,
             name,
             verified: true,
-            signed_up_at: at(1_000),
+            signed_up_at: clock::at(1_000),
             sessions_since: None,
             operator: false,
             locks: BTreeMap::new(),

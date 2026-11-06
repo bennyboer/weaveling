@@ -5,7 +5,6 @@ use leptos::{IntoView, ev, html};
 
 use crate::accounts::service as accounts;
 use crate::accounts::service::Answer;
-use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::invitations::service;
 use crate::invitations::to_you::InvitationToYou;
@@ -64,31 +63,28 @@ impl Invited {
             },
             move |failure| _ = refused.try_set(Some(failure)),
         );
-        let asking = Asking::new();
-        let listing = Action::new_local(move |_: &()| {
-            let (asked, turn) = (asking.next(), next_turn(turns));
-
-            async move {
-                let answer = service::mine().await;
-                if !asking.is_latest(asked) {
-                    return;
-                }
-                if let Ok(listed) = answer {
-                    mine.take_in_all(
-                        listed
-                            .into_iter()
-                            .map(|invitation| held(invitation, turn))
-                            .collect(),
-                    );
-                }
-            }
-        });
-        listing.dispatch(());
+        let listing = move || {
+            let turn = next_turn(turns);
+            let reading = mine.read_all(
+                move || async move {
+                    Ok(service::mine()
+                        .await?
+                        .into_iter()
+                        .map(|invitation| held(invitation, turn))
+                        .collect())
+                },
+                None,
+            );
+            task::spawn_local(async move {
+                _ = reading.await;
+            });
+        };
+        listing();
         StoredValue::new_local(Subscription::start(
             "invitations",
             &[("mine", "true")],
-            move |_| _ = listing.dispatch(()),
-            move || _ = listing.dispatch(()),
+            move |_| listing(),
+            listing,
         ));
 
         Self { mine, refused }
@@ -107,19 +103,10 @@ impl Invited {
     }
 
     fn answer(self, id: String, given: Answer) {
-        let answered_or_gone =
-            untrack(|| !self.mine.is_listed(&id) || self.mine.unanswered_on(&id));
-        if answered_or_gone {
-            return;
-        }
         self.refused.set(None);
-        let Some(landed) = self.mine.intended(&id, given) else {
-            return;
-        };
+        let ending = self.mine.ending(&id, given);
         task::spawn_local(async move {
-            if landed.await {
-                self.mine.forget(&id);
-            }
+            ending.await;
         });
     }
 

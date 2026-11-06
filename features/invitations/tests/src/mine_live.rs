@@ -42,7 +42,7 @@ fn a_workbench() -> Told {
             )),
             Arc::new(FakeMailbox::default()),
             Arc::new(AllowingEverything),
-            Arc::new(FixedClock::new(wiring::at(1_700_000_000))),
+            Arc::new(FixedClock::new(clock::at(1_700_000_000))),
         ),
         broadcaster,
     }

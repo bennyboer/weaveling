@@ -16,7 +16,6 @@ transacting = { version = "0.1.0", path = "../../../../libraries/transacting", p
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 async-trait = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 time = { workspace = true }
 
 invitations-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-invitations-contract" }

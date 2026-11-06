@@ -8,10 +8,6 @@ use crate::invitation::*;
 use crate::scope::{ProjectLink, Role, Scope};
 use crate::token::InvitationTokenDigest;
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn an_operator() -> Agent {
     Agent::Account("account_1".into())
 }
@@ -36,7 +32,7 @@ fn an_issue(seconds: i64) -> InvitationEvent {
     InvitationEvent::Issued {
         to: ada(),
         digest: InvitationTokenDigest::kept("ab12".to_owned()),
-        until: at(seconds) + Invitation::LASTS,
+        until: clock::at(seconds) + Invitation::LASTS,
         scope: Scope::Instance,
         by_an_operator: true,
         origin: "https://weaveling.example.com".to_owned(),
@@ -44,7 +40,7 @@ fn an_issue(seconds: i64) -> InvitationEvent {
 }
 
 fn an_invitation_issued_at(seconds: i64) -> Invitation {
-    Invitation::from_first(&an_issue(seconds), &stamped(1, at(seconds)))
+    Invitation::from_first(&an_issue(seconds), &stamped(1, clock::at(seconds)))
         .expect("issuing gives birth")
 }
 
@@ -56,7 +52,7 @@ fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
             InvitationCommand::Issue {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
-                until: at(1_000) + Invitation::LASTS,
+                until: clock::at(1_000) + Invitation::LASTS,
                 scope: Scope::Instance,
                 by_an_operator: true,
                 origin: "https://weaveling.example.com".to_owned(),
@@ -72,7 +68,7 @@ fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
     // then: it stands open to the address for seven days
     assert_eq!(invitation.to(), &ada());
     assert_eq!(invitation.outcome(), Outcome::Open);
-    assert_eq!(invitation.until(), at(1_000) + Duration::days(7));
+    assert_eq!(invitation.until(), clock::at(1_000) + Duration::days(7));
 }
 
 #[test]
@@ -81,7 +77,7 @@ fn an_invitation_holds_until_its_issue_says_however_late_it_was_told() {
     let issue = InvitationEvent::Issued {
         to: ada(),
         digest: InvitationTokenDigest::kept("ab12".to_owned()),
-        until: at(5_000),
+        until: clock::at(5_000),
         scope: Scope::Instance,
         by_an_operator: true,
         origin: "https://weaveling.example.com".to_owned(),
@@ -89,10 +85,10 @@ fn an_invitation_holds_until_its_issue_says_however_late_it_was_told() {
 
     // when: an invitation is born of it
     let invitation =
-        Invitation::from_first(&issue, &stamped(1, at(1_000))).expect("issuing gives birth");
+        Invitation::from_first(&issue, &stamped(1, clock::at(1_000))).expect("issuing gives birth");
 
     // then: it holds until the issue says
-    assert_eq!(invitation.until(), at(5_000));
+    assert_eq!(invitation.until(), clock::at(5_000));
 }
 
 #[test]
@@ -112,7 +108,7 @@ fn an_open_invitation_is_taken_up_once() {
         &InvitationEvent::Accepted {
             scope: Scope::Instance,
         },
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
 
     // then: it is accepted
@@ -132,7 +128,7 @@ fn an_invitation_taken_up_is_accepted_however_late_it_is_heard() {
     let invitation = an_invitation_issued_at(1_000);
 
     // then: it is expired
-    assert!(invitation.is_expired(at(after_its_last_moment)));
+    assert!(invitation.is_expired(clock::at(after_its_last_moment)));
     // and: taking it up is still decided as accepted
     assert_eq!(
         invitation.decide(InvitationCommand::Accept, &an_operator()),
@@ -154,7 +150,7 @@ fn a_withdrawn_invitation_is_not_taken_up_and_withdrawing_twice_changes_nothing(
         Ok(vec![InvitationEvent::Withdrawn])
     );
     // when: it is withdrawn
-    invitation.apply(&InvitationEvent::Withdrawn, &stamped(2, at(2_000)));
+    invitation.apply(&InvitationEvent::Withdrawn, &stamped(2, clock::at(2_000)));
 
     // then: it is withdrawn
     assert_eq!(invitation.outcome(), Outcome::Withdrawn);
@@ -178,7 +174,7 @@ fn an_invitation_taken_up_is_not_withdrawn() {
         &InvitationEvent::Accepted {
             scope: Scope::Instance,
         },
-        &stamped(2, at(2_000)),
+        &stamped(2, clock::at(2_000)),
     );
 
     // then: withdrawing it is refused
@@ -196,7 +192,7 @@ fn an_expired_invitation_may_still_be_withdrawn() {
     let invitation = an_invitation_issued_at(1_000);
 
     // then: it is expired
-    assert!(invitation.is_expired(at(late)));
+    assert!(invitation.is_expired(clock::at(late)));
     // and: withdrawing it is still decided as withdrawn
     assert_eq!(
         invitation.decide(InvitationCommand::Withdraw, &an_operator()),
@@ -219,7 +215,7 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
             InvitationCommand::Issue {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("cd34".to_owned()),
-                until: at(2_000),
+                until: clock::at(2_000),
                 scope: Scope::Instance,
                 by_an_operator: true,
                 origin: "https://weaveling.example.com".to_owned(),
@@ -239,7 +235,10 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
             reason: DeclineReason::AddressHasAccount,
         },
     ] {
-        assert_eq!(Invitation::from_first(&event, &stamped(1, at(1_000))), None);
+        assert_eq!(
+            Invitation::from_first(&event, &stamped(1, clock::at(1_000))),
+            None
+        );
     }
 }
 
@@ -247,13 +246,13 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
 fn a_snapshot_holds_everything_the_invitation_is() {
     // given: a withdrawn invitation
     let mut invitation = an_invitation_issued_at(1_000);
-    invitation.apply(&InvitationEvent::Withdrawn, &stamped(2, at(2_000)));
+    invitation.apply(&InvitationEvent::Withdrawn, &stamped(2, clock::at(2_000)));
 
     // when: one is born of its snapshot and one behind has it applied
-    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, at(3_000)))
+    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, clock::at(3_000)))
         .expect("a snapshot gives birth");
     let mut behind = an_invitation_issued_at(500);
-    behind.apply(&invitation.snapshot(), &stamped(3, at(3_000)));
+    behind.apply(&invitation.snapshot(), &stamped(3, clock::at(3_000)));
 
     // then: both are the invitation
     assert_eq!(restored, invitation);
@@ -266,7 +265,7 @@ fn a_snapshot_keeps_its_scope_and_whether_an_operator_issued_it() {
     let into_a_project = InvitationEvent::Issued {
         to: ada(),
         digest: InvitationTokenDigest::kept("ab12".to_owned()),
-        until: at(1_000) + Invitation::LASTS,
+        until: clock::at(1_000) + Invitation::LASTS,
         scope: Scope::Project {
             project: ProjectLink::from("project_1"),
             role: Role::Reader,
@@ -274,17 +273,17 @@ fn a_snapshot_keeps_its_scope_and_whether_an_operator_issued_it() {
         by_an_operator: false,
         origin: "https://weaveling.example.com".to_owned(),
     };
-    let invitation = Invitation::from_first(&into_a_project, &stamped(1, at(1_000)))
+    let invitation = Invitation::from_first(&into_a_project, &stamped(1, clock::at(1_000)))
         .expect("issuing gives birth");
     // then: it is by no operator
     assert!(!invitation.is_by_an_operator());
 
     // when: one is born of its snapshot and one issued by an operator has it applied
-    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, at(2_000)))
+    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, clock::at(2_000)))
         .expect("a snapshot gives birth");
     let mut issued_otherwise = an_invitation_issued_at(500);
     assert!(issued_otherwise.is_by_an_operator());
-    issued_otherwise.apply(&invitation.snapshot(), &stamped(2, at(2_000)));
+    issued_otherwise.apply(&invitation.snapshot(), &stamped(2, clock::at(2_000)));
 
     // then: both keep its scope and that no operator issued it
     for told in [restored, issued_otherwise] {
@@ -309,7 +308,7 @@ fn an_invitation_declined_at(seconds: i64) -> Invitation {
             reason: DeclineReason::AddressHasAccount,
         }]
     );
-    invitation.apply(&declined[0], &stamped(2, at(seconds + 10)));
+    invitation.apply(&declined[0], &stamped(2, clock::at(seconds + 10)));
 
     invitation
 }
@@ -352,14 +351,14 @@ fn an_invitation_to_an_address_with_an_account_is_declined_and_closed() {
 fn an_invitation_withdrawn_or_taken_up_is_not_declined() {
     // given: a withdrawn invitation
     let mut withdrawn = an_invitation_issued_at(1_000);
-    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(1_010)));
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, clock::at(1_010)));
     // and: an accepted one
     let mut accepted = an_invitation_issued_at(1_000);
     accepted.apply(
         &InvitationEvent::Accepted {
             scope: Scope::Instance,
         },
-        &stamped(2, at(1_010)),
+        &stamped(2, clock::at(1_010)),
     );
 
     // then: the withdrawn one is not declined
@@ -400,19 +399,19 @@ fn an_invitation_remembers_when_it_was_settled_and_an_open_one_was_not() {
     let open = an_invitation_issued_at(1_000);
     // and: a withdrawn one
     let mut withdrawn = an_invitation_issued_at(1_000);
-    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(4_000)));
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, clock::at(4_000)));
 
     // then: the open one was never settled
     assert_eq!(open.settled_at(), None);
     // and: the withdrawn one remembers when it was
-    assert_eq!(withdrawn.settled_at(), Some(at(4_000)));
+    assert_eq!(withdrawn.settled_at(), Some(clock::at(4_000)));
 }
 
 #[test]
 fn an_invitation_retires_once_however_it_stands() {
     // given: a withdrawn invitation
     let mut withdrawn = an_invitation_issued_at(1_000);
-    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(2_000)));
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, clock::at(2_000)));
 
     // when: it, an open one and a declined one each retire
     for invitation in [
@@ -428,7 +427,7 @@ fn an_invitation_retires_once_however_it_stands() {
 
         // and: once retired, it stands as it stood
         let mut retired = invitation.clone();
-        retired.apply(&retiring[0], &stamped(3, at(3_000)));
+        retired.apply(&retiring[0], &stamped(3, clock::at(3_000)));
         assert!(retired.is_retired());
         assert_eq!(
             retired.outcome(),
@@ -442,7 +441,7 @@ fn an_invitation_retires_once_however_it_stands() {
             "retiring twice changes nothing"
         );
         // and: its snapshot keeps that it retired
-        let restored = Invitation::from_first(&retired.snapshot(), &stamped(3, at(4_000)))
+        let restored = Invitation::from_first(&retired.snapshot(), &stamped(3, clock::at(4_000)))
             .expect("a snapshot gives birth");
         assert!(restored.is_retired(), "a snapshot keeps that it retired");
     }
@@ -464,12 +463,12 @@ fn an_acceptance_tells_the_scope_it_was_into() {
         &InvitationEvent::Issued {
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
-            until: at(1_000) + Invitation::LASTS,
+            until: clock::at(1_000) + Invitation::LASTS,
             scope: into_a_project.clone(),
             by_an_operator: false,
             origin: "https://weaveling.example.com".to_owned(),
         },
-        &stamped(1, at(1_000)),
+        &stamped(1, clock::at(1_000)),
     )
     .expect("issuing gives birth");
 
@@ -492,7 +491,7 @@ fn an_invitation_knows_which_account_issued_it_and_keeps_it_through_a_snapshot()
         &an_issue(1_000),
         &EventMetadata {
             agent: Agent::System,
-            ..stamped(1, at(1_000))
+            ..stamped(1, clock::at(1_000))
         },
     )
     .expect("issuing gives birth");
@@ -505,11 +504,11 @@ fn an_invitation_knows_which_account_issued_it_and_keeps_it_through_a_snapshot()
     // and: the other none
     assert_eq!(by_the_system.issued_by(), None);
     // and: a snapshot keeps the account, born of it or applied
-    let restored = Invitation::from_first(&by_an_account.snapshot(), &stamped(2, at(2_000)))
+    let restored = Invitation::from_first(&by_an_account.snapshot(), &stamped(2, clock::at(2_000)))
         .expect("a snapshot gives birth");
     assert_eq!(restored.issued_by(), Some(&AccountId::from("account_1")));
     let mut behind = by_the_system;
-    behind.apply(&by_an_account.snapshot(), &stamped(2, at(2_000)));
+    behind.apply(&by_an_account.snapshot(), &stamped(2, clock::at(2_000)));
     assert_eq!(behind.issued_by(), Some(&AccountId::from("account_1")));
 }
 
@@ -520,22 +519,22 @@ fn an_invitation_keeps_its_token_s_digest_and_through_a_snapshot() {
         &InvitationEvent::Issued {
             to: ada(),
             digest: InvitationTokenDigest::kept("cd34".to_owned()),
-            until: at(1_000) + Invitation::LASTS,
+            until: clock::at(1_000) + Invitation::LASTS,
             scope: Scope::Instance,
             by_an_operator: true,
             origin: "https://weaveling.example.com".to_owned(),
         },
-        &stamped(1, at(1_000)),
+        &stamped(1, clock::at(1_000)),
     )
     .expect("issuing gives birth");
 
     // then: it keeps the digest
     assert_eq!(invitation.digest().as_str(), "cd34");
     // and: so does a snapshot, born of it or applied
-    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, at(2_000)))
+    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, clock::at(2_000)))
         .expect("a snapshot gives birth");
     let mut behind = an_invitation_issued_at(500);
-    behind.apply(&invitation.snapshot(), &stamped(2, at(2_000)));
+    behind.apply(&invitation.snapshot(), &stamped(2, clock::at(2_000)));
     for told in [restored, behind] {
         assert_eq!(told.digest().as_str(), "cd34");
     }

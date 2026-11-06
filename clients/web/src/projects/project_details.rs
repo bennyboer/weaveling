@@ -90,21 +90,31 @@ fn changing_dialog(
         let (from, to) = (before.details.quotation_marks(), details.quotation_marks());
 
         async move {
-            let renamed = name == before.name
-                || landed(open_project, &project, Intent::Rename { name }).await;
-            let changed = renamed
-                && landed(
-                    open_project,
-                    &project,
-                    Intent::ChangeDetails {
-                        details,
-                        seen: before.details,
-                    },
-                )
-                .await;
+            let renamed = match name == before.name {
+                true => Ok(()),
+                false => {
+                    open_project
+                        .intended(&project, Intent::Rename { name })
+                        .await
+                }
+            };
+            let changed = match renamed {
+                Ok(()) => {
+                    open_project
+                        .intended(
+                            &project,
+                            Intent::ChangeDetails {
+                                details,
+                                seen: before.details,
+                            },
+                        )
+                        .await
+                }
+                Err(failure) => Err(failure),
+            };
 
-            if !changed {
-                refused.set(open_project.change_refused());
+            if let Err(failure) = changed {
+                refused.set(Some(failure));
                 stage.set(Stage::Editing);
             } else if from == to {
                 changing.set(false);
@@ -229,13 +239,6 @@ fn restyling(
                 .child(speech::said("restyling-close")),
         ),
     )
-}
-
-async fn landed(open_project: OpenProject, project: &ProjectId, intent: Intent) -> bool {
-    match open_project.intended(project, intent) {
-        Some(landed) => landed.await,
-        None => false,
-    }
 }
 
 fn shown_on_the_bar(restyled: Restyled) -> (Option<String>, String) {

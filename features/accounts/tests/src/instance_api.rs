@@ -65,7 +65,7 @@ async fn a_session_cookie(server: &TestServer, email: &str) -> String {
 async fn an_instance_with_ada_and_grace_its_operator() -> Instance {
     let wired = wiring::wired();
     let ada = a_verified_account(&wired, ADA, "Ada").await;
-    wired.clock.set(wiring::at(1_700_000_060));
+    wired.clock.set(clock::at(1_700_000_060));
     let grace = a_verified_account(&wired, GRACE, "Grace").await;
     let code = wired
         .accounts
@@ -309,7 +309,7 @@ async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
     // given: an instance with two accounts, one its operator
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     // and: an account id nobody holds
-    let nobody = AccountId::generate(wiring::at(1_000)).to_string();
+    let nobody = AccountId::generate(clock::at(1_000)).to_string();
 
     // then: locking it is refused as not found
     refused_as(
@@ -366,14 +366,14 @@ async fn a_long_list_comes_a_page_at_a_time() {
         remembered(
             &instance,
             &AccountSummary {
-                id: AccountId::generate(wiring::at(1_000 + seconds)),
+                id: AccountId::generate(clock::at(1_000 + seconds)),
                 version: Version::of(1),
                 name: AccountName::new("Someone").expect("a plain name"),
                 email: EmailAddress::new(&format!("someone{seconds}@example.com"))
                     .expect("a plain address"),
                 verified: true,
                 operator: false,
-                signed_up_at: wiring::at(1_000 + seconds),
+                signed_up_at: clock::at(1_000 + seconds),
                 locks: BTreeMap::new(),
             },
         )
@@ -406,14 +406,14 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
         remembered(
             &instance,
             &AccountSummary {
-                id: AccountId::generate(wiring::at(1_000 + seconds)),
+                id: AccountId::generate(clock::at(1_000 + seconds)),
                 version: Version::of(1),
                 name: AccountName::new("Someone").expect("a plain name"),
                 email: EmailAddress::new(&format!("someone{seconds}@example.com"))
                     .expect("a plain address"),
                 verified: true,
                 operator: false,
-                signed_up_at: wiring::at(1_000 + seconds),
+                signed_up_at: clock::at(1_000 + seconds),
                 locks: BTreeMap::new(),
             },
         )
@@ -575,7 +575,7 @@ async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
         &instance
             .appoint(
                 &instance.grace_signed_in,
-                &AccountId::generate(wiring::at(1_000)).to_string(),
+                &AccountId::generate(clock::at(1_000)).to_string(),
             )
             .await,
         StatusCode::NOT_FOUND,

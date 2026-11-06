@@ -35,4 +35,4 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 
 **What a feature still owns** is the mapping from its own event to a DTO, and it returns `Option`: a snapshot is housekeeping and publishes nothing. That mapping lives in each feature's `adapters/messaging` as its `message_for`, which the wiring hands to the event store.
 
-`published_in(message)` reads one back, which is how a projector recovers the aggregate id from a message it was handed.
+`published_in(message)` reads one back, which is how a projector recovers the aggregate id from a message it was handed. A test hands a listener such a message with **`published(routing, kind, id, version, event, agent, at)`**, behind the `testing` feature, rather than writing the envelope out by hand.

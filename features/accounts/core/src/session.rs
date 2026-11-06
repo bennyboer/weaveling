@@ -97,12 +97,8 @@ impl Session {
 mod tests {
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn an_account() -> AccountId {
-        AccountId::generate(at(1_000))
+        AccountId::generate(clock::at(1_000))
     }
 
     #[test]
@@ -163,21 +159,21 @@ mod tests {
     #[test]
     fn a_session_lasts_thirty_days_to_the_second() {
         // given: a session begun
-        let session = Session::begun(an_account(), Stage::SignedIn, at(1_000));
+        let session = Session::begun(an_account(), Stage::SignedIn, clock::at(1_000));
 
         // then: it holds for thirty days
-        assert!(!session.is_over(at(1_000) + Duration::days(30)));
+        assert!(!session.is_over(clock::at(1_000) + Duration::days(30)));
         // and: is over a second later
-        assert!(session.is_over(at(1_000) + Duration::days(30) + Duration::seconds(1)));
+        assert!(session.is_over(clock::at(1_000) + Duration::days(30) + Duration::seconds(1)));
     }
 
     #[test]
     fn only_a_session_signed_in_all_the_way_may_act() {
         // expect: a session signed in may act
-        assert!(Session::begun(an_account(), Stage::SignedIn, at(1_000)).may_act());
+        assert!(Session::begun(an_account(), Stage::SignedIn, clock::at(1_000)).may_act());
         // and: one still owing a second factor may not
         assert!(
-            !Session::begun(an_account(), Stage::SecondFactorOwed, at(1_000)).may_act(),
+            !Session::begun(an_account(), Stage::SecondFactorOwed, clock::at(1_000)).may_act(),
             "a password alone, where a second factor is owed, may do nothing but answer it"
         );
     }

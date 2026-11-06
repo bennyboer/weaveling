@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::mem;
 
 use leptos::prelude::*;
@@ -8,7 +9,7 @@ use crate::accounts::listed::{ListedAccount, OperatorLock};
 use crate::accounts::service;
 use crate::http::ApiError;
 use crate::working_copy;
-use crate::working_copy::{Landed, Versioned, WorkingCopies};
+use crate::working_copy::{Versioned, WorkingCopies};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Intent {
@@ -45,9 +46,13 @@ impl Roster {
                     Intent::Dismiss => service::dismiss_operator(&id, on.version).await?,
                 }
 
-                Ok(answered(on, &intent, read_again(&id).await.ok()))
+                Ok(answered(
+                    on,
+                    &intent,
+                    service::listed_account(&id).await.ok(),
+                ))
             },
-            move |id: String| async move { read_again(&id).await },
+            move |id: String| async move { service::listed_account(&id).await },
             move |failure| _ = refused.try_set(Some(failure)),
         );
         let roster = Self {
@@ -78,11 +83,11 @@ impl Roster {
                             .map(|account| (account.id.clone(), account)),
                     );
                     self.accounts.take_in_all(listed);
-                    self.next.set(page.next);
+                    _ = self.next.try_set(page.next);
                 }
-                Err(failed) => self.refused.set(Some(failed)),
+                Err(failed) => _ = self.refused.try_set(Some(failed)),
             }
-            self.loading.set(false);
+            _ = self.loading.try_set(false);
         });
     }
 
@@ -90,9 +95,29 @@ impl Roster {
         self.accounts.shown()
     }
 
-    pub(super) fn intended(self, id: &String, intent: Intent) -> Option<Landed> {
-        self.refused.set(None);
-        self.accounts.intended(id, intent)
+    pub(super) fn intended(
+        self,
+        id: &String,
+        intent: Intent,
+    ) -> impl Future<Output = bool> + use<> {
+        let landing = (!untrack(|| self.accounts.unanswered_on(id))).then(|| {
+            self.refused.set(None);
+            self.accounts.intended(id, intent)
+        });
+
+        async move {
+            let Some(landing) = landing else {
+                return false;
+            };
+            landing
+                .await
+                .map_err(|failure| _ = self.refused.try_set(Some(failure)))
+                .is_ok()
+        }
+    }
+
+    pub(super) fn changing(self, id: &String) -> bool {
+        self.accounts.unanswered_on(id)
     }
 
     pub(super) fn unlock(self, id: String) {
@@ -132,15 +157,6 @@ pub(super) fn now() -> OffsetDateTime {
 
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000)
         .unwrap_or(OffsetDateTime::UNIX_EPOCH)
-}
-
-async fn read_again(id: &str) -> Result<ListedAccount, ApiError> {
-    service::list_accounts(None)
-        .await?
-        .accounts
-        .into_iter()
-        .find(|account| account.id == id)
-        .ok_or(ApiError::NotFound("account"))
 }
 
 fn answered(on: ListedAccount, intent: &Intent, read: Option<ListedAccount>) -> ListedAccount {

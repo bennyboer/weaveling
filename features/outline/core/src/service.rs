@@ -116,20 +116,16 @@ impl OutlineService {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Appended<OutlineEvent>, OutlinesError> {
-        let key = AggregateId::from(outline);
-
-        Ok(match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        })
+        Ok(self
+            .events
+            .execute_at(
+                transaction,
+                &AggregateId::from(outline),
+                expected,
+                command,
+                agent,
+            )
+            .await?)
     }
 
     pub async fn outline_of(

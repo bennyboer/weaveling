@@ -11,16 +11,11 @@ use projects_contract::{
     RenameProjectRequest, refused,
 };
 use serde_json::{Value, json};
-use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
 use crate::wiring::Wired;
 
 const UNKNOWN_ID: &str = "project_031VkO0hnpeQZUiAB7nDma";
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct Serving {
     server: TestServer,
@@ -44,7 +39,7 @@ impl Serving {
 }
 
 fn a_server() -> Serving {
-    a_server_on(Arc::new(FixedClock::new(at(1_700_000_000))))
+    a_server_on(Arc::new(FixedClock::new(clock::at(1_700_000_000))))
 }
 
 fn a_server_on(clock: Arc<FixedClock>) -> Serving {
@@ -191,11 +186,11 @@ async fn listing_an_empty_workspace_answers_an_empty_array() {
 #[tokio::test]
 async fn the_project_started_most_recently_is_listed_first() {
     // given: a project started
-    let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let server = a_server_on(clock.clone());
     a_project_named(&server, "First").await;
     // and: another started a minute later
-    clock.set(at(1_700_000_060));
+    clock.set(clock::at(1_700_000_060));
     a_project_named(&server, "Second").await;
 
     // when: the projects are listed
@@ -252,12 +247,12 @@ async fn fetching_a_malformed_id_answers_400() {
 #[tokio::test]
 async fn renaming_a_project_answers_the_updated_project() {
     // given: a started project
-    let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let server = a_server_on(clock.clone());
     let created = a_project_named(&server, "Working Title").await;
 
     // when: it is renamed a minute later
-    clock.set(at(1_700_000_060));
+    clock.set(clock::at(1_700_000_060));
     let response = server
         .patch(&format!("/projects/{}", created.id))
         .json(&renamed("The Weaver's Apprentice"))

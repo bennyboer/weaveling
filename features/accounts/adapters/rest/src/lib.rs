@@ -525,8 +525,8 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(refused::ACCOUNT_NOT_FOUND, "there is no such account")
         }
-        AccountsError::Events(ref outdated @ ServiceError::Store(StoreError::Outdated { .. })) => {
-            Problem::of(outdated, |refusal| Problem::unexpected(refusal))
+        AccountsError::Events(ServiceError::Store(StoreError::Outdated { ref kind, .. })) => {
+            Problem::outdated(kind)
         }
         AccountsError::OperatorCodeWrong => {
             Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)

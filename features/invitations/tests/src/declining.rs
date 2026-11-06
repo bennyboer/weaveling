@@ -23,15 +23,14 @@ fn a_declining_for(invitation: &InvitationId, reason: &str) -> Message {
 }
 
 fn a_message(event: Value) -> Message {
-    Message::opening(
-        RoutingKey::parse(INVITATION_DECLINED).expect("a declared routing key is fine"),
-        json!({
-            "event": event,
-            "aggregate": { "id": "account_ada", "kind": "account", "version": 4 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
-        wiring::at(1_700_000_100),
+    eventpublishing::published(
+        INVITATION_DECLINED,
+        "account",
+        "account_ada",
+        4,
+        event,
+        &Agent::System,
+        clock::at(1_700_000_100),
     )
 }
 
@@ -231,7 +230,7 @@ async fn a_decline_naming_no_invitation_or_no_reason_is_refused() {
         a_message(
             json!({ "version": 0, "name": "SIGNED_UP", "personal": { "name": "Ada", "email": "ada@example.com" } }),
         ),
-        a_declining(&InvitationId::generate(wiring::at(1_000))),
+        a_declining(&InvitationId::generate(clock::at(1_000))),
     ] {
         // then: it is refused
         assert!(

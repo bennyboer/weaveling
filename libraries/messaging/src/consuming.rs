@@ -195,7 +195,7 @@ mod tests {
     use clock::FixedClock;
     use serde_json::json;
     use thiserror::Error;
-    use time::{Duration, OffsetDateTime};
+    use time::Duration;
 
     use super::*;
     use crate::deliveries::InMemoryDeliveries;
@@ -277,15 +277,11 @@ mod tests {
         }
     }
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn a_message(routing: &str) -> Message {
         Message::opening(
             RoutingKey::parse(routing).expect("a plain key is fine"),
             json!({ "nothing": "much" }),
-            at(1_000),
+            clock::at(1_000),
         )
     }
 
@@ -297,7 +293,7 @@ mod tests {
 
     fn a_workbench() -> Wired {
         let deliveries = Arc::new(InMemoryDeliveries::new());
-        let clock = Arc::new(FixedClock::new(at(1_000)));
+        let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
         Wired {
             dispatcher: Arc::new(InProcessDispatcher::queueing_to(deliveries.clone())),
@@ -350,7 +346,7 @@ mod tests {
         // when: deliveries are taken once the retry is due
         wired
             .clock
-            .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
+            .set(clock::at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
         // then: the listener heard it
@@ -378,7 +374,7 @@ mod tests {
         wired.consumer().drain(16).await;
         wired
             .clock
-            .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
+            .set(clock::at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
         // then: the refusing one heard it once
@@ -403,7 +399,7 @@ mod tests {
         wired.publish("idea.captured").await;
 
         // when: every attempt is made
-        let mut now = at(1_000);
+        let mut now = clock::at(1_000);
         for attempt in 1..=ATTEMPTS {
             wired.clock.set(now);
             wired.consumer().drain(16).await;

@@ -81,22 +81,17 @@ impl BoardService {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, BoardsError> {
-        let key = AggregateId::from(board);
-
-        let landed = match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(transaction, &key, expected, command, agent)
-                    .await?
-            }
-            None => {
-                self.events
-                    .execute(transaction, &key, command, agent)
-                    .await?
-            }
-        };
-
-        Ok(landed.version)
+        Ok(self
+            .events
+            .execute_at(
+                transaction,
+                &AggregateId::from(board),
+                expected,
+                command,
+                agent,
+            )
+            .await?
+            .version)
     }
 
     pub async fn board_of(&self, project: &ProjectLink) -> Result<Option<BoardId>, BoardsError> {

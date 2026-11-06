@@ -7,9 +7,9 @@ use accounts_messaging::{
 };
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
-use chores::{Chore, ForgetOldTombstones};
+use chores::Chore;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use mailing::{LoggingMailer, Mailer};
 use messaging::Listener;
 use outbox::Outbox;
@@ -45,32 +45,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 }
 
 fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     vec![
-        Arc::new(Inboxed::new(
-            CatalogueAccountsListener::new(core(ports, context)),
-            ports.transactions.clone(),
-            ports.inbox.clone(),
-        )),
-        Arc::new(Inboxed::new(
-            KeepInvitationTicketsListener::new(core(ports, context)),
-            ports.transactions.clone(),
-            ports.inbox.clone(),
-        )),
-        Arc::new(Inboxed::new(
-            RememberTrashedProjectsListener::new(core(ports, context)),
-            ports.transactions.clone(),
-            ports.inbox.clone(),
-        )),
+        Arc::new(hearing.inboxed(CatalogueAccountsListener::new(core(ports, context)))),
+        Arc::new(hearing.inboxed(KeepInvitationTicketsListener::new(core(ports, context)))),
+        Arc::new(hearing.inboxed(RememberTrashedProjectsListener::new(core(ports, context)))),
     ]
 }
 
 fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
-    vec![Arc::new(ForgetOldTombstones::new(
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
+    vec![Arc::new(hearing.forgetting(
         "forget-old-account-hearings",
-        Arc::new(HeardMessages::of(
-            ports.inbox.clone(),
-            ports.transactions.clone(),
-        )),
         context.clock.clone(),
     ))]
 }

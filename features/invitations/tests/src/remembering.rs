@@ -1,6 +1,6 @@
 use accounts_contract::{SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use email::EmailAddress;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Agent};
 use invitations_core::{InvitationCatalog, Person};
 use invitations_messaging::RememberWhoSignedUpListener;
 use messaging::{Listener, Message, RoutingKey};
@@ -11,14 +11,13 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 fn a_message(routing: &str, event: Value) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        json!({
-            "event": event,
-            "aggregate": { "id": "account_ada", "kind": "account", "version": 1 },
-            "agent": { "kind": "account", "id": "account_ada" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
+    eventpublishing::published(
+        routing,
+        "account",
+        "account_ada",
+        1,
+        event,
+        &Agent::Account(AccountId::from("account_ada")),
         OffsetDateTime::UNIX_EPOCH,
     )
 }

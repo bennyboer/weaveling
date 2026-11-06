@@ -1,4 +1,5 @@
 mod forgetting;
+mod hearing;
 mod kept;
 #[cfg(test)]
 mod kept_tests;
@@ -13,6 +14,7 @@ pub mod postgres;
 pub mod sqlite;
 
 pub use forgetting::HeardMessages;
+pub use hearing::Hearing;
 pub use kept::{EffectHandler, Inboxed, InboxedEffect, KeptHandler};
 pub use memory::InMemoryInbox;
 

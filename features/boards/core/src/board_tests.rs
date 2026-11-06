@@ -1,8 +1,5 @@
-use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
-};
+use eventsourcing::{Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version};
 use projects_contract::context::PROJECT;
-use time::{Duration, OffsetDateTime};
 
 use crate::board::{
     Board, BoardCommand, BoardError, BoardEvent, IdeaLink, KIND, PositionedIdea, ProjectLink,
@@ -10,21 +7,13 @@ use crate::board::{
 use crate::size::Size;
 use crate::spot::Spot;
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_metadata(version: u64) -> EventMetadata {
     EventMetadata {
         aggregate: AggregateId::from("board_1"),
         kind: KIND,
         version: Version::of(version),
-        agent: an_author(),
-        occurred_at: at(1_000),
+        agent: eventsourcing::an_author(),
+        occurred_at: clock::at(1_000),
         is_snapshot: false,
         context: AggregateContext::default(),
     }
@@ -67,7 +56,7 @@ fn a_board_begins_by_being_started_for_a_project() {
         BoardCommand::Start {
             project: ProjectLink::from("project_1"),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     )
     .expect("starting should succeed");
 
@@ -89,7 +78,7 @@ fn nothing_can_be_pinned_before_the_board_exists() {
             at: Spot::ORIGIN,
             size: Size::CARD,
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as not started yet
@@ -106,7 +95,7 @@ fn a_board_cannot_be_started_twice() {
         BoardCommand::Start {
             project: ProjectLink::from("project_2"),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as already started
@@ -134,7 +123,7 @@ fn pinning_an_idea_puts_it_where_it_was_dropped() {
                 at: Spot::at(120, -40),
                 size: Size::CARD,
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("pinning should succeed");
 
@@ -182,7 +171,7 @@ fn the_same_idea_cannot_be_pinned_twice() {
             at: Spot::at(9, 9),
             size: Size::CARD,
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as already pinned
@@ -207,7 +196,7 @@ fn moving_an_idea_takes_it_to_the_new_spot() {
                 to: Some(Spot::at(300, 20)),
                 size: None,
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("moving should succeed");
     board.apply(&events[0], &a_metadata(3));
@@ -230,7 +219,7 @@ fn moving_an_idea_nowhere_is_not_a_move() {
                 to: Some(Spot::at(10, 10)),
                 size: None,
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("moving should succeed");
 
@@ -253,7 +242,7 @@ fn an_idea_that_is_not_on_the_board_cannot_be_moved() {
             to: Some(Spot::ORIGIN),
             size: None,
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as not pinned
@@ -268,7 +257,10 @@ fn unpinning_takes_an_idea_off_the_board() {
 
     // when: the idea is unpinned
     let events = board
-        .decide(BoardCommand::Unpin { idea: idea.clone() }, &an_author())
+        .decide(
+            BoardCommand::Unpin { idea: idea.clone() },
+            &eventsourcing::an_author(),
+        )
         .expect("unpinning should succeed");
     board.apply(&events[0], &a_metadata(3));
 
@@ -287,7 +279,7 @@ fn an_idea_that_is_not_on_the_board_cannot_be_unpinned() {
         BoardCommand::Unpin {
             idea: an_idea("idea_1"),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as not pinned
@@ -422,7 +414,7 @@ fn the_board_does_not_ask_whether_the_idea_exists() {
             at: Spot::ORIGIN,
             size: Size::CARD,
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is pinned
@@ -468,7 +460,7 @@ fn a_pinned_idea_keeps_the_size_it_was_given() {
                 at: Spot::at(120, -40),
                 size: Size::of(400, 90),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("pinning should succeed");
 
@@ -498,7 +490,7 @@ fn a_card_without_extent_cannot_be_pinned() {
                     at: Spot::ORIGIN,
                     size: shapeless,
                 },
-                &an_author(),
+                &eventsourcing::an_author(),
             ),
             Err(BoardError::Shapeless),
             "{shapeless} should not be a card"
@@ -520,7 +512,7 @@ fn resizing_an_idea_gives_it_the_new_extent() {
                 to: None,
                 size: Some(Size::of(400, 90)),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("resizing should succeed");
     board.apply(&events[0], &a_metadata(3));
@@ -556,7 +548,7 @@ fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
                 to: Some(Spot::at(60, 100)),
                 size: Some(Size::of(208, 84)),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("reshaping should succeed");
     for (nth, event) in events.iter().enumerate() {
@@ -596,7 +588,7 @@ fn reshaping_an_idea_into_the_shape_it_already_has_is_not_a_change() {
                 to: Some(Spot::at(10, 10)),
                 size: Some(Size::CARD),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("reshaping should succeed");
 
@@ -620,7 +612,7 @@ fn a_card_cannot_be_resized_into_nothing() {
             to: None,
             size: Some(Size::of(168, 0)),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as shapeless
@@ -639,7 +631,7 @@ fn an_idea_that_is_not_on_the_board_cannot_be_reshaped() {
             to: None,
             size: Some(Size::of(400, 90)),
         },
-        &an_author(),
+        &eventsourcing::an_author(),
     );
 
     // then: it is refused as not pinned
@@ -693,7 +685,7 @@ fn moving_an_idea_brings_it_to_the_front() {
                 to: Some(Spot::at(30, 30)),
                 size: None,
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("moving should succeed");
     for (nth, event) in events.iter().enumerate() {
@@ -744,7 +736,7 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
                 to: Some(Spot::at(40, 40)),
                 size: None,
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("moving should succeed");
 
@@ -780,7 +772,7 @@ fn resizing_an_idea_leaves_the_stack_alone() {
                 to: None,
                 size: Some(Size::of(400, 90)),
             },
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .expect("resizing should succeed");
     for (nth, event) in events.iter().enumerate() {
@@ -831,7 +823,7 @@ fn a_board_can_be_discarded() {
 
     // when: it is discarded
     let events = board
-        .decide(BoardCommand::Discard, &an_author())
+        .decide(BoardCommand::Discard, &eventsourcing::an_author())
         .expect("discarding should succeed");
 
     // then: it is discarded
@@ -866,7 +858,7 @@ fn a_discarded_board_refuses_everything() {
     ] {
         // then: it is refused as discarded
         assert_eq!(
-            board.decide(command, &an_author()),
+            board.decide(command, &eventsourcing::an_author()),
             Err(BoardError::Discarded),
             "a board is discarded when its project is deleted, so anything still holding a \
              reference to it must be refused rather than quietly allowed"

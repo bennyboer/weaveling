@@ -237,14 +237,13 @@ mod tests {
         // given: the listener
         let listener = bench().listener;
         // and: a joining of members never founded
-        let unheard_of = Message::opening(
-            RoutingKey::parse(members_contract::JOINED).expect("a declared key"),
-            json!({
-                "event": { "version": 0, "name": "JOINED", "account": "account_grace", "role": "reader" },
-                "aggregate": { "id": "project_9", "kind": "members", "version": 2 },
-                "agent": { "kind": "system", "id": null },
-                "occurred_at": "1970-01-01T00:00:00Z",
-            }),
+        let unheard_of = eventpublishing::published(
+            members_contract::JOINED,
+            "members",
+            "project_9",
+            2,
+            json!({ "version": 0, "name": "JOINED", "account": "account_grace", "role": "reader" }),
+            &Agent::System,
             OffsetDateTime::UNIX_EPOCH,
         );
 

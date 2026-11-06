@@ -7,8 +7,8 @@ use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
 use crate::speech;
-use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
+use crate::writing::question::Question;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
@@ -97,7 +97,7 @@ pub fn section_heading(
                 kept.take(theirs.clone());
                 shown.set_text_content(Some(&theirs));
             } else {
-                state.margin.ask(Asking::RenamedMeanwhile {
+                state.margin.ask(Question::RenamedMeanwhile {
                     section: id,
                     mine,
                     theirs,

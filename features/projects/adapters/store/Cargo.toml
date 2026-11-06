@@ -11,3 +11,6 @@ time = { workspace = true, features = ["serde", "serde-well-known"] }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core" }
+
+[dev-dependencies]
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

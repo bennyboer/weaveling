@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,6 +21,33 @@ pub trait Tombstones: Send + Sync {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>>;
+}
+
+pub fn tombstones_by<F, Forgetting, E>(forget: F) -> Arc<dyn Tombstones>
+where
+    F: Fn(OffsetDateTime, u64) -> Forgetting + Send + Sync + 'static,
+    Forgetting: Future<Output = Result<u64, E>> + Send,
+    E: Into<Box<dyn Error + Send + Sync>>,
+{
+    Arc::new(TombstonesBy(forget))
+}
+
+struct TombstonesBy<F>(F);
+
+#[async_trait]
+impl<F, Forgetting, E> Tombstones for TombstonesBy<F>
+where
+    F: Fn(OffsetDateTime, u64) -> Forgetting + Send + Sync,
+    Forgetting: Future<Output = Result<u64, E>> + Send,
+    E: Into<Box<dyn Error + Send + Sync>>,
+{
+    async fn forget_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        (self.0)(before, at_most).await.map_err(Into::into)
+    }
 }
 
 pub struct ForgetOldTombstones {
@@ -71,6 +99,7 @@ impl Chore for ForgetOldTombstones {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
     use std::sync::Mutex;
 
     use clock::FixedClock;
@@ -101,15 +130,8 @@ mod tests {
         fn left(&self) -> Vec<OffsetDateTime> {
             self.laid.lock().expect("not poisoned").clone()
         }
-    }
 
-    #[async_trait]
-    impl Tombstones for Graveyard {
-        async fn forget_laid_before(
-            &self,
-            before: OffsetDateTime,
-            at_most: u64,
-        ) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        fn forget_laid_before(&self, before: OffsetDateTime, at_most: u64) -> u64 {
             self.asked.lock().expect("not poisoned").push(at_most);
             let mut laid = self.laid.lock().expect("not poisoned");
             let mut forgotten = 0;
@@ -121,14 +143,18 @@ mod tests {
                 forgotten += 1;
             }
 
-            Ok(forgotten)
+            forgotten
         }
     }
 
     fn forgetting(graveyard: &Arc<Graveyard>) -> ForgetOldTombstones {
+        let graveyard = graveyard.clone();
         ForgetOldTombstones::new(
             "forget-old-tombstones-of-somewhere",
-            graveyard.clone(),
+            crate::tombstones_by(move |before, at_most| {
+                let forgotten = graveyard.forget_laid_before(before, at_most);
+                async move { Ok::<_, Infallible>(forgotten) }
+            }),
             Arc::new(FixedClock::new(NOW)),
         )
     }

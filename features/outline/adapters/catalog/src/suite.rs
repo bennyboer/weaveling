@@ -157,10 +157,6 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(id: OutlineId, project: &str) -> OutlineSummary {
     OutlineSummary {
         id,
@@ -172,7 +168,7 @@ pub async fn a_remembered_outline_is_listed_in_its_project(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline of a project
-    let summary = a_summary(OutlineId::generate(at(1_000)), "project_1");
+    let summary = a_summary(OutlineId::generate(clock::at(1_000)), "project_1");
 
     // when: it is remembered
     catalog
@@ -211,7 +207,10 @@ pub async fn outlines_of_other_projects_are_not_listed(
 ) {
     // given: an outline of one project remembered
     catalog
-        .remember(&a_summary(OutlineId::generate(at(1_000)), "project_mine"))
+        .remember(&a_summary(
+            OutlineId::generate(clock::at(1_000)),
+            "project_mine",
+        ))
         .await
         .expect("remembering should succeed");
 
@@ -229,7 +228,7 @@ pub async fn remembering_the_same_outline_again_replaces_what_was_there(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline remembered
-    let id = OutlineId::generate(at(1_000));
+    let id = OutlineId::generate(clock::at(1_000));
     catalog
         .remember(&a_summary(id, "project_1"))
         .await
@@ -260,7 +259,7 @@ pub async fn a_project_lists_its_outlines_in_a_settled_order(
 ) {
     // given: outlines of one project remembered latest first
     let opened: Vec<OutlineId> = (1..=6)
-        .map(|nth| OutlineId::generate(at(nth * 1_000)))
+        .map(|nth| OutlineId::generate(clock::at(nth * 1_000)))
         .collect();
 
     for id in opened.iter().rev() {
@@ -309,7 +308,7 @@ pub async fn an_older_index_heard_after_a_newer_one_changes_nothing(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline indexed as holding a scene
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     indexed_as_of(catalog, outline, 5, &[Attachment::scene("scene_5")]).await;
 
     // when: older and same versions holding other things are heard
@@ -364,7 +363,7 @@ pub async fn an_attached_scene_names_the_outline_holding_it(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
 
     // when: it is indexed as holding a scene
     catalog
@@ -384,7 +383,7 @@ pub async fn an_attached_scene_names_the_outline_holding_it(
 
 pub async fn everything_in_an_outline_names_it(catalog: &Committing<'_, impl OutlineCatalog>) {
     // given: an outline and the scenes and idea it holds
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     let held = [
         Attachment::scene("scene_1"),
         Attachment::scene("scene_2"),
@@ -414,8 +413,8 @@ pub async fn a_scene_may_sit_in_more_than_one_outline(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: two outlines
-    let earliest = OutlineId::generate(at(1_000));
-    let latest = OutlineId::generate(at(2_000));
+    let earliest = OutlineId::generate(clock::at(1_000));
+    let latest = OutlineId::generate(clock::at(2_000));
     // when: each is indexed as holding the same scene
     for outline in [latest, earliest] {
         catalog
@@ -439,7 +438,7 @@ pub async fn what_an_outline_holds_is_replaced_not_added_to(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline indexed as holding a scene
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
@@ -474,7 +473,7 @@ pub async fn what_stays_is_kept_what_left_is_dropped_and_what_came_is_added(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline indexed as holding two scenes and an idea
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(
             outline,
@@ -523,8 +522,8 @@ pub async fn one_outline_letting_a_scene_go_leaves_the_others_holding_it(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: two outlines indexed as holding the same scene
-    let keeping = OutlineId::generate(at(1_000));
-    let dropping = OutlineId::generate(at(2_000));
+    let keeping = OutlineId::generate(clock::at(1_000));
+    let dropping = OutlineId::generate(clock::at(2_000));
     for outline in [keeping, dropping] {
         catalog
             .holds(outline, &[Attachment::scene("scene_1")])
@@ -553,8 +552,8 @@ pub async fn a_forgotten_outline_takes_its_scenes_with_it(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: two outlines of two projects, each indexed as holding the same scene
-    let outline = OutlineId::generate(at(1_000));
-    let elsewhere = OutlineId::generate(at(2_000));
+    let outline = OutlineId::generate(clock::at(1_000));
+    let elsewhere = OutlineId::generate(clock::at(2_000));
     catalog
         .remember(&a_summary(outline, "project_1"))
         .await
@@ -574,7 +573,7 @@ pub async fn a_forgotten_outline_takes_its_scenes_with_it(
 
     // when: one of them is forgotten
     catalog
-        .forget(&outline, at(5_000))
+        .forget(&outline, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -603,7 +602,7 @@ pub async fn forgetting_an_outline_nobody_opened_is_harmless(
 ) {
     // expect: forgetting an outline nobody opened succeeds
     catalog
-        .forget(&OutlineId::generate(at(1_000)), at(5_000))
+        .forget(&OutlineId::generate(clock::at(1_000)), clock::at(5_000))
         .await
         .expect("forgetting an unknown outline should not fail");
 }
@@ -628,14 +627,14 @@ async fn tombstoned_at(
     seconds: i64,
 ) {
     catalog
-        .lay_tombstone(&attachment, at(seconds))
+        .lay_tombstone(&attachment, clock::at(seconds))
         .await
         .expect("laying a tombstone should succeed");
 }
 
 pub async fn nothing_held_is_gone_until_marked(catalog: &Committing<'_, impl OutlineCatalog>) {
     // given: an outline indexed as holding a scene
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
@@ -647,7 +646,7 @@ pub async fn nothing_held_is_gone_until_marked(catalog: &Committing<'_, impl Out
 
 pub async fn a_held_scene_marked_gone_is_named(catalog: &Committing<'_, impl OutlineCatalog>) {
     // given: an outline indexed as holding two scenes
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(
             outline,
@@ -670,7 +669,7 @@ pub async fn a_scene_marked_gone_before_it_was_held_is_named(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: a scene marked gone
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     tombstoned(catalog, Attachment::scene("scene_1")).await;
 
     // when: an outline is indexed as holding it
@@ -689,7 +688,7 @@ pub async fn a_scene_marked_gone_before_it_was_held_is_named(
 
 pub async fn a_gone_scene_let_go_is_no_longer_named(catalog: &Committing<'_, impl OutlineCatalog>) {
     // given: an outline holding a scene marked gone
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
@@ -710,7 +709,7 @@ pub async fn marking_the_same_scene_gone_twice_is_harmless(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline indexed as holding a scene
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
@@ -731,7 +730,7 @@ pub async fn a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline indexed as holding a scene
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(outline, &[Attachment::scene("shared_1")])
         .await
@@ -750,7 +749,7 @@ async fn forget_long_gone(
     at_most: u64,
 ) -> u64 {
     catalog
-        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .forget_tombstones_laid_before(clock::at(before_seconds), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
@@ -759,7 +758,7 @@ pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline holding a scene marked gone long ago and an idea marked gone later
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     catalog
         .holds(
             outline,
@@ -803,7 +802,7 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline holding three things marked gone at different moments
-    let outline = OutlineId::generate(at(1_000));
+    let outline = OutlineId::generate(clock::at(1_000));
     let newest = Attachment::scene("scene_newest");
     catalog
         .holds(
@@ -847,13 +846,13 @@ pub async fn a_forgotten_outline_heard_of_late_is_not_remembered_again(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: a forgotten outline
-    let gone = a_summary(OutlineId::generate(at(1_000)), "project_1");
+    let gone = a_summary(OutlineId::generate(clock::at(1_000)), "project_1");
     catalog
         .remember(&gone)
         .await
         .expect("remembering should succeed");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -875,20 +874,20 @@ pub async fn outline_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
 ) {
     // given: three forgotten outlines
     let (older, newer, latest) = (
-        a_summary(OutlineId::generate(at(1_000)), "project_1"),
-        a_summary(OutlineId::generate(at(2_000)), "project_1"),
-        a_summary(OutlineId::generate(at(3_000)), "project_1"),
+        a_summary(OutlineId::generate(clock::at(1_000)), "project_1"),
+        a_summary(OutlineId::generate(clock::at(2_000)), "project_1"),
+        a_summary(OutlineId::generate(clock::at(3_000)), "project_1"),
     );
     for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .forget(&summary.id, at(laid))
+            .forget(&summary.id, clock::at(laid))
             .await
             .expect("forgetting should succeed");
     }
 
     // when: outline tombstones are forgotten one at a time
     let forgotten = catalog
-        .forget_tombstones_laid_before(at(8_000), 1)
+        .forget_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
     // and: the outlines are remembered again
@@ -913,7 +912,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: an outline remembered and indexed as holding a scene
-    let kept = a_summary(OutlineId::generate(at(1_000)), "project_1");
+    let kept = a_summary(OutlineId::generate(clock::at(1_000)), "project_1");
     catalog
         .remember(&kept)
         .await
@@ -928,7 +927,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     uncommitted
         .remember(
             &mut transaction,
-            &a_summary(OutlineId::generate(at(2_000)), "project_1"),
+            &a_summary(OutlineId::generate(clock::at(2_000)), "project_1"),
         )
         .await
         .expect("remembering should succeed");
@@ -942,11 +941,15 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("holding should succeed");
     uncommitted
-        .lay_tombstone(&mut transaction, &Attachment::scene("scene_1"), at(3_000))
+        .lay_tombstone(
+            &mut transaction,
+            &Attachment::scene("scene_1"),
+            clock::at(3_000),
+        )
         .await
         .expect("laying a tombstone should succeed");
     uncommitted
-        .forget(&mut transaction, &kept.id, at(3_000))
+        .forget(&mut transaction, &kept.id, clock::at(3_000))
         .await
         .expect("forgetting should succeed");
 
@@ -983,16 +986,16 @@ pub async fn outline_tombstones_forgotten_in_a_transaction_that_is_dropped_still
     catalog: &Committing<'_, impl OutlineCatalog>,
 ) {
     // given: a forgotten outline
-    let gone = a_summary(OutlineId::generate(at(1_000)), "project_1");
+    let gone = a_summary(OutlineId::generate(clock::at(1_000)), "project_1");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
     // and: a transaction forgetting its tombstone
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .forget_tombstones_laid_before(&mut transaction, at(8_000), 10)
+        .forget_tombstones_laid_before(&mut transaction, clock::at(8_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -1029,7 +1032,7 @@ pub async fn a_project_has_no_tombstone_until_its_deletion_is_laid(
         .expect("asking should succeed");
 
     catalog
-        .lay_project_tombstone(&deleted, at(5_000))
+        .lay_project_tombstone(&deleted, clock::at(5_000))
         .await
         .expect("laying a project's tombstone should succeed");
 
@@ -1063,14 +1066,14 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     );
     for (project, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .lay_project_tombstone(project, at(laid))
+            .lay_project_tombstone(project, clock::at(laid))
             .await
             .expect("laying a project's tombstone should succeed");
     }
 
     // when: tombstones are forgotten one at a time
     let forgotten = catalog
-        .forget_tombstones_laid_before(at(8_000), 1)
+        .forget_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -1102,7 +1105,7 @@ pub async fn a_project_tombstone_laid_in_a_transaction_that_is_dropped_is_not_th
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .lay_project_tombstone(&mut transaction, &project, at(5_000))
+        .lay_project_tombstone(&mut transaction, &project, clock::at(5_000))
         .await
         .expect("laying a project's tombstone should succeed");
     // when: the transaction is dropped

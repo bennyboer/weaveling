@@ -3,9 +3,8 @@ use leptos_router::hooks;
 
 use crate::act::{Act, Here};
 use crate::http::ApiError;
-use crate::ideas::followed;
+use crate::ideas::followed::FollowedIdeas;
 use crate::ideas::model::Idea;
-use crate::live::Subscription;
 use crate::outline::model::{Attachment, Outline, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -16,7 +15,6 @@ use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
 use crate::working_copy;
 use crate::working_copy::{Versioned, WorkingCopy};
-use live_contract::FrameDTO;
 use outline_contract::OutlineEventDTO;
 
 #[derive(Clone, Copy)]
@@ -24,7 +22,7 @@ pub struct OutlineViewState {
     problem: RwSignal<Option<ApiError>>,
     outline: Memo<Option<Outline>>,
     scenes: RwSignal<Option<Vec<SceneSummary>>>,
-    ideas: RwSignal<Option<Vec<Idea>>>,
+    ideas: FollowedIdeas,
     added: RwSignal<Option<SectionId>>,
     working: WorkingCopy<Outline, Intent>,
     writing: Act<SectionId>,
@@ -93,7 +91,6 @@ impl OutlineViewState {
         };
         let outline = Memo::new(move |_| working.shown());
         let scenes = RwSignal::new(None::<Vec<SceneSummary>>);
-        let ideas = RwSignal::new(None::<Vec<Idea>>);
         working.read_again();
 
         let (scenes_followed, listing_scenes) = scenes_followed::follow(
@@ -110,10 +107,9 @@ impl OutlineViewState {
         );
         StoredValue::new_local(scenes_followed);
 
-        let listing_ideas = followed::asking(project, ideas, move |failure| {
+        let ideas = FollowedIdeas::follow(project, move |failure| {
             _ = problem.try_set(Some(failure));
         });
-        StoredValue::new_local(followed::following(project, ideas, listing_ideas));
 
         let writing = {
             let id = project.clone();
@@ -139,46 +135,23 @@ impl OutlineViewState {
                         })
                         .await;
 
-                    if placed && here.still() {
-                        opening(
+                    match placed {
+                        Ok(()) if here.still() => opening(
                             &route::writing_at(&id.to_string(), &started.id),
                             Default::default(),
-                        );
+                        ),
+                        Ok(()) => {}
+                        Err(failure) => _ = problem.try_set(Some(failure)),
                     }
                 }
             })
         };
 
-        let following = StoredValue::new_local(None::<Subscription>);
-        Effect::new(move || {
-            let Some(id) = working.confirmed().map(|held| held.id) else {
-                return;
-            };
-            if following.with_value(Option::is_some) {
-                return;
-            }
-            following.set_value(Some(Subscription::start(
-                "outlines",
-                &[("outline", id.to_string().as_str())],
-                move |told: FrameDTO| {
-                    let Some(held) = working.confirmed_untracked() else {
-                        return;
-                    };
-                    if told.version <= held.version {
-                        return;
-                    }
-                    let next = (told.version == held.version + 1)
-                        .then(|| serde_json::from_value::<OutlineEventDTO>(told.event).ok())
-                        .flatten()
-                        .and_then(|event| held.taken_in(event));
-                    match next {
-                        Some(next) => working.take_in(next),
-                        None => working.read_again(),
-                    }
-                },
-                || {},
-            )));
-        });
+        working.following(
+            "outlines",
+            |held| ("outline", held.id.to_string()),
+            |held: Outline, event: OutlineEventDTO| held.taken_in(event),
+        );
 
         Effect::new(move || {
             let Some(attached) = working.confirmed().map(|held| {
@@ -200,20 +173,19 @@ impl OutlineViewState {
                 })
             });
             let unknown_idea = untrack(|| {
-                ideas.with(|known| {
-                    known.as_ref().is_some_and(|known| {
-                        attached.iter().any(|attached| match attached {
-                            Attachment::Idea(idea) => known.iter().all(|held| &held.id != idea),
-                            Attachment::Scene(_) => false,
-                        })
-                    })
+                if !ideas.is_read() {
+                    return None;
+                }
+                attached.iter().find_map(|attached| match attached {
+                    Attachment::Idea(idea) if !ideas.copies().is_listed(idea) => Some(idea.clone()),
+                    _ => None,
                 })
             });
             if unknown_scene {
                 listing_scenes();
             }
-            if unknown_idea {
-                listing_ideas.dispatch(None);
+            if let Some(idea) = unknown_idea {
+                ideas.read_until_listed(&idea);
             }
         });
 
@@ -305,8 +277,8 @@ impl OutlineViewState {
         };
 
         self.ideas
-            .get()
-            .unwrap_or_default()
+            .copies()
+            .shown()
             .into_iter()
             .filter(|idea| !open.holds(&Attachment::Idea(idea.id.clone())))
             .collect()
@@ -324,11 +296,9 @@ impl OutlineViewState {
                 .unwrap_or_default(),
             Attachment::Idea(idea) => self
                 .ideas
-                .get()
-                .unwrap_or_default()
-                .into_iter()
-                .find(|held| &held.id == idea)
-                .map(|held| held.shown_as().to_owned())
+                .copies()
+                .shown_one(idea)
+                .map(|held| held.shown_as())
                 .unwrap_or_default(),
         }
     }
@@ -457,7 +427,7 @@ impl Intent {
         project: &ProjectId,
         added: RwSignal<Option<SectionId>>,
     ) -> Result<Outline, ApiError> {
-        let version = Some(on.version);
+        let version = on.version;
         let told = match self {
             Self::Add {
                 under,

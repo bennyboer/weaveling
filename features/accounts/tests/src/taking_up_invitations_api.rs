@@ -26,7 +26,7 @@ async fn served_with_ada_invited() -> (Wired, TestServer) {
             &InvitationTicket {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(ADA).expect("a plain address"),
-                until: wiring::at(1_700_000_000) + Duration::days(7),
+                until: clock::at(1_700_000_000) + Duration::days(7),
                 scope: InvitationScope::Project {
                     project: "project_loom".to_owned(),
                 },

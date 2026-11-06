@@ -17,7 +17,7 @@ async fn an_invitation(wired: &Wired, address: &str, token: &str) {
             &InvitationTicket {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(address).expect("a plain address"),
-                until: wiring::at(1_700_000_000) + Duration::days(7),
+                until: clock::at(1_700_000_000) + Duration::days(7),
                 scope: InvitationScope::Instance,
                 by_an_operator: true,
             },
@@ -156,7 +156,7 @@ async fn a_token_nobody_was_given_or_one_withdrawn_signs_nobody_up() {
 #[tokio::test]
 async fn an_invitation_holds_to_its_last_moment_and_no_longer() {
     // given: an invitation at its last moment
-    let last = wiring::at(1_700_000_000) + Duration::days(7);
+    let last = clock::at(1_700_000_000) + Duration::days(7);
     let on_time = wiring::wired();
     an_invitation(&on_time, ADA, TOKEN).await;
     on_time.clock.set(last);
@@ -273,7 +273,7 @@ fn a_ticket_into_a_project(by_an_operator: bool) -> InvitationTicket {
     InvitationTicket {
         invitation: "invitation_1".to_owned(),
         to: EmailAddress::new(ADA).expect("a plain address"),
-        until: wiring::at(1_700_000_000) + Duration::days(7),
+        until: clock::at(1_700_000_000) + Duration::days(7),
         scope: InvitationScope::Project {
             project: "project_loom".to_owned(),
         },

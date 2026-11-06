@@ -180,7 +180,6 @@ impl TryFrom<StoredProjectEvent> for ProjectEvent {
 
 #[cfg(test)]
 mod tests {
-    use time::Duration;
 
     use super::*;
 
@@ -206,10 +205,6 @@ A war.",
         }
     }
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
         // expect: each event read back after writing is the event written
@@ -219,31 +214,33 @@ A war.",
             ProjectEvent::DetailsChanged(some_details()),
             ProjectEvent::DetailsChanged(ProjectDetails::default()),
             ProjectEvent::QuotationChanged(QuotationMarks::SpacedOut),
-            ProjectEvent::Trashed { until: at(3_000) },
+            ProjectEvent::Trashed {
+                until: clock::at(3_000),
+            },
             ProjectEvent::Restored,
             ProjectEvent::Deleted,
             ProjectEvent::Snapshotted {
                 name: a_name("The Weaver's Apprentice"),
                 details: some_details(),
-                created_at: at(1_000),
-                updated_at: at(2_000),
+                created_at: clock::at(1_000),
+                updated_at: clock::at(2_000),
                 trashed_until: None,
                 deleted: false,
             },
             ProjectEvent::Snapshotted {
                 name: a_name("In the trash"),
                 details: ProjectDetails::default(),
-                created_at: at(1_000),
-                updated_at: at(2_000),
-                trashed_until: Some(at(3_000)),
+                created_at: clock::at(1_000),
+                updated_at: clock::at(2_000),
+                trashed_until: Some(clock::at(3_000)),
                 deleted: false,
             },
             ProjectEvent::Snapshotted {
                 name: a_name("Abandoned"),
                 details: ProjectDetails::default(),
-                created_at: at(1_000),
-                updated_at: at(2_000),
-                trashed_until: Some(at(3_000)),
+                created_at: clock::at(1_000),
+                updated_at: clock::at(2_000),
+                trashed_until: Some(clock::at(3_000)),
                 deleted: true,
             },
         ] {
@@ -257,8 +254,8 @@ A war.",
         let written = (codec().body)(&ProjectEvent::Snapshotted {
             name: a_name("Readable"),
             details: ProjectDetails::default(),
-            created_at: at(1_000),
-            updated_at: at(2_000),
+            created_at: clock::at(1_000),
+            updated_at: clock::at(2_000),
             trashed_until: None,
             deleted: false,
         });
@@ -290,8 +287,8 @@ A war.",
             Some(ProjectEvent::Snapshotted {
                 name: a_name("Older"),
                 details: ProjectDetails::default(),
-                created_at: at(1_000),
-                updated_at: at(2_000),
+                created_at: clock::at(1_000),
+                updated_at: clock::at(2_000),
                 trashed_until: None,
                 deleted: false,
             })

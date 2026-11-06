@@ -3,13 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clock::Clock;
 use inbox::KeptHandler;
-use messaging::{Failure, Handler, Message, RoutingKey, WithoutInbox};
+use messaging::{Failure, Handler, Message, WithoutInbox};
 use outbox::{Origin, Outbox};
 use outline_core::OutlinesCore;
 use projects_contract::{DELETED, ProjectEventDTO};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 pub const SWEEP_PROJECT: &str = "follow-up.outline.sweep-project";
@@ -54,25 +52,20 @@ impl KeptHandler for RememberDeletedProjectsListener {
             .lay_project_tombstone(Some(&mut *transaction), &project, message.occurred_at)
             .await?;
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(&project, "project"),
-                &sweep_project(message, &project, self.clock.now()),
+                message,
+                SWEEP_PROJECT,
+                &SweepProjectDTO {
+                    project: project.clone(),
+                },
+                self.clock.now(),
             )
             .await?;
 
         Ok(())
     }
-}
-
-fn sweep_project(heard: &Message, project: &str, now: OffsetDateTime) -> Message {
-    heard.answering(
-        RoutingKey::parse(SWEEP_PROJECT).expect("a follow-up's routing key holds no wildcards"),
-        json!(SweepProjectDTO {
-            project: project.to_owned(),
-        }),
-        now,
-    )
 }
 
 pub struct DiscardOutlinesOnProjectDeletedListener {

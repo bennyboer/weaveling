@@ -113,6 +113,8 @@ async function cataloguedScene(page: Page, scene: string) {
   return (await cataloguedScenes(page)).find((held) => held.id === scene);
 }
 
+const CATALOGUED_PER_SCENE = 250;
+
 export async function scenesCatalogued(page: Page, scenes: string[]) {
   await expect
     .poll(
@@ -126,6 +128,7 @@ export async function scenesCatalogued(page: Page, scenes: string[]) {
       {
         message:
           "the scenes listing is a projection, so a fresh page can only show what it has caught up with",
+        timeout: Math.max(5_000, scenes.length * CATALOGUED_PER_SCENE),
       },
     )
     .toEqual([]);

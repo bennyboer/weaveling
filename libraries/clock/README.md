@@ -21,6 +21,8 @@ assert_eq!(clock::text::serialize(clock.now()), "1970-01-01T01:00:00Z");
 assert_eq!(clock::text::written(clock.now()), "1970-01-01T01:00:00.000000000Z");
 ```
 
+A test writes a moment as **`clock::at(seconds)`**, that many seconds after the Unix epoch, rather than keeping a helper of its own.
+
 It matters most for event sourcing: an event's `occurred_at` is written once and replayed forever, so the moment has to come from somewhere a test can pin.
 
 **`text` is how an instant is written down where a database has no time type of its own.** `text::written(at)` gives fixed-width UTC — `2026-10-07T11:22:33.123456789Z` — and `text::read` takes it back. Fixed width matters: SQLite compares these as strings, so a claim's expiry and a retention cut-off rely on text order being time order. It lives here because the event store, the outbox and the deliveries all write instants into SQLite, and `clock` is the one time library they all already depend on.

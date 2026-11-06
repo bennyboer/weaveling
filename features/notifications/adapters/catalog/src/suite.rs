@@ -166,13 +166,9 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(account: &str, noted_at: i64, version: u64, dismissed: bool) -> NoticeSummary {
     NoticeSummary {
-        id: NoticeId::generate(at(noted_at)),
+        id: NoticeId::generate(clock::at(noted_at)),
         version: Version::of(version),
         account: AccountId::from(account),
         about: About::RoleChanged {
@@ -180,8 +176,8 @@ pub fn a_summary(account: &str, noted_at: i64, version: u64, dismissed: bool) ->
             role: Role::Author,
             by: Some(AccountId::from("account_ada")),
         },
-        noted_at: at(noted_at),
-        dismissed_at: dismissed.then(|| at(noted_at + 600)),
+        noted_at: clock::at(noted_at),
+        dismissed_at: dismissed.then(|| clock::at(noted_at + 600)),
     }
 }
 
@@ -237,7 +233,7 @@ pub async fn a_dismissed_notice_is_listed_no_more(catalog: &Committing<'_, impl 
         catalog,
         &NoticeSummary {
             version: Version::of(2),
-            dismissed_at: Some(at(1_600)),
+            dismissed_at: Some(clock::at(1_600)),
             ..noted
         },
     )
@@ -252,7 +248,7 @@ pub async fn a_version_heard_late_changes_nothing(catalog: &Committing<'_, impl 
     let noted = a_summary("account_bo", 1_000, 1, false);
     let dismissed = NoticeSummary {
         version: Version::of(2),
-        dismissed_at: Some(at(1_600)),
+        dismissed_at: Some(clock::at(1_600)),
         ..noted.clone()
     };
     remembered(catalog, &dismissed).await;
@@ -388,7 +384,7 @@ pub async fn a_deleted_project_s_notices_are_listed_no_more(
     // when: one project's tombstone is laid twice
     for _ in 0..2 {
         catalog
-            .lay_project_tombstone(&ProjectLink::from("project_1"), at(3_000))
+            .lay_project_tombstone(&ProjectLink::from("project_1"), clock::at(3_000))
             .await
             .expect("laying a tombstone should succeed however often");
     }
@@ -409,7 +405,7 @@ pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kep
 
     // when: the project is deleted
     catalog
-        .lay_project_tombstone(&project, at(3_000))
+        .lay_project_tombstone(&project, clock::at(3_000))
         .await
         .expect("laying a tombstone should succeed");
     // and: a name of it is heard late
@@ -494,12 +490,12 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
     // given: notices long and lately dismissed, long and lately noted, and one of a deleted project
     let long_dismissed = NoticeSummary {
         version: Version::of(2),
-        dismissed_at: Some(at(1_000)),
+        dismissed_at: Some(clock::at(1_000)),
         ..a_summary("account_bo", 900, 1, false)
     };
     let lately_dismissed = NoticeSummary {
         version: Version::of(2),
-        dismissed_at: Some(at(5_000)),
+        dismissed_at: Some(clock::at(5_000)),
         ..a_summary("account_bo", 900, 1, false)
     };
     let long_noted = a_summary("account_bo", 1_000, 1, false);
@@ -515,13 +511,13 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
         remembered(catalog, summary).await;
     }
     catalog
-        .lay_project_tombstone(&ProjectLink::from("project_gone"), at(5_000))
+        .lay_project_tombstone(&ProjectLink::from("project_gone"), clock::at(5_000))
         .await
         .expect("laying a tombstone should succeed");
 
     // when: what is due is asked for
     let mut due = catalog
-        .due_for_forgetting(at(2_000), at(2_000), 10)
+        .due_for_forgetting(clock::at(2_000), clock::at(2_000), 10)
         .await
         .expect("asking should succeed");
     // then: the long dismissed, the long noted and the deleted project's are due
@@ -532,7 +528,7 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
     // and: no more at once than asked
     assert_eq!(
         catalog
-            .due_for_forgetting(at(2_000), at(2_000), 2)
+            .due_for_forgetting(clock::at(2_000), clock::at(2_000), 2)
             .await
             .expect("asking should succeed")
             .len(),
@@ -550,7 +546,7 @@ pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_a
     // then: nothing is due
     assert!(
         catalog
-            .due_for_forgetting(at(2_000), at(2_000), 10)
+            .due_for_forgetting(clock::at(2_000), clock::at(2_000), 10)
             .await
             .expect("asking should succeed")
             .is_empty()
@@ -569,14 +565,14 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
         ("project_c", 9_000),
     ] {
         catalog
-            .lay_project_tombstone(&ProjectLink::from(project), at(laid))
+            .lay_project_tombstone(&ProjectLink::from(project), clock::at(laid))
             .await
             .expect("laying a tombstone should succeed");
     }
 
     // when: at most one laid before a moment is forgotten, and then the rest
     let first = catalog
-        .forget_project_tombstones_laid_before(at(5_000), 1)
+        .forget_project_tombstones_laid_before(clock::at(5_000), 1)
         .await
         .expect("forgetting should succeed");
     let oldest_gone_first = !catalog
@@ -588,7 +584,7 @@ pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_
             .await
             .expect("asking should succeed");
     let rest = catalog
-        .forget_project_tombstones_laid_before(at(5_000), 10)
+        .forget_project_tombstones_laid_before(clock::at(5_000), 10)
         .await
         .expect("forgetting should succeed");
 
@@ -620,7 +616,7 @@ pub async fn a_forgotten_notice_heard_of_late_is_not_remembered_again(
     let notice = a_summary("account_bo", 1_000, 1, false);
     remembered(catalog, &notice).await;
     catalog
-        .forget_at(&notice.id, at(2_000))
+        .forget_at(&notice.id, clock::at(2_000))
         .await
         .expect("forgetting should succeed");
 
@@ -650,7 +646,7 @@ pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
         .collect();
     for (notice, seconds) in notices.iter().zip([3_000, 1_000, 2_000]) {
         catalog
-            .forget_at(&notice.id, at(seconds))
+            .forget_at(&notice.id, clock::at(seconds))
             .await
             .expect("forgetting should succeed");
     }
@@ -658,7 +654,7 @@ pub async fn notice_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
     // then: forgetting at most two of their tombstones forgets two
     assert_eq!(
         catalog
-            .forget_notice_tombstones_laid_before(at(9_000), 2)
+            .forget_notice_tombstones_laid_before(clock::at(9_000), 2)
             .await
             .expect("forgetting tombstones should succeed"),
         2
@@ -712,11 +708,15 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     uncommitted
-        .forget(&mut transaction, &kept.id, at(3_000))
+        .forget(&mut transaction, &kept.id, clock::at(3_000))
         .await
         .expect("forgetting should succeed");
     uncommitted
-        .lay_project_tombstone(&mut transaction, &ProjectLink::from("project_1"), at(3_000))
+        .lay_project_tombstone(
+            &mut transaction,
+            &ProjectLink::from("project_1"),
+            clock::at(3_000),
+        )
         .await
         .expect("laying a tombstone should succeed");
 
@@ -748,14 +748,14 @@ pub async fn project_tombstones_forgotten_in_a_transaction_that_is_dropped_still
 ) {
     // given: a project's tombstone
     catalog
-        .lay_project_tombstone(&ProjectLink::from("project_1"), at(3_000))
+        .lay_project_tombstone(&ProjectLink::from("project_1"), clock::at(3_000))
         .await
         .expect("laying a tombstone should succeed");
     // when: a transaction forgets it
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .forget_project_tombstones_laid_before(&mut transaction, at(5_000), 10)
+        .forget_project_tombstones_laid_before(&mut transaction, clock::at(5_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -765,7 +765,7 @@ pub async fn project_tombstones_forgotten_in_a_transaction_that_is_dropped_still
     // then: it still stands to be forgotten
     assert_eq!(
         catalog
-            .forget_project_tombstones_laid_before(at(5_000), 10)
+            .forget_project_tombstones_laid_before(clock::at(5_000), 10)
             .await
             .expect("forgetting tombstones should succeed"),
         1

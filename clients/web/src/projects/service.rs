@@ -16,7 +16,6 @@ use quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";
-const IF_MATCH: &str = "If-Match";
 
 pub async fn list() -> Result<Vec<Project>, ApiError> {
     let response = http::sent(Request::get(PROJECTS)).await?;
@@ -79,7 +78,10 @@ pub async fn change_details(
         description: details.description.clone(),
     };
     let response = http::sent_with(
-        Request::put(&format!("{PROJECTS}/{id}/details")).header(IF_MATCH, &tag(saved_against)),
+        http::made_on(
+            Request::put(&format!("{PROJECTS}/{id}/details")),
+            saved_against.into(),
+        ),
         &payload,
     )
     .await?;
@@ -92,7 +94,7 @@ pub async fn rename(id: &ProjectId, name: &str, on: Version) -> Result<Project, 
         name: name.to_owned(),
     };
     let response = http::sent_with(
-        Request::patch(&format!("{PROJECTS}/{id}")).header(IF_MATCH, &tag(on)),
+        http::made_on(Request::patch(&format!("{PROJECTS}/{id}")), on.into()),
         &payload,
     )
     .await?;
@@ -101,8 +103,11 @@ pub async fn rename(id: &ProjectId, name: &str, on: Version) -> Result<Project, 
 }
 
 pub async fn trash(id: &ProjectId, on: Version) -> Result<(), ApiError> {
-    let response =
-        http::sent(Request::delete(&format!("{PROJECTS}/{id}")).header(IF_MATCH, &tag(on))).await?;
+    let response = http::sent(http::made_on(
+        Request::delete(&format!("{PROJECTS}/{id}")),
+        on.into(),
+    ))
+    .await?;
 
     http::checked(response, SUBJECT).await.map(|_| ())
 }
@@ -115,9 +120,11 @@ pub async fn in_the_trash() -> Result<Vec<TrashedProject>, ApiError> {
 }
 
 pub async fn restore(id: &ProjectId, on: Version) -> Result<(), ApiError> {
-    let response =
-        http::sent(Request::post(&format!("{PROJECTS}/{id}/restore")).header(IF_MATCH, &tag(on)))
-            .await?;
+    let response = http::sent(http::made_on(
+        Request::post(&format!("{PROJECTS}/{id}/restore")),
+        on.into(),
+    ))
+    .await?;
 
     http::checked(response, SUBJECT).await.map(|_| ())
 }
@@ -165,8 +172,4 @@ fn as_described(found: ProjectDetailsDTO) -> DescribedProject {
             description: found.description,
         },
     }
-}
-
-fn tag(on: Version) -> String {
-    format!("\"{on}\"")
 }

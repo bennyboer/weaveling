@@ -2,26 +2,15 @@ use std::sync::Arc;
 
 use boards_core::{BoardCatalog, BoardEvent, BoardId, KIND, ProjectLink};
 use clock::FixedClock;
-use eventsourcing::{
-    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, Recorded, Version,
-};
+use eventsourcing::{AggregateContext, AggregateId, EventMetadata, EventStore, Recorded, Version};
 use messaging::Message;
-use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::Wired;
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn recorded(id: &BoardId, event: BoardEvent, version: u64) -> Recorded<BoardEvent> {
@@ -30,8 +19,8 @@ fn recorded(id: &BoardId, event: BoardEvent, version: u64) -> Recorded<BoardEven
             aggregate: AggregateId::from(id),
             kind: KIND,
             version: Version::of(version),
-            agent: an_author(),
-            occurred_at: at(1_000),
+            agent: eventsourcing::an_author(),
+            occurred_at: clock::at(1_000),
             is_snapshot: false,
             context: AggregateContext::default(),
         },
@@ -54,7 +43,7 @@ fn told_of(happened: &Recorded<BoardEvent>) -> Message {
 }
 
 async fn a_stored_board(wired: &Wired, project: &str) -> BoardId {
-    let id = BoardId::generate(at(1_000));
+    let id = BoardId::generate(clock::at(1_000));
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -159,7 +148,7 @@ async fn each_project_is_catalogued_apart_from_the_others() {
 async fn a_start_for_a_board_that_was_never_stored_is_refused() {
     // given: a board that was never stored
     let wired = a_workbench();
-    let never_stored = BoardId::generate(at(1_000));
+    let never_stored = BoardId::generate(clock::at(1_000));
 
     // when: its start is heard
     let refused = wired

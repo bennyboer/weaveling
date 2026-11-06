@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use messaging::{Message, Notifications};
+use serde::Serialize;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use transacting::{Failure, Transaction};
@@ -59,4 +60,19 @@ pub trait Outbox: Send + Sync {
     ) -> Result<u64, OutboxError>;
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, OutboxError>;
+}
+
+impl dyn Outbox {
+    pub async fn enqueue_follow_up_within(
+        &self,
+        transaction: &mut Transaction,
+        origin: Origin<'_>,
+        heard: &Message,
+        routing: &str,
+        payload: &(impl Serialize + Sync),
+        now: OffsetDateTime,
+    ) -> Result<(), OutboxError> {
+        self.enqueue_within(transaction, origin, &heard.follow_up(routing, payload, now))
+            .await
+    }
 }

@@ -9,7 +9,6 @@ use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message};
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use yrs::types::Attrs;
 use yrs::{
@@ -18,10 +17,6 @@ use yrs::{
 
 const A_PROJECT: &str = "project_1";
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 fn a_workbench() -> (ScenesCore, LiveScenes) {
     let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
@@ -29,7 +24,7 @@ fn a_workbench() -> (ScenesCore, LiveScenes) {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
 
     (service.clone(), LiveScenes::new(service))
@@ -185,7 +180,7 @@ async fn two_different_scenes_stay_separate() {
 async fn joining_a_scene_that_does_not_exist_is_refused() {
     // given: a scene nobody created
     let (_service, live) = a_workbench();
-    let never_created = SceneId::generate(at(2_000));
+    let never_created = SceneId::generate(clock::at(2_000));
 
     // when: it is joined
     let outcome = live.join(never_created).await;

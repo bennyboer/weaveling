@@ -1,5 +1,3 @@
-mod tombstones;
-
 use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
@@ -12,14 +10,12 @@ use boards_messaging::{
 };
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
-
-use crate::tombstones::BoardTombstones;
 
 pub const LIVE: &str = "broadcast-board-changes";
 
@@ -44,45 +40,26 @@ pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let boards = core(ports, context);
-    let catalogue = Inboxed::new(
-        CatalogueBoardsListener::new(boards.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let index = Inboxed::new(
-        ProjectPinnedIdeasListener::new(
-            boards.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let unpin_discarded_ideas = Inboxed::new(
-        UnpinOnDiscardListener::new(boards.clone(), ports.outbox.clone(), context.clock.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let let_go_everywhere = Inboxed::new(
-        LetGoOfDiscardedIdeaListener::new(boards.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let let_go_of_the_gone = Inboxed::new(
-        LetGoOfGoneIdeasListener::new(boards.clone()),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
-    let remember_deleted_projects = Inboxed::new(
-        RememberDeletedProjectsListener::new(
-            boards.clone(),
-            ports.outbox.clone(),
-            context.clock.clone(),
-        ),
-        ports.transactions.clone(),
-        ports.inbox.clone(),
-    );
+    let catalogue = hearing.inboxed(CatalogueBoardsListener::new(boards.clone()));
+    let index = hearing.inboxed(ProjectPinnedIdeasListener::new(
+        boards.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
+    let unpin_discarded_ideas = hearing.inboxed(UnpinOnDiscardListener::new(
+        boards.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
+    let let_go_everywhere = hearing.inboxed(LetGoOfDiscardedIdeaListener::new(boards.clone()));
+    let let_go_of_the_gone = hearing.inboxed(LetGoOfGoneIdeasListener::new(boards.clone()));
+    let remember_deleted_projects = hearing.inboxed(RememberDeletedProjectsListener::new(
+        boards.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -108,17 +85,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-board-tombstones",
-                Arc::new(BoardTombstones::of(boards)),
+                chores::tombstones_by(move |before, at_most| {
+                    let boards = boards.clone();
+                    async move { boards.forget_tombstones_laid_before(before, at_most).await }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-board-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-board-hearings", context.clock.clone())),
         ])
 }
 
@@ -228,7 +201,7 @@ mod tests {
     use std::sync::Arc;
 
     use authorizing::AllowingEverything;
-    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::{Duration, OffsetDateTime};
@@ -282,27 +255,5 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-    }
-
-    #[tokio::test]
-    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        // given: two tombstones past keeping
-        let context = a_context();
-        let ports = BoardFeature::in_memory(&context);
-        for idea in ["idea_1", "idea_2"] {
-            core(&ports, &context)
-                .lay_tombstone(None, idea, NOW)
-                .await
-                .expect("laying a tombstone should succeed");
-        }
-
-        // when: the tombstones are forgotten a batch of one at a time
-        let forgotten = BoardTombstones::of(core(&ports, &context))
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
-
-        // then: one is forgotten
-        assert_eq!(forgotten, 1);
     }
 }

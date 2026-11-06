@@ -58,16 +58,11 @@ mod tests {
     };
     use inbox::KeptHandler;
     use messaging::{RoutingKey, Subscription};
-    use time::{Duration, OffsetDateTime};
 
     use super::*;
 
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
     fn a_board() -> BoardId {
-        BoardId::generate(at(1_000))
+        BoardId::generate(clock::at(1_000))
     }
 
     fn recorded(id: &BoardId, event: BoardEvent) -> Recorded<BoardEvent> {
@@ -77,7 +72,7 @@ mod tests {
                 kind: KIND,
                 version: Version::of(1),
                 agent: Agent::Account(AccountId::from("author-7")),
-                occurred_at: at(1_000),
+                occurred_at: clock::at(1_000),
                 is_snapshot: event.is_snapshot(),
                 context: AggregateContext::default(),
             },

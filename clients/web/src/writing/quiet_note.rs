@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::speech;
-use crate::writing::asking::Asking;
+use crate::writing::question::Question;
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn told_quietly(state: WriteViewState) {
@@ -34,7 +34,7 @@ pub fn told_quietly(state: WriteViewState) {
             return;
         };
         match scene {
-            Some(scene) => state.margin.ask(Asking::RemovedMeanwhile {
+            Some(scene) => state.margin.ask(Question::RemovedMeanwhile {
                 title: mine.title,
                 scene,
             }),

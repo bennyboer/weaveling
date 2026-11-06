@@ -47,7 +47,7 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
             [InvitationEvent::Issued { to, digest, until, scope, by_an_operator, origin }]
                 if to.as_str() == ADA
                     && *digest == token.digest()
-                    && *until == wiring::at(1_700_000_000) + Duration::days(7)
+                    && *until == clock::at(1_700_000_000) + Duration::days(7)
                     && *scope == Scope::Instance
                     && *by_an_operator
                     && origin == ORIGIN
@@ -164,7 +164,7 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
     // when: a day passes
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(1));
+        .set(clock::at(1_700_000_000) + Duration::days(1));
     // then: the address is invited three times more
     for _ in 0..3 {
         wired
@@ -211,7 +211,7 @@ async fn an_invitation_that_is_not_there_is_not_withdrawn() {
             .invitations
             .withdraw(
                 &wiring::an_operator(),
-                &InvitationId::generate(wiring::at(1_000)),
+                &InvitationId::generate(clock::at(1_000)),
                 None
             )
             .await,

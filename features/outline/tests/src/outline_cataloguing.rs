@@ -3,15 +3,14 @@ use std::sync::Arc;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, EventStore,
-    FailsAppending, Recorded, RefusesAppending, ServiceError, Standing, StoreError, Version,
+    Aggregate, AggregateContext, AggregateId, EventMetadata, EventStore, FailsAppending, Recorded,
+    RefusesAppending, ServiceError, Standing, StoreError, Version,
 };
 use messaging::Message;
 use outline_core::{
     Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore,
     OutlinesError, ProjectLink, SectionId, SectionTitle,
 };
-use time::{Duration, OffsetDateTime};
 
 use registry::Registry;
 use transacting::{InMemoryTransactions, Transactions};
@@ -20,16 +19,8 @@ use crate::shapes;
 use crate::wiring;
 use crate::wiring::Wired;
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn a_title(what: &str) -> SectionTitle {
@@ -42,8 +33,8 @@ fn recorded(id: &OutlineId, event: OutlineEvent, version: u64) -> Recorded<Outli
             aggregate: AggregateId::from(id),
             kind: KIND,
             version: Version::of(version),
-            agent: an_author(),
-            occurred_at: at(1_000),
+            agent: eventsourcing::an_author(),
+            occurred_at: clock::at(1_000),
             is_snapshot: false,
             context: AggregateContext::default(),
         },
@@ -66,7 +57,7 @@ fn told_of(happened: &Recorded<OutlineEvent>) -> Message {
 }
 
 async fn a_stored_outline(wired: &Wired, project: &str) -> OutlineId {
-    let id = OutlineId::generate(at(1_000));
+    let id = OutlineId::generate(clock::at(1_000));
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -104,7 +95,7 @@ async fn catalogued(wired: &Wired, project: &str) -> Vec<OutlineId> {
 async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
     let outline = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -119,7 +110,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
             None,
             a_title("Part One"),
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("adding should succeed")
@@ -136,7 +127,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
                 behind,
                 a_title(named),
                 None,
-                &an_author(),
+                &eventsourcing::an_author(),
             )
             .await
             .expect("adding should succeed")
@@ -154,7 +145,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
                 *chapter,
                 None,
                 None,
-                &an_author(),
+                &eventsourcing::an_author(),
             )
             .await
             .expect("attaching should succeed");
@@ -162,7 +153,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
 
     wired
         .outlines
-        .promote(&address, added[2], None, &an_author())
+        .promote(&address, added[2], None, &eventsourcing::an_author())
         .await
         .expect("promoting should succeed");
 
@@ -191,7 +182,7 @@ fn shape(outline: &Outline) -> String {
 async fn standing(wired: &Wired, outline: &OutlineId) -> Standing<Outline> {
     wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed")
 }
@@ -204,7 +195,7 @@ async fn starting_an_outline_puts_it_in_the_catalog() {
     // when: its outline is opened
     let outline = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -262,7 +253,7 @@ async fn hearing_the_same_start_twice_leaves_one_entry() {
 async fn a_start_naming_an_outline_that_was_never_stored_is_refused() {
     // given: an outline never stored
     let wired = a_workbench();
-    let never_written = OutlineId::generate(at(2_000));
+    let never_written = OutlineId::generate(clock::at(2_000));
 
     // then: hearing its start fails
     assert!(
@@ -283,7 +274,7 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
 
     // when: it is read by a service that never saw it written
     let replayed = (wired.reopened)()
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("a fresh service should read the stream");
 
@@ -342,7 +333,7 @@ async fn a_snapshot_carries_the_whole_shape_of_the_book() {
 async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
     // given: a project whose outline is claimed and stored
     let wired = a_workbench();
-    let known = OutlineId::generate(at(500));
+    let known = OutlineId::generate(clock::at(500));
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -376,7 +367,7 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
     // when: the project's outline is opened
     let opened = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
 
@@ -398,11 +389,13 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
 
     // when: an outline is opened against it
-    let refused = refusing.open("project_1", &an_author()).await;
+    let refused = refusing
+        .open("project_1", &eventsourcing::an_author())
+        .await;
     // and: then opened again against one that keeps it
     let held_after_refusal = wired
         .registry
@@ -411,7 +404,7 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
         .expect("asking should succeed");
     let opened = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -441,7 +434,7 @@ async fn a_section_added_while_losing_races(
     let wired = a_workbench();
     let outline = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -451,7 +444,7 @@ async fn a_section_added_while_losing_races(
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
 
     let added = losing
@@ -461,13 +454,13 @@ async fn a_section_added_while_losing_races(
             None,
             a_title("Act One"),
             expected,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .map(|added| added.version);
     let sections = wired
         .outlines
-        .read(&outline.to_string(), &an_author())
+        .read(&outline.to_string(), &eventsourcing::an_author())
         .await
         .expect("the outline is there")
         .state

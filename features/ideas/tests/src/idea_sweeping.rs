@@ -12,16 +12,11 @@ use ideas_messaging::{AT_MOST, DiscardOnProjectDeletedListener};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 use crate::wiring;
 
 const A_PROJECT: &str = "project_1";
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 #[derive(Default)]
 struct TheSystemOnly {
@@ -52,7 +47,7 @@ struct Wired {
 }
 
 fn a_workbench(at_most: usize) -> Wired {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let catalog = Arc::new(InMemoryIdeaCatalog::new());
     let overheard = Arc::new(FakePublisher::default());
     let authorizer = Arc::new(TheSystemOnly::default());
@@ -155,15 +150,14 @@ impl Wired {
 }
 
 fn a_deletion() -> Message {
-    Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": A_PROJECT, "kind": "project", "version": 2 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        DELETED,
+        "project",
+        A_PROJECT,
+        2,
+        json!({ "version": 0, "name": "DELETED" }),
+        &Agent::System,
+        clock::at(1_000),
     )
 }
 
@@ -324,7 +318,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: it is refused
@@ -337,7 +331,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep() {
     // given: a project holding more ideas than a batch
-    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))));
     for nth in 0..=AT_MOST {
         wired
             .ideas
@@ -437,8 +431,8 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
         .sweep
         .handle(&Message::opening(
             RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
-            json!({ "project": A_PROJECT, "after": IdeaId::generate(at(500)).to_string() }),
-            at(1_000),
+            json!({ "project": A_PROJECT, "after": IdeaId::generate(clock::at(500)).to_string() }),
+            clock::at(1_000),
         ))
         .await
         .expect("sweeping succeeds");

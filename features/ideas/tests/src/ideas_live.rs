@@ -9,7 +9,7 @@ use ideas_contract::{CAPTURED, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 use ideas_messaging::BroadcastIdeaChangesListener;
 use live::Broadcaster;
 use live::testing::Subscriber;
-use messaging::{Listener, Message, RoutingKey};
+use messaging::Listener;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -60,14 +60,13 @@ async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
             project
         });
     // and: a change naming no idea
-    let naming_no_idea = Message::opening(
-        RoutingKey::parse(CAPTURED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "CAPTURED" },
-            "aggregate": { "id": "project_1", "kind": "idea", "version": 1 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:00:00Z",
-        }),
+    let naming_no_idea = eventpublishing::published(
+        CAPTURED,
+        "idea",
+        "project_1",
+        1,
+        json!({ "version": 0, "name": "CAPTURED" }),
+        &Agent::System,
         OffsetDateTime::UNIX_EPOCH,
     );
 

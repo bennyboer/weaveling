@@ -92,17 +92,13 @@ impl<C> Deref for Committing<'_, C> {
     }
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
-}
-
 pub fn a_summary(id: ProjectId, name: &str) -> ProjectSummary {
     ProjectSummary {
         id,
         version: Version::of(1),
         name: ProjectName::new(name).expect("a plain name is fine"),
-        created_at: at(1_000),
-        updated_at: at(1_000),
+        created_at: clock::at(1_000),
+        updated_at: clock::at(1_000),
         trashed_until: None,
     }
 }
@@ -119,8 +115,8 @@ pub async fn a_project_in_the_trash_is_listed_there_and_nowhere_else(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: two remembered projects
-    let kept = a_summary(ProjectId::generate(at(1_000)), "Kept");
-    let trashed = a_summary(ProjectId::generate(at(2_000)), "Trashed");
+    let kept = a_summary(ProjectId::generate(clock::at(1_000)), "Kept");
+    let trashed = a_summary(ProjectId::generate(clock::at(2_000)), "Trashed");
     catalog
         .remember(&kept)
         .await
@@ -131,7 +127,7 @@ pub async fn a_project_in_the_trash_is_listed_there_and_nowhere_else(
         .expect("remembering should succeed");
 
     // when: one of them is remembered in the trash
-    let trashed = in_the_trash_until(trashed, at(9_000));
+    let trashed = in_the_trash_until(trashed, clock::at(9_000));
     catalog
         .remember(&trashed)
         .await
@@ -165,13 +161,13 @@ pub async fn the_trash_lists_what_is_purged_soonest_first(
 ) {
     // given: a project in the trash until later
     let later = in_the_trash_until(
-        a_summary(ProjectId::generate(at(1_000)), "Later"),
-        at(9_000),
+        a_summary(ProjectId::generate(clock::at(1_000)), "Later"),
+        clock::at(9_000),
     );
     // and: a newer one in the trash until sooner
     let sooner = in_the_trash_until(
-        a_summary(ProjectId::generate(at(2_000)), "Sooner"),
-        at(8_000),
+        a_summary(ProjectId::generate(clock::at(2_000)), "Sooner"),
+        clock::at(8_000),
     );
 
     // when: both are remembered
@@ -198,8 +194,8 @@ pub async fn a_project_restored_is_listed_again_and_not_in_the_trash(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a project remembered in the trash
-    let summary = a_summary(ProjectId::generate(at(1_000)), "Restored");
-    let trashed = in_the_trash_until(summary, at(9_000));
+    let summary = a_summary(ProjectId::generate(clock::at(1_000)), "Restored");
+    let trashed = in_the_trash_until(summary, clock::at(9_000));
     catalog
         .remember(&trashed)
         .await
@@ -233,7 +229,10 @@ pub async fn a_project_restored_is_listed_again_and_not_in_the_trash(
 
 pub async fn a_remembered_project_is_listed(catalog: &Committing<'_, impl ProjectCatalog>) {
     // given: a project
-    let summary = a_summary(ProjectId::generate(at(1_000)), "The Weaver's Apprentice");
+    let summary = a_summary(
+        ProjectId::generate(clock::at(1_000)),
+        "The Weaver's Apprentice",
+    );
 
     // when: it is remembered
     catalog
@@ -263,7 +262,7 @@ pub async fn remembering_the_same_project_again_replaces_what_was_there(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a remembered project
-    let id = ProjectId::generate(at(1_000));
+    let id = ProjectId::generate(clock::at(1_000));
     catalog
         .remember(&a_summary(id, "Working Title"))
         .await
@@ -272,7 +271,7 @@ pub async fn remembering_the_same_project_again_replaces_what_was_there(
     // when: a later version of it is remembered
     let mut later = a_summary(id, "The Weaver's Apprentice");
     later.version = Version::of(2);
-    later.updated_at = at(2_000);
+    later.updated_at = clock::at(2_000);
     catalog
         .remember(&later)
         .await
@@ -289,7 +288,7 @@ pub async fn a_forgotten_project_is_no_longer_listed(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a remembered project
-    let id = ProjectId::generate(at(1_000));
+    let id = ProjectId::generate(clock::at(1_000));
     catalog
         .remember(&a_summary(id, "Abandoned"))
         .await
@@ -297,7 +296,7 @@ pub async fn a_forgotten_project_is_no_longer_listed(
 
     // when: it is forgotten
     catalog
-        .forget(&id, at(5_000))
+        .forget(&id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -316,7 +315,7 @@ pub async fn forgetting_something_never_remembered_is_harmless(
 ) {
     // expect: forgetting a project never remembered succeeds
     catalog
-        .forget(&ProjectId::generate(at(1_000)), at(5_000))
+        .forget(&ProjectId::generate(clock::at(1_000)), clock::at(5_000))
         .await
         .expect("forgetting an unknown project should not fail");
 }
@@ -324,7 +323,7 @@ pub async fn forgetting_something_never_remembered_is_harmless(
 pub async fn the_newest_project_is_listed_first(catalog: &Committing<'_, impl ProjectCatalog>) {
     // given: projects started one after another
     let started: Vec<ProjectId> = (1..=6)
-        .map(|nth| ProjectId::generate(at(nth * 1_000)))
+        .map(|nth| ProjectId::generate(clock::at(nth * 1_000)))
         .collect();
 
     // when: they are remembered oldest first
@@ -350,9 +349,9 @@ pub async fn the_moments_a_project_carries_survive_the_round_trip(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a project created and updated at real moments
-    let mut summary = a_summary(ProjectId::generate(at(1_000)), "Timestamped");
-    summary.created_at = at(1_700_000_000);
-    summary.updated_at = at(1_700_086_400);
+    let mut summary = a_summary(ProjectId::generate(clock::at(1_000)), "Timestamped");
+    summary.created_at = clock::at(1_700_000_000);
+    summary.updated_at = clock::at(1_700_086_400);
 
     // when: it is remembered
     catalog
@@ -368,7 +367,7 @@ pub async fn the_moments_a_project_carries_survive_the_round_trip(
         found
             .first()
             .map(|listed| (listed.created_at, listed.updated_at)),
-        Some((at(1_700_000_000), at(1_700_086_400))),
+        Some((clock::at(1_700_000_000), clock::at(1_700_086_400))),
         "the listing shows an author when they last touched a project, so the moments must not \
          be rounded or dropped on the way through"
     );
@@ -379,7 +378,7 @@ pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
 ) {
     // given: remembered projects started one after another
     let started: Vec<ProjectId> = (1..=4)
-        .map(|nth| ProjectId::generate(at(nth * 1_000)))
+        .map(|nth| ProjectId::generate(clock::at(nth * 1_000)))
         .collect();
     for id in &started {
         catalog
@@ -388,7 +387,7 @@ pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
             .expect("remembering should succeed");
     }
     // and: a project never remembered
-    let never_remembered = ProjectId::generate(at(9_000));
+    let never_remembered = ProjectId::generate(clock::at(9_000));
 
     // when: some of them are listed, one twice, along with the unknown one
     let found = catalog
@@ -407,7 +406,10 @@ pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
 pub async fn among_no_ids_nothing_is_listed(catalog: &Committing<'_, impl ProjectCatalog>) {
     // given: a remembered project
     catalog
-        .remember(&a_summary(ProjectId::generate(at(1_000)), "A project"))
+        .remember(&a_summary(
+            ProjectId::generate(clock::at(1_000)),
+            "A project",
+        ))
         .await
         .expect("remembering should succeed");
 
@@ -430,13 +432,13 @@ pub async fn a_forgotten_project_heard_of_late_is_not_remembered_again(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a forgotten project
-    let gone = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    let gone = a_summary(ProjectId::generate(clock::at(1_000)), "Working Title");
     catalog
         .remember(&gone)
         .await
         .expect("remembering should succeed");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -465,20 +467,20 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
 ) {
     // given: three projects forgotten at different moments
     let (older, newer, latest) = (
-        a_summary(ProjectId::generate(at(1_000)), "Working Title"),
-        a_summary(ProjectId::generate(at(2_000)), "Working Title"),
-        a_summary(ProjectId::generate(at(3_000)), "Working Title"),
+        a_summary(ProjectId::generate(clock::at(1_000)), "Working Title"),
+        a_summary(ProjectId::generate(clock::at(2_000)), "Working Title"),
+        a_summary(ProjectId::generate(clock::at(3_000)), "Working Title"),
     );
     for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
         catalog
-            .forget(&summary.id, at(laid))
+            .forget(&summary.id, clock::at(laid))
             .await
             .expect("forgetting should succeed");
     }
 
     // when: at most one tombstone laid before a moment two of them precede is forgotten
     let forgotten = catalog
-        .forget_tombstones_laid_before(at(8_000), 1)
+        .forget_tombstones_laid_before(clock::at(8_000), 1)
         .await
         .expect("forgetting tombstones should succeed");
     // and: all three are remembered again
@@ -503,7 +505,7 @@ pub async fn an_older_project_summary_heard_late_changes_nothing(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a project remembered at its second version
-    let summary = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    let summary = a_summary(ProjectId::generate(clock::at(1_000)), "Working Title");
     let mut newer = summary.clone();
     newer.version = Version::of(2);
     catalog
@@ -530,7 +532,7 @@ pub async fn a_project_remembered_in_a_transaction_that_is_dropped_was_never_rem
         .catalog
         .remember(
             &mut transaction,
-            &a_summary(ProjectId::generate(at(1_000)), "Working Title"),
+            &a_summary(ProjectId::generate(clock::at(1_000)), "Working Title"),
         )
         .await
         .expect("remembering should succeed");
@@ -546,7 +548,7 @@ pub async fn a_project_forgotten_in_a_transaction_that_is_dropped_is_still_there
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a remembered project
-    let mut kept = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    let mut kept = a_summary(ProjectId::generate(clock::at(1_000)), "Working Title");
     catalog
         .remember(&kept)
         .await
@@ -555,7 +557,7 @@ pub async fn a_project_forgotten_in_a_transaction_that_is_dropped_is_still_there
     let mut transaction = catalog.begun().await;
     catalog
         .catalog
-        .forget(&mut transaction, &kept.id, at(5_000))
+        .forget(&mut transaction, &kept.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -580,16 +582,16 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     // given: a forgotten project
-    let gone = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    let gone = a_summary(ProjectId::generate(clock::at(1_000)), "Working Title");
     catalog
-        .forget(&gone.id, at(5_000))
+        .forget(&gone.id, clock::at(5_000))
         .await
         .expect("forgetting should succeed");
     // and: its tombstone forgotten in a transaction
     let mut transaction = catalog.begun().await;
     catalog
         .catalog
-        .forget_tombstones_laid_before(&mut transaction, at(8_000), 10)
+        .forget_tombstones_laid_before(&mut transaction, clock::at(8_000), 10)
         .await
         .expect("forgetting tombstones should succeed");
 

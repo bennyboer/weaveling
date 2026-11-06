@@ -110,7 +110,10 @@ impl SceneCopies {
             };
             let mut landed = !landings.is_empty();
             for landing in landings {
-                landed &= landing.await;
+                if let Err(failure) = landing.await {
+                    self.problems.report(failure);
+                    landed = false;
+                }
             }
             self.saving.write_done();
 
@@ -121,7 +124,7 @@ impl SceneCopies {
     fn intended(self, scene: &SceneId, intents: Vec<Intent>) -> Vec<Landed> {
         intents
             .into_iter()
-            .filter_map(|intent| self.copies.intended(scene, intent))
+            .map(|intent| self.copies.intended(scene, intent))
             .collect()
     }
 }
@@ -165,10 +168,7 @@ impl Intent {
             Self::Delete => {
                 scenes::delete(scene, version).await?;
 
-                Ok(Scene {
-                    version: version + 1,
-                    ..on
-                })
+                Ok(on)
             }
         }
     }

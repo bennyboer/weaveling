@@ -1,3 +1,4 @@
+mod arriving;
 pub mod confirm_trash;
 pub mod details_form;
 pub mod intent;

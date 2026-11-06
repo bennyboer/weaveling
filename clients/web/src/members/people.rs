@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::task;
@@ -5,7 +7,6 @@ use leptos::{IntoView, ev, html};
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState};
-use crate::asking::Asking;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::members::intent::Intent;
@@ -30,14 +31,12 @@ pub struct People {
     refused: RwSignal<Option<ApiError>>,
     pub(super) leaving: RwSignal<bool>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
-    asking: Asking,
 }
 
 impl People {
     pub fn asked(project: ProjectId) -> Self {
         let project = project.to_string();
         let refused = RwSignal::new(None);
-        let built = StoredValue::new_local(None::<People>);
         let (sending_to, reading) = (project.clone(), project.clone());
         let working = WorkingCopy::new(
             move |on: Members, intent: Intent| {
@@ -64,12 +63,7 @@ impl People {
 
                 async move { service::members_of(&project).await }
             },
-            move |failure| {
-                _ = refused.try_set(Some(failure));
-                if let Some(people) = built.try_get_value().flatten() {
-                    people.load(0);
-                }
-            },
+            move |failure| _ = refused.try_set(Some(failure)),
         );
         let people = Self {
             session: expect_context::<CurrentSession>(),
@@ -79,14 +73,12 @@ impl People {
             refused,
             leaving: RwSignal::new(false),
             following: StoredValue::new_local(None),
-            asking: Asking::new(),
         };
-        built.set_value(Some(people));
         people.following.set_value(Some(Subscription::start(
             "members",
             &[("project", &people.project.get_value())],
-            move |told: FrameDTO| people.load(told.version),
-            move || people.load(0),
+            move |_: FrameDTO| people.working.read_again(),
+            move || people.working.read_again(),
         )));
 
         people
@@ -123,24 +115,6 @@ impl People {
                 == 1
     }
 
-    fn load(self, told_at: u64) {
-        let project = self.project.get_value();
-        let asked = self.asking.next();
-        task::spawn_local(async move {
-            let found = service::members_of(&project).await;
-            if !self.asking.is_latest(asked) {
-                return;
-            }
-            match found {
-                Ok(found) => self.working.take_in(Members {
-                    version: found.version.max(told_at),
-                    ..found
-                }),
-                Err(failed) => _ = self.refused.try_set(Some(failed)),
-            }
-        });
-    }
-
     fn change_role(self, account: String, to: Role) {
         self.refused.set(None);
         self.working.intend(Intent::ChangeRole { account, to });
@@ -156,25 +130,22 @@ impl People {
             account: to,
             to: Role::Owner,
         });
-        task::spawn_local(async move {
-            if handed.await && working.intended(Intent::Remove { account: own }).await {
-                then();
-            }
-        });
+        self.once_landed(
+            async move {
+                handed.await?;
+                working.intended(Intent::Remove { account: own }).await
+            },
+            then,
+        );
     }
 
     pub(super) fn trash_project(self, then: impl Fn() + 'static) {
         let project = ProjectId::from(self.project.get_value());
         self.refused.set(None);
-        let Some(landed) = self.open_project.intended(&project, ProjectIntent::Trash) else {
-            return self.refused.set(self.open_project.change_refused());
-        };
-        task::spawn_local(async move {
-            match landed.await {
-                true => then(),
-                false => _ = self.refused.try_set(self.open_project.change_refused()),
-            }
-        });
+        self.once_landed(
+            self.open_project.intended(&project, ProjectIntent::Trash),
+            then,
+        );
     }
 
     fn leave(self, then: impl Fn() + 'static) {
@@ -182,10 +153,18 @@ impl People {
             return;
         };
         self.refused.set(None);
-        let left = self.working.intended(Intent::Remove { account: own });
+        self.once_landed(self.working.intended(Intent::Remove { account: own }), then);
+    }
+
+    fn once_landed(
+        self,
+        landing: impl Future<Output = Result<(), ApiError>> + 'static,
+        then: impl FnOnce() + 'static,
+    ) {
         task::spawn_local(async move {
-            if left.await {
-                then();
+            match landing.await {
+                Ok(()) => then(),
+                Err(failure) => _ = self.refused.try_set(Some(failure)),
             }
         });
     }

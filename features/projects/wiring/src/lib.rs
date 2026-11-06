@@ -1,11 +1,10 @@
 mod purging;
-mod tombstones;
 
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
@@ -17,7 +16,6 @@ use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Wired};
 
 use crate::purging::ProjectsPurge;
-use crate::tombstones::ProjectTombstones;
 
 pub const LIVE: &str = "broadcast-project-changes";
 
@@ -42,6 +40,7 @@ pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let projects = core(ports, context);
 
     let broadcaster = Broadcaster::new();
@@ -60,11 +59,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ))])
         .listening(vec![
             Arc::new(broadcast),
-            Arc::new(Inboxed::new(
-                CatalogueProjectsListener::new(projects.clone()),
-                ports.transactions.clone(),
-                ports.inbox.clone(),
-            )),
+            Arc::new(hearing.inboxed(CatalogueProjectsListener::new(projects.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(PurgeTheTrash::new(
@@ -75,17 +70,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             )),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-project-tombstones",
-                Arc::new(ProjectTombstones::of(projects.clone())),
+                chores::tombstones_by(move |before, at_most| {
+                    let projects = projects.clone();
+                    async move {
+                        projects
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }),
                 context.clock.clone(),
             )),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-project-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            )),
+            Arc::new(hearing.forgetting("forget-old-project-hearings", context.clock.clone())),
         ])
 }
 

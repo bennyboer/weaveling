@@ -9,7 +9,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json, Router};
-use eventsourcing::{Agent, ServiceError, Standing};
+use eventsourcing::{Agent, ServiceError, Standing, StoreError};
 use live::{About, Broadcaster, Gate, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
 use members_contract::{
@@ -171,8 +171,8 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
         MembersCoreError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(serving::NOT_FOUND, "there is no such project")
         }
-        MembersCoreError::Events(outdated @ ServiceError::Store(_)) => {
-            Problem::of(&outdated, |refusal| Problem::unexpected(refusal))
+        MembersCoreError::Events(ServiceError::Store(StoreError::Outdated { kind, .. })) => {
+            Problem::outdated(kind)
         }
         beyond_reach => Problem::unexpected(beyond_reach),
     }

@@ -40,7 +40,7 @@ fn waits<T>(tried: Result<T, AccountsError>) -> Option<Duration> {
 }
 
 fn after(minutes: i64) -> time::OffsetDateTime {
-    wiring::at(1_700_000_000) + Duration::minutes(minutes)
+    clock::at(1_700_000_000) + Duration::minutes(minutes)
 }
 
 #[tokio::test]
@@ -180,7 +180,7 @@ async fn tries_a_day_old_are_forgotten() {
     // when: another wrong one is tried a day later
     wired
         .clock
-        .set(wiring::at(1_700_000_000) + Duration::days(1));
+        .set(clock::at(1_700_000_000) + Duration::days(1));
     signing_in_wrongly(&wired, ADA, 1).await;
 
     // then: only that one is counted

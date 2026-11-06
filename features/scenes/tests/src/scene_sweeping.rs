@@ -16,15 +16,10 @@ use scenes_core::{
 use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transaction};
 
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 struct TheSystemAndAda;
 
@@ -177,7 +172,7 @@ struct Wired {
 }
 
 fn a_workbench(at_most: usize) -> Wired {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
     let store = Arc::new(Wavering {
         held: InMemorySceneStore::new(),
@@ -255,15 +250,14 @@ impl Wired {
 }
 
 fn deleted(project: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": project, "kind": "project", "version": 2 },
-            "agent": { "kind": "system", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        DELETED,
+        "project",
+        project,
+        2,
+        json!({ "version": 0, "name": "DELETED" }),
+        &Agent::System,
+        clock::at(1_000),
     )
 }
 
@@ -294,7 +288,8 @@ async fn a_scene_gone_before_the_sweep_reaches_it_is_passed_over() {
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 2).await;
     // and: one of them gone before the sweep reaches it
-    *wired.store.gone_meanwhile.lock().expect("never poisoned") = Some(SceneId::generate(at(500)));
+    *wired.store.gone_meanwhile.lock().expect("never poisoned") =
+        Some(SceneId::generate(clock::at(500)));
 
     // when: the project's deletion is heard
     wired
@@ -490,8 +485,8 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
         .sweep
         .handle(&Message::opening(
             RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key is fine"),
-            json!({ "project": A_PROJECT, "after": SceneId::generate(at(500)).to_string() }),
-            at(1_000),
+            json!({ "project": A_PROJECT, "after": SceneId::generate(clock::at(500)).to_string() }),
+            clock::at(1_000),
         ))
         .await
         .expect("sweeping succeeds");
@@ -510,7 +505,7 @@ async fn a_message_about_no_project_at_all_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it fails

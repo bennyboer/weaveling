@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
+use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use outline_core::{KIND, OutlineCatalog, OutlinesError, ProjectLink};
@@ -12,23 +12,14 @@ use outline_messaging::{
 use projects_contract::DELETED;
 use registry::Registry;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
 
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
-
 fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeletedListener) {
     let wired = wiring::wired_guarded_by(
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
         Arc::new(TheSystemAndTheAuthor::default()),
     );
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(wired.outlines.clone());
@@ -42,7 +33,7 @@ fn asked_to_sweep(project: &str) -> Message {
         json!(SweepProjectDTO {
             project: project.to_owned(),
         }),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -52,7 +43,7 @@ async fn an_outline_is_discarded_in_the_system_s_name() {
     let (wired, sweep) = a_workbench();
     let opened = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -86,7 +77,7 @@ async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
     let (wired, sweep) = a_workbench();
     let opened = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -109,7 +100,7 @@ async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
     // then: it is discarded
     let standing = wired
         .outlines
-        .read(&opened.to_string(), &an_author())
+        .read(&opened.to_string(), &eventsourcing::an_author())
         .await
         .expect("the outline is still there to read");
     assert!(
@@ -136,7 +127,7 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
     let (wired, sweep) = a_workbench();
     wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
 
@@ -155,7 +146,7 @@ async fn only_the_deleted_project_loses_its_outline() {
     let (wired, sweep) = a_workbench();
     let kept = wired
         .outlines
-        .open("project_2", &an_author())
+        .open("project_2", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -170,7 +161,7 @@ async fn only_the_deleted_project_loses_its_outline() {
     assert!(
         !wired
             .outlines
-            .read(&kept.to_string(), &an_author())
+            .read(&kept.to_string(), &eventsourcing::an_author())
             .await
             .expect("the other outline is there to read")
             .state
@@ -184,7 +175,7 @@ async fn a_swept_outline_leaves_the_catalog() {
     let (wired, sweep) = a_workbench();
     wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed");
     wired.settle().await;
@@ -218,15 +209,14 @@ async fn a_swept_outline_leaves_the_catalog() {
 }
 
 fn deleted(project: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": project, "kind": "project", "version": 3 },
-            "agent": { "kind": "local", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        DELETED,
+        "project",
+        project,
+        3,
+        json!({ "version": 0, "name": "DELETED" }),
+        &Agent::Local,
+        clock::at(1_000),
     )
 }
 
@@ -297,12 +287,15 @@ async fn a_deleted_project_opens_no_outline() {
     let (wired, _sweep) = a_workbench();
     wired
         .outlines
-        .lay_project_tombstone(None, "project_1", at(900))
+        .lay_project_tombstone(None, "project_1", clock::at(900))
         .await
         .expect("laying a project's tombstone should succeed");
 
     // when: its outline is opened
-    let refused = wired.outlines.open("project_1", &an_author()).await;
+    let refused = wired
+        .outlines
+        .open("project_1", &eventsourcing::an_author())
+        .await;
 
     // then: it is refused as not there
     assert!(matches!(refused, Err(OutlinesError::ProjectNotThere)));
@@ -324,7 +317,7 @@ async fn a_outline_opened_before_the_deletion_is_discarded_once_the_sweep_it_ask
     let (wired, _sweep) = a_workbench();
     let opened = wired
         .outlines
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -341,7 +334,7 @@ async fn a_outline_opened_before_the_deletion_is_discarded_once_the_sweep_it_ask
     assert!(
         wired
             .outlines
-            .read(&opened.to_string(), &an_author())
+            .read(&opened.to_string(), &eventsourcing::an_author())
             .await
             .expect("the outline is still there to read")
             .state

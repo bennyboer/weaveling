@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
+use eventsourcing::{Agent, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
@@ -14,26 +14,17 @@ use ideas_contract::{DISCARDED, IdeaEventDTO};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
-fn an_author() -> Agent {
-    Agent::Account(AccountId::from("author-7"))
-}
 
 fn a_workbench() -> Wired {
     a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
 }
 
 fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
-    wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), authorizer)
+    wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), authorizer)
 }
 
 fn an_idea(named: &str) -> IdeaLink {
@@ -41,15 +32,14 @@ fn an_idea(named: &str) -> IdeaLink {
 }
 
 fn discarded(idea: &str) -> Message {
-    Message::opening(
-        RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DISCARDED" },
-            "aggregate": { "id": idea, "kind": "idea", "version": 4 },
-            "agent": { "kind": "local", "id": null },
-            "occurred_at": "1970-01-01T00:16:40Z",
-        }),
-        at(1_000),
+    eventpublishing::published(
+        DISCARDED,
+        "idea",
+        idea,
+        4,
+        json!({ "version": 0, "name": "DISCARDED" }),
+        &Agent::Local,
+        clock::at(1_000),
     )
 }
 
@@ -60,7 +50,7 @@ fn asked_to_let_go_everywhere(idea: &str) -> Message {
             idea: idea.to_owned(),
         })
         .expect("a follow-up is plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
@@ -71,14 +61,14 @@ fn asked_to_let_go_of_the_gone(board: &BoardId) -> Message {
             board: board.to_string(),
         })
         .expect("a follow-up is plain data"),
-        at(1_000),
+        clock::at(1_000),
     )
 }
 
 async fn a_board_holding(wired: &Wired, ideas: &[&str]) -> BoardId {
     let id = wired
         .boards
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -92,7 +82,7 @@ async fn a_board_holding(wired: &Wired, ideas: &[&str]) -> BoardId {
                 Spot::at(nth as i64 * 10, 0),
                 Size::CARD,
                 None,
-                &an_author(),
+                &eventsourcing::an_author(),
             )
             .await
             .expect("pinning should succeed");
@@ -106,7 +96,7 @@ async fn a_board_holding(wired: &Wired, ideas: &[&str]) -> BoardId {
 async fn pinned_on(wired: &Wired, board: &BoardId) -> Vec<String> {
     wired
         .boards
-        .read(&board.to_string(), &an_author())
+        .read(&board.to_string(), &eventsourcing::an_author())
         .await
         .expect("reading should succeed")
         .state
@@ -122,7 +112,7 @@ async fn an_idea_discarded_before_its_pin_was_indexed_still_leaves_the_board() {
     let wired = a_workbench();
     let board = wired
         .boards
-        .open("project_1", &an_author())
+        .open("project_1", &eventsourcing::an_author())
         .await
         .expect("opening should succeed")
         .id;
@@ -134,7 +124,7 @@ async fn an_idea_discarded_before_its_pin_was_indexed_still_leaves_the_board() {
             Spot::at(0, 0),
             Size::CARD,
             None,
-            &an_author(),
+            &eventsourcing::an_author(),
         )
         .await
         .expect("pinning should succeed");
@@ -183,7 +173,12 @@ async fn unpinning_an_idea_takes_it_out_of_the_index() {
     // when: the idea is unpinned
     wired
         .boards
-        .unpin(&board.to_string(), an_idea("idea_1"), None, &an_author())
+        .unpin(
+            &board.to_string(),
+            an_idea("idea_1"),
+            None,
+            &eventsourcing::an_author(),
+        )
         .await
         .expect("unpinning should succeed");
     wired.settle().await;
@@ -401,7 +396,7 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // then: hearing it is refused
@@ -481,7 +476,11 @@ async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
         .expect("the listener should take this message");
 
     // then: its tombstone is laid as of the discard, and forgotten once
-    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 1), (at(1_001), 0)] {
+    for (before, forgotten) in [
+        (clock::at(1_000), 0),
+        (clock::at(1_001), 1),
+        (clock::at(1_001), 0),
+    ] {
         assert_eq!(
             wired
                 .boards
@@ -547,7 +546,7 @@ async fn a_discard_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_noth
     assert_eq!(
         wired
             .boards
-            .forget_tombstones_laid_before(at(1_001), u64::MAX)
+            .forget_tombstones_laid_before(clock::at(1_001), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         0,
@@ -564,7 +563,7 @@ async fn a_board_holding_several_gone_ideas_lets_go_of_them_one_hearing_after_an
     for idea in ["idea_1", "idea_2"] {
         wired
             .boards
-            .lay_tombstone(None, idea, at(1_000))
+            .lay_tombstone(None, idea, clock::at(1_000))
             .await
             .expect("laying a tombstone should succeed");
     }

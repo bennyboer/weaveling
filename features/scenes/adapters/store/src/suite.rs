@@ -11,7 +11,7 @@ use scenes_core::{
     StoreError,
 };
 use serde_json::{Value, json};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::compaction::COMPACT_AFTER;
@@ -240,12 +240,8 @@ fn told(messages: Vec<Message>) -> Vec<(String, Value)> {
         .collect()
 }
 
-pub fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
-
 pub fn an_id(seconds: i64) -> SceneId {
-    SceneId::generate(at(seconds))
+    SceneId::generate(clock::at(seconds))
 }
 
 pub fn a_paragraph(saying: &str) -> Vec<u8> {

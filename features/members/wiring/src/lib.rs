@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use authorizing::Authorizer;
-use chores::ForgetOldTombstones;
 use clock::Clock;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
+use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::{BroadcastChangesListener, Broadcaster};
 use members_catalog::InMemoryMembershipCatalog;
 use members_contract::EVERY_MEMBERS;
@@ -173,6 +172,7 @@ impl Feature for MembersFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
+        let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
         let broadcaster = Broadcaster::new();
         let members = core(ports, context);
 
@@ -182,36 +182,16 @@ impl Feature for MembersFeature {
                 broadcaster.clone(),
             ))])
             .listening(vec![
-                Arc::new(Inboxed::new(
-                    FoundMembersOfStartedProjectListener::new(members.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    JoinByAcceptedInvitationListener::new(members.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    RememberWhoSignedUpListener::new(members.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    DisbandMembersOfDeletedProjectListener::new(members.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    RememberTrashedProjectsListener::new(members.clone()),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
-                Arc::new(Inboxed::new(
-                    CatalogueMembersListener::new(members),
-                    ports.transactions.clone(),
-                    ports.inbox.clone(),
-                )),
+                Arc::new(
+                    hearing.inboxed(FoundMembersOfStartedProjectListener::new(members.clone())),
+                ),
+                Arc::new(hearing.inboxed(JoinByAcceptedInvitationListener::new(members.clone()))),
+                Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(members.clone()))),
+                Arc::new(
+                    hearing.inboxed(DisbandMembersOfDeletedProjectListener::new(members.clone())),
+                ),
+                Arc::new(hearing.inboxed(RememberTrashedProjectsListener::new(members.clone()))),
+                Arc::new(hearing.inboxed(CatalogueMembersListener::new(members))),
                 Arc::new(BroadcastChangesListener::new(
                     LIVE,
                     EVERY_MEMBERS,
@@ -219,14 +199,9 @@ impl Feature for MembersFeature {
                     |_| vec![members_rest::MembershipChanges],
                 )),
             ])
-            .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-                "forget-old-member-hearings",
-                Arc::new(HeardMessages::of(
-                    ports.inbox.clone(),
-                    ports.transactions.clone(),
-                )),
-                context.clock.clone(),
-            ))])
+            .doing_chores(vec![Arc::new(
+                hearing.forgetting("forget-old-member-hearings", context.clock.clone()),
+            )])
     }
 }
 

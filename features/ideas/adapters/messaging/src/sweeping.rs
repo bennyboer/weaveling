@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use clock::Clock;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use ideas_core::{IdeaId, IdeasCore};
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey, WithoutInbox};
+use ideas_core::IdeasCore;
+use messaging::{Failure, Handler, Message, Publisher, WithoutInbox};
 use projects_contract::{DELETED, ProjectEventDTO};
 
 pub const AT_MOST: usize = 100;
@@ -50,22 +50,17 @@ impl DiscardOnProjectDeletedListener {
         }
 
         self.publisher
-            .publish(self.carry_on(asked, &project, last))
+            .publish(asked.follow_up(
+                MORE_TO_SWEEP,
+                &MoreToSweepDTO {
+                    project: project.clone(),
+                    after: last.to_string(),
+                },
+                self.clock.now(),
+            ))
             .await?;
 
         Ok(())
-    }
-
-    fn carry_on(&self, asked: &Message, project: &str, after: IdeaId) -> Message {
-        asked.answering(
-            RoutingKey::parse(MORE_TO_SWEEP).expect("a declared routing key holds no wildcards"),
-            serde_json::to_value(MoreToSweepDTO {
-                project: project.to_owned(),
-                after: after.to_string(),
-            })
-            .expect("a continuation is plain data and cannot fail to serialize"),
-            self.clock.now(),
-        )
     }
 }
 

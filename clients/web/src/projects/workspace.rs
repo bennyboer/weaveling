@@ -1,47 +1,34 @@
+use std::future::Future;
 use std::time::Duration;
 
 use leptos::prelude::*;
 use leptos::task;
 
 use crate::act::{Act, Here};
-use crate::asking;
-use crate::asking::Asking;
-use crate::http::{ApiError, Refusal};
+use crate::http::ApiError;
 use crate::live::Subscription;
+use crate::projects::arriving;
+use crate::projects::arriving::Opening;
 use crate::projects::intent::Intent;
 use crate::projects::model;
 use crate::projects::model::{
-    Awaited, AwaitedInTheTrash, Membership, Project, ProjectDetails, ProjectId, TrashedProject,
-    Version,
+    Membership, Project, ProjectDetails, ProjectId, Told, TrashedProject,
 };
 use crate::projects::service;
-use crate::working_copy::WorkingCopies;
+use crate::working_copy::{Awaited, WorkingCopies};
 use live_contract::FrameDTO;
 
-const NOT_YET_OPEN: &str = "project-not-yet-open";
-
-type Listed = WorkingCopies<ProjectId, Project, Intent>;
+pub(super) type Listed = WorkingCopies<ProjectId, Project, Intent>;
 type Trashed = WorkingCopies<ProjectId, TrashedProject, Intent>;
-
-#[derive(Clone, Debug)]
-enum Opening {
-    Idle,
-    SettingUp,
-    Opened(Project),
-    Unopened(ApiError),
-}
 
 #[derive(Clone, Copy)]
 pub struct Workspace {
     listed: Listed,
-    listed_once: RwSignal<bool>,
     problem: RwSignal<Option<ApiError>>,
     opening: RwSignal<Opening>,
     creating: Act<(String, ProjectDetails)>,
     creation_refused: RwSignal<Option<ApiError>>,
     trashed: Trashed,
-    listing: Action<Option<Awaited>, ()>,
-    asking_the_trash: Action<Option<AwaitedInTheTrash>, ()>,
 }
 
 impl Workspace {
@@ -54,11 +41,7 @@ impl Workspace {
                     Intent::Rename { name } => service::rename(&id, &name, on.version).await,
                     Intent::Trash => {
                         service::trash(&id, on.version).await?;
-                        Ok(Project {
-                            version: on.version.next(),
-                            trashed: true,
-                            ..on
-                        })
+                        Ok(on)
                     }
                     Intent::ChangeDetails { .. } | Intent::Restore => Err(ApiError::Unexpected),
                 }
@@ -71,11 +54,7 @@ impl Workspace {
                 match intent {
                     Intent::Restore => {
                         service::restore(&id, on.version).await?;
-                        Ok(TrashedProject {
-                            version: on.version.next(),
-                            restored: true,
-                            ..on
-                        })
+                        Ok(on)
                     }
                     Intent::Rename { .. } | Intent::ChangeDetails { .. } | Intent::Trash => {
                         Err(ApiError::Unexpected)
@@ -91,105 +70,11 @@ impl Workspace {
             },
             failed,
         );
-        let listed_once = RwSignal::new(false);
         let opening = RwSignal::new(Opening::Idle);
-
-        let asking_the_list = Asking::new();
-        let listing = Action::new_local(move |awaited: &Option<Awaited>| {
-            let asked = asking_the_list.next();
-            let awaited = awaited.clone();
-
-            async move {
-                let answer = asking::until_it_holds(
-                    service::list,
-                    |answer: &Result<Vec<Project>, ApiError>| match (answer, &awaited) {
-                        (Ok(listed), Some(awaited)) => awaited.holds(listed),
-                        _ => true,
-                    },
-                    asking::paused,
-                )
-                .await;
-                if !asking_the_list.is_latest(asked) {
-                    return;
-                }
-                match answer {
-                    Ok(found) => listed.take_in_all(by_id(found, |project| &project.id)),
-                    Err(failure) => _ = problem.try_set(Some(failure)),
-                }
-                _ = listed_once.try_set(true);
-            }
-        });
-        let trash_asking = Asking::new();
-        let asking_the_trash = Action::new_local(move |awaited: &Option<AwaitedInTheTrash>| {
-            let asked = trash_asking.next();
-            let awaited = awaited.clone();
-
-            async move {
-                let answer = asking::until_it_holds(
-                    service::in_the_trash,
-                    |answer: &Result<Vec<TrashedProject>, ApiError>| match (answer, &awaited) {
-                        (Ok(found), Some(awaited)) => awaited.holds(found),
-                        _ => true,
-                    },
-                    asking::paused,
-                )
-                .await;
-                if !trash_asking.is_latest(asked) {
-                    return;
-                }
-                match answer {
-                    Ok(found) => trashed.take_in_all(by_id(found, |project| &project.id)),
-                    Err(failure) => _ = problem.try_set(Some(failure)),
-                }
-            }
-        });
-        asking_the_trash.dispatch(None);
-        StoredValue::new_local(Subscription::start(
-            "projects",
-            &[("mine", "true")],
-            move |told: FrameDTO| {
-                if let Some(awaited) = AwaitedInTheTrash::told(&told) {
-                    asking_the_trash.dispatch(Some(awaited));
-                }
-                let awaited = Awaited::told(&told);
-                let next = listed_once
-                    .try_get_untracked()
-                    .unwrap_or(false)
-                    .then(|| model::taken_in(confirmed(listed), told))
-                    .flatten();
-                match next {
-                    Some(next) => listed.take_in_all(by_id(next, |project| &project.id)),
-                    None => _ = listing.dispatch(awaited),
-                }
-            },
-            move || _ = listing.dispatch(None),
-        ));
-        if with_accounts {
-            let reconnected = StoredValue::new(false);
-            StoredValue::new_local(Subscription::start(
-                "members",
-                &[("mine", "true")],
-                move |told: FrameDTO| match model::membership_in(told) {
-                    Some(Membership::Begun(project)) => {
-                        take_in_joined(listed, project, Duration::ZERO)
-                    }
-                    Some(Membership::Ended(project)) => listed.forget(&project),
-                    None => {}
-                },
-                move || {
-                    if reconnected.get_value() {
-                        listing.dispatch(None);
-                    }
-                    reconnected.set_value(true);
-                },
-            ));
-        }
-
         let creation_refused = RwSignal::new(None);
 
-        Self {
+        let workspace = Self {
             listed,
-            listed_once,
             problem,
             opening,
             creating: Act::new(move |(name, details): (String, ProjectDetails), _: Here| {
@@ -199,7 +84,7 @@ impl Workspace {
                     if let Ok(created) = &outcome {
                         listed.take_in(created.id.clone(), created.clone());
                         opening.set(Opening::SettingUp);
-                        open_once_it_answers(opening, created.clone(), Duration::ZERO);
+                        arriving::open_once_it_answers(opening, created.clone(), Duration::ZERO);
                     }
 
                     _ = creation_refused.try_set(outcome.err());
@@ -207,9 +92,81 @@ impl Workspace {
             }),
             creation_refused,
             trashed,
-            listing,
-            asking_the_trash,
+        };
+        workspace.read_the_trash(None);
+        StoredValue::new_local(Subscription::start(
+            "projects",
+            &[("mine", "true")],
+            move |told: FrameDTO| workspace.heard(told),
+            move || workspace.read_the_list(None),
+        ));
+        if with_accounts {
+            let reconnected = StoredValue::new(false);
+            StoredValue::new_local(Subscription::start(
+                "members",
+                &[("mine", "true")],
+                move |told: FrameDTO| match model::membership_in(told) {
+                    Some(Membership::Begun(project)) => {
+                        arriving::take_in_joined(listed, project, Duration::ZERO)
+                    }
+                    Some(Membership::Ended(project)) => listed.forget(&project),
+                    None => {}
+                },
+                move || {
+                    if reconnected.get_value() {
+                        workspace.read_the_list(None);
+                    }
+                    reconnected.set_value(true);
+                },
+            ));
         }
+
+        workspace
+    }
+
+    fn heard(self, told: FrameDTO) {
+        if let Some(awaited) = model::awaited_in_the_trash(&told) {
+            self.read_the_trash(Some(awaited));
+        }
+        let awaited = model::awaited_in_the_list(&told);
+        if !untrack(|| self.listed.is_read()) {
+            return self.read_the_list(awaited);
+        }
+        let about = told.of.clone().map(ProjectId::from);
+        let held = about
+            .as_ref()
+            .and_then(|about| self.listed.confirmed_one(about));
+        match about.zip(model::told_about(held.as_ref(), told)) {
+            Some((about, Told::Changed(project))) => self.listed.take_in(about, project),
+            Some((about, Told::Gone)) => self.listed.forget(&about),
+            Some((_, Told::Unchanged)) => {}
+            None => self.read_the_list(awaited),
+        }
+    }
+
+    fn read_the_list(self, awaited: Option<Awaited<ProjectId>>) {
+        let reading = self.listed.read_all(
+            || async { Ok(by_id(service::list().await?, |project| &project.id)) },
+            awaited,
+        );
+        self.told_if_failed(reading);
+    }
+
+    fn read_the_trash(self, awaited: Option<Awaited<ProjectId>>) {
+        let reading = self.trashed.read_all(
+            || async { Ok(by_id(service::in_the_trash().await?, |project| &project.id)) },
+            awaited,
+        );
+        self.told_if_failed(reading);
+    }
+
+    fn told_if_failed(self, reading: impl Future<Output = Result<(), ApiError>> + 'static) {
+        let problem = self.problem;
+        task::spawn_local(async move {
+            if let Err(failure) = reading.await {
+                _ = problem.try_set(Some(failure));
+            }
+        });
     }
 
     pub fn projects(self) -> Vec<Project> {
@@ -229,7 +186,7 @@ impl Workspace {
     }
 
     pub fn loading(self) -> bool {
-        !self.listed_once.get()
+        !self.listed.is_read() && self.problem.with(Option::is_none)
     }
 
     pub fn creating(self) -> Signal<bool> {
@@ -277,19 +234,12 @@ impl Workspace {
     }
 
     pub fn trash(self, id: ProjectId) {
-        if untrack(|| self.listed.unanswered_on(&id)) {
-            return;
-        }
         self.problem.set(None);
-        let Some(landed) = self.listed.intended(&id, Intent::Trash) else {
-            return;
-        };
-        let (listed, asking_the_trash) = (self.listed, self.asking_the_trash);
+        let ending = self.listed.ending(&id, Intent::Trash);
 
         task::spawn_local(async move {
-            if landed.await {
-                listed.forget(&id);
-                asking_the_trash.dispatch(Some(AwaitedInTheTrash::In(id)));
+            if ending.await {
+                self.read_the_trash(Some(Awaited::Held { id, at_least: 0 }));
             }
         });
     }
@@ -311,22 +261,12 @@ impl Workspace {
     }
 
     pub fn restore(self, id: ProjectId) {
-        if untrack(|| self.trashed.unanswered_on(&id)) {
-            return;
-        }
         self.problem.set(None);
-        let Some(landed) = self.trashed.intended(&id, Intent::Restore) else {
-            return;
-        };
-        let (trashed, listing) = (self.trashed, self.listing);
+        let ending = self.trashed.ending(&id, Intent::Restore);
 
         task::spawn_local(async move {
-            if landed.await {
-                trashed.forget(&id);
-                listing.dispatch(Some(Awaited::Listed {
-                    id,
-                    at_least: Version::from(0),
-                }));
+            if ending.await {
+                self.read_the_list(Some(Awaited::Held { id, at_least: 0 }));
             }
         });
     }
@@ -337,50 +277,4 @@ fn by_id<T>(found: Vec<T>, id: impl Fn(&T) -> &ProjectId) -> Vec<(ProjectId, T)>
         .into_iter()
         .map(|held| (id(&held).clone(), held))
         .collect()
-}
-
-fn confirmed(listed: Listed) -> Vec<Project> {
-    listed
-        .confirmed_all()
-        .into_iter()
-        .map(|(_, project)| project)
-        .collect()
-}
-
-fn open_once_it_answers(opening: RwSignal<Opening>, project: Project, waited: Duration) {
-    task::spawn_local(async move {
-        let next = match service::one(&project.id).await {
-            Ok(_) => Opening::Opened(project),
-            Err(ApiError::NotFound(_)) => match model::next_wait(waited) {
-                Some(wait) => {
-                    _ = set_timeout(
-                        move || open_once_it_answers(opening, project, waited + wait),
-                        wait,
-                    );
-                    return;
-                }
-                None => Opening::Unopened(ApiError::Rejected(Refusal {
-                    kind: Some(NOT_YET_OPEN.to_owned()),
-                    detail: String::new(),
-                    particulars: Vec::new(),
-                })),
-            },
-            Err(failure) => Opening::Unopened(failure),
-        };
-        _ = opening.try_set(next);
-    });
-}
-
-fn take_in_joined(listed: Listed, project: ProjectId, waited: Duration) {
-    task::spawn_local(async move {
-        match service::one(&project).await {
-            Ok(found) => listed.take_in(project, found),
-            Err(ApiError::NotFound(_)) => {
-                if let Some(wait) = model::next_wait(waited) {
-                    _ = set_timeout(move || take_in_joined(listed, project, waited + wait), wait);
-                }
-            }
-            Err(_) => {}
-        }
-    });
 }

@@ -14,14 +14,10 @@ use scenes_core::{
 use scenes_messaging::CatalogueScenesListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction};
 
 use crate::committed::Committed;
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 fn a_project() -> ProjectLink {
     ProjectLink::from("project_1")
@@ -38,7 +34,7 @@ struct Wired {
 
 fn a_listener_cataloguing_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<CatalogueScenesListener> {
     let transactions = Arc::new(InMemoryTransactions::new());
-    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
     Inboxed::new(
         CatalogueScenesListener::new(ScenesCore::new(
@@ -158,7 +154,7 @@ impl SceneCatalog for OutOfReach {
 impl Wired {
     async fn hears(&self, change: SceneChange, seconds: i64) {
         self.catalogue
-            .handle(&scenes_messaging::message_for(&change, at(seconds)))
+            .handle(&scenes_messaging::message_for(&change, clock::at(seconds)))
             .await
             .expect("the listener should take what scenes announces");
     }
@@ -205,7 +201,7 @@ fn summary(id: SceneId, title: &str, opening: &str) -> SceneSummary {
 }
 
 fn a_scene() -> SceneId {
-    SceneId::generate(at(1_000))
+    SceneId::generate(clock::at(1_000))
 }
 
 #[test]
@@ -276,7 +272,7 @@ async fn a_catalog_out_of_reach_fails_the_listener_so_the_message_is_tried_again
     ] {
         assert!(
             catalogue
-                .handle(&scenes_messaging::message_for(&change, at(1_000)))
+                .handle(&scenes_messaging::message_for(&change, clock::at(1_000)))
                 .await
                 .is_err(),
             "{change:?} was taken as done though the catalog never heard it"
@@ -345,7 +341,7 @@ async fn a_message_naming_no_scene_is_refused() {
         .handle(&Message::opening(
             RoutingKey::parse(CREATED).expect("a declared key"),
             json!({ "scene": "idea_1", "project": "project_1" }),
-            at(1_000),
+            clock::at(1_000),
         ))
         .await;
 
@@ -378,11 +374,15 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         bench.catalog.clone(),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(FixedClock::new(clock::at(1_000))),
     );
 
     // then: its tombstone was laid at the deletion and is forgotten once
-    for (before, forgotten) in [(at(5_000), 0), (at(5_001), 1), (at(5_001), 0)] {
+    for (before, forgotten) in [
+        (clock::at(5_000), 0),
+        (clock::at(5_001), 1),
+        (clock::at(5_001), 0),
+    ] {
         assert_eq!(
             scenes
                 .forget_tombstones_laid_before(before, u64::MAX)

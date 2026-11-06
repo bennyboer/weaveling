@@ -1,4 +1,4 @@
-use gloo_net::http::{Request, RequestBuilder};
+use gloo_net::http::Request;
 use invitations_contract::{
     DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
     InviteRequest,
@@ -15,14 +15,6 @@ const INVITATIONS: &str = "/api/invitations";
 const MINE: &str = "/api/invitations/mine";
 const TURNED_DOWN: &str = "/api/invitations/decline";
 const INVITATION: &str = "invitation";
-const IF_MATCH: &str = "If-Match";
-
-fn made_on(request: RequestBuilder, on: u64) -> RequestBuilder {
-    match on {
-        0 => request,
-        on => request.header(IF_MATCH, &format!("\"{on}\"")),
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvitedInto {
@@ -64,6 +56,21 @@ pub async fn list_invitations(
     InvitationPage::of(page)
 }
 
+pub async fn listed_invitation(into: &InvitedInto, id: &str) -> Result<ListedInvitation, ApiError> {
+    let mut after = None;
+    loop {
+        let page = list_invitations(into, after.as_deref()).await?;
+        if let Some(found) = page
+            .invitations
+            .into_iter()
+            .find(|invitation| invitation.id == id)
+        {
+            return Ok(found);
+        }
+        after = Some(page.next.ok_or(ApiError::NotFound(INVITATION))?);
+    }
+}
+
 pub async fn mine() -> Result<Vec<InvitationToYou>, ApiError> {
     let told: Vec<InvitationToYouDTO> =
         http::parsed(http::sent(Request::get(MINE)).await?, INVITATION).await?;
@@ -100,7 +107,11 @@ pub async fn invite(email: &str, scope: &Scope) -> Result<ListedInvitation, ApiE
 
 pub async fn withdraw(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
-        http::sent(made_on(Request::delete(&format!("{INVITATIONS}/{id}")), on)).await?,
+        http::sent(http::made_on(
+            Request::delete(&format!("{INVITATIONS}/{id}")),
+            on,
+        ))
+        .await?,
         INVITATION,
     )
     .await

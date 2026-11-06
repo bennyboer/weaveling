@@ -10,10 +10,10 @@ use crate::icons::Icon;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::speech;
-use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
 use crate::writing::heading;
 use crate::writing::margin::{Edge, Marked, Menu};
+use crate::writing::question::Question;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -77,7 +77,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                         .into_any(),
                     },
                     item("menu-delete-scene", true, move || {
-                        state.margin.ask(Asking::DeleteScene(delete.clone()))
+                        state.margin.ask(Question::DeleteScene(delete.clone()))
                     }),
                 )
                     .into_any()
@@ -123,7 +123,7 @@ pub fn section_margin(
                             untrack(|| !state.structure.scenes_of(&removed).is_empty());
 
                         if holds_scenes {
-                            state.margin.ask(Asking::RemoveSection(removed.clone()));
+                            state.margin.ask(Question::RemoveSection(removed.clone()));
                         } else {
                             state.margin.close();
                             state.structure.remove(removed.clone());

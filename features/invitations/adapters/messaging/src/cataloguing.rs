@@ -5,11 +5,9 @@ use clock::Clock;
 use inbox::KeptHandler;
 use invitations_contract::EVERY_INVITATION;
 use invitations_core::{InvitationId, InvitationsCore, ProjectLink};
-use messaging::{Failure, Message, RoutingKey};
+use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 pub const WITHDRAW_IF_PROJECT_GONE: &str = "follow-up.invitation.withdraw-if-project-gone";
@@ -62,32 +60,21 @@ impl KeptHandler for CatalogueInvitationsListener {
         };
 
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(&invitation.to_string(), "invitation"),
-                &withdraw_if_project_gone(message, &invitation, &project, self.clock.now()),
+                message,
+                WITHDRAW_IF_PROJECT_GONE,
+                &WithdrawIfProjectGoneDTO {
+                    invitation: invitation.to_string(),
+                    project: project.to_string(),
+                },
+                self.clock.now(),
             )
             .await?;
 
         Ok(())
     }
-}
-
-fn withdraw_if_project_gone(
-    heard: &Message,
-    invitation: &InvitationId,
-    project: &ProjectLink,
-    now: OffsetDateTime,
-) -> Message {
-    heard.answering(
-        RoutingKey::parse(WITHDRAW_IF_PROJECT_GONE)
-            .expect("a follow-up's routing key holds no wildcards"),
-        json!(WithdrawIfProjectGoneDTO {
-            invitation: invitation.to_string(),
-            project: project.to_string(),
-        }),
-        now,
-    )
 }
 
 pub struct WithdrawIfProjectGoneListener {

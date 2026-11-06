@@ -60,9 +60,9 @@ fn problem_of(failure: NotificationsError) -> Problem {
         | NotificationsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(serving::NOT_FOUND, "there is no such notice")
         }
-        NotificationsError::Events(
-            ref outdated @ ServiceError::Store(StoreError::Outdated { .. }),
-        ) => Problem::of(outdated, |refusal| Problem::unexpected(refusal)),
+        NotificationsError::Events(ServiceError::Store(StoreError::Outdated {
+            ref kind, ..
+        })) => Problem::outdated(kind),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

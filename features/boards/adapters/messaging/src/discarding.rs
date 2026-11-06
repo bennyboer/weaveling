@@ -5,11 +5,9 @@ use boards_core::BoardsCore;
 use clock::Clock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use inbox::KeptHandler;
-use messaging::{Failure, Message, RoutingKey};
+use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use time::OffsetDateTime;
 use transacting::Transaction;
 
 pub const LET_GO_EVERYWHERE: &str = "follow-up.board.let-go-everywhere";
@@ -53,25 +51,18 @@ impl KeptHandler for UnpinOnDiscardListener {
             .lay_tombstone(Some(&mut *transaction), &idea, message.occurred_at)
             .await?;
         self.outbox
-            .enqueue_within(
+            .enqueue_follow_up_within(
                 transaction,
                 Origin::unversioned(&idea, "idea"),
-                &let_go_everywhere(message, &idea, self.clock.now()),
+                message,
+                LET_GO_EVERYWHERE,
+                &LetGoEverywhereDTO { idea: idea.clone() },
+                self.clock.now(),
             )
             .await?;
 
         Ok(())
     }
-}
-
-fn let_go_everywhere(heard: &Message, idea: &str, now: OffsetDateTime) -> Message {
-    heard.answering(
-        RoutingKey::parse(LET_GO_EVERYWHERE).expect("a follow-up's routing key holds no wildcards"),
-        json!(LetGoEverywhereDTO {
-            idea: idea.to_owned(),
-        }),
-        now,
-    )
 }
 
 pub struct LetGoOfDiscardedIdeaListener {

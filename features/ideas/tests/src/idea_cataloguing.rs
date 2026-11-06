@@ -5,21 +5,16 @@ use eventsourcing::{Agent, AggregateContext, AggregateId, EventMetadata, Recorde
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeaId, IdeaTitle, KIND, ProjectLink};
 use messaging::{Message, RoutingKey};
 use serde_json::json;
-use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
 use crate::wiring::Wired;
-
-fn at(seconds: i64) -> OffsetDateTime {
-    OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-}
 
 fn an_author() -> Agent {
     Agent::Local
 }
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 async fn titles_listed(wired: &Wired) -> Vec<String> {
@@ -56,7 +51,7 @@ fn message_about(id: &IdeaId, event: IdeaEvent) -> Message {
             kind: KIND,
             version: Version::of(1),
             agent: an_author(),
-            occurred_at: at(1_000),
+            occurred_at: clock::at(1_000),
             is_snapshot: false,
             context: AggregateContext::default(),
         },
@@ -143,17 +138,17 @@ async fn a_stale_message_cannot_resurrect_a_discarded_idea() {
         (
             wired
                 .ideas
-                .forget_tombstones_laid_before(at(1_000), 10)
+                .forget_tombstones_laid_before(clock::at(1_000), 10)
                 .await
                 .expect("forgetting should succeed"),
             wired
                 .ideas
-                .forget_tombstones_laid_before(at(1_001), 10)
+                .forget_tombstones_laid_before(clock::at(1_001), 10)
                 .await
                 .expect("forgetting should succeed"),
             wired
                 .ideas
-                .forget_tombstones_laid_before(at(1_001), 10)
+                .forget_tombstones_laid_before(clock::at(1_001), 10)
                 .await
                 .expect("forgetting should succeed"),
         ),
@@ -196,7 +191,7 @@ async fn a_message_about_no_idea_at_all_is_refused() {
     let nonsense = Message::opening(
         RoutingKey::parse("idea.captured").expect("a plain key is fine"),
         json!({ "nothing": "useful" }),
-        at(1_000),
+        clock::at(1_000),
     );
 
     // when: it is heard
@@ -213,7 +208,7 @@ async fn a_message_about_no_idea_at_all_is_refused() {
 async fn a_message_about_an_idea_that_was_never_stored_is_refused() {
     // given: an idea never stored
     let wired = a_workbench();
-    let never_stored = IdeaId::generate(at(1_000));
+    let never_stored = IdeaId::generate(clock::at(1_000));
 
     // when: its capture is heard
     let refused = wired

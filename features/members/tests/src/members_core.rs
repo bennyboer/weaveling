@@ -3,13 +3,13 @@ use std::sync::Arc;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{
-    Agent, EventStore, FailsAppending, InMemoryEventStore, ServiceError, StoreError,
+    AccountId, Agent, EventStore, FailsAppending, InMemoryEventStore, ServiceError, StoreError,
 };
 use inbox::{InMemoryInbox, Inboxed};
 use members_catalog::InMemoryMembershipCatalog;
 use members_core::{MembersCore, MembersCoreError, MembersError, MembersEvent, Role};
 use members_messaging::DisbandMembersOfDeletedProjectListener;
-use messaging::{Listener, Message, RoutingKey};
+use messaging::Listener;
 use projects_contract::DELETED;
 use serde_json::json;
 use time::OffsetDateTime;
@@ -107,14 +107,13 @@ async fn a_disbanding_that_lost_a_race_is_refused_and_lands_when_it_is_offered_a
         )))),
     );
     // and: the project's deletion
-    let deleted = Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared key"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": "project_1", "kind": "project", "version": 4 },
-            "agent": { "kind": "account", "id": "account_ada" },
-            "occurred_at": "1970-01-01T00:00:00Z",
-        }),
+    let deleted = eventpublishing::published(
+        DELETED,
+        "project",
+        "project_1",
+        4,
+        json!({ "version": 0, "name": "DELETED" }),
+        &Agent::Account(AccountId::from("account_ada")),
         OffsetDateTime::UNIX_EPOCH,
     );
 
