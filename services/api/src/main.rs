@@ -20,9 +20,15 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
     let accounts = or_stop(settings.accounts());
     let mailing = settings.mailing();
     let sign_up = or_stop(settings.sign_up());
+    let totp_key = or_stop(settings.totp_key());
     match accounts {
         Accounts::On => {
-            tracing::info!("keeping the work {backend}, {accounts}, {sign_up}, {mailing}")
+            tracing::info!("keeping the work {backend}, {accounts}, {sign_up}, {mailing}");
+            if totp_key.is_none() {
+                tracing::warn!(
+                    "no TOTP key is set, so two-step sign-in cannot be set up; see weaveling.example.toml"
+                );
+            }
         }
         Accounts::Off => tracing::info!("keeping the work {backend}, {accounts}, {mailing}"),
     }

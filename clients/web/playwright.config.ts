@@ -15,7 +15,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: "cargo run -p weaveling-service-api",
+      command: "cargo run -p weaveling-service-api -- --config clients/web/e2e/weaveling.toml",
       cwd: "../..",
       url: "http://127.0.0.1:3000/api/service/health",
       reuseExistingServer: true,

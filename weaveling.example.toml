@@ -35,6 +35,13 @@
 # by the operator or into a project.
 # WEAVELING_SIGN_UP
 # sign_up = "open"
+#
+# The key that seals every account's two-step sign-in secret: 64 hexadecimal
+# digits, such as `openssl rand -hex 32` prints. Without it, two-step sign-in
+# cannot be set up; lost, every account's two-step sign-in is lost with it.
+# Given itself as totp_key or WEAVELING_TOTP_KEY, or, better kept out of this
+# file, as totp_key_file or WEAVELING_TOTP_KEY_FILE, the path of a file that
+# holds it, such as /etc/weaveling/totp.key. Set one of the two, never both.
 
 [mail]
 # Where mail goes until there is a mail server to send it: left out, into the

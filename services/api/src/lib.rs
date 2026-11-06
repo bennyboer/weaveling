@@ -42,7 +42,8 @@ pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
 pub use settings::{
-    Setting, Settings, Unlistenable, Unsettled, WEAVELING_CONFIG, WEAVELING_LISTEN,
+    Setting, Settings, Unlistenable, UnreadableTotpKey, Unsettled, WEAVELING_CONFIG,
+    WEAVELING_LISTEN, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
 };
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};

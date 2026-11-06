@@ -3,6 +3,7 @@ mod listen;
 mod setting;
 #[cfg(test)]
 mod tests;
+mod totp_key;
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,7 @@ use file::BESIDE;
 
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
 pub use setting::Setting;
+pub use totp_key::{UnreadableTotpKey, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE};
 
 pub const WEAVELING_CONFIG: &str = "WEAVELING_CONFIG";
 
@@ -27,6 +29,10 @@ pub enum Unsettled {
     NoFile(String, PathBuf),
     #[error("the settings file {0} cannot be read: {1}")]
     Unreadable(PathBuf, String),
+    #[error("{0} and {1} are both set; set one of them")]
+    Doubled(String, String),
+    #[error("{0} names the file {1}, which cannot be read: {2}")]
+    SecretFile(String, PathBuf, String),
     #[error(transparent)]
     Backend(#[from] Unchosen),
     #[error(transparent)]
@@ -37,6 +43,8 @@ pub enum Unsettled {
     Flaky(#[from] Unflaky),
     #[error(transparent)]
     Listen(#[from] Unlistenable),
+    #[error(transparent)]
+    TotpKey(#[from] UnreadableTotpKey),
 }
 
 /// Every setting the server starts with, read once: built-in defaults, then a settings file, then the variables, the later winning.
@@ -49,6 +57,7 @@ pub struct Settings {
     sign_up: Option<Setting>,
     mail_drop: Option<Setting>,
     flaky: Option<Setting>,
+    totp_key: Option<Setting>,
 }
 
 impl Settings {
@@ -74,7 +83,7 @@ impl Settings {
             None if beside.join(BESIDE).is_file() => Self::filed(&beside.join(BESIDE))?,
             None => Self::default(),
         };
-        settings.set_by_variables(&variable);
+        settings.set_by_variables(&variable)?;
 
         Ok(settings)
     }
@@ -99,7 +108,16 @@ impl Settings {
         self.flaky.clone().map(Flakiness::parse).transpose()
     }
 
-    fn set_by_variables(&mut self, variable: &impl Fn(&str) -> Option<String>) {
+    fn set_by_variables(
+        &mut self,
+        variable: &impl Fn(&str) -> Option<String>,
+    ) -> Result<(), Unsettled> {
+        let set = |name: &str| {
+            variable(name)
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| Setting::new(name, value))
+        };
+
         for (name, setting) in [
             (WEAVELING_LISTEN, &mut self.listen),
             (WEAVELING_DATABASE_URL, &mut self.database_url),
@@ -109,9 +127,16 @@ impl Settings {
             (WEAVELING_MAIL_DROP, &mut self.mail_drop),
             (WEAVELING_FLAKY, &mut self.flaky),
         ] {
-            if let Some(value) = variable(name).filter(|value| !value.trim().is_empty()) {
-                *setting = Some(Setting::new(name, value));
+            if let Some(given) = set(name) {
+                *setting = Some(given);
             }
         }
+        if let Some(totp_key) =
+            totp_key::secret(set(WEAVELING_TOTP_KEY), set(WEAVELING_TOTP_KEY_FILE))?
+        {
+            self.totp_key = Some(totp_key);
+        }
+
+        Ok(())
     }
 }

@@ -5,3 +5,6 @@ dist/
 
 clients/web/js/editor.bundle.js
 clients/web/stress/seeded-*.json
+
+/weaveling.toml
+/weaveling.dev.key

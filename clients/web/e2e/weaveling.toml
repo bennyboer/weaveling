@@ -1,0 +1,8 @@
+# The settings every browser test starts the server with, named by --config,
+# so a weaveling.toml of your own beside the server changes nothing here.
+# The variables each test config sets still win over this file.
+
+[accounts]
+# A key for tests alone, written here for anyone to read: never for an
+# instance with real accounts.
+totp_key = "7e57000000000000000000000000000000000000000000000000000000007e57"

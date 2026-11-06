@@ -162,6 +162,8 @@ Start the API first if you care about the first paint; otherwise the client show
 
 **Settings are read once, at startup:** built-in defaults, then a `weaveling.toml` beside the server (or the file `--config <path>` or `WEAVELING_CONFIG` names), then the variables below, the later winning. [`weaveling.example.toml`](./weaveling.example.toml) names every key, each with the variable of the same meaning. A value the server cannot read stops it, saying which key in which file or which variable holds it. The API listens on `127.0.0.1:3000` unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port, `0.0.0.0:3000` to be reached from other machines.
 
+**For running it by hand**, `node scripts/dev-settings.mjs` writes a `weaveling.toml` of your own and a `weaveling.dev.key` it names, the key that seals two-step sign-in secrets; git ignores both, and the script never overwrites either, since a new key locks out every second factor set up with the old one. The browser tests start the API with `--config clients/web/e2e/weaveling.toml` instead, a key for tests alone, so your own file changes nothing there.
+
 **Where the work is kept is chosen at startup**, and one binary carries every option:
 
 - **Nothing set** — in memory, so restarting the API empties it.

@@ -337,3 +337,171 @@ fn numbers_and_truths_in_the_file_are_read_as_their_settings_are() {
     assert_eq!(settings.accounts().expect("off"), Accounts::Off);
     assert!(settings.flakiness().expect("a share").is_some());
 }
+
+const A_KEY: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+#[test]
+fn without_a_totp_key_there_is_none() {
+    // given: no settings
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: there is no key
+    assert!(settings.totp_key().expect("none is fine").is_none());
+}
+
+#[test]
+fn a_totp_key_is_given_itself_or_in_a_file_of_its_own() {
+    // given: a file holding a key, with a line break after it
+    let folder = a_folder();
+    let key_file = a_file(&folder, "totp.key", &format!("{A_KEY}\n"));
+
+    // when: the key is given by a variable
+    let given = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY, A_KEY)]),
+        &folder,
+    )
+    .expect("a key is read");
+    // then: there is a key
+    assert!(given.totp_key().expect("a key").is_some());
+    // when: it is given as the file by a variable
+    let in_file = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY_FILE, &key_file.display().to_string())]),
+        &folder,
+    )
+    .expect("the file is read");
+    // then: there is a key
+    assert!(in_file.totp_key().expect("a key").is_some());
+    // when: it is given as the file by the settings file
+    a_file(
+        &folder,
+        BESIDE,
+        &format!("[accounts]\ntotp_key_file = '{}'\n", key_file.display()),
+    );
+    let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("both are read");
+    // then: there is a key
+    assert!(filed.totp_key().expect("a key").is_some());
+}
+
+#[test]
+fn a_totp_key_is_shown_nowhere() {
+    // given: settings with a key
+    let folder = a_folder();
+    let settings = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY, A_KEY)]),
+        &folder,
+    )
+    .expect("a key is read");
+
+    // expect: debugging the settings does not show it
+    assert!(!format!("{settings:?}").contains(&A_KEY[..16]));
+    // when: a key that cannot be read is given
+    let refused = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY, "0123456789abcdef-not-a-key")]),
+        &folder,
+    )
+    .expect("the variable is read")
+    .totp_key()
+    .expect_err("not 64 hexadecimal digits");
+    // then: the refusal names where it was set, and not what it is
+    let refusal = refused.to_string();
+    assert!(refusal.contains(WEAVELING_TOTP_KEY), "{refusal}");
+    assert!(!refusal.contains("0123456789abcdef"), "{refusal}");
+}
+
+#[test]
+fn a_totp_key_given_both_itself_and_in_a_file_stops_the_start() {
+    // given: a key and a file of one, both by variables
+    let folder = a_folder();
+    let key_file = a_file(&folder, "totp.key", A_KEY);
+
+    // when: the settings are read
+    let refused = Settings::read(
+        no_arguments(),
+        variables(&[
+            (WEAVELING_TOTP_KEY, A_KEY),
+            (WEAVELING_TOTP_KEY_FILE, &key_file.display().to_string()),
+        ]),
+        &folder,
+    );
+
+    // then: it is refused, naming both
+    assert!(
+        matches!(&refused, Err(Unsettled::Doubled(one, other)) if one == WEAVELING_TOTP_KEY && other == WEAVELING_TOTP_KEY_FILE),
+        "which of two keys was meant cannot be guessed: {refused:?}"
+    );
+}
+
+#[test]
+fn a_totp_key_file_that_cannot_be_read_stops_the_start() {
+    // given: a variable naming a file that is not there
+    let folder = a_folder();
+
+    // when: the settings are read
+    let refused = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY_FILE, "missing.key")]),
+        &folder,
+    );
+
+    // then: it is refused, naming the variable and the file
+    assert!(
+        matches!(&refused, Err(Unsettled::SecretFile(source, path, _)) if source == WEAVELING_TOTP_KEY_FILE && path.ends_with("missing.key")),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn a_totp_key_by_variable_wins_over_the_files() {
+    // given: a settings file giving a key
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[accounts]\ntotp_key = '0000000000000000000000000000000000000000000000000000000000000000'\n",
+    );
+
+    // when: the settings are read with the key by variable as well
+    let settings = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_TOTP_KEY, "not a key")]),
+        &folder,
+    )
+    .expect("both are read");
+
+    // then: the variable's holds
+    let refusal = settings
+        .totp_key()
+        .expect_err("the variable's is no key")
+        .to_string();
+    assert!(refusal.contains(WEAVELING_TOTP_KEY), "{refusal}");
+}
+
+#[test]
+fn the_browser_tests_settings_hold_a_totp_key() {
+    // given: the settings file the browser tests start the server with
+    let folder = a_folder();
+    let e2e = a_file(
+        &folder,
+        "e2e.toml",
+        include_str!("../../../../clients/web/e2e/weaveling.toml"),
+    );
+
+    // when: the settings are read from it
+    let settings = Settings::read(
+        ["--config".to_owned(), e2e.display().to_string()],
+        variables(&[]),
+        &folder,
+    )
+    .expect("the file is read");
+
+    // then: it holds a key, so two-step sign-in can be set up in every browser test
+    assert!(settings.totp_key().expect("a key").is_some());
+}

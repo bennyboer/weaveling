@@ -25,6 +25,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+aes-gcm = "0.10.3"
 argon2 = { version = "0.5.3", features = ["std"] }
 async-trait = "0.1.91"
 axum = "0.8.9"

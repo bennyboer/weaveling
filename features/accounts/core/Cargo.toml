@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+aes-gcm = { workspace = true }
 argon2 = { workspace = true }
 async-trait = { workspace = true }
 rand_core = { workspace = true }

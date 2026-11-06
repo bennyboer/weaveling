@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{Setting, Settings, Unsettled, WEAVELING_CONFIG};
+use super::{Setting, Settings, Unsettled, WEAVELING_CONFIG, totp_key};
 
 pub(super) const BESIDE: &str = "weaveling.toml";
 const CONFIG_FLAG: &str = "--config";
@@ -36,6 +36,8 @@ struct FiledStorage {
 struct FiledAccounts {
     enabled: Option<toml::Value>,
     sign_up: Option<toml::Value>,
+    totp_key: Option<toml::Value>,
+    totp_key_file: Option<toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -66,6 +68,10 @@ impl Settings {
             sign_up: setting(key("accounts.sign_up"), filed.accounts.sign_up),
             mail_drop: setting(key("mail.drop"), filed.mail.drop),
             flaky: setting(key("testing.flaky"), filed.testing.flaky),
+            totp_key: totp_key::secret(
+                setting(key("accounts.totp_key"), filed.accounts.totp_key),
+                setting(key("accounts.totp_key_file"), filed.accounts.totp_key_file),
+            )?,
         })
     }
 }

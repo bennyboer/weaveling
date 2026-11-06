@@ -1,10 +1,11 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 /// A setting's value and its source, a variable or a key in the settings file, so a value that cannot be read says where to mend it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Setting {
     pub value: String,
     pub source: String,
+    secret: bool,
 }
 
 impl Setting {
@@ -12,12 +13,34 @@ impl Setting {
         Self {
             value: value.into(),
             source: source.into(),
+            secret: false,
         }
+    }
+
+    /// A setting whose value is never shown, in a refusal or a log.
+    pub fn secret(source: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            secret: true,
+            ..Self::new(source, value)
+        }
+    }
+
+    fn shown(&self) -> &str {
+        if self.secret { "…" } else { &self.value }
     }
 }
 
 impl Display for Setting {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} is '{}'", self.source, self.value)
+        write!(f, "{} is '{}'", self.source, self.shown())
+    }
+}
+
+impl Debug for Setting {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Setting")
+            .field("value", &self.shown())
+            .field("source", &self.source)
+            .finish()
     }
 }

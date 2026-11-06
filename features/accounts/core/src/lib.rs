@@ -18,6 +18,7 @@ mod signing_up;
 mod throttle;
 mod ticket;
 mod totp;
+mod totp_key;
 
 #[cfg(test)]
 mod account_tests;
@@ -45,3 +46,4 @@ pub use signing_up::SigningUp;
 pub use throttle::Guarded;
 pub use ticket::{InvitationScope, InvitationTicket, InvitationToken};
 pub use totp::{TotpSecret, TotpStep};
+pub use totp_key::{InvalidTotpKey, SealedTotpSecret, TotpKey};
