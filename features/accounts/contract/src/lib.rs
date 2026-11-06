@@ -98,6 +98,30 @@ pub struct SignedInDTO {
     pub email: String,
     pub stage: String,
     pub operator: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second_factor: Option<SecondFactorDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SecondFactorDTO {
+    pub since: String,
+    pub recovery_codes_left: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SettingUpSecondFactorDTO {
+    pub secret: String,
+    pub otpauth_uri: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SecondFactorCodeRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RecoveryCodesDTO {
+    pub codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -107,6 +131,8 @@ pub struct ServiceModeDTO {
     pub sign_up: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub operator_wanted: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub second_factors: bool,
 }
 
 pub const SESSION_COOKIE: &str = "weaveling_session";
@@ -207,8 +233,11 @@ pub mod refused {
     pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
     pub const INVITATION_FOR_ANOTHER_ADDRESS: &str = "invitation-for-another-address";
     pub const INVITATION_NOT_BY_AN_OPERATOR: &str = "invitation-not-by-an-operator";
+    pub const SECOND_FACTORS_UNAVAILABLE: &str = "second-factors-unavailable";
+    pub const NOTHING_BEING_SET_UP: &str = "second-factor-nothing-being-set-up";
+    pub const SECOND_FACTOR_CODE_WRONG: &str = "second-factor-code-wrong";
 
-    pub const EVERY: [&str; 33] = [
+    pub const EVERY: [&str; 36] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -242,5 +271,8 @@ pub mod refused {
         EMAIL_ADDRESS_HAS_ACCOUNT,
         INVITATION_FOR_ANOTHER_ADDRESS,
         INVITATION_NOT_BY_AN_OPERATOR,
+        SECOND_FACTORS_UNAVAILABLE,
+        NOTHING_BEING_SET_UP,
+        SECOND_FACTOR_CODE_WRONG,
     ];
 }

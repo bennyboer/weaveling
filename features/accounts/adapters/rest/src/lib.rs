@@ -1,6 +1,7 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockDTO,
-    LockRequest, NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest,
+    LockRequest, NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SESSION_COOKIE,
+    SecondFactorCodeRequest, SecondFactorDTO, SendCodeRequest, SettingUpSecondFactorDTO,
     SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
     VerifyEmailRequest, lock_kind, refused, stage,
 };
@@ -67,6 +68,14 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/accounts/current/invitations/{invitation}/decline",
             routing::post(decline_invitation_by_id),
+        )
+        .route(
+            "/accounts/current/second-factor/setup",
+            routing::post(begin_setting_up_second_factor),
+        )
+        .route(
+            "/accounts/current/second-factor/setup/finish",
+            routing::post(finish_setting_up_second_factor),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
@@ -271,6 +280,44 @@ async fn become_operator(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn begin_setting_up_second_factor(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+) -> Result<Json<SettingUpSecondFactorDTO>, Problem> {
+    let setting_up = accounts
+        .begin_setting_up_second_factor(&account)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(SettingUpSecondFactorDTO {
+        secret: setting_up.secret,
+        otpauth_uri: setting_up.otpauth_uri,
+    }))
+}
+
+async fn finish_setting_up_second_factor(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    headers: HeaderMap,
+    Json(request): Json<SecondFactorCodeRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let (token, codes) = accounts
+        .finish_setting_up_second_factor(&account, &request.code, &session)
+        .await
+        .map_err(problem_of)?;
+
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(RecoveryCodesDTO {
+            codes: codes.iter().map(ToString::to_string).collect(),
+        }),
+    )
+        .into_response())
+}
+
 pub const PAGE: usize = 100;
 
 #[derive(Deserialize)]
@@ -429,6 +476,13 @@ fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
+        second_factor: signed_in
+            .account
+            .second_factor()
+            .map(|factor| SecondFactorDTO {
+                since: text::serialize(factor.since),
+                recovery_codes_left: factor.recovery_codes_left,
+            }),
     }
 }
 
@@ -551,6 +605,15 @@ fn problem_of(refusal: AccountsError) -> Problem {
         }
         AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
+        }
+        AccountsError::SecondFactorsUnavailable => {
+            Problem::refused(refused::SECOND_FACTORS_UNAVAILABLE, refusal)
+        }
+        AccountsError::NothingBeingSetUp => {
+            Problem::refused(refused::NOTHING_BEING_SET_UP, refusal)
+        }
+        AccountsError::SecondFactorCodeWrong => {
+            Problem::unprocessable(refused::SECOND_FACTOR_CODE_WRONG, refusal)
         }
         unserveable => Problem::unexpected(unserveable),
     }

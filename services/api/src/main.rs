@@ -38,6 +38,9 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
             .await
             .unwrap_or_else(|why| panic!("{why}"));
     adapters = adapters.signing_up(sign_up);
+    if let Some(key) = totp_key {
+        adapters = adapters.sealing_second_factors(key);
+    }
     if let Some(flakiness) = or_stop(settings.flakiness()) {
         tracing::warn!("flakiness is set: listeners refuse messages on purpose");
         adapters = adapters.refusing_on_purpose(flakiness);

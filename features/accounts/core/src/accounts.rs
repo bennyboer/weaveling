@@ -1,6 +1,7 @@
 mod codes;
 mod invitations;
 mod operating;
+mod second_factors;
 mod sessions;
 mod sign_ups;
 
@@ -21,13 +22,15 @@ use crate::catalog::{AccountCatalog, AccountSummary};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::secrets::{
-    EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores, SecretsError, Sessions,
-    Verifications,
+    EmailAddresses, InvitationTickets, Operators, Passwords, SecondFactors, SecretStores,
+    SecretsError, Sessions, Verifications,
 };
 use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
+use crate::totp_key::TotpKey;
 use email::EmailAddress;
 
+pub use second_factors::SettingUpSecondFactor;
 pub use sessions::SignedIn;
 
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
@@ -43,6 +46,8 @@ pub struct AccountsCore {
     throttles: Arc<dyn Throttles>,
     operators: Arc<dyn Operators>,
     invitation_tickets: Arc<dyn InvitationTickets>,
+    second_factors: Arc<dyn SecondFactors>,
+    totp_key: Option<TotpKey>,
     catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
@@ -67,7 +72,7 @@ impl AccountsCore {
             throttles,
             operators,
             invitation_tickets,
-            second_factors: _,
+            second_factors,
         } = secrets;
 
         Self {
@@ -80,6 +85,8 @@ impl AccountsCore {
             throttles,
             operators,
             invitation_tickets,
+            second_factors,
+            totp_key: None,
             catalog,
             mailer,
             clock,
@@ -132,19 +139,10 @@ impl AccountsCore {
         Ok(())
     }
 
-    pub(super) async fn admitted(
-        &self,
-        guarded: Guarded,
-        email: &EmailAddress,
-    ) -> Result<(), AccountsError> {
+    pub(super) async fn admitted(&self, guarded: Guarded, who: &str) -> Result<(), AccountsError> {
         match self
             .throttles
-            .admit(
-                guarded.as_str(),
-                email.as_str(),
-                guarded.rule(),
-                self.clock.now(),
-            )
+            .admit(guarded.as_str(), who, guarded.rule(), self.clock.now())
             .await?
         {
             Admission::Admitted => Ok(()),
@@ -153,7 +151,7 @@ impl AccountsCore {
     }
 
     pub(super) async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
-        self.admitted(Guarded::SendingCodes, email).await
+        self.admitted(Guarded::SendingCodes, email.as_str()).await
     }
 
     pub(super) async fn claimed(

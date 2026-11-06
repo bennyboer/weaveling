@@ -4,6 +4,7 @@ use throttling::Rule;
 pub enum Guarded {
     SigningIn,
     SendingCodes,
+    CheckingSecondFactor,
 }
 
 impl Guarded {
@@ -11,6 +12,7 @@ impl Guarded {
         match self {
             Self::SigningIn => "signing-in",
             Self::SendingCodes => "sending-codes",
+            Self::CheckingSecondFactor => "checking-second-factor",
         }
     }
 
@@ -18,6 +20,7 @@ impl Guarded {
         match self {
             Self::SigningIn => Rule { free: 5 },
             Self::SendingCodes => Rule { free: 3 },
+            Self::CheckingSecondFactor => Rule { free: 5 },
         }
     }
 }
@@ -41,6 +44,16 @@ mod tests {
     #[test]
     fn each_guarded_thing_is_counted_under_a_name_of_its_own() {
         // expect: signing in and sending codes have different names
-        assert_ne!(Guarded::SigningIn.as_str(), Guarded::SendingCodes.as_str());
+        let names = [
+            Guarded::SigningIn.as_str(),
+            Guarded::SendingCodes.as_str(),
+            Guarded::CheckingSecondFactor.as_str(),
+        ];
+        assert!(
+            names
+                .iter()
+                .enumerate()
+                .all(|(at, name)| !names[..at].contains(name))
+        );
     }
 }

@@ -30,7 +30,7 @@ impl AccountsCore {
         password: &str,
     ) -> Result<(AccountId, Account, OffsetDateTime), AccountsError> {
         let email = EmailAddress::new(email)?;
-        self.admitted(Guarded::SigningIn, &email).await?;
+        self.admitted(Guarded::SigningIn, email.as_str()).await?;
         let began = self.clock.now();
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
@@ -60,22 +60,22 @@ impl AccountsCore {
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let (id, account, began) = self.signed_in_as(email, password).await?;
 
-        self.opened(id, account, began).await
+        self.session_opened(id, account, began).await
     }
 
-    pub(super) async fn opened(
+    pub(super) async fn session_opened(
         &self,
         id: AccountId,
         account: Account,
         began: OffsetDateTime,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.opened_within(transaction, id, account.clone(), began)
+            self.session_opened_within(transaction, id, account.clone(), began)
                 .await
         })
     }
 
-    pub(super) async fn opened_within(
+    pub(super) async fn session_opened_within(
         &self,
         transaction: &mut Transaction,
         id: AccountId,

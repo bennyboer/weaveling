@@ -1,0 +1,119 @@
+use super::AccountsCore;
+use crate::account::AccountCommand;
+use crate::error::AccountsError;
+use crate::id::AccountId;
+use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
+use crate::session::SessionToken;
+use crate::throttle::Guarded;
+use crate::totp::TotpSecret;
+use crate::totp_key::TotpKey;
+
+const ISSUER: &str = "Weaveling";
+
+/// A second factor being set up, as the author is shown it: the secret to type, and the address its QR code holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingUpSecondFactor {
+    pub secret: String,
+    pub otpauth_uri: String,
+}
+
+impl AccountsCore {
+    pub fn sealing_second_factors(self, key: TotpKey) -> Self {
+        Self {
+            totp_key: Some(key),
+            ..self
+        }
+    }
+
+    pub fn keeps_second_factors(&self) -> bool {
+        self.totp_key.is_some()
+    }
+
+    pub async fn begin_setting_up_second_factor(
+        &self,
+        account: &AccountId,
+    ) -> Result<SettingUpSecondFactor, AccountsError> {
+        let key = self.totp_key()?;
+        let holder = self.get(account).await?.state;
+        let secret = TotpSecret::drawn();
+        let sealed = key.seal(&secret, account);
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.second_factors
+                .begin_setting_up(transaction, account, &sealed)
+                .await?;
+
+            Ok::<_, AccountsError>(())
+        })?;
+
+        Ok(SettingUpSecondFactor {
+            secret: secret.to_base32(),
+            otpauth_uri: secret.otpauth_uri(ISSUER, holder.email().as_str()),
+        })
+    }
+
+    /// Finishes setting up by a code of the app, so every other session ends, and this one goes on as a new one.
+    pub async fn finish_setting_up_second_factor(
+        &self,
+        account: &AccountId,
+        code: &str,
+        session: &SessionToken,
+    ) -> Result<(SessionToken, Vec<RecoveryCode>), AccountsError> {
+        let key = self.totp_key()?;
+        let Some(sealed) = self
+            .second_factors
+            .second_factor_being_set_up(account)
+            .await?
+        else {
+            return Err(AccountsError::NothingBeingSetUp);
+        };
+        let Some(secret) = key.unseal(&sealed, account) else {
+            return Err(AccountsError::NothingBeingSetUp);
+        };
+        let who = account.to_string();
+        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
+        let Some(step) = secret.accepts(code, self.clock.now(), None) else {
+            return Err(AccountsError::SecondFactorCodeWrong);
+        };
+        self.throttles
+            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
+            .await?;
+        let codes = RecoveryCode::drawn();
+        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+        let holder = self.get(account).await?.state;
+
+        let (token, _) = transacting::retrying!(&*self.transactions, |transaction| {
+            if !self
+                .second_factors
+                .finish_setting_up(transaction, account, &sealed, step)
+                .await?
+            {
+                return Err(AccountsError::NothingBeingSetUp);
+            }
+            self.second_factors
+                .keep_recovery_codes(transaction, account, &hashes)
+                .await?;
+            self.commanded_in(
+                transaction,
+                account,
+                None,
+                AccountCommand::AddSecondFactor,
+                &account.acting(),
+            )
+            .await?;
+            self.sessions.end(transaction, &session.digest()).await?;
+
+            self.session_opened_within(transaction, *account, holder.clone(), self.clock.now())
+                .await
+        })?;
+        self.check_sessions();
+
+        Ok((token, codes))
+    }
+
+    fn totp_key(&self) -> Result<&TotpKey, AccountsError> {
+        self.totp_key
+            .as_ref()
+            .ok_or(AccountsError::SecondFactorsUnavailable)
+    }
+}

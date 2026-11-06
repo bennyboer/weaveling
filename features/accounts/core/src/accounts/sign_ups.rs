@@ -148,7 +148,7 @@ impl AccountsCore {
                 .await?
                 .state;
 
-            self.opened_within(transaction, id, account, self.clock.now())
+            self.session_opened_within(transaction, id, account, self.clock.now())
                 .await
         })
     }

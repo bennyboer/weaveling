@@ -10,7 +10,7 @@ mod sign_up;
 use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
-use accounts_core::{AccountsCore, AccountsError, OperatorCode};
+use accounts_core::{AccountsCore, AccountsError, OperatorCode, TotpKey};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use authorizing::{AllowingEverything, Authorizer};
@@ -157,6 +157,15 @@ impl Adapters {
         }
     }
 
+    pub fn sealing_second_factors(self, key: TotpKey) -> Self {
+        Self {
+            accounts: self
+                .accounts
+                .map(|accounts| accounts.sealing_second_factors(key)),
+            ..self
+        }
+    }
+
     pub fn refusing_on_purpose(self, flakiness: Flakiness) -> Self {
         Self {
             flakiness: Some(flakiness),
@@ -228,6 +237,10 @@ pub fn app(adapters: Adapters) -> Router {
             .accounts
             .is_some()
             .then(|| adapters.sign_up.told().to_owned()),
+        second_factors: adapters
+            .accounts
+            .as_ref()
+            .is_some_and(|accounts| accounts.core.keeps_second_factors()),
     };
     let operating = adapters
         .accounts

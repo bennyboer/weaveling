@@ -28,8 +28,19 @@ impl TotpSecret {
         &self.0
     }
 
-    pub fn typed(&self) -> String {
+    pub fn to_base32(&self) -> String {
         Secret::from(self.0.clone()).to_base32()
+    }
+
+    /// The address an authenticator app takes the secret from, as its QR code holds it.
+    pub fn otpauth_uri(&self, issuer: &str, label: &str) -> String {
+        format!(
+            "otpauth://totp/{}:{}?secret={}&issuer={}",
+            encoded(issuer),
+            encoded(label),
+            self.to_base32(),
+            encoded(issuer)
+        )
     }
 
     pub fn code_at(&self, at: OffsetDateTime) -> String {
@@ -70,6 +81,17 @@ impl Debug for TotpSecret {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("TotpSecret(…)")
     }
+}
+
+fn encoded(text: &str) -> String {
+    text.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                char::from(byte).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 fn seconds(at: OffsetDateTime) -> u64 {
@@ -189,11 +211,23 @@ mod tests {
         // then: they differ
         assert_ne!(one.as_bytes(), other.as_bytes());
         // and: each can be typed as 32 letters and digits
-        assert_eq!(one.typed().len(), 32);
+        assert_eq!(one.to_base32().len(), 32);
         assert!(
-            one.typed()
+            one.to_base32()
                 .chars()
                 .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
+        );
+    }
+
+    #[test]
+    fn an_app_takes_the_secret_with_its_issuer_and_label_from_the_uri() {
+        // given: the RFC's secret
+        let secret = rfc_secret();
+
+        // expect: its address names the issuer and the account, written so no character breaks it
+        assert_eq!(
+            secret.otpauth_uri("Weaveling", "ada+books@example.com"),
+            "otpauth://totp/Weaveling:ada%2Bbooks%40example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Weaveling"
         );
     }
 

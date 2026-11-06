@@ -3815,6 +3815,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "totp-rs",
  "weaveling-accounts-catalog",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",

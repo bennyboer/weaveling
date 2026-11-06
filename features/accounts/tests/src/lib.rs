@@ -41,6 +41,9 @@ mod operators_api;
 mod password_reset;
 
 #[cfg(test)]
+mod second_factor_setup_api;
+
+#[cfg(test)]
 mod session_ends;
 
 #[cfg(test)]

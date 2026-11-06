@@ -59,6 +59,12 @@ pub enum AccountsError {
     InvitationNotByAnOperator,
     #[error("this address already has an account; sign in instead")]
     EmailAddressHasAccount,
+    #[error("this Weaveling instance has no key to keep second factors with")]
+    SecondFactorsUnavailable,
+    #[error("no second factor is being set up; begin again")]
+    NothingBeingSetUp,
+    #[error("this is not the code the app shows")]
+    SecondFactorCodeWrong,
     #[error("too many tries; wait {wait} before trying again")]
     Throttled { wait: Duration },
     #[error(transparent)]
