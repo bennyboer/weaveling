@@ -36,7 +36,11 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::InvitationTakenUp { invitation } => AccountEventDTO::InvitationTakenUp {
             invitation: invitation.clone(),
         },
-        AccountEvent::Snapshotted { .. } => return None,
+        AccountEvent::SecondFactorAdded
+        | AccountEvent::RecoveryCodesDrawn
+        | AccountEvent::RecoveryCodeUsed
+        | AccountEvent::SecondFactorRemoved
+        | AccountEvent::Snapshotted { .. } => return None,
     })
 }
 
@@ -350,10 +354,30 @@ mod tests {
             sessions_since: None,
             operator: false,
             locks: BTreeMap::new(),
+            second_factor: None,
         };
 
         // expect: no message is made of it
         assert!(message_for(&recorded(&id, snapshot)).is_none());
+    }
+
+    #[test]
+    fn a_second_factor_is_kept_to_the_account() {
+        // given: an account
+        let id = an_account();
+
+        // expect: nothing about its second factor is published
+        for event in [
+            AccountEvent::SecondFactorAdded,
+            AccountEvent::RecoveryCodesDrawn,
+            AccountEvent::RecoveryCodeUsed,
+            AccountEvent::SecondFactorRemoved,
+        ] {
+            assert!(
+                message_for(&recorded(&id, event.clone())).is_none(),
+                "{event:?}"
+            );
+        }
     }
 
     #[test]

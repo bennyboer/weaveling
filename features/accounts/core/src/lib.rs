@@ -9,12 +9,15 @@ mod lock;
 mod name;
 mod operator;
 mod password;
+mod recovery_code;
+mod second_factor;
 mod secrets;
 mod session;
 mod session_end;
 mod signing_up;
 mod throttle;
 mod ticket;
+mod totp;
 
 #[cfg(test)]
 mod account_tests;
@@ -31,6 +34,8 @@ pub use lock::{InvalidLockReason, Lock, LockKind, LockReason};
 pub use name::{AccountName, InvalidAccountName};
 pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
+pub use recovery_code::{RecoveryCode, RecoveryCodeHash};
+pub use second_factor::SecondFactor;
 pub use secrets::{
     Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
     SecretsError, Sessions, Verifications,
@@ -39,3 +44,4 @@ pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use signing_up::SigningUp;
 pub use throttle::Guarded;
 pub use ticket::{InvitationScope, InvitationTicket, InvitationToken};
+pub use totp::{TotpSecret, TotpStep};

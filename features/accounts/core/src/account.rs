@@ -7,6 +7,8 @@ use time::OffsetDateTime;
 use crate::decline::DeclineReason;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
+use crate::recovery_code::RecoveryCode;
+use crate::second_factor::SecondFactor;
 use email::EmailAddress;
 
 pub const KIND: AggregateType = AggregateType::of("account");
@@ -21,6 +23,10 @@ const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
 const STOPPED_BEING_OPERATOR: EventName = EventName::of("STOPPED_BEING_OPERATOR");
 const LOCKED: EventName = EventName::of("LOCKED");
 const UNLOCKED: EventName = EventName::of("UNLOCKED");
+const SECOND_FACTOR_ADDED: EventName = EventName::of("SECOND_FACTOR_ADDED");
+const RECOVERY_CODES_DRAWN: EventName = EventName::of("RECOVERY_CODES_DRAWN");
+const RECOVERY_CODE_USED: EventName = EventName::of("RECOVERY_CODE_USED");
+const SECOND_FACTOR_REMOVED: EventName = EventName::of("SECOND_FACTOR_REMOVED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +50,10 @@ pub enum AccountCommand {
     TakeUpInvitation {
         invitation: String,
     },
+    AddSecondFactor,
+    DrawRecoveryCodes,
+    UseRecoveryCode,
+    RemoveSecondFactor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +84,10 @@ pub enum AccountEvent {
     InvitationTakenUp {
         invitation: String,
     },
+    SecondFactorAdded,
+    RecoveryCodesDrawn,
+    RecoveryCodeUsed,
+    SecondFactorRemoved,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -82,6 +96,7 @@ pub enum AccountEvent {
         sessions_since: Option<OffsetDateTime>,
         operator: bool,
         locks: BTreeMap<LockKind, Lock>,
+        second_factor: Option<SecondFactor>,
     },
 }
 
@@ -94,6 +109,7 @@ pub struct Account {
     sessions_since: Option<OffsetDateTime>,
     operator: bool,
     locks: BTreeMap<LockKind, Lock>,
+    second_factor: Option<SecondFactor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -108,6 +124,10 @@ pub enum AccountError {
     OperatorCannotBeLocked,
     #[error("a locked account cannot become an operator")]
     LockedCannotBecomeOperator,
+    #[error("the account has no second factor")]
+    NoSecondFactor,
+    #[error("the account has no recovery code left")]
+    NoRecoveryCodeLeft,
 }
 
 impl Account {
@@ -129,6 +149,10 @@ impl Account {
 
     pub fn locks(&self) -> &BTreeMap<LockKind, Lock> {
         &self.locks
+    }
+
+    pub fn second_factor(&self) -> Option<SecondFactor> {
+        self.second_factor
     }
 
     pub fn is_locked(&self) -> bool {
@@ -157,6 +181,10 @@ impl Event for AccountEvent {
             Self::Unlocked { .. } => UNLOCKED,
             Self::InvitationDeclined { .. } => INVITATION_DECLINED,
             Self::InvitationTakenUp { .. } => INVITATION_TAKEN_UP,
+            Self::SecondFactorAdded => SECOND_FACTOR_ADDED,
+            Self::RecoveryCodesDrawn => RECOVERY_CODES_DRAWN,
+            Self::RecoveryCodeUsed => RECOVERY_CODE_USED,
+            Self::SecondFactorRemoved => SECOND_FACTOR_REMOVED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -195,7 +223,11 @@ impl Aggregate for Account {
             | AccountCommand::Lock(..)
             | AccountCommand::Unlock(_)
             | AccountCommand::DeclineInvitation { .. }
-            | AccountCommand::TakeUpInvitation { .. } => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::TakeUpInvitation { .. }
+            | AccountCommand::AddSecondFactor
+            | AccountCommand::DrawRecoveryCodes
+            | AccountCommand::UseRecoveryCode
+            | AccountCommand::RemoveSecondFactor => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -209,6 +241,7 @@ impl Aggregate for Account {
                 sessions_since: None,
                 operator: false,
                 locks: BTreeMap::new(),
+                second_factor: None,
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
@@ -218,6 +251,7 @@ impl Aggregate for Account {
                 sessions_since: None,
                 operator: false,
                 locks: BTreeMap::new(),
+                second_factor: None,
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -227,6 +261,7 @@ impl Aggregate for Account {
                 sessions_since,
                 operator,
                 locks,
+                second_factor,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -235,6 +270,7 @@ impl Aggregate for Account {
                 sessions_since: *sessions_since,
                 operator: *operator,
                 locks: locks.clone(),
+                second_factor: *second_factor,
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
@@ -243,7 +279,11 @@ impl Aggregate for Account {
             | AccountEvent::Locked { .. }
             | AccountEvent::Unlocked { .. }
             | AccountEvent::InvitationDeclined { .. }
-            | AccountEvent::InvitationTakenUp { .. } => None,
+            | AccountEvent::InvitationTakenUp { .. }
+            | AccountEvent::SecondFactorAdded
+            | AccountEvent::RecoveryCodesDrawn
+            | AccountEvent::RecoveryCodeUsed
+            | AccountEvent::SecondFactorRemoved => None,
         }
     }
 
@@ -285,6 +325,26 @@ impl Aggregate for Account {
             AccountCommand::TakeUpInvitation { invitation } => {
                 Ok(vec![AccountEvent::InvitationTakenUp { invitation }])
             }
+            AccountCommand::AddSecondFactor => Ok(vec![
+                AccountEvent::SecondFactorAdded,
+                AccountEvent::RecoveryCodesDrawn,
+            ]),
+            AccountCommand::DrawRecoveryCodes | AccountCommand::UseRecoveryCode
+                if self.second_factor.is_none() =>
+            {
+                Err(AccountError::NoSecondFactor)
+            }
+            AccountCommand::DrawRecoveryCodes => Ok(vec![AccountEvent::RecoveryCodesDrawn]),
+            AccountCommand::UseRecoveryCode
+                if self
+                    .second_factor
+                    .is_some_and(|factor| factor.recovery_codes_left == 0) =>
+            {
+                Err(AccountError::NoRecoveryCodeLeft)
+            }
+            AccountCommand::UseRecoveryCode => Ok(vec![AccountEvent::RecoveryCodeUsed]),
+            AccountCommand::RemoveSecondFactor if self.second_factor.is_none() => Ok(vec![]),
+            AccountCommand::RemoveSecondFactor => Ok(vec![AccountEvent::SecondFactorRemoved]),
         }
     }
 
@@ -309,6 +369,27 @@ impl Aggregate for Account {
                 self.locks.remove(kind);
             }
             AccountEvent::InvitationDeclined { .. } | AccountEvent::InvitationTakenUp { .. } => {}
+            AccountEvent::SecondFactorAdded => {
+                self.second_factor = Some(SecondFactor {
+                    since: metadata.occurred_at,
+                    recovery_codes_left: 0,
+                });
+                self.sessions_since = Some(metadata.occurred_at);
+            }
+            AccountEvent::RecoveryCodesDrawn => {
+                if let Some(factor) = &mut self.second_factor {
+                    factor.recovery_codes_left = RecoveryCode::DRAWN;
+                }
+            }
+            AccountEvent::RecoveryCodeUsed => {
+                if let Some(factor) = &mut self.second_factor {
+                    factor.recovery_codes_left = factor.recovery_codes_left.saturating_sub(1);
+                }
+            }
+            AccountEvent::SecondFactorRemoved => {
+                self.second_factor = None;
+                self.sessions_since = Some(metadata.occurred_at);
+            }
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -317,6 +398,7 @@ impl Aggregate for Account {
                 sessions_since,
                 operator,
                 locks,
+                second_factor,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -325,6 +407,7 @@ impl Aggregate for Account {
                 self.sessions_since = *sessions_since;
                 self.operator = *operator;
                 self.locks = locks.clone();
+                self.second_factor = *second_factor;
             }
         }
     }
@@ -338,6 +421,7 @@ impl Aggregate for Account {
             sessions_since: self.sessions_since,
             operator: self.operator,
             locks: self.locks.clone(),
+            second_factor: self.second_factor,
         }
     }
 }

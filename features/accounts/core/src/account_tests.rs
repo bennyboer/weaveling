@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use crate::decline::DeclineReason;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
+use crate::second_factor::SecondFactor;
 
 fn herself() -> Agent {
     Agent::Account("account_1".into())
@@ -245,9 +246,21 @@ fn a_snapshot_holds_everything_the_account_is() {
     account.apply(&AccountEvent::PasswordReset, &stamped(3, clock::at(2_500)));
     account.apply(&AccountEvent::BecameOperator, &stamped(4, clock::at(2_700)));
     account.apply(&a_lock(), &stamped(5, clock::at(2_800)));
+    account.apply(
+        &AccountEvent::SecondFactorAdded,
+        &stamped(6, clock::at(2_850)),
+    );
+    account.apply(
+        &AccountEvent::RecoveryCodesDrawn,
+        &stamped(7, clock::at(2_850)),
+    );
+    account.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(8, clock::at(2_900)),
+    );
 
     // when: an account is born of its snapshot
-    let restored = Account::from_first(&account.snapshot(), &stamped(5, clock::at(3_000)))
+    let restored = Account::from_first(&account.snapshot(), &stamped(9, clock::at(3_000)))
         .expect("a snapshot gives birth");
 
     // then: it is the same account
@@ -262,11 +275,23 @@ fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
     further.apply(&AccountEvent::PasswordReset, &stamped(3, clock::at(2_500)));
     further.apply(&AccountEvent::BecameOperator, &stamped(4, clock::at(2_700)));
     further.apply(&a_lock(), &stamped(5, clock::at(2_800)));
+    further.apply(
+        &AccountEvent::SecondFactorAdded,
+        &stamped(6, clock::at(2_850)),
+    );
+    further.apply(
+        &AccountEvent::RecoveryCodesDrawn,
+        &stamped(7, clock::at(2_850)),
+    );
+    further.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(8, clock::at(2_900)),
+    );
     // and: an account that is only signed up
     let mut behind = a_signed_up_account();
 
     // when: the snapshot of the first is applied to the second
-    behind.apply(&further.snapshot(), &stamped(6, clock::at(3_000)));
+    behind.apply(&further.snapshot(), &stamped(9, clock::at(3_000)));
 
     // then: the second is the first
     assert_eq!(behind, further);
@@ -612,4 +637,200 @@ fn an_account_takes_an_invitation_up_and_stays_as_it_was() {
         Account::from_first(&taken_up[0], &stamped(1, clock::at(1_000))),
         None
     );
+}
+
+fn with_a_second_factor_since(at: i64) -> Account {
+    let mut account = a_verified_account();
+    let stamp = stamped(3, clock::at(at));
+    for event in account
+        .decide(AccountCommand::AddSecondFactor, &herself())
+        .expect("a second factor may be added")
+    {
+        account.apply(&event, &stamp);
+    }
+
+    account
+}
+
+#[test]
+fn a_second_factor_is_added_with_ten_recovery_codes() {
+    // given: a verified account without a second factor
+    let account = a_verified_account();
+    assert_eq!(account.second_factor(), None);
+
+    // when: a second factor is added
+    let added = account
+        .decide(AccountCommand::AddSecondFactor, &herself())
+        .expect("a second factor may be added");
+
+    // then: it is added, and its recovery codes drawn
+    assert_eq!(
+        added,
+        vec![
+            AccountEvent::SecondFactorAdded,
+            AccountEvent::RecoveryCodesDrawn
+        ]
+    );
+    // and: the account holds it from that moment, with ten codes left
+    assert_eq!(
+        with_a_second_factor_since(3_000).second_factor(),
+        Some(SecondFactor {
+            since: clock::at(3_000),
+            recovery_codes_left: 10,
+        })
+    );
+}
+
+#[test]
+fn adding_or_removing_a_second_factor_ends_every_session_begun_before() {
+    // given: an account with a second factor added
+    let mut account = with_a_second_factor_since(3_000);
+
+    // then: a session begun before it no longer counts
+    assert!(!account.counts_session_begun(clock::at(2_999)));
+    assert!(account.counts_session_begun(clock::at(3_000)));
+    // when: the second factor is removed
+    account.apply(
+        &AccountEvent::SecondFactorRemoved,
+        &stamped(5, clock::at(4_000)),
+    );
+    // then: a session begun before that no longer counts either
+    assert!(!account.counts_session_begun(clock::at(3_999)));
+}
+
+#[test]
+fn a_second_factor_added_again_replaces_the_one_before() {
+    // given: an account with a second factor and a recovery code used
+    let mut account = with_a_second_factor_since(3_000);
+    account.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(4, clock::at(3_500)),
+    );
+
+    // when: a second factor is added again
+    for event in account
+        .decide(AccountCommand::AddSecondFactor, &herself())
+        .expect("a second factor may be set up anew")
+    {
+        account.apply(&event, &stamped(5, clock::at(4_000)));
+    }
+
+    // then: it holds the new one, with ten codes again
+    assert_eq!(
+        account.second_factor(),
+        Some(SecondFactor {
+            since: clock::at(4_000),
+            recovery_codes_left: 10,
+        })
+    );
+}
+
+#[test]
+fn each_recovery_code_used_leaves_one_fewer() {
+    // given: an account with a second factor
+    let mut account = with_a_second_factor_since(3_000);
+
+    // when: a recovery code is used
+    let used = account
+        .decide(AccountCommand::UseRecoveryCode, &herself())
+        .expect("a code is left");
+    assert_eq!(used, vec![AccountEvent::RecoveryCodeUsed]);
+    account.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(4, clock::at(3_500)),
+    );
+
+    // then: nine are left
+    assert_eq!(
+        account
+            .second_factor()
+            .map(|factor| factor.recovery_codes_left),
+        Some(9)
+    );
+    // when: the other nine are used
+    for version in 5..14 {
+        account.apply(
+            &AccountEvent::RecoveryCodeUsed,
+            &stamped(version, clock::at(3_600)),
+        );
+    }
+    // then: none is left, and using one is refused
+    assert_eq!(
+        account.decide(AccountCommand::UseRecoveryCode, &herself()),
+        Err(AccountError::NoRecoveryCodeLeft)
+    );
+    // when: codes are drawn anew
+    assert_eq!(
+        account.decide(AccountCommand::DrawRecoveryCodes, &herself()),
+        Ok(vec![AccountEvent::RecoveryCodesDrawn])
+    );
+    account.apply(
+        &AccountEvent::RecoveryCodesDrawn,
+        &stamped(14, clock::at(3_700)),
+    );
+    // then: ten are left
+    assert_eq!(
+        account
+            .second_factor()
+            .map(|factor| factor.recovery_codes_left),
+        Some(10)
+    );
+}
+
+#[test]
+fn recovery_codes_belong_to_a_second_factor() {
+    // given: an account without a second factor
+    let account = a_verified_account();
+
+    // expect: drawing or using recovery codes is refused
+    for command in [
+        AccountCommand::DrawRecoveryCodes,
+        AccountCommand::UseRecoveryCode,
+    ] {
+        assert_eq!(
+            account.decide(command, &herself()),
+            Err(AccountError::NoSecondFactor)
+        );
+    }
+}
+
+#[test]
+fn removing_a_second_factor_takes_its_recovery_codes_along() {
+    // given: an account with a second factor
+    let account = with_a_second_factor_since(3_000);
+
+    // when: it is removed
+    let removed = account
+        .decide(AccountCommand::RemoveSecondFactor, &herself())
+        .expect("a second factor may be removed");
+    assert_eq!(removed, vec![AccountEvent::SecondFactorRemoved]);
+    let mut account = account;
+    account.apply(
+        &AccountEvent::SecondFactorRemoved,
+        &stamped(4, clock::at(4_000)),
+    );
+
+    // then: the account has none
+    assert_eq!(account.second_factor(), None);
+    // and: removing it again changes nothing
+    assert_eq!(
+        account.decide(AccountCommand::RemoveSecondFactor, &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn nothing_about_a_second_factor_happens_before_signing_up() {
+    // expect: every second factor command is refused before signing up
+    for command in [
+        AccountCommand::AddSecondFactor,
+        AccountCommand::DrawRecoveryCodes,
+        AccountCommand::UseRecoveryCode,
+        AccountCommand::RemoveSecondFactor,
+    ] {
+        assert_eq!(
+            Account::begin(command, &herself()),
+            Err(AccountError::NotSignedUpYet)
+        );
+    }
 }
