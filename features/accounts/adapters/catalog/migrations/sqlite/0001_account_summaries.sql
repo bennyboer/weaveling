@@ -6,5 +6,6 @@ CREATE TABLE account_summaries (
     verified      INTEGER NOT NULL,
     operator      INTEGER NOT NULL,
     signed_up_at  TEXT    NOT NULL,
-    locks         TEXT    NOT NULL
+    locks         TEXT    NOT NULL,
+    second_factor INTEGER NOT NULL DEFAULT 0
 );

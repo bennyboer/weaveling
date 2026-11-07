@@ -6,6 +6,7 @@ mod lock_dialog;
 mod recovery_note;
 mod role_dialog;
 mod roster;
+mod second_factor_dialog;
 pub mod service;
 pub mod sign_in;
 pub mod two_step;

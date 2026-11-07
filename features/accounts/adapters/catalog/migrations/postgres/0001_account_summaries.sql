@@ -6,5 +6,6 @@ CREATE TABLE account_summaries (
     verified      BOOLEAN          NOT NULL,
     operator      BOOLEAN          NOT NULL,
     signed_up_at  TIMESTAMPTZ      NOT NULL,
-    locks         JSONB            NOT NULL
+    locks         JSONB            NOT NULL,
+    second_factor BOOLEAN          NOT NULL DEFAULT FALSE
 );

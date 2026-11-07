@@ -83,6 +83,8 @@ pub struct AccountSummaryDTO {
     pub operator: bool,
     pub signed_up_at: String,
     pub locks: Vec<LockDTO>,
+    #[serde(default)]
+    pub second_factor: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -145,6 +147,8 @@ pub const BECAME_OPERATOR: &str = "account.became.operator";
 pub const STOPPED_BEING_OPERATOR: &str = "account.stopped.being.operator";
 pub const LOCKED: &str = "account.locked";
 pub const UNLOCKED: &str = "account.unlocked";
+pub const SECOND_FACTOR_ADDED: &str = "account.second.factor.added";
+pub const SECOND_FACTOR_REMOVED: &str = "account.second.factor.removed";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -178,6 +182,10 @@ pub enum AccountEventDTO {
     InvitationDeclined { invitation: String, reason: String },
     #[serde(rename = "INVITATION_TAKEN_UP")]
     InvitationTakenUp { invitation: String },
+    #[serde(rename = "SECOND_FACTOR_ADDED")]
+    SecondFactorAdded,
+    #[serde(rename = "SECOND_FACTOR_REMOVED")]
+    SecondFactorRemoved,
 }
 
 pub mod sign_up {

@@ -74,6 +74,36 @@ impl AccountsCore {
         Ok(())
     }
 
+    /// Turns an account's second factor off, for one who lost both the device and the recovery codes, ending every session of the account.
+    pub async fn remove_second_factor(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+        expected: Option<Version>,
+    ) -> Result<(), AccountsError> {
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.still_operating(transaction, by).await?;
+                self.second_factors
+                    .forget_second_factor(transaction, account)
+                    .await?;
+                self.commanded_in(
+                    transaction,
+                    account,
+                    expected,
+                    AccountCommand::RemoveSecondFactor,
+                    &by.acting(),
+                )
+                .await
+            }
+        )?;
+        self.check_sessions();
+
+        Ok(())
+    }
+
     pub async fn unlock(
         &self,
         by: &AccountId,

@@ -36,10 +36,10 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::InvitationTakenUp { invitation } => AccountEventDTO::InvitationTakenUp {
             invitation: invitation.clone(),
         },
-        AccountEvent::SecondFactorAdded
-        | AccountEvent::RecoveryCodesDrawn
+        AccountEvent::SecondFactorAdded => AccountEventDTO::SecondFactorAdded,
+        AccountEvent::SecondFactorRemoved => AccountEventDTO::SecondFactorRemoved,
+        AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
-        | AccountEvent::SecondFactorRemoved
         | AccountEvent::Snapshotted { .. } => return None,
     })
 }
@@ -70,8 +70,8 @@ mod tests {
 
     use accounts_contract::{
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
-        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
-        UNLOCKED,
+        LOCKED, PASSWORD_RESET, SECOND_FACTOR_ADDED, SECOND_FACTOR_REMOVED, SIGNED_UP,
+        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, KIND, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
@@ -152,6 +152,8 @@ mod tests {
                 },
                 INVITATION_TAKEN_UP,
             ),
+            (AccountEvent::SecondFactorAdded, SECOND_FACTOR_ADDED),
+            (AccountEvent::SecondFactorRemoved, SECOND_FACTOR_REMOVED),
         ]
     }
 
@@ -362,16 +364,14 @@ mod tests {
     }
 
     #[test]
-    fn a_second_factor_is_kept_to_the_account() {
+    fn recovery_codes_are_kept_to_the_account() {
         // given: an account
         let id = an_account();
 
-        // expect: nothing about its second factor is published
+        // expect: nothing about its recovery codes is published
         for event in [
-            AccountEvent::SecondFactorAdded,
             AccountEvent::RecoveryCodesDrawn,
             AccountEvent::RecoveryCodeUsed,
-            AccountEvent::SecondFactorRemoved,
         ] {
             assert!(
                 message_for(&recorded(&id, event.clone())).is_none(),

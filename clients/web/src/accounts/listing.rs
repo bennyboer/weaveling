@@ -5,7 +5,11 @@ use leptos::{IntoView, ev, html};
 use crate::accounts::listed::ListedAccount;
 use crate::accounts::roster;
 use crate::accounts::roster::{Intent, Roster};
-use crate::accounts::{CurrentSession, SignInState, lock_dialog, role_dialog};
+use crate::accounts::{
+    CurrentSession, SignInState, lock_dialog, role_dialog, second_factor_dialog,
+};
+use crate::icons;
+use crate::icons::Icon;
 use crate::moment;
 use crate::problem;
 use crate::speech;
@@ -21,6 +25,16 @@ fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
 
 pub fn accounts_listing() -> impl IntoView {
     let roster = Roster::asked();
+    let clicking_away = window_event_listener(ev::click, move |_| roster.menu.set(None));
+    let escaping = window_event_listener(ev::keydown, move |event| {
+        if event.key() == "Escape" {
+            roster.menu.set(None);
+        }
+    });
+    on_cleanup(move || {
+        clicking_away.remove();
+        escaping.remove();
+    });
     let session = expect_context::<CurrentSession>();
     let own_email = move || match session.state.get_untracked() {
         SignInState::SignedIn(account) => Some(account.email),
@@ -48,6 +62,22 @@ pub fn accounts_listing() -> impl IntoView {
                     .disabled(move || roster.loading.get())
                     .on(ev::click, move |_| roster.load(Some(next.clone())))
                     .child(speech::said("instance-accounts-more"))
+            })
+        },
+        move || {
+            roster.turning_off.get().map(|account| {
+                let id = account.id.clone();
+                let turned = id.clone();
+                second_factor_dialog::second_factor_dialog(
+                    account,
+                    move || roster.intended(&id, Intent::TurnOffSecondFactor),
+                    move || roster.changing(&turned),
+                    roster.refused,
+                    move || {
+                        roster.refused.set(None);
+                        roster.turning_off.set(None);
+                    },
+                )
             })
         },
         move || {
@@ -110,43 +140,108 @@ pub fn accounts_listing() -> impl IntoView {
     )
 }
 
+/// What an operator may do with an account, behind one button, so the row keeps room for who it is.
+fn actions(roster: Roster, account: ListedAccount) -> impl IntoView {
+    let may_change_role = account.operator || (account.verified && account.lock.is_none());
+    let anything = may_change_role || !account.operator || account.second_factor;
+    let id = account.id.clone();
+    let open = Memo::new(move |_| roster.menu.get().as_deref() == Some(id.as_str()));
+    let labelled = said_with(
+        "instance-account-actions",
+        &[("name", account.name.clone())],
+    );
+    let toggled = account.id.clone();
+
+    html::div()
+        .class("actions")
+        .on(ev::click, |event| event.stop_propagation())
+        .child(anything.then(|| {
+            (
+                html::button()
+                    .r#type("button")
+                    .class("menu-button")
+                    .attr("aria-label", labelled.clone())
+                    .attr("title", labelled)
+                    .attr("aria-haspopup", "menu")
+                    .attr("aria-expanded", move || open.get().to_string())
+                    .on(ev::click, move |_| {
+                        roster.menu.update(|menu| {
+                            *menu =
+                                (menu.as_deref() != Some(toggled.as_str())).then(|| toggled.clone())
+                        })
+                    })
+                    .child(icons::mark(Icon::More)),
+                move || {
+                    open.get().then(|| {
+                        html::div().class("menu").role("menu").child(menu_items(
+                            roster,
+                            account.clone(),
+                            may_change_role,
+                        ))
+                    })
+                },
+            )
+        }))
+}
+
+fn menu_items(roster: Roster, account: ListedAccount, may_change_role: bool) -> impl IntoView {
+    let item = move |label: &'static str, danger: bool, chosen: Box<dyn Fn() + 'static>| {
+        html::button()
+            .r#type("button")
+            .role("menuitem")
+            .class(("danger", danger))
+            .on(ev::click, move |_| {
+                roster.menu.set(None);
+                chosen();
+            })
+            .child(speech::said(label))
+    };
+    let role = may_change_role.then(|| {
+        let chosen = account.clone();
+        item(
+            if account.operator {
+                "instance-account-dismiss"
+            } else {
+                "instance-account-appoint"
+            },
+            false,
+            Box::new(move || roster.changing_role.set(Some(chosen.clone()))),
+        )
+    });
+    let turning_off = account.second_factor.then(|| {
+        let chosen = account.clone();
+        item(
+            "instance-account-two-step-off",
+            true,
+            Box::new(move || roster.turning_off.set(Some(chosen.clone()))),
+        )
+    });
+    let locking = (!account.operator).then(|| {
+        let chosen = account.clone();
+        if account.lock.is_some() {
+            item(
+                "instance-account-unlock",
+                false,
+                Box::new(move || roster.unlock(chosen.id.clone())),
+            )
+        } else {
+            item(
+                "instance-account-lock",
+                true,
+                Box::new(move || roster.locking.set(Some(chosen.clone()))),
+            )
+        }
+    });
+
+    (role, turning_off, locking)
+}
+
 fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {
+    let acting = actions(roster, account.clone());
     let signed_up = said_with(
         "instance-account-signed-up",
         &[("when", moment::human_time(account.signed_up_at))],
     );
-    let role = (account.operator || (account.verified && account.lock.is_none())).then(|| {
-        let chosen = account.clone();
-        html::button()
-            .r#type("button")
-            .on(ev::click, move |_| {
-                roster.changing_role.set(Some(chosen.clone()))
-            })
-            .child(speech::said(if account.operator {
-                "instance-account-dismiss"
-            } else {
-                "instance-account-appoint"
-            }))
-    });
-    let action = (!account.operator).then(|| {
-        let id = account.id.clone();
-        if account.lock.is_some() {
-            html::button()
-                .r#type("button")
-                .on(ev::click, move |_| roster.unlock(id.clone()))
-                .child(speech::said("instance-account-unlock"))
-                .into_any()
-        } else {
-            let chosen = account.clone();
-            html::button()
-                .r#type("button")
-                .class("danger")
-                .on(ev::click, move |_| roster.locking.set(Some(chosen.clone())))
-                .child(speech::said("instance-account-lock"))
-                .into_any()
-        }
-    });
-
     html::li().child((
         html::div().class("who").child((
             html::p().class("name").child(account.name.clone()),
@@ -164,6 +259,11 @@ fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {
                     .class("mark")
                     .child(speech::said("instance-account-operator"))
             }),
+            account.second_factor.then(|| {
+                html::span()
+                    .class("mark")
+                    .child(speech::said("instance-account-two-step"))
+            }),
             account.lock.map(|lock| {
                 html::p().class("lock").child((
                     html::span().class("mark locked").child(said_with(
@@ -174,6 +274,6 @@ fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {
                 ))
             }),
         )),
-        html::div().class("actions").child((role, action)),
+        acting,
     ))
 }

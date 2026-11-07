@@ -27,6 +27,7 @@ const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
 const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
+const SECOND_FACTOR: &str = "/api/accounts/current/second-factor";
 const SECOND_FACTOR_SETUP: &str = "/api/accounts/current/second-factor/setup";
 const RECOVERY_CODES: &str = "/api/accounts/current/second-factor/recovery-codes";
 const ANSWERED_BY_CODE: &str = "/api/sessions/current/second-factor";
@@ -337,6 +338,32 @@ async fn second_factor_answered(at: &str, code: &str) -> Result<SignedInAccount,
     let response = http::sent_with(Request::post(at), &payload).await?;
 
     as_signed_in_account(http::parsed(response, SUBJECT).await?)
+}
+
+pub async fn turn_off_second_factor(code: &str) -> Result<(), ApiError> {
+    let payload = SecondFactorCodeRequest {
+        code: code.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::delete(SECOND_FACTOR), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn remove_second_factor(id: &str, on: u64) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(http::made_on(
+            Request::delete(&format!("{INSTANCE_ACCOUNTS}/{id}/second-factor")),
+            on,
+        ))
+        .await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn draw_recovery_codes(code: &str) -> Result<Vec<String>, ApiError> {

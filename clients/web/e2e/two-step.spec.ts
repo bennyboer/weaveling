@@ -130,6 +130,28 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   await expect(page.getByText(THE_RECOVERY_CODES[0])).toHaveCount(0);
 });
 
+test("a code of the app turns it off, and it says so", async ({ page }) => {
+  // given: an author signed in with two-step sign-in on, on its page
+  const server = await signedIn(page);
+  server.secondFactor = { since: "2026-11-06T22:14:20Z", recovery_codes_left: 10 };
+  await page.goto("/account/two-step-sign-in");
+
+  // when: they turn it off with a code that is not their app's
+  await page.getByRole("button", { name: "Turn off" }).click();
+  await page.getByLabel("A code from your app, to be sure it’s you").fill("000000");
+  // then: they are told so, and it stays on
+  await expect(page.getByText("That is not the code your app shows.")).toBeVisible();
+  expect(server.secondFactor).not.toBeNull();
+  // when: they enter the code their app shows
+  await page.getByLabel("A code from your app, to be sure it’s you").fill(THE_APP_CODE);
+  // then: they are told it is off, and may set it up again
+  await expect(
+    page.getByText("Two-step sign-in is off. You were signed out everywhere else."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Set up" })).toBeVisible();
+  expect(server.secondFactor).toBeNull();
+});
+
 test("a wrong code is told and can be entered again", async ({ page }) => {
   // given: an author setting up two-step sign-in
   await signedIn(page);

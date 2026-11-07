@@ -14,6 +14,7 @@ pub struct ListedAccount {
     pub operator: bool,
     pub signed_up_at: OffsetDateTime,
     pub lock: Option<OperatorLock>,
+    pub second_factor: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +55,7 @@ fn listed(summary: AccountSummaryDTO) -> Result<ListedAccount, ApiError> {
         operator: summary.operator,
         signed_up_at: moment(&summary.signed_up_at)?,
         lock,
+        second_factor: summary.second_factor,
     })
 }
 
@@ -79,6 +81,7 @@ mod tests {
 
     fn an_account_of_ada(locks: Vec<LockDTO>) -> AccountSummaryDTO {
         AccountSummaryDTO {
+            second_factor: false,
             id: "account_1".to_owned(),
             version: 4,
             name: "Ada".to_owned(),
@@ -119,6 +122,7 @@ mod tests {
                         reason: "Sent spam.".to_owned(),
                         since: datetime!(2026-10-23 09:30 UTC),
                     }),
+                    second_factor: false,
                 }],
                 next: Some("account_1".to_owned()),
             }

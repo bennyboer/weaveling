@@ -139,7 +139,7 @@
 
   li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) fit-content(60%);
     grid-template-areas:
       "who actions"
       "marks actions";
@@ -214,6 +214,51 @@
   .reason {
     font-size: 0.85rem;
     white-space: pre-line;
+  }
+}
+
+.operating .accounts .actions {
+  position: relative;
+
+  .menu-button {
+    display: grid;
+    place-items: center;
+    padding: 0.4rem;
+    border-color: transparent;
+    color: var(--muted);
+
+    &:hover,
+    &[aria-expanded="true"] {
+      color: var(--ink);
+      border-color: var(--line);
+    }
+  }
+
+  .menu {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    min-width: 14rem;
+    padding: 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--paper);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+
+    button {
+      border: none;
+      border-radius: 0.25rem;
+      text-align: left;
+      white-space: nowrap;
+      padding: 0.45rem 0.6rem;
+
+      &:hover {
+        background: color-mix(in srgb, var(--ink) 8%, transparent);
+      }
+    }
   }
 }
 
@@ -824,6 +869,15 @@
   letter-spacing: 0.08em;
 }
 
-.operating.two-step .drawing {
-  margin: 1rem 0;
+.operating.two-step .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 1.25rem 0 0;
+
+  > .asking:has(form) {
+    flex-basis: 100%;
+    order: 1;
+  }
 }

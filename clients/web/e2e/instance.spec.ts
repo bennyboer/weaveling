@@ -35,6 +35,15 @@ async function anOperatorWith(
 const row = (page: Page, name: string) =>
   page.getByRole("listitem").filter({ hasText: name });
 
+async function offered(page: Page, name: string, action: string) {
+  const opening = row(page, name).getByRole("button", { name: `Actions for ${name}` });
+  if ((await opening.getAttribute("aria-expanded")) !== "true") {
+    await opening.click();
+  }
+
+  return row(page, name).getByRole("menuitem", { name: action });
+}
+
 test("the operator sees every account with what it is", async ({ page }) => {
   // given: an operator looking at the accounts
   await anOperatorWith(page);
@@ -56,7 +65,7 @@ test("the operator sees every account with what it is", async ({ page }) => {
     "Signed up on 22 Oct 2026",
   );
   await expect(
-    row(page, "Ada Lovelace").getByRole("button", { name: "Lock…" }),
+    (await offered(page, "Ada Lovelace", "Lock…")),
   ).toHaveCount(0);
 });
 
@@ -67,8 +76,7 @@ test("an operator locks an account for a reason and unlocks it again", async ({
   const server = await anOperatorWith(page);
 
   // when: they lock an account for a reason
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Lock…" })
+  await (await offered(page, "Grace Hopper", "Lock…"))
     .click();
   const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
   await dialog.getByLabel("Reason").fill("Sent spam to every member.");
@@ -83,16 +91,45 @@ test("an operator locks an account for a reason and unlocks it again", async ({
   expect(server.listed[1].locks[0].reason).toBe("Sent spam to every member.");
 
   // when: they unlock it
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Unlock" })
+  await (await offered(page, "Grace Hopper", "Unlock"))
     .click();
 
   // then: it is no longer locked
   await expect(row(page, "Grace Hopper")).not.toContainText("Locked since");
   await expect(
-    row(page, "Grace Hopper").getByRole("button", { name: "Lock…" }),
+    (await offered(page, "Grace Hopper", "Lock…")),
   ).toBeVisible();
   expect(server.listed[1].locks).toEqual([]);
+});
+
+test("an operator turns off someone's two-step sign-in, told what follows", async ({
+  page,
+}) => {
+  // given: an operator looking at the accounts, one of them with two-step sign-in
+  const server = await anOperatorWith(page, [HEDY, { ...GRACE, second_factor: true }]);
+
+  // then: that one is marked, and only that one can have it turned off
+  await expect(row(page, "Grace Hopper")).toContainText("Two-step sign-in");
+  await expect(
+    (await offered(page, "Hedy Lamarr", "Turn off two-step sign-in")),
+  ).toHaveCount(0);
+  // when: they turn it off for Grace
+  await (await offered(page, "Grace Hopper", "Turn off two-step sign-in"))
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Turn off two-step sign-in for Grace Hopper?",
+  });
+  // then: the dialog says what follows, and that it is recorded
+  await expect(dialog).toContainText("signed out everywhere");
+  await expect(dialog).toContainText("Their account’s history shows that you did this.");
+  // when: they confirm
+  await dialog.getByRole("button", { name: "Turn off" }).click();
+  // then: it is off
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    (await offered(page, "Grace Hopper", "Turn off two-step sign-in")),
+  ).toHaveCount(0);
+  expect(server.listed[1].second_factor).toBe(false);
 });
 
 test("each change to an account says the version it was made on", async ({
@@ -108,8 +145,7 @@ test("each change to an account says the version it was made on", async ({
   });
 
   // when: they lock it
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Lock…" })
+  await (await offered(page, "Grace Hopper", "Lock…"))
     .click();
   const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
   await dialog.getByLabel("Reason").fill("Sent spam to every member.");
@@ -117,8 +153,7 @@ test("each change to an account says the version it was made on", async ({
   await expect(dialog).toHaveCount(0);
   await expect(row(page, "Grace Hopper")).toContainText("Locked since");
   // and: unlock it again
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Unlock" })
+  await (await offered(page, "Grace Hopper", "Unlock"))
     .click();
   await expect(row(page, "Grace Hopper")).not.toContainText("Locked since");
 
@@ -133,8 +168,7 @@ test("a lock without a reason is refused and the dialog stays", async ({
   const server = await anOperatorWith(page);
 
   // when: they lock an account without a reason
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Lock…" })
+  await (await offered(page, "Grace Hopper", "Lock…"))
     .click();
   const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
   await dialog.getByLabel("Reason").fill("   ");
@@ -153,8 +187,7 @@ test("the dialog's hint stands apart from the reason it asks for", async ({
 }) => {
   // given: an operator locking an account
   await anOperatorWith(page);
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Lock…" })
+  await (await offered(page, "Grace Hopper", "Lock…"))
     .click();
   const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
 
@@ -171,8 +204,7 @@ test("cancelling the dialog locks nobody", async ({ page }) => {
   const server = await anOperatorWith(page);
 
   // when: they begin locking an account and cancel
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Lock…" })
+  await (await offered(page, "Grace Hopper", "Lock…"))
     .click();
   const dialog = page.getByRole("dialog", { name: "Lock Grace Hopper" });
   await dialog.getByLabel("Reason").fill("Changed my mind.");
@@ -218,8 +250,7 @@ test("an operator makes another account an operator", async ({ page }) => {
   const server = await anOperatorWith(page);
 
   // when: they make another account an operator
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Make operator" })
+  await (await offered(page, "Grace Hopper", "Make operator"))
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Make Grace Hopper an operator",
@@ -230,12 +261,10 @@ test("an operator makes another account an operator", async ({ page }) => {
   await expect(dialog).toHaveCount(0);
   await expect(row(page, "Grace Hopper")).toContainText("Operator");
   await expect(
-    row(page, "Grace Hopper").getByRole("button", {
-      name: "Take away the operator role",
-    }),
+    await offered(page, "Grace Hopper", "Take away the operator role"),
   ).toBeVisible();
   await expect(
-    row(page, "Grace Hopper").getByRole("button", { name: "Lock…" }),
+    (await offered(page, "Grace Hopper", "Lock…")),
   ).toHaveCount(0);
   expect(server.listed[1].operator).toBe(true);
 });
@@ -248,8 +277,7 @@ test("an operator takes the role away from another", async ({ page }) => {
   ]);
 
   // when: they take the role away from the other
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Take away the operator role" })
+  await (await offered(page, "Grace Hopper", "Take away the operator role"))
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Take the operator role from Grace Hopper",
@@ -259,7 +287,7 @@ test("an operator takes the role away from another", async ({ page }) => {
   // then: the other is no longer an operator
   await expect(dialog).toHaveCount(0);
   await expect(
-    row(page, "Grace Hopper").getByRole("button", { name: "Make operator" }),
+    (await offered(page, "Grace Hopper", "Make operator")),
   ).toBeVisible();
   expect(server.listed[1].operator).toBe(false);
 });
@@ -269,8 +297,7 @@ test("the last operator is told the role stays", async ({ page }) => {
   const server = await anOperatorWith(page);
 
   // when: they begin taking the role from themselves
-  await row(page, "Ada Lovelace")
-    .getByRole("button", { name: "Take away the operator role" })
+  await (await offered(page, "Ada Lovelace", "Take away the operator role"))
     .click();
   const dialog = page.getByRole("dialog", {
     name: "Take the operator role from Ada Lovelace",
@@ -299,8 +326,7 @@ test("an operator giving up the role is no longer shown the instance", async ({
   ]);
 
   // when: they give up the role
-  await row(page, "Ada Lovelace")
-    .getByRole("button", { name: "Take away the operator role" })
+  await (await offered(page, "Ada Lovelace", "Take away the operator role"))
     .click();
   await page
     .getByRole("dialog", { name: "Take the operator role from Ada Lovelace" })
@@ -336,10 +362,10 @@ test("an unconfirmed or locked account is not offered the role", async ({
   // then: neither is offered the role
   await expect(row(page, "Grace Hopper")).toContainText("Locked since");
   await expect(
-    row(page, "Hedy Lamarr").getByRole("button", { name: "Make operator" }),
+    (await offered(page, "Hedy Lamarr", "Make operator")),
   ).toHaveCount(0);
   await expect(
-    row(page, "Grace Hopper").getByRole("button", { name: "Make operator" }),
+    (await offered(page, "Grace Hopper", "Make operator")),
   ).toHaveCount(0);
 });
 
@@ -348,8 +374,7 @@ test("cancelling leaves the role as it was", async ({ page }) => {
   const server = await anOperatorWith(page);
 
   // when: they begin making another an operator and cancel
-  await row(page, "Grace Hopper")
-    .getByRole("button", { name: "Make operator" })
+  await (await offered(page, "Grace Hopper", "Make operator"))
     .click();
   await page
     .getByRole("dialog", { name: "Make Grace Hopper an operator" })

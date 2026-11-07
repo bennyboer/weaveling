@@ -23,6 +23,7 @@ pub struct AccountSummary {
     pub operator: bool,
     pub signed_up_at: OffsetDateTime,
     pub locks: BTreeMap<LockKind, Lock>,
+    pub second_factor: bool,
 }
 
 #[derive(Debug, Error)]
@@ -57,6 +58,7 @@ impl AccountSummary {
             operator: account.is_operator(),
             signed_up_at: account.signed_up_at(),
             locks: account.locks().clone(),
+            second_factor: account.second_factor().is_some(),
         }
     }
 }
@@ -123,6 +125,7 @@ mod tests {
                         since: clock::at(3_000),
                     }
                 )]),
+                second_factor: false,
             }
         );
 

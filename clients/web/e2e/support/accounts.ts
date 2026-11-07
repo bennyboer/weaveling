@@ -45,6 +45,7 @@ export type Listed = {
   operator: boolean;
   signed_up_at: string;
   locks: { kind: string; reason: string; since: string }[];
+  second_factor?: boolean;
 };
 
 export const GRACE: Listed = {
@@ -332,6 +333,18 @@ export async function aServerWithAccounts(
     server.verified = true;
     return route.fulfill({ status: 204 });
   });
+  await page.route(at("/api/accounts/current/second-factor"), async (route) => {
+    const { code } = route.request().postDataJSON();
+    if (!server.secondFactor) {
+      return refusing(route, 409, "no-second-factor");
+    }
+    if (code !== THE_APP_CODE) {
+      return refusing(route, 422, "second-factor-code-wrong");
+    }
+    server.secondFactor = null;
+    socketsToldTheSessionEnded(server);
+    return route.fulfill({ status: 204 });
+  });
   await page.route(at("/api/accounts/current/second-factor/setup"), async (route) => {
     if (!server.signedIn) {
       return refusing(route, 401, "not-signed-in");
@@ -483,6 +496,18 @@ export async function aServerWithAccounts(
         : null;
     return route.fulfill({ json: { accounts, next } });
   });
+  await page.route(
+    (url) => /^\/api\/instance\/accounts\/[^/]+\/second-factor$/.test(url.pathname),
+    async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const account = server.listed.find((listed) => listed.id === id);
+      if (!account) {
+        return refusing(route, 404, "account-not-found");
+      }
+      account.second_factor = false;
+      return route.fulfill({ status: 204 });
+    },
+  );
   await page.route(
     (url) => /^\/api\/instance\/accounts\/[^/]+\/lock$/.test(url.pathname),
     async (route) => {

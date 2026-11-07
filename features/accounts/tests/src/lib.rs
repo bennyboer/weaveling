@@ -44,6 +44,9 @@ mod password_reset;
 mod second_factor_bench;
 
 #[cfg(test)]
+mod second_factor_off_api;
+
+#[cfg(test)]
 mod second_factor_setup_api;
 
 #[cfg(test)]

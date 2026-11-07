@@ -16,8 +16,8 @@ use crate::locks;
 
 const REMEMBER: &str = "
     INSERT INTO account_summaries
-        (account, version, name, email, verified, operator, signed_up_at, locks)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB)
+        (account, version, name, email, verified, operator, signed_up_at, locks, second_factor)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9)
     ON CONFLICT (account) DO UPDATE
     SET version      = EXCLUDED.version,
         name         = EXCLUDED.name,
@@ -25,12 +25,13 @@ const REMEMBER: &str = "
         verified     = EXCLUDED.verified,
         operator     = EXCLUDED.operator,
         signed_up_at = EXCLUDED.signed_up_at,
-        locks        = EXCLUDED.locks
+        locks        = EXCLUDED.locks,
+        second_factor = EXCLUDED.second_factor
     WHERE account_summaries.version < EXCLUDED.version
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT account, version, name, email, verified, operator, signed_up_at, locks::TEXT AS locks
+    SELECT account, version, name, email, verified, operator, signed_up_at, second_factor, locks::TEXT AS locks
     FROM account_summaries
     WHERE $1::TEXT IS NULL OR account < $1
     ORDER BY account DESC
@@ -75,6 +76,7 @@ fn to_summary(row: &PgRow) -> Result<AccountSummary, CatalogError> {
         email: EmailAddress::new(&email).map_err(unreachable)?,
         verified: row.try_get("verified").map_err(unreachable)?,
         operator: row.try_get("operator").map_err(unreachable)?,
+        second_factor: row.try_get("second_factor").map_err(unreachable)?,
         signed_up_at,
         locks: locks::read(&kept_locks)?,
     })
@@ -96,6 +98,7 @@ impl AccountCatalog for PostgresAccountCatalog {
             .bind(summary.operator)
             .bind(summary.signed_up_at)
             .bind(locks::written(&summary.locks))
+            .bind(summary.second_factor)
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

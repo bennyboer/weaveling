@@ -16,8 +16,8 @@ use crate::locks;
 
 const REMEMBER: &str = "
     INSERT INTO account_summaries
-        (account, version, name, email, verified, operator, signed_up_at, locks)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        (account, version, name, email, verified, operator, signed_up_at, locks, second_factor)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
     ON CONFLICT (account) DO UPDATE
     SET version      = excluded.version,
         name         = excluded.name,
@@ -25,12 +25,13 @@ const REMEMBER: &str = "
         verified     = excluded.verified,
         operator     = excluded.operator,
         signed_up_at = excluded.signed_up_at,
-        locks        = excluded.locks
+        locks        = excluded.locks,
+        second_factor = excluded.second_factor
     WHERE account_summaries.version < excluded.version
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT account, version, name, email, verified, operator, signed_up_at, locks
+    SELECT account, version, name, email, verified, operator, signed_up_at, second_factor, locks
     FROM account_summaries
     WHERE ?1 IS NULL OR account < ?1
     ORDER BY account DESC
@@ -75,6 +76,7 @@ fn to_summary(row: &SqliteRow) -> Result<AccountSummary, CatalogError> {
         email: EmailAddress::new(&email).map_err(unreachable)?,
         verified: row.try_get("verified").map_err(unreachable)?,
         operator: row.try_get("operator").map_err(unreachable)?,
+        second_factor: row.try_get("second_factor").map_err(unreachable)?,
         signed_up_at: text::read(&signed_up_at).ok_or_else(|| {
             CatalogError::Backend(
                 format!("signed_up_at holds {signed_up_at:?}, which is no time").into(),
@@ -100,6 +102,7 @@ impl AccountCatalog for SqliteAccountCatalog {
             .bind(summary.operator)
             .bind(text::written(summary.signed_up_at))
             .bind(locks::written(&summary.locks))
+            .bind(summary.second_factor)
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

@@ -375,6 +375,7 @@ async fn a_long_list_comes_a_page_at_a_time() {
                 operator: false,
                 signed_up_at: clock::at(1_000 + seconds),
                 locks: BTreeMap::new(),
+                second_factor: false,
             },
         )
         .await;
@@ -415,6 +416,7 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
                 operator: false,
                 signed_up_at: clock::at(1_000 + seconds),
                 locks: BTreeMap::new(),
+                second_factor: false,
             },
         )
         .await;

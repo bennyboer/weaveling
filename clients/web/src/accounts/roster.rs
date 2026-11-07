@@ -20,6 +20,7 @@ pub(super) enum Intent {
     Unlock,
     Appoint,
     Dismiss,
+    TurnOffSecondFactor,
 }
 
 #[derive(Clone, Copy)]
@@ -30,6 +31,8 @@ pub(super) struct Roster {
     pub(super) refused: RwSignal<Option<ApiError>>,
     pub(super) locking: RwSignal<Option<ListedAccount>>,
     pub(super) changing_role: RwSignal<Option<ListedAccount>>,
+    pub(super) turning_off: RwSignal<Option<ListedAccount>>,
+    pub(super) menu: RwSignal<Option<String>>,
 }
 
 impl Roster {
@@ -44,6 +47,9 @@ impl Roster {
                     Intent::Unlock => service::unlock_account(&id, on.version).await?,
                     Intent::Appoint => service::appoint_operator(&id, on.version).await?,
                     Intent::Dismiss => service::dismiss_operator(&id, on.version).await?,
+                    Intent::TurnOffSecondFactor => {
+                        service::remove_second_factor(&id, on.version).await?
+                    }
                 }
 
                 Ok(answered(
@@ -62,6 +68,8 @@ impl Roster {
             refused,
             locking: RwSignal::new(None),
             changing_role: RwSignal::new(None),
+            turning_off: RwSignal::new(None),
+            menu: RwSignal::new(None),
         };
         roster.load(None);
 
@@ -144,6 +152,7 @@ impl working_copy::Intent<ListedAccount> for Intent {
             Self::Unlock => account.lock = None,
             Self::Appoint => account.operator = true,
             Self::Dismiss => account.operator = false,
+            Self::TurnOffSecondFactor => account.second_factor = false,
         }
     }
 
@@ -189,6 +198,7 @@ mod tests {
             operator,
             signed_up_at: datetime!(2026-10-23 08:00 UTC),
             lock,
+            second_factor: true,
         }
     }
 
@@ -235,6 +245,12 @@ mod tests {
         assert!(shown(grace(false, None), &Intent::Appoint).operator);
         // and: dismissing shows one no longer
         assert!(!shown(grace(true, None), &Intent::Dismiss).operator);
+    }
+
+    #[test]
+    fn a_second_factor_turned_off_shows_off_at_once() {
+        // expect: turning it off shows the account without one
+        assert!(!shown(grace(false, None), &Intent::TurnOffSecondFactor).second_factor);
     }
 
     #[test]

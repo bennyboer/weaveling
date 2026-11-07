@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use accounts_contract::SettingUpSecondFactorDTO;
 use leptos::prelude::*;
 use leptos::{IntoView, component, ev, html, view};
@@ -30,13 +32,14 @@ enum Step {
 pub fn TwoStepSignInPage() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let step = RwSignal::new(Step::Overview);
+    let turned_off = RwSignal::new(false);
 
     (
         shell::masthead(None),
         html::main()
             .class("operating two-step")
             .child(move || match step.get() {
-                Step::Overview => overview(session, step).into_any(),
+                Step::Overview => overview(session, step, turned_off).into_any(),
                 Step::SettingUp(setting_up) => {
                     setting_up_view(session, setting_up, step).into_any()
                 }
@@ -45,7 +48,11 @@ pub fn TwoStepSignInPage() -> impl IntoView {
     )
 }
 
-fn overview(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
+fn overview(
+    session: CurrentSession,
+    step: RwSignal<Step>,
+    turned_off: RwSignal<bool>,
+) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
     let beginning = Act::new(move |(), _: Here| {
         refused.set(None);
@@ -60,33 +67,47 @@ fn overview(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
 
     move || match session.state() {
         SignInState::SignedIn(account) => (
+            move || {
+                turned_off.get().then(|| {
+                    html::p()
+                        .class("notice")
+                        .role("status")
+                        .child(speech::said("two-step-turned-off"))
+                })
+            },
             html::h1().child(speech::said("two-step-heading")),
             match account.second_factor {
-                Some(factor) => (in_use(factor), drawing(session, step)).into_any(),
+                Some(factor) => in_use(factor).into_any(),
                 None => html::p()
                     .class("hint")
                     .child(speech::said("two-step-off-hint"))
                     .into_any(),
             },
             move || refused.get().map(problem::problem),
-            if session.second_factors() {
-                html::button()
-                    .r#type("button")
-                    .class("primary")
-                    .attr("aria-busy", move || beginning.busy())
-                    .on(ev::click, move |_| beginning.start(()))
-                    .child(speech::said(if account.second_factor.is_some() {
-                        "two-step-set-up-anew"
-                    } else {
-                        "two-step-set-up"
-                    }))
-                    .into_any()
-            } else {
-                html::p()
-                    .class("hint")
-                    .child(speech::said("two-step-unavailable"))
-                    .into_any()
-            },
+            html::div().class("actions").child((
+                if session.second_factors() {
+                    html::button()
+                        .r#type("button")
+                        .class("primary")
+                        .attr("aria-busy", move || beginning.busy())
+                        .on(ev::click, move |_| beginning.start(()))
+                        .child(speech::said(if account.second_factor.is_some() {
+                            "two-step-set-up-anew"
+                        } else {
+                            "two-step-set-up"
+                        }))
+                        .into_any()
+                } else {
+                    html::p()
+                        .class("hint")
+                        .child(speech::said("two-step-unavailable"))
+                        .into_any()
+                },
+                account
+                    .second_factor
+                    .is_some()
+                    .then(|| (drawing(session, step), turning_off(session, turned_off))),
+            )),
         )
             .into_any(),
         _ => setup::without_accounts().into_any(),
@@ -198,49 +219,92 @@ fn setting_up_view(
     )
 }
 
+/// The words of a change asked for by a code of the app: the button that opens it, what it does, the field and the button that does it.
+struct CodeAsked {
+    opening: &'static str,
+    hint: &'static str,
+    field: &'static str,
+    confirming: &'static str,
+    danger: bool,
+}
+
+const DRAWING: CodeAsked = CodeAsked {
+    opening: "two-step-draw-codes",
+    hint: "two-step-draw-codes-hint",
+    field: "two-step-draw-codes-code",
+    confirming: "two-step-draw-codes",
+    danger: false,
+};
+
+const TURNING_OFF: CodeAsked = CodeAsked {
+    opening: "two-step-turn-off",
+    hint: "two-step-turn-off-hint",
+    field: "two-step-turn-off-code",
+    confirming: "two-step-turn-off",
+    danger: true,
+};
+
 fn drawing(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
+    asking_a_code(&DRAWING, move |typed| async move {
+        let codes = service::draw_recovery_codes(&typed).await?;
+        session.look_again();
+        step.set(Step::Keeping {
+            codes,
+            notice: "two-step-codes-drawn",
+        });
+
+        Ok(())
+    })
+}
+
+fn turning_off(session: CurrentSession, turned_off: RwSignal<bool>) -> impl IntoView {
+    asking_a_code(&TURNING_OFF, move |typed| async move {
+        service::turn_off_second_factor(&typed).await?;
+        turned_off.set(true);
+        session.look_again();
+
+        Ok(())
+    })
+}
+
+fn asking_a_code<Fu>(
+    words: &'static CodeAsked,
+    answer: impl Fn(String) -> Fu + 'static,
+) -> impl IntoView
+where
+    Fu: Future<Output = Result<(), ApiError>> + 'static,
+{
     let asking = RwSignal::new(false);
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
-    let drawing = Act::new(move |(), _: Here| {
+    let answering = Act::new(move |(), _: Here| {
         refused.set(None);
-        let typed = code.get_untracked();
+        let answered = answer(code.get_untracked());
 
         async move {
-            match service::draw_recovery_codes(&typed).await {
-                Ok(codes) => {
-                    session.look_again();
-                    step.set(Step::Keeping {
-                        codes,
-                        notice: "two-step-codes-drawn",
-                    });
-                }
-                Err(failed) => {
-                    code.set(String::new());
-                    refused.set(Some(failed));
-                }
+            if let Err(failed) = answered.await {
+                code.set(String::new());
+                refused.set(Some(failed));
             }
         }
     });
 
     Effect::new(move |_| {
         if is_whole(&code.get()) {
-            drawing.start(());
+            answering.start(());
         }
     });
 
-    html::section().class("drawing").child(move || {
+    html::section().class("asking").child(move || {
         if asking.get() {
             html::form()
                 .on(ev::submit, move |event| {
                     event.prevent_default();
-                    drawing.start(());
+                    answering.start(());
                 })
                 .child((
-                    html::p()
-                        .class("hint")
-                        .child(speech::said("two-step-draw-codes-hint")),
-                    code_boxes(speech::said("two-step-draw-codes-code"), code),
+                    html::p().class("hint").child(speech::said(words.hint)),
+                    code_boxes(speech::said(words.field), code),
                     move || refused.get().map(problem::problem),
                     html::div().class("buttons").child((
                         html::button()
@@ -253,17 +317,18 @@ fn drawing(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
                             .child(speech::said("two-step-cancel")),
                         html::button()
                             .r#type("submit")
-                            .class("primary")
-                            .attr("aria-busy", move || drawing.busy())
-                            .child(speech::said("two-step-draw-codes")),
+                            .class(if words.danger { "danger" } else { "primary" })
+                            .attr("aria-busy", move || answering.busy())
+                            .child(speech::said(words.confirming)),
                     )),
                 ))
                 .into_any()
         } else {
             html::button()
                 .r#type("button")
+                .class(if words.danger { "danger" } else { "" })
                 .on(ev::click, move |_| asking.set(true))
-                .child(speech::said("two-step-draw-codes"))
+                .child(speech::said(words.opening))
                 .into_any()
         }
     })

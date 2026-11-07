@@ -78,6 +78,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             routing::post(decline_invitation_by_id),
         )
         .route(
+            "/accounts/current/second-factor",
+            routing::delete(turn_off_second_factor),
+        )
+        .route(
             "/accounts/current/second-factor/setup",
             routing::post(begin_setting_up_second_factor),
         )
@@ -90,6 +94,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             routing::post(draw_recovery_codes),
         )
         .route("/instance/accounts", routing::get(list_accounts))
+        .route(
+            "/instance/accounts/{account}/second-factor",
+            routing::delete(remove_second_factor),
+        )
         .route(
             "/instance/accounts/{account}/lock",
             routing::put(lock).delete(unlock),
@@ -330,6 +338,37 @@ async fn finish_setting_up_second_factor(
         .into_response())
 }
 
+async fn turn_off_second_factor(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    headers: HeaderMap,
+    Json(request): Json<SecondFactorCodeRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let token = accounts
+        .turn_off_second_factor(&account, &request.code, &session)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], StatusCode::NO_CONTENT).into_response())
+}
+
+async fn remove_second_factor(
+    State(accounts): State<AccountsCore>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .remove_second_factor(&by, &account_named(&account)?, serving::demanded(&headers)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn draw_recovery_codes(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
@@ -475,6 +514,7 @@ fn account_named(given: &str) -> Result<AccountId, Problem> {
 
 fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
     AccountSummaryDTO {
+        second_factor: summary.second_factor,
         id: summary.id.to_string(),
         version: summary.version.count(),
         name: summary.name.to_string(),

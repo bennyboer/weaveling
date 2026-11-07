@@ -81,6 +81,7 @@ pub fn a_summary(id: AccountId, email: &str) -> AccountSummary {
         operator: false,
         signed_up_at: clock::at(1_000),
         locks: BTreeMap::new(),
+        second_factor: false,
     }
 }
 
@@ -98,11 +99,12 @@ async fn listed(catalog: &Committing<'_, impl AccountCatalog>) -> Vec<AccountSum
 pub async fn a_remembered_account_is_listed_as_it_was(
     catalog: &Committing<'_, impl AccountCatalog>,
 ) {
-    // given: a summary of a locked operator
+    // given: a summary of a locked operator with a second factor
     let summary = AccountSummary {
         version: Version::of(4),
         verified: false,
         operator: true,
+        second_factor: true,
         signed_up_at: clock::at(1_700_000_000),
         locks: BTreeMap::from([(
             LockKind::Operator,

@@ -167,6 +167,65 @@ impl AccountsCore {
         Ok(codes)
     }
 
+    /// Turns the second factor off for a current code of the app, so every other session ends, and this one goes on as a new one.
+    pub async fn turn_off_second_factor(
+        &self,
+        account: &AccountId,
+        code: &str,
+        session: &SessionToken,
+    ) -> Result<SessionToken, AccountsError> {
+        let key = self.totp_key()?;
+        let who = account.to_string();
+        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
+        let Some(kept) = self.second_factors.second_factor_of(account).await? else {
+            return Err(AccountsError::NoSecondFactor);
+        };
+        let Some(secret) = key.unseal(&kept.secret, account) else {
+            return Err(AccountsError::SecondFactorCodeWrong);
+        };
+        let Some(step) = secret.accepts(code, self.clock.now(), Some(kept.last_accepted)) else {
+            return Err(AccountsError::SecondFactorCodeWrong);
+        };
+        let holder = self.get(account).await?.state;
+
+        let (token, _) = transacting::retrying!(&*self.transactions, |transaction| {
+            if !self
+                .second_factors
+                .accept_step(transaction, account, step)
+                .await?
+            {
+                return Err(AccountsError::SecondFactorCodeWrong);
+            }
+            self.second_factors
+                .forget_second_factor(transaction, account)
+                .await?;
+            self.commanded_in(
+                transaction,
+                account,
+                None,
+                AccountCommand::RemoveSecondFactor,
+                &account.acting(),
+            )
+            .await?;
+            self.sessions.end(transaction, &session.digest()).await?;
+
+            self.session_opened_within(
+                transaction,
+                *account,
+                holder.clone(),
+                Stage::SignedIn,
+                self.clock.now(),
+            )
+            .await
+        })?;
+        self.throttles
+            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
+            .await?;
+        self.check_sessions();
+
+        Ok(token)
+    }
+
     pub(super) fn totp_key(&self) -> Result<&TotpKey, AccountsError> {
         self.totp_key
             .as_ref()

@@ -91,6 +91,14 @@
   gap: 0.5rem;
 }
 
+p + .dialog-actions {
+  margin-top: 1.5rem;
+}
+
+.hint + .hint {
+  margin-top: 0.75rem;
+}
+
 .dialog.share {
   width: min(36rem, 100vw - 2rem);
   max-width: none;
