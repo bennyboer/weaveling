@@ -12,6 +12,7 @@ use crate::speech;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Label {
+    Home,
     Said(&'static str),
     Project(String),
     Idea(String),
@@ -51,26 +52,40 @@ pub fn path_bar() -> impl IntoView {
 }
 
 fn step(crumb: Crumb, here: bool) -> impl IntoView {
-    let named = move || named(&crumb.label);
+    let home = crumb.label == Label::Home;
+    let named = move || {
+        if home {
+            (
+                icons::mark(Icon::Home),
+                html::span().class("unseen").child(named(&crumb.label)),
+            )
+                .into_any()
+        } else {
+            named(&crumb.label).into_any()
+        }
+    };
 
-    html::li().child(match (crumb.leads_to, here) {
-        (Some(href), false) => (
-            view! { <A href=href>{named.clone()}</A> }.into_any(),
-            html::span()
-                .class("between")
-                .attr("aria-hidden", "true")
-                .child(icons::mark(Icon::Closed)),
-        )
-            .into_any(),
-        _ => html::span()
-            .attr("aria-current", "page")
-            .child(named)
-            .into_any(),
-    })
+    html::li()
+        .class(("home", home))
+        .child(match (crumb.leads_to, here) {
+            (Some(href), false) => (
+                view! { <A href=href exact=true>{named.clone()}</A> }.into_any(),
+                html::span()
+                    .class("between")
+                    .attr("aria-hidden", "true")
+                    .child(icons::mark(Icon::Closed)),
+            )
+                .into_any(),
+            _ => html::span()
+                .attr("aria-current", "page")
+                .child(named)
+                .into_any(),
+        })
 }
 
 fn named(label: &Label) -> String {
     match label {
+        Label::Home => speech::say("path-home"),
         Label::Said(message) => speech::say(message),
         Label::Project(segment) => expect_context::<OpenProject>()
             .name()
@@ -82,7 +97,7 @@ fn named(label: &Label) -> String {
 fn crumbs_of(pathname: &str) -> Vec<Crumb> {
     let segments: Vec<&str> = pathname.split('/').filter(|s| !s.is_empty()).collect();
     let projects = Crumb {
-        label: Label::Said("workspace-heading"),
+        label: Label::Home,
         leads_to: Some(route::WORKSPACE.to_owned()),
     };
     let said = |message: &'static str, leads_to: Option<String>| Crumb {
@@ -156,9 +171,9 @@ mod tests {
     }
 
     #[test]
-    fn every_path_begins_at_ones_projects() {
-        // expect: the projects alone at the root
-        assert_eq!(labels("/"), vec![Label::Said("workspace-heading")]);
+    fn every_path_begins_at_home() {
+        // expect: home alone at the root
+        assert_eq!(labels("/"), vec![Label::Home]);
         // and: first everywhere else
         for pathname in [
             "/trash",
@@ -166,11 +181,7 @@ mod tests {
             "/projects/loom-project_1/board",
             "/nowhere",
         ] {
-            assert_eq!(
-                labels(pathname)[0],
-                Label::Said("workspace-heading"),
-                "{pathname}"
-            );
+            assert_eq!(labels(pathname)[0], Label::Home, "{pathname}");
         }
     }
 
@@ -203,7 +214,7 @@ mod tests {
             crumbs_of("/projects/loom-project_1/ideas/the-fairy-idea_2"),
             vec![
                 Crumb {
-                    label: Label::Said("workspace-heading"),
+                    label: Label::Home,
                     leads_to: Some("/".to_owned()),
                 },
                 Crumb {
@@ -228,7 +239,7 @@ mod tests {
         assert_eq!(
             labels("/instance/invitations"),
             vec![
-                Label::Said("workspace-heading"),
+                Label::Home,
                 Label::Said("account-menu-operator"),
                 Label::Said("instance-invitations-heading"),
             ]
@@ -240,10 +251,7 @@ mod tests {
         // expect: nothing found, under one's projects
         assert_eq!(
             labels("/projects/loom-project_1/elsewhere"),
-            vec![
-                Label::Said("workspace-heading"),
-                Label::Said("path-missing")
-            ]
+            vec![Label::Home, Label::Said("path-missing")]
         );
     }
 }

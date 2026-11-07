@@ -205,8 +205,11 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         }))
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
-            if !is_the_book_itself(&event) && !choosing_by_dragging.get_value() {
-                state.choosing.let_go();
+            if !is_the_book_itself(&event) {
+                match choosing_by_dragging.get_value() {
+                    true => crate::writing::choosing::hand_the_keys_to_the_book(),
+                    false => state.choosing.let_go(),
+                }
             }
             if let Some(section) = section_around(&event) {
                 state.writing_in.moved_to(section);

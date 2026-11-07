@@ -277,6 +277,7 @@ contents = Table des matières
 this-scene = Cette scène
 where-you-are = Où vous êtes
 path = Chemin
+path-home = Accueil
 path-invitation = Invitation
 path-missing = Introuvable
 quiet-rearranged = Quelqu’un d’autre a réorganisé le livre autour de « { $section } ».

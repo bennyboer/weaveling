@@ -277,6 +277,7 @@ contents = Contents
 this-scene = This scene
 where-you-are = Where you are
 path = Path
+path-home = Start
 path-invitation = Invitation
 path-missing = Not found
 quiet-rearranged = Someone else rearranged the book around “{ $section }”.

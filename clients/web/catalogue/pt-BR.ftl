@@ -277,6 +277,7 @@ contents = Sumário
 this-scene = Esta cena
 where-you-are = Onde você está
 path = Caminho
+path-home = Início
 path-invitation = Convite
 path-missing = Não encontrado
 quiet-rearranged = Outra pessoa reorganizou o livro em torno de “{ $section }”.

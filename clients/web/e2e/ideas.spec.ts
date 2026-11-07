@@ -216,7 +216,7 @@ test("an address that leads nowhere says so", async ({ page }) => {
     page.getByText("There is nothing woven at this address."),
   ).toBeVisible();
   // when: the way back is followed
-  await page.getByRole("navigation", { name: "Path" }).getByRole("link", { name: "Your projects" }).click();
+  await page.getByRole("navigation", { name: "Path" }).getByRole("link", { name: "Start" }).click();
   // then: the workspace shows
   await expect(page.getByPlaceholder("A working title…")).toBeVisible();
 });

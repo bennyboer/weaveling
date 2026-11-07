@@ -277,6 +277,7 @@ contents = Inhalt
 this-scene = Diese Szene
 where-you-are = Wo du bist
 path = Pfad
+path-home = Startseite
 path-invitation = Einladung
 path-missing = Nicht gefunden
 quiet-rearranged = Jemand anderes hat das Buch rund um „{ $section }“ umgestellt.

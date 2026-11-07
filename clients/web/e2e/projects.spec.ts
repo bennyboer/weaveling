@@ -259,7 +259,7 @@ test("confirming moves the project to the trash, from where it is restored", asy
   // then: it leaves the trash
   await expect(trashed).toHaveCount(0);
   // and: is back in the list
-  await page.getByRole("navigation", { name: "Path" }).getByRole("link", { name: "Your projects" }).click();
+  await page.getByRole("navigation", { name: "Path" }).getByRole("link", { name: "Start" }).click();
   await expect(rowFor(page, title)).toBeVisible();
 });
 
