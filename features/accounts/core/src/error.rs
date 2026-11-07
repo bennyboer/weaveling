@@ -65,6 +65,12 @@ pub enum AccountsError {
     NothingBeingSetUp,
     #[error("this is not the code the app shows")]
     SecondFactorCodeWrong,
+    #[error("this is not one of the account's recovery codes, or it was used")]
+    RecoveryCodeWrong,
+    #[error("no second factor is owed here; sign in first")]
+    NoSecondFactorOwed,
+    #[error("this account has no second factor")]
+    NoSecondFactor,
     #[error("too many tries; wait {wait} before trying again")]
     Throttled { wait: Duration },
     #[error(transparent)]

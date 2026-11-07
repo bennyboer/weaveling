@@ -3,7 +3,7 @@ use crate::account::AccountCommand;
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
-use crate::session::SessionToken;
+use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
 use crate::totp::TotpSecret;
 use crate::totp_key::TotpKey;
@@ -75,9 +75,6 @@ impl AccountsCore {
         let Some(step) = secret.accepts(code, self.clock.now(), None) else {
             return Err(AccountsError::SecondFactorCodeWrong);
         };
-        self.throttles
-            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
-            .await?;
         let codes = RecoveryCode::drawn();
         let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
         let holder = self.get(account).await?.state;
@@ -103,15 +100,74 @@ impl AccountsCore {
             .await?;
             self.sessions.end(transaction, &session.digest()).await?;
 
-            self.session_opened_within(transaction, *account, holder.clone(), self.clock.now())
-                .await
+            self.session_opened_within(
+                transaction,
+                *account,
+                holder.clone(),
+                Stage::SignedIn,
+                self.clock.now(),
+            )
+            .await
         })?;
+        self.throttles
+            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
+            .await?;
         self.check_sessions();
 
         Ok((token, codes))
     }
 
-    fn totp_key(&self) -> Result<&TotpKey, AccountsError> {
+    /// Draws new recovery codes in place of the old, for a current code of the app.
+    pub async fn draw_recovery_codes(
+        &self,
+        account: &AccountId,
+        code: &str,
+    ) -> Result<Vec<RecoveryCode>, AccountsError> {
+        let key = self.totp_key()?;
+        let who = account.to_string();
+        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
+        let Some(kept) = self.second_factors.second_factor_of(account).await? else {
+            return Err(AccountsError::NoSecondFactor);
+        };
+        let Some(secret) = key.unseal(&kept.secret, account) else {
+            return Err(AccountsError::SecondFactorCodeWrong);
+        };
+        let Some(step) = secret.accepts(code, self.clock.now(), Some(kept.last_accepted)) else {
+            return Err(AccountsError::SecondFactorCodeWrong);
+        };
+        let codes = RecoveryCode::drawn();
+        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            if !self
+                .second_factors
+                .accept_step(transaction, account, step)
+                .await?
+            {
+                return Err(AccountsError::SecondFactorCodeWrong);
+            }
+            self.second_factors
+                .keep_recovery_codes(transaction, account, &hashes)
+                .await?;
+            self.commanded_in(
+                transaction,
+                account,
+                None,
+                AccountCommand::DrawRecoveryCodes,
+                &account.acting(),
+            )
+            .await?;
+
+            Ok::<_, AccountsError>(())
+        })?;
+        self.throttles
+            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
+            .await?;
+
+        Ok(codes)
+    }
+
+    pub(super) fn totp_key(&self) -> Result<&TotpKey, AccountsError> {
         self.totp_key
             .as_ref()
             .ok_or(AccountsError::SecondFactorsUnavailable)

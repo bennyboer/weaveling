@@ -59,18 +59,13 @@ impl AccountsCore {
         password: &str,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let (id, account, began) = self.signed_in_as(email, password).await?;
+        let stage = match account.second_factor() {
+            Some(_) => Stage::SecondFactorOwed,
+            None => Stage::SignedIn,
+        };
 
-        self.session_opened(id, account, began).await
-    }
-
-    pub(super) async fn session_opened(
-        &self,
-        id: AccountId,
-        account: Account,
-        began: OffsetDateTime,
-    ) -> Result<(SessionToken, SignedIn), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.session_opened_within(transaction, id, account.clone(), began)
+            self.session_opened_within(transaction, id, account.clone(), stage, began)
                 .await
         })
     }
@@ -80,11 +75,11 @@ impl AccountsCore {
         transaction: &mut Transaction,
         id: AccountId,
         account: Account,
+        stage: Stage,
         began: OffsetDateTime,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let token = SessionToken::drawn();
-        // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
-        let session = Session::begun(id, Stage::SignedIn, began);
+        let session = Session::begun(id, stage, began);
         self.sessions
             .open(transaction, &token.digest(), &session)
             .await?;

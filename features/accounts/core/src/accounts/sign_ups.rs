@@ -9,7 +9,7 @@ use crate::id::AccountId;
 use crate::name::AccountName;
 use crate::operator::OperatorCode;
 use crate::password::Password;
-use crate::session::SessionToken;
+use crate::session::{SessionToken, Stage};
 use crate::signing_up::SigningUp;
 use crate::ticket::InvitationToken;
 use email::EmailAddress;
@@ -148,7 +148,7 @@ impl AccountsCore {
                 .await?
                 .state;
 
-            self.session_opened_within(transaction, id, account, self.clock.now())
+            self.session_opened_within(transaction, id, account, Stage::SignedIn, self.clock.now())
                 .await
         })
     }

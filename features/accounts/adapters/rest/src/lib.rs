@@ -47,6 +47,14 @@ pub fn router(accounts: AccountsCore) -> Router {
             "/sessions/current",
             routing::get(current).delete(end_session),
         )
+        .route(
+            "/sessions/current/second-factor",
+            routing::post(answer_with_code),
+        )
+        .route(
+            "/sessions/current/recovery-code",
+            routing::post(answer_with_recovery_code),
+        )
         .with_state(accounts)
 }
 
@@ -76,6 +84,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/accounts/current/second-factor/setup/finish",
             routing::post(finish_setting_up_second_factor),
+        )
+        .route(
+            "/accounts/current/second-factor/recovery-codes",
+            routing::post(draw_recovery_codes),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
@@ -316,6 +328,53 @@ async fn finish_setting_up_second_factor(
         }),
     )
         .into_response())
+}
+
+async fn draw_recovery_codes(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<SecondFactorCodeRequest>,
+) -> Result<Json<RecoveryCodesDTO>, Problem> {
+    let codes = accounts
+        .draw_recovery_codes(&account, &request.code)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(RecoveryCodesDTO {
+        codes: codes.iter().map(ToString::to_string).collect(),
+    }))
+}
+
+async fn answer_with_code(
+    State(accounts): State<AccountsCore>,
+    headers: HeaderMap,
+    Json(request): Json<SecondFactorCodeRequest>,
+) -> Result<Response, Problem> {
+    let Some(owing) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let (token, signed_in) = accounts
+        .answer_with_code(&owing, &request.code)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+}
+
+async fn answer_with_recovery_code(
+    State(accounts): State<AccountsCore>,
+    headers: HeaderMap,
+    Json(request): Json<SecondFactorCodeRequest>,
+) -> Result<Response, Problem> {
+    let Some(owing) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let (token, signed_in) = accounts
+        .answer_with_recovery_code(&owing, &request.code)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
 }
 
 pub const PAGE: usize = 100;
@@ -615,6 +674,11 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::SecondFactorCodeWrong => {
             Problem::unprocessable(refused::SECOND_FACTOR_CODE_WRONG, refusal)
         }
+        AccountsError::RecoveryCodeWrong => {
+            Problem::unprocessable(refused::RECOVERY_CODE_WRONG, refusal)
+        }
+        AccountsError::NoSecondFactor => Problem::refused(refused::NO_SECOND_FACTOR, refusal),
+        AccountsError::NoSecondFactorOwed => not_signed_in(),
         unserveable => Problem::unexpected(unserveable),
     }
 }

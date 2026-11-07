@@ -236,8 +236,10 @@ pub mod refused {
     pub const SECOND_FACTORS_UNAVAILABLE: &str = "second-factors-unavailable";
     pub const NOTHING_BEING_SET_UP: &str = "second-factor-nothing-being-set-up";
     pub const SECOND_FACTOR_CODE_WRONG: &str = "second-factor-code-wrong";
+    pub const RECOVERY_CODE_WRONG: &str = "recovery-code-wrong";
+    pub const NO_SECOND_FACTOR: &str = "no-second-factor";
 
-    pub const EVERY: [&str; 36] = [
+    pub const EVERY: [&str; 38] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -274,5 +276,7 @@ pub mod refused {
         SECOND_FACTORS_UNAVAILABLE,
         NOTHING_BEING_SET_UP,
         SECOND_FACTOR_CODE_WRONG,
+        RECOVERY_CODE_WRONG,
+        NO_SECOND_FACTOR,
     ];
 }

@@ -2,6 +2,7 @@ mod codes;
 mod invitations;
 mod operating;
 mod second_factors;
+mod second_step;
 mod sessions;
 mod sign_ups;
 

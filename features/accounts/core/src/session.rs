@@ -74,13 +74,18 @@ impl TokenDigest {
 
 impl Session {
     pub const LASTS: Duration = Duration::days(30);
+    pub const OWING_LASTS: Duration = Duration::minutes(10);
 
     pub fn begun(account: AccountId, stage: Stage, now: OffsetDateTime) -> Self {
         Self {
             account,
             stage,
             begun: now,
-            until: now + Self::LASTS,
+            until: now
+                + match stage {
+                    Stage::SignedIn => Self::LASTS,
+                    Stage::SecondFactorOwed => Self::OWING_LASTS,
+                },
         }
     }
 
@@ -165,6 +170,20 @@ mod tests {
         assert!(!session.is_over(clock::at(1_000) + Duration::days(30)));
         // and: is over a second later
         assert!(session.is_over(clock::at(1_000) + Duration::days(30) + Duration::seconds(1)));
+    }
+
+    #[test]
+    fn a_session_owing_its_second_factor_lasts_ten_minutes() {
+        // given: a session owing its second factor
+        let session = Session::begun(an_account(), Stage::SecondFactorOwed, clock::at(1_000));
+
+        // then: it holds for ten minutes
+        assert!(!session.is_over(clock::at(1_000) + Duration::minutes(10)));
+        // and: is over a second later
+        assert!(
+            session.is_over(clock::at(1_000) + Duration::minutes(10) + Duration::seconds(1)),
+            "a password alone keeps the door ajar only while the code is being typed"
+        );
     }
 
     #[test]
