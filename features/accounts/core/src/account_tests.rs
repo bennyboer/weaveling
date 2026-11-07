@@ -246,10 +246,7 @@ fn a_snapshot_holds_everything_the_account_is() {
     account.apply(&AccountEvent::PasswordReset, &stamped(3, clock::at(2_500)));
     account.apply(&AccountEvent::BecameOperator, &stamped(4, clock::at(2_700)));
     account.apply(&a_lock(), &stamped(5, clock::at(2_800)));
-    account.apply(
-        &AccountEvent::SecondFactorAdded,
-        &stamped(6, clock::at(2_850)),
-    );
+    account.apply(&AccountEvent::TotpAdded, &stamped(6, clock::at(2_850)));
     account.apply(
         &AccountEvent::RecoveryCodesDrawn,
         &stamped(7, clock::at(2_850)),
@@ -275,10 +272,7 @@ fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
     further.apply(&AccountEvent::PasswordReset, &stamped(3, clock::at(2_500)));
     further.apply(&AccountEvent::BecameOperator, &stamped(4, clock::at(2_700)));
     further.apply(&a_lock(), &stamped(5, clock::at(2_800)));
-    further.apply(
-        &AccountEvent::SecondFactorAdded,
-        &stamped(6, clock::at(2_850)),
-    );
+    further.apply(&AccountEvent::TotpAdded, &stamped(6, clock::at(2_850)));
     further.apply(
         &AccountEvent::RecoveryCodesDrawn,
         &stamped(7, clock::at(2_850)),
@@ -643,7 +637,7 @@ fn with_a_second_factor_since(at: i64) -> Account {
     let mut account = a_verified_account();
     let stamp = stamped(3, clock::at(at));
     for event in account
-        .decide(AccountCommand::AddSecondFactor, &herself())
+        .decide(AccountCommand::AddTotp, &herself())
         .expect("a second factor may be added")
     {
         account.apply(&event, &stamp);
@@ -660,16 +654,13 @@ fn a_second_factor_is_added_with_ten_recovery_codes() {
 
     // when: a second factor is added
     let added = account
-        .decide(AccountCommand::AddSecondFactor, &herself())
+        .decide(AccountCommand::AddTotp, &herself())
         .expect("a second factor may be added");
 
     // then: it is added, and its recovery codes drawn
     assert_eq!(
         added,
-        vec![
-            AccountEvent::SecondFactorAdded,
-            AccountEvent::RecoveryCodesDrawn
-        ]
+        vec![AccountEvent::TotpAdded, AccountEvent::RecoveryCodesDrawn]
     );
     // and: the account holds it from that moment, with ten codes left
     assert_eq!(
@@ -690,10 +681,7 @@ fn adding_or_removing_a_second_factor_ends_every_session_begun_before() {
     assert!(!account.counts_session_begun(clock::at(2_999)));
     assert!(account.counts_session_begun(clock::at(3_000)));
     // when: the second factor is removed
-    account.apply(
-        &AccountEvent::SecondFactorRemoved,
-        &stamped(5, clock::at(4_000)),
-    );
+    account.apply(&AccountEvent::TotpRemoved, &stamped(5, clock::at(4_000)));
     // then: a session begun before that no longer counts either
     assert!(!account.counts_session_begun(clock::at(3_999)));
 }
@@ -709,7 +697,7 @@ fn a_second_factor_added_again_replaces_the_one_before() {
 
     // when: a second factor is added again
     for event in account
-        .decide(AccountCommand::AddSecondFactor, &herself())
+        .decide(AccountCommand::AddTotp, &herself())
         .expect("a second factor may be set up anew")
     {
         account.apply(&event, &stamped(5, clock::at(4_000)));
@@ -801,20 +789,17 @@ fn removing_a_second_factor_takes_its_recovery_codes_along() {
 
     // when: it is removed
     let removed = account
-        .decide(AccountCommand::RemoveSecondFactor, &herself())
+        .decide(AccountCommand::RemoveTotp, &herself())
         .expect("a second factor may be removed");
-    assert_eq!(removed, vec![AccountEvent::SecondFactorRemoved]);
+    assert_eq!(removed, vec![AccountEvent::TotpRemoved]);
     let mut account = account;
-    account.apply(
-        &AccountEvent::SecondFactorRemoved,
-        &stamped(4, clock::at(4_000)),
-    );
+    account.apply(&AccountEvent::TotpRemoved, &stamped(4, clock::at(4_000)));
 
     // then: the account has none
     assert_eq!(account.second_factor(), None);
     // and: removing it again changes nothing
     assert_eq!(
-        account.decide(AccountCommand::RemoveSecondFactor, &herself()),
+        account.decide(AccountCommand::RemoveTotp, &herself()),
         Ok(vec![])
     );
 }
@@ -823,10 +808,10 @@ fn removing_a_second_factor_takes_its_recovery_codes_along() {
 fn nothing_about_a_second_factor_happens_before_signing_up() {
     // expect: every second factor command is refused before signing up
     for command in [
-        AccountCommand::AddSecondFactor,
+        AccountCommand::AddTotp,
         AccountCommand::DrawRecoveryCodes,
         AccountCommand::UseRecoveryCode,
-        AccountCommand::RemoveSecondFactor,
+        AccountCommand::RemoveTotp,
     ] {
         assert_eq!(
             Account::begin(command, &herself()),

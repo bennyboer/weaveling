@@ -53,7 +53,7 @@ pub async fn with_a_key() -> Served {
         wired
             .accounts
             .clone()
-            .sealing_second_factors(TotpKey::from_hex(KEY).expect("a test key"))
+            .sealing_totp_secrets(TotpKey::from_hex(KEY).expect("a test key"))
     })
     .await
 }

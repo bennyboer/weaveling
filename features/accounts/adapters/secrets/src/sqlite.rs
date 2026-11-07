@@ -3,7 +3,7 @@ use transacting::Transaction;
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, KeptSecondFactor, Operators, PasswordHash, Passwords,
+    InvitationTicket, InvitationTickets, KeptTotp, Operators, PasswordHash, Passwords,
     PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session,
     Sessions, Stage, TokenDigest, TotpStep, VerificationCode, Verifications,
 };
@@ -145,24 +145,24 @@ const FORGET_TICKET: &str = "
 ";
 
 const BEGIN_SETTING_UP: &str = "
-    INSERT INTO account_second_factors (account, secret_being_set_up)
+    INSERT INTO account_totps (account, secret_being_set_up)
     VALUES (?1, ?2)
     ON CONFLICT (account) DO UPDATE
     SET secret_being_set_up = EXCLUDED.secret_being_set_up
 ";
 
-const SECOND_FACTOR_BEING_SET_UP: &str = "SELECT secret_being_set_up FROM account_second_factors WHERE account = ?1 AND secret_being_set_up IS NOT NULL";
+const TOTP_BEING_SET_UP: &str = "SELECT secret_being_set_up FROM account_totps WHERE account = ?1 AND secret_being_set_up IS NOT NULL";
 
 const FINISH_SETTING_UP: &str = "
-    UPDATE account_second_factors
+    UPDATE account_totps
     SET secret_in_use = secret_being_set_up, secret_being_set_up = NULL, last_step = ?3
     WHERE account = ?1 AND secret_being_set_up = ?2
 ";
 
-const SECOND_FACTOR_OF: &str = "SELECT secret_in_use, last_step FROM account_second_factors WHERE account = ?1 AND secret_in_use IS NOT NULL";
+const TOTP_OF: &str = "SELECT secret_in_use, last_step FROM account_totps WHERE account = ?1 AND secret_in_use IS NOT NULL";
 
 const ACCEPT_STEP: &str = "
-    UPDATE account_second_factors
+    UPDATE account_totps
     SET last_step = ?2
     WHERE account = ?1 AND secret_in_use IS NOT NULL AND last_step < ?2
 ";
@@ -178,7 +178,7 @@ const RECOVERY_CODES_OF: &str =
 const USE_RECOVERY_CODE: &str =
     "DELETE FROM account_recovery_codes WHERE account = ?1 AND code_hash = ?2";
 
-const FORGET_SECOND_FACTOR: &str = "DELETE FROM account_second_factors WHERE account = ?1";
+const FORGET_TOTP: &str = "DELETE FROM account_totps WHERE account = ?1";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
@@ -735,11 +735,11 @@ fn written_step(step: TotpStep) -> Result<i64, SecretsError> {
     i64::try_from(step.get()).map_err(unreachable)
 }
 
-fn to_second_factor(row: &SqliteRow) -> Result<KeptSecondFactor, SecretsError> {
+fn to_totp(row: &SqliteRow) -> Result<KeptTotp, SecretsError> {
     let secret: Vec<u8> = row.try_get("secret_in_use").map_err(unreachable)?;
     let last_step: i64 = row.try_get("last_step").map_err(unreachable)?;
 
-    Ok(KeptSecondFactor {
+    Ok(KeptTotp {
         secret: SealedTotpSecret::kept(secret),
         last_accepted: to_step(last_step)?,
     })
@@ -763,11 +763,11 @@ impl SecondFactors for SqliteSecrets {
         Ok(())
     }
 
-    async fn second_factor_being_set_up(
+    async fn totp_being_set_up(
         &self,
         account: &AccountId,
     ) -> Result<Option<SealedTotpSecret>, SecretsError> {
-        let being_set_up: Option<Vec<u8>> = sqlx::query_scalar(SECOND_FACTOR_BEING_SET_UP)
+        let being_set_up: Option<Vec<u8>> = sqlx::query_scalar(TOTP_BEING_SET_UP)
             .bind(account.to_string())
             .fetch_optional(&self.pool)
             .await
@@ -794,16 +794,13 @@ impl SecondFactors for SqliteSecrets {
         Ok(done.rows_affected() == 1)
     }
 
-    async fn second_factor_of(
-        &self,
-        account: &AccountId,
-    ) -> Result<Option<KeptSecondFactor>, SecretsError> {
-        sqlx::query(SECOND_FACTOR_OF)
+    async fn totp_of(&self, account: &AccountId) -> Result<Option<KeptTotp>, SecretsError> {
+        sqlx::query(TOTP_OF)
             .bind(account.to_string())
             .fetch_optional(&self.pool)
             .await
             .map_err(unreachable)?
-            .map(|row| to_second_factor(&row))
+            .map(|row| to_totp(&row))
             .transpose()
     }
 
@@ -875,12 +872,12 @@ impl SecondFactors for SqliteSecrets {
         Ok(done.rows_affected() == 1)
     }
 
-    async fn forget_second_factor(
+    async fn forget_totp(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
-        sqlx::query(FORGET_SECOND_FACTOR)
+        sqlx::query(FORGET_TOTP)
             .bind(account.to_string())
             .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await

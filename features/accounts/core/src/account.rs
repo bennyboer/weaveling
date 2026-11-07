@@ -8,7 +8,7 @@ use crate::decline::DeclineReason;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use crate::recovery_code::RecoveryCode;
-use crate::second_factor::SecondFactor;
+use crate::second_factor::{SecondFactor, Totp};
 use email::EmailAddress;
 
 pub const KIND: AggregateType = AggregateType::of("account");
@@ -23,10 +23,10 @@ const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
 const STOPPED_BEING_OPERATOR: EventName = EventName::of("STOPPED_BEING_OPERATOR");
 const LOCKED: EventName = EventName::of("LOCKED");
 const UNLOCKED: EventName = EventName::of("UNLOCKED");
-const SECOND_FACTOR_ADDED: EventName = EventName::of("SECOND_FACTOR_ADDED");
+const TOTP_ADDED: EventName = EventName::of("TOTP_ADDED");
 const RECOVERY_CODES_DRAWN: EventName = EventName::of("RECOVERY_CODES_DRAWN");
 const RECOVERY_CODE_USED: EventName = EventName::of("RECOVERY_CODE_USED");
-const SECOND_FACTOR_REMOVED: EventName = EventName::of("SECOND_FACTOR_REMOVED");
+const TOTP_REMOVED: EventName = EventName::of("TOTP_REMOVED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,10 +50,10 @@ pub enum AccountCommand {
     TakeUpInvitation {
         invitation: String,
     },
-    AddSecondFactor,
+    AddTotp,
     DrawRecoveryCodes,
     UseRecoveryCode,
-    RemoveSecondFactor,
+    RemoveTotp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,10 +84,10 @@ pub enum AccountEvent {
     InvitationTakenUp {
         invitation: String,
     },
-    SecondFactorAdded,
+    TotpAdded,
     RecoveryCodesDrawn,
     RecoveryCodeUsed,
-    SecondFactorRemoved,
+    TotpRemoved,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -96,7 +96,8 @@ pub enum AccountEvent {
         sessions_since: Option<OffsetDateTime>,
         operator: bool,
         locks: BTreeMap<LockKind, Lock>,
-        second_factor: Option<SecondFactor>,
+        totp: Option<Totp>,
+        recovery_codes_left: usize,
     },
 }
 
@@ -109,7 +110,8 @@ pub struct Account {
     sessions_since: Option<OffsetDateTime>,
     operator: bool,
     locks: BTreeMap<LockKind, Lock>,
-    second_factor: Option<SecondFactor>,
+    totp: Option<Totp>,
+    recovery_codes_left: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -152,7 +154,14 @@ impl Account {
     }
 
     pub fn second_factor(&self) -> Option<SecondFactor> {
-        self.second_factor
+        self.totp.map(|totp| SecondFactor {
+            since: totp.since,
+            recovery_codes_left: self.recovery_codes_left,
+        })
+    }
+
+    pub fn totp(&self) -> Option<Totp> {
+        self.totp
     }
 
     pub fn is_locked(&self) -> bool {
@@ -181,10 +190,10 @@ impl Event for AccountEvent {
             Self::Unlocked { .. } => UNLOCKED,
             Self::InvitationDeclined { .. } => INVITATION_DECLINED,
             Self::InvitationTakenUp { .. } => INVITATION_TAKEN_UP,
-            Self::SecondFactorAdded => SECOND_FACTOR_ADDED,
+            Self::TotpAdded => TOTP_ADDED,
             Self::RecoveryCodesDrawn => RECOVERY_CODES_DRAWN,
             Self::RecoveryCodeUsed => RECOVERY_CODE_USED,
-            Self::SecondFactorRemoved => SECOND_FACTOR_REMOVED,
+            Self::TotpRemoved => TOTP_REMOVED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -224,10 +233,10 @@ impl Aggregate for Account {
             | AccountCommand::Unlock(_)
             | AccountCommand::DeclineInvitation { .. }
             | AccountCommand::TakeUpInvitation { .. }
-            | AccountCommand::AddSecondFactor
+            | AccountCommand::AddTotp
             | AccountCommand::DrawRecoveryCodes
             | AccountCommand::UseRecoveryCode
-            | AccountCommand::RemoveSecondFactor => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::RemoveTotp => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -241,7 +250,8 @@ impl Aggregate for Account {
                 sessions_since: None,
                 operator: false,
                 locks: BTreeMap::new(),
-                second_factor: None,
+                totp: None,
+                recovery_codes_left: 0,
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
@@ -251,7 +261,8 @@ impl Aggregate for Account {
                 sessions_since: None,
                 operator: false,
                 locks: BTreeMap::new(),
-                second_factor: None,
+                totp: None,
+                recovery_codes_left: 0,
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -261,7 +272,8 @@ impl Aggregate for Account {
                 sessions_since,
                 operator,
                 locks,
-                second_factor,
+                totp,
+                recovery_codes_left,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -270,7 +282,8 @@ impl Aggregate for Account {
                 sessions_since: *sessions_since,
                 operator: *operator,
                 locks: locks.clone(),
-                second_factor: *second_factor,
+                totp: *totp,
+                recovery_codes_left: *recovery_codes_left,
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
@@ -280,10 +293,10 @@ impl Aggregate for Account {
             | AccountEvent::Unlocked { .. }
             | AccountEvent::InvitationDeclined { .. }
             | AccountEvent::InvitationTakenUp { .. }
-            | AccountEvent::SecondFactorAdded
+            | AccountEvent::TotpAdded
             | AccountEvent::RecoveryCodesDrawn
             | AccountEvent::RecoveryCodeUsed
-            | AccountEvent::SecondFactorRemoved => None,
+            | AccountEvent::TotpRemoved => None,
         }
     }
 
@@ -325,26 +338,22 @@ impl Aggregate for Account {
             AccountCommand::TakeUpInvitation { invitation } => {
                 Ok(vec![AccountEvent::InvitationTakenUp { invitation }])
             }
-            AccountCommand::AddSecondFactor => Ok(vec![
-                AccountEvent::SecondFactorAdded,
+            AccountCommand::AddTotp => Ok(vec![
+                AccountEvent::TotpAdded,
                 AccountEvent::RecoveryCodesDrawn,
             ]),
             AccountCommand::DrawRecoveryCodes | AccountCommand::UseRecoveryCode
-                if self.second_factor.is_none() =>
+                if self.second_factor().is_none() =>
             {
                 Err(AccountError::NoSecondFactor)
             }
             AccountCommand::DrawRecoveryCodes => Ok(vec![AccountEvent::RecoveryCodesDrawn]),
-            AccountCommand::UseRecoveryCode
-                if self
-                    .second_factor
-                    .is_some_and(|factor| factor.recovery_codes_left == 0) =>
-            {
+            AccountCommand::UseRecoveryCode if self.recovery_codes_left == 0 => {
                 Err(AccountError::NoRecoveryCodeLeft)
             }
             AccountCommand::UseRecoveryCode => Ok(vec![AccountEvent::RecoveryCodeUsed]),
-            AccountCommand::RemoveSecondFactor if self.second_factor.is_none() => Ok(vec![]),
-            AccountCommand::RemoveSecondFactor => Ok(vec![AccountEvent::SecondFactorRemoved]),
+            AccountCommand::RemoveTotp if self.totp.is_none() => Ok(vec![]),
+            AccountCommand::RemoveTotp => Ok(vec![AccountEvent::TotpRemoved]),
         }
     }
 
@@ -369,25 +378,25 @@ impl Aggregate for Account {
                 self.locks.remove(kind);
             }
             AccountEvent::InvitationDeclined { .. } | AccountEvent::InvitationTakenUp { .. } => {}
-            AccountEvent::SecondFactorAdded => {
-                self.second_factor = Some(SecondFactor {
+            AccountEvent::TotpAdded => {
+                self.totp = Some(Totp {
                     since: metadata.occurred_at,
-                    recovery_codes_left: 0,
                 });
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::RecoveryCodesDrawn => {
-                if let Some(factor) = &mut self.second_factor {
-                    factor.recovery_codes_left = RecoveryCode::DRAWN;
+                if self.second_factor().is_some() {
+                    self.recovery_codes_left = RecoveryCode::DRAWN;
                 }
             }
             AccountEvent::RecoveryCodeUsed => {
-                if let Some(factor) = &mut self.second_factor {
-                    factor.recovery_codes_left = factor.recovery_codes_left.saturating_sub(1);
-                }
+                self.recovery_codes_left = self.recovery_codes_left.saturating_sub(1);
             }
-            AccountEvent::SecondFactorRemoved => {
-                self.second_factor = None;
+            AccountEvent::TotpRemoved => {
+                self.totp = None;
+                if self.second_factor().is_none() {
+                    self.recovery_codes_left = 0;
+                }
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::Snapshotted {
@@ -398,7 +407,8 @@ impl Aggregate for Account {
                 sessions_since,
                 operator,
                 locks,
-                second_factor,
+                totp,
+                recovery_codes_left,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -407,7 +417,8 @@ impl Aggregate for Account {
                 self.sessions_since = *sessions_since;
                 self.operator = *operator;
                 self.locks = locks.clone();
-                self.second_factor = *second_factor;
+                self.totp = *totp;
+                self.recovery_codes_left = *recovery_codes_left;
             }
         }
     }
@@ -421,7 +432,8 @@ impl Aggregate for Account {
             sessions_since: self.sessions_since,
             operator: self.operator,
             locks: self.locks.clone(),
-            second_factor: self.second_factor,
+            totp: self.totp,
+            recovery_codes_left: self.recovery_codes_left,
         }
     }
 }

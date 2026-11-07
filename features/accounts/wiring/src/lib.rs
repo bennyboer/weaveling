@@ -116,9 +116,9 @@ impl AssembledAccounts {
         )
     }
 
-    pub fn sealing_second_factors(self, key: TotpKey) -> Self {
+    pub fn sealing_totp_secrets(self, key: TotpKey) -> Self {
         Self::serving(
-            self.core.sealing_second_factors(key),
+            self.core.sealing_totp_secrets(key),
             self.outbox,
             self.listeners,
             self.chores,

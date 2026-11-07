@@ -49,7 +49,7 @@ pub fn router(accounts: AccountsCore) -> Router {
         )
         .route(
             "/sessions/current/second-factor",
-            routing::post(answer_with_code),
+            routing::post(answer_with_totp),
         )
         .route(
             "/sessions/current/recovery-code",
@@ -79,15 +79,15 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         )
         .route(
             "/accounts/current/second-factor",
-            routing::delete(turn_off_second_factor),
+            routing::delete(turn_off_totp),
         )
         .route(
             "/accounts/current/second-factor/setup",
-            routing::post(begin_setting_up_second_factor),
+            routing::post(begin_setting_up_totp),
         )
         .route(
             "/accounts/current/second-factor/setup/finish",
-            routing::post(finish_setting_up_second_factor),
+            routing::post(finish_setting_up_totp),
         )
         .route(
             "/accounts/current/second-factor/recovery-codes",
@@ -96,7 +96,7 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
             "/instance/accounts/{account}/second-factor",
-            routing::delete(remove_second_factor),
+            routing::delete(remove_totp),
         )
         .route(
             "/instance/accounts/{account}/lock",
@@ -300,12 +300,12 @@ async fn become_operator(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn begin_setting_up_second_factor(
+async fn begin_setting_up_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
 ) -> Result<Json<SettingUpSecondFactorDTO>, Problem> {
     let setting_up = accounts
-        .begin_setting_up_second_factor(&account)
+        .begin_setting_up_totp(&account)
         .await
         .map_err(problem_of)?;
 
@@ -315,7 +315,7 @@ async fn begin_setting_up_second_factor(
     }))
 }
 
-async fn finish_setting_up_second_factor(
+async fn finish_setting_up_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     headers: HeaderMap,
@@ -325,7 +325,7 @@ async fn finish_setting_up_second_factor(
         return Err(not_signed_in());
     };
     let (token, codes) = accounts
-        .finish_setting_up_second_factor(&account, &request.code, &session)
+        .finish_setting_up_totp(&account, &request.code, &session)
         .await
         .map_err(problem_of)?;
 
@@ -338,7 +338,7 @@ async fn finish_setting_up_second_factor(
         .into_response())
 }
 
-async fn turn_off_second_factor(
+async fn turn_off_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     headers: HeaderMap,
@@ -348,21 +348,21 @@ async fn turn_off_second_factor(
         return Err(not_signed_in());
     };
     let token = accounts
-        .turn_off_second_factor(&account, &request.code, &session)
+        .turn_off_totp(&account, &request.code, &session)
         .await
         .map_err(problem_of)?;
 
     Ok(([(SET_COOKIE, holding(&token))], StatusCode::NO_CONTENT).into_response())
 }
 
-async fn remove_second_factor(
+async fn remove_totp(
     State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     accounts
-        .remove_second_factor(&by, &account_named(&account)?, serving::demanded(&headers)?)
+        .remove_totp(&by, &account_named(&account)?, serving::demanded(&headers)?)
         .await
         .map_err(problem_of)?;
 
@@ -384,7 +384,7 @@ async fn draw_recovery_codes(
     }))
 }
 
-async fn answer_with_code(
+async fn answer_with_totp(
     State(accounts): State<AccountsCore>,
     headers: HeaderMap,
     Json(request): Json<SecondFactorCodeRequest>,
@@ -393,7 +393,7 @@ async fn answer_with_code(
         return Err(not_signed_in());
     };
     let (token, signed_in) = accounts
-        .answer_with_code(&owing, &request.code)
+        .answer_with_totp(&owing, &request.code)
         .await
         .map_err(problem_of)?;
 
@@ -705,13 +705,13 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
         }
-        AccountsError::SecondFactorsUnavailable => {
+        AccountsError::TotpUnavailable => {
             Problem::refused(refused::SECOND_FACTORS_UNAVAILABLE, refusal)
         }
         AccountsError::NothingBeingSetUp => {
             Problem::refused(refused::NOTHING_BEING_SET_UP, refusal)
         }
-        AccountsError::SecondFactorCodeWrong => {
+        AccountsError::TotpCodeWrong => {
             Problem::unprocessable(refused::SECOND_FACTOR_CODE_WRONG, refusal)
         }
         AccountsError::RecoveryCodeWrong => {

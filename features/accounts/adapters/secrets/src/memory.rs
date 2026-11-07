@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, KeptSecondFactor, Operators, PasswordHash, Passwords, PendingVerification,
+    InvitationTickets, KeptTotp, Operators, PasswordHash, Passwords, PendingVerification,
     RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session, Sessions,
     TokenDigest, TotpStep, VerificationCode, Verifications,
 };
@@ -23,13 +23,13 @@ struct Kept {
     invitation_tickets: HashMap<String, (TokenDigest, InvitationTicket)>,
     ended_invitations: HashSet<String>,
     trashed_projects: HashMap<String, (u64, bool)>,
-    second_factors: HashMap<AccountId, KeptFactor>,
+    totps: HashMap<AccountId, KeptTotpSecrets>,
     recovery_codes: HashMap<AccountId, Vec<RecoveryCodeHash>>,
 }
 
 #[derive(Clone, Default)]
-struct KeptFactor {
-    in_use: Option<KeptSecondFactor>,
+struct KeptTotpSecrets {
+    in_use: Option<KeptTotp>,
     being_set_up: Option<SealedTotpSecret>,
 }
 
@@ -56,18 +56,18 @@ impl InMemorySecrets {
         .map_err(|failure| SecretsError::Backend(Box::new(failure)))
     }
 
-    fn undo_second_factor_on_rollback(
+    fn undo_totp_on_rollback(
         &self,
         transaction: &mut Transaction,
         kept: &Kept,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
         let holder = *account;
-        let factor = kept.second_factors.get(account).cloned();
+        let factor = kept.totps.get(account).cloned();
         let codes = kept.recovery_codes.get(account).cloned();
 
         self.undo_on_rollback(transaction, move |kept| {
-            restore(&mut kept.second_factors, holder, factor);
+            restore(&mut kept.totps, holder, factor);
             restore(&mut kept.recovery_codes, holder, codes);
         })
     }
@@ -591,22 +591,19 @@ impl SecondFactors for InMemorySecrets {
         secret: &SealedTotpSecret,
     ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
-        kept.second_factors
-            .entry(*account)
-            .or_default()
-            .being_set_up = Some(secret.clone());
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
+        kept.totps.entry(*account).or_default().being_set_up = Some(secret.clone());
 
         Ok(())
     }
 
-    async fn second_factor_being_set_up(
+    async fn totp_being_set_up(
         &self,
         account: &AccountId,
     ) -> Result<Option<SealedTotpSecret>, SecretsError> {
         Ok(self
             .kept()
-            .second_factors
+            .totps
             .get(account)
             .and_then(|factor| factor.being_set_up.clone()))
     }
@@ -620,17 +617,17 @@ impl SecondFactors for InMemorySecrets {
     ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
         let still_being_set_up = kept
-            .second_factors
+            .totps
             .get(account)
             .is_some_and(|factor| factor.being_set_up.as_ref() == Some(being_set_up));
         if !still_being_set_up {
             return Ok(false);
         }
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
-        kept.second_factors.insert(
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
+        kept.totps.insert(
             *account,
-            KeptFactor {
-                in_use: Some(KeptSecondFactor {
+            KeptTotpSecrets {
+                in_use: Some(KeptTotp {
                     secret: being_set_up.clone(),
                     last_accepted: accepted,
                 }),
@@ -641,13 +638,10 @@ impl SecondFactors for InMemorySecrets {
         Ok(true)
     }
 
-    async fn second_factor_of(
-        &self,
-        account: &AccountId,
-    ) -> Result<Option<KeptSecondFactor>, SecretsError> {
+    async fn totp_of(&self, account: &AccountId) -> Result<Option<KeptTotp>, SecretsError> {
         Ok(self
             .kept()
-            .second_factors
+            .totps
             .get(account)
             .and_then(|factor| factor.in_use.clone()))
     }
@@ -660,16 +654,16 @@ impl SecondFactors for InMemorySecrets {
     ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
         let later = kept
-            .second_factors
+            .totps
             .get(account)
             .and_then(|factor| factor.in_use.as_ref())
             .is_some_and(|in_use| step > in_use.last_accepted);
         if !later {
             return Ok(false);
         }
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
         if let Some(in_use) = kept
-            .second_factors
+            .totps
             .get_mut(account)
             .and_then(|factor| factor.in_use.as_mut())
         {
@@ -686,7 +680,7 @@ impl SecondFactors for InMemorySecrets {
         codes: &[RecoveryCodeHash],
     ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
         kept.recovery_codes.insert(*account, codes.to_vec());
 
         Ok(())
@@ -718,7 +712,7 @@ impl SecondFactors for InMemorySecrets {
         if !held {
             return Ok(false);
         }
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
         if let Some(codes) = kept.recovery_codes.get_mut(account) {
             codes.retain(|kept| kept != code);
         }
@@ -726,14 +720,14 @@ impl SecondFactors for InMemorySecrets {
         Ok(true)
     }
 
-    async fn forget_second_factor(
+    async fn forget_totp(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        self.undo_second_factor_on_rollback(transaction, &kept, account)?;
-        kept.second_factors.remove(account);
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
+        kept.totps.remove(account);
         kept.recovery_codes.remove(account);
 
         Ok(())

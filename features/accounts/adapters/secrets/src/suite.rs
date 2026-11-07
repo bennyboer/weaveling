@@ -2880,7 +2880,7 @@ macro_rules! conformance_tests {
         );
         $crate::secrets_conformance_case!(
             $workbench,
-            a_second_factor_being_set_up_is_in_use_only_once_finished
+            a_totp_being_set_up_is_in_use_only_once_finished
         );
         $crate::secrets_conformance_case!(
             $workbench,
@@ -2888,17 +2888,14 @@ macro_rules! conformance_tests {
         );
         $crate::secrets_conformance_case!(
             $workbench,
-            a_second_factor_set_up_anew_stays_in_use_until_the_new_one_is_finished
+            a_totp_set_up_anew_stays_in_use_until_the_new_one_is_finished
         );
         $crate::secrets_conformance_case!(
             $workbench,
             a_step_is_accepted_only_after_the_last_accepted
         );
         $crate::secrets_conformance_case!($workbench, a_step_accepted_by_many_at_once_goes_to_one);
-        $crate::secrets_conformance_case!(
-            $workbench,
-            no_step_is_accepted_without_a_second_factor_in_use
-        );
+        $crate::secrets_conformance_case!($workbench, no_step_is_accepted_without_a_totp_in_use);
         $crate::secrets_conformance_case!($workbench, recovery_codes_kept_replace_the_ones_before);
         $crate::secrets_conformance_case!($workbench, a_recovery_code_is_used_once);
         $crate::secrets_conformance_case!(
@@ -2907,11 +2904,11 @@ macro_rules! conformance_tests {
         );
         $crate::secrets_conformance_case!(
             $workbench,
-            forgetting_a_second_factor_takes_its_setup_and_codes_along
+            forgetting_a_totp_takes_its_setup_and_codes_along
         );
         $crate::secrets_conformance_case!(
             $workbench,
-            second_factor_writes_in_a_dropped_transaction_leave_it_as_it_was
+            totp_writes_in_a_dropped_transaction_leave_it_as_it_was
         );
         $crate::secrets_conformance_case!(
             $workbench,

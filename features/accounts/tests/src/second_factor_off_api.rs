@@ -124,7 +124,7 @@ async fn a_code_of_the_app_turns_the_second_factor_off_and_a_password_signs_in_a
     let secrets = &served.wired.secrets;
     assert_eq!(
         secrets
-            .second_factor_of(&served.ada)
+            .totp_of(&served.ada)
             .await
             .expect("reading should succeed"),
         None
@@ -203,7 +203,7 @@ async fn the_operator_turns_a_second_factor_off_and_its_sessions_end() {
         served
             .wired
             .secrets
-            .second_factor_of(&served.ada)
+            .totp_of(&served.ada)
             .await
             .expect("reading should succeed"),
         None
@@ -225,7 +225,7 @@ async fn the_operator_turns_a_second_factor_off_and_its_sessions_end() {
         .expect("reading should succeed");
     let removed = told
         .iter()
-        .find(|recorded| matches!(recorded.event, AccountEvent::SecondFactorRemoved))
+        .find(|recorded| matches!(recorded.event, AccountEvent::TotpRemoved))
         .expect("the removal should be told");
     assert_eq!(removed.metadata.agent, grace.acting());
 }
@@ -264,7 +264,7 @@ async fn only_an_operator_turns_another_accounts_second_factor_off() {
         served
             .wired
             .secrets
-            .second_factor_of(&served.ada)
+            .totp_of(&served.ada)
             .await
             .expect("reading should succeed")
             .is_some()

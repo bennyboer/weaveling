@@ -158,11 +158,11 @@ impl Adapters {
         }
     }
 
-    pub fn sealing_second_factors(self, key: TotpKey) -> Self {
+    pub fn sealing_totp_secrets(self, key: TotpKey) -> Self {
         Self {
             accounts: self
                 .accounts
-                .map(|accounts| accounts.sealing_second_factors(key)),
+                .map(|accounts| accounts.sealing_totp_secrets(key)),
             ..self
         }
     }
@@ -250,7 +250,7 @@ pub fn app(adapters: Adapters) -> Router {
         second_factors: adapters
             .accounts
             .as_ref()
-            .is_some_and(|accounts| accounts.core.keeps_second_factors()),
+            .is_some_and(|accounts| accounts.core.keeps_totp()),
     };
     let operating = adapters
         .accounts

@@ -60,11 +60,11 @@ pub enum AccountsError {
     #[error("this address already has an account; sign in instead")]
     EmailAddressHasAccount,
     #[error("this Weaveling instance has no key to keep second factors with")]
-    SecondFactorsUnavailable,
+    TotpUnavailable,
     #[error("no second factor is being set up; begin again")]
     NothingBeingSetUp,
     #[error("this is not the code the app shows")]
-    SecondFactorCodeWrong,
+    TotpCodeWrong,
     #[error("this is not one of the account's recovery codes, or it was used")]
     RecoveryCodeWrong,
     #[error("no second factor is owed here; sign in first")]

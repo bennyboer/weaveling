@@ -11,7 +11,7 @@ use crate::throttle::Guarded;
 
 impl AccountsCore {
     /// Answers the second factor a session owes with a code of the app, opening a session signed in all the way in its place.
-    pub async fn answer_with_code(
+    pub async fn answer_with_totp(
         &self,
         token: &SessionToken,
         code: &str,
@@ -20,14 +20,14 @@ impl AccountsCore {
         let key = self.totp_key()?;
         let who = account.to_string();
         self.admitted(Guarded::CheckingSecondFactor, &who).await?;
-        let Some(kept) = self.second_factors.second_factor_of(&account).await? else {
-            return Err(AccountsError::SecondFactorCodeWrong);
+        let Some(kept) = self.second_factors.totp_of(&account).await? else {
+            return Err(AccountsError::TotpCodeWrong);
         };
         let Some(secret) = key.unseal(&kept.secret, &account) else {
-            return Err(AccountsError::SecondFactorCodeWrong);
+            return Err(AccountsError::TotpCodeWrong);
         };
         let Some(step) = secret.accepts(code, self.clock.now(), Some(kept.last_accepted)) else {
-            return Err(AccountsError::SecondFactorCodeWrong);
+            return Err(AccountsError::TotpCodeWrong);
         };
 
         let answered = transacting::retrying!(&*self.transactions, |transaction| {
@@ -36,7 +36,7 @@ impl AccountsCore {
                 .accept_step(transaction, &account, step)
                 .await?
             {
-                return Err(AccountsError::SecondFactorCodeWrong);
+                return Err(AccountsError::TotpCodeWrong);
             }
 
             self.signed_in_after(transaction, token, &account).await

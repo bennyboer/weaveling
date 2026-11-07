@@ -249,14 +249,14 @@ pub trait InvitationTickets: Send + Sync {
     ) -> Result<bool, SecretsError>;
 }
 
-/// A second factor as it is kept: its sealed secret, and the step of the last code it accepted.
+/// TOTP as it is kept: its sealed secret, and the step of the last code it accepted.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeptSecondFactor {
+pub struct KeptTotp {
     pub secret: SealedTotpSecret,
     pub last_accepted: TotpStep,
 }
 
-/// An account's second factor: a secret being set up until a code of it is confirmed, then the one in use for signing in, which setting up anew leaves in use until the new one is finished; and its recovery codes, kept hashed.
+/// An account's second-factor secrets: a TOTP secret being set up until a code of it is confirmed, then the one in use for signing in, which setting up anew leaves in use until the new one is finished; and its recovery codes, kept hashed.
 #[async_trait]
 pub trait SecondFactors: Send + Sync {
     async fn begin_setting_up(
@@ -266,7 +266,7 @@ pub trait SecondFactors: Send + Sync {
         secret: &SealedTotpSecret,
     ) -> Result<(), SecretsError>;
 
-    async fn second_factor_being_set_up(
+    async fn totp_being_set_up(
         &self,
         account: &AccountId,
     ) -> Result<Option<SealedTotpSecret>, SecretsError>;
@@ -279,10 +279,7 @@ pub trait SecondFactors: Send + Sync {
         accepted: TotpStep,
     ) -> Result<bool, SecretsError>;
 
-    async fn second_factor_of(
-        &self,
-        account: &AccountId,
-    ) -> Result<Option<KeptSecondFactor>, SecretsError>;
+    async fn totp_of(&self, account: &AccountId) -> Result<Option<KeptTotp>, SecretsError>;
 
     async fn accept_step(
         &self,
@@ -310,7 +307,7 @@ pub trait SecondFactors: Send + Sync {
         code: &RecoveryCodeHash,
     ) -> Result<bool, SecretsError>;
 
-    async fn forget_second_factor(
+    async fn forget_totp(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,

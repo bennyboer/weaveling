@@ -2,10 +2,10 @@ mod codes;
 mod invitations;
 mod keys;
 mod operating;
-mod second_factors;
 mod second_step;
 mod sessions;
 mod sign_ups;
+mod totp;
 
 use std::sync::Arc;
 
@@ -33,8 +33,8 @@ use crate::throttle::Guarded;
 use crate::totp_key::TotpKey;
 use email::EmailAddress;
 
-pub use second_factors::SettingUpSecondFactor;
 pub use sessions::SignedIn;
+pub use totp::SettingUpTotp;
 
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 

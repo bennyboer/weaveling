@@ -51,7 +51,7 @@ CREATE TABLE account_trashed_projects (
     in_the_trash  BOOLEAN NOT NULL
 );
 
-CREATE TABLE account_second_factors (
+CREATE TABLE account_totps (
     account              TEXT PRIMARY KEY,
     secret_in_use        BLOB,
     last_step            INTEGER,

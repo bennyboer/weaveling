@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountId, KeptSecondFactor, RecoveryCodeHash, SealedTotpSecret, SecretsError, TotpStep,
+    AccountId, KeptTotp, RecoveryCodeHash, SealedTotpSecret, SecretsError, TotpStep,
 };
 use futures_util::future;
 use transacting::Tried;
@@ -91,10 +91,10 @@ impl<S: Secrets> Committing<'_, S> {
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
-    pub async fn forget_second_factor(&self, account: &AccountId) -> Result<(), SecretsError> {
+    pub async fn forget_totp(&self, account: &AccountId) -> Result<(), SecretsError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.store
-                .forget_second_factor(transaction, account)
+                .forget_totp(transaction, account)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -144,7 +144,7 @@ fn hashes(codes: &[&str]) -> Vec<RecoveryCodeHash> {
         .collect()
 }
 
-pub async fn a_second_factor_being_set_up_is_in_use_only_once_finished<S: Secrets>(
+pub async fn a_totp_being_set_up_is_in_use_only_once_finished<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: a second factor being set up for an account
@@ -157,16 +157,13 @@ pub async fn a_second_factor_being_set_up_is_in_use_only_once_finished<S: Secret
     // then: it is being set up, and the account has none in use yet
     assert_eq!(
         secrets
-            .second_factor_being_set_up(&ada)
+            .totp_being_set_up(&ada)
             .await
             .expect("reading should succeed"),
         Some(sealed(b"first"))
     );
     assert_eq!(
-        secrets
-            .second_factor_of(&ada)
-            .await
-            .expect("reading should succeed"),
+        secrets.totp_of(&ada).await.expect("reading should succeed"),
         None
     );
     // when: setting it up is finished by a code of one step
@@ -177,11 +174,8 @@ pub async fn a_second_factor_being_set_up_is_in_use_only_once_finished<S: Secret
     // then: it is in use, that step its last accepted
     assert!(finished);
     assert_eq!(
-        secrets
-            .second_factor_of(&ada)
-            .await
-            .expect("reading should succeed"),
-        Some(KeptSecondFactor {
+        secrets.totp_of(&ada).await.expect("reading should succeed"),
+        Some(KeptTotp {
             secret: sealed(b"first"),
             last_accepted: TotpStep::kept(100),
         })
@@ -189,7 +183,7 @@ pub async fn a_second_factor_being_set_up_is_in_use_only_once_finished<S: Secret
     // and: nothing is being set up any more
     assert_eq!(
         secrets
-            .second_factor_being_set_up(&ada)
+            .totp_being_set_up(&ada)
             .await
             .expect("reading should succeed"),
         None
@@ -238,7 +232,7 @@ pub async fn only_the_latest_setup_is_finished_and_only_once<S: Secrets>(
     );
 }
 
-pub async fn a_second_factor_set_up_anew_stays_in_use_until_the_new_one_is_finished<S: Secrets>(
+pub async fn a_totp_set_up_anew_stays_in_use_until_the_new_one_is_finished<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with a second factor
@@ -253,7 +247,7 @@ pub async fn a_second_factor_set_up_anew_stays_in_use_until_the_new_one_is_finis
     // then: the first is still in use
     assert_eq!(
         secrets
-            .second_factor_of(&ada)
+            .totp_of(&ada)
             .await
             .expect("reading should succeed")
             .map(|factor| factor.secret),
@@ -268,11 +262,8 @@ pub async fn a_second_factor_set_up_anew_stays_in_use_until_the_new_one_is_finis
     );
     // then: it is in use in place of the first, with its own step
     assert_eq!(
-        secrets
-            .second_factor_of(&ada)
-            .await
-            .expect("reading should succeed"),
-        Some(KeptSecondFactor {
+        secrets.totp_of(&ada).await.expect("reading should succeed"),
+        Some(KeptTotp {
             secret: sealed(b"anew"),
             last_accepted: TotpStep::kept(50),
         })
@@ -305,7 +296,7 @@ pub async fn a_step_is_accepted_only_after_the_last_accepted<S: Secrets>(
     );
     assert_eq!(
         secrets
-            .second_factor_of(&ada)
+            .totp_of(&ada)
             .await
             .expect("reading should succeed")
             .map(|factor| factor.last_accepted),
@@ -333,9 +324,7 @@ pub async fn a_step_accepted_by_many_at_once_goes_to_one<S: Secrets>(secrets: &C
     );
 }
 
-pub async fn no_step_is_accepted_without_a_second_factor_in_use<S: Secrets>(
-    secrets: &Committing<'_, S>,
-) {
+pub async fn no_step_is_accepted_without_a_totp_in_use<S: Secrets>(secrets: &Committing<'_, S>) {
     // given: an account with a second factor being set up only
     let ada = an_account(1_000);
     secrets
@@ -433,7 +422,7 @@ pub async fn a_recovery_code_used_by_many_at_once_goes_to_one<S: Secrets>(
     );
 }
 
-pub async fn forgetting_a_second_factor_takes_its_setup_and_codes_along<S: Secrets>(
+pub async fn forgetting_a_totp_takes_its_setup_and_codes_along<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with a second factor, a new one being set up, and recovery codes
@@ -457,21 +446,18 @@ pub async fn forgetting_a_second_factor_takes_its_setup_and_codes_along<S: Secre
 
     // when: the first account's second factor is forgotten
     secrets
-        .forget_second_factor(&ada)
+        .forget_totp(&ada)
         .await
         .expect("forgetting should succeed");
 
     // then: it has none in use, none being set up and no codes
     assert_eq!(
-        secrets
-            .second_factor_of(&ada)
-            .await
-            .expect("reading should succeed"),
+        secrets.totp_of(&ada).await.expect("reading should succeed"),
         None
     );
     assert_eq!(
         secrets
-            .second_factor_being_set_up(&ada)
+            .totp_being_set_up(&ada)
             .await
             .expect("reading should succeed"),
         None
@@ -480,7 +466,7 @@ pub async fn forgetting_a_second_factor_takes_its_setup_and_codes_along<S: Secre
     // and: the other account keeps its own
     assert!(
         secrets
-            .second_factor_of(&grace)
+            .totp_of(&grace)
             .await
             .expect("reading should succeed")
             .is_some()
@@ -488,7 +474,7 @@ pub async fn forgetting_a_second_factor_takes_its_setup_and_codes_along<S: Secre
     assert_eq!(secrets.codes_of(&grace).await, ["$argon2id$g"]);
 }
 
-pub async fn second_factor_writes_in_a_dropped_transaction_leave_it_as_it_was<S: Secrets>(
+pub async fn totp_writes_in_a_dropped_transaction_leave_it_as_it_was<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with a second factor, a new one being set up, and recovery codes
@@ -533,25 +519,22 @@ pub async fn second_factor_writes_in_a_dropped_transaction_leave_it_as_it_was<S:
         .expect("keeping should succeed");
     secrets
         .store
-        .forget_second_factor(&mut writing, &ada)
+        .forget_totp(&mut writing, &ada)
         .await
         .expect("forgetting should succeed");
     drop(writing);
 
     // then: the second factor in use, the one being set up and the codes are as they were
     assert_eq!(
-        secrets
-            .second_factor_of(&ada)
-            .await
-            .expect("reading should succeed"),
-        Some(KeptSecondFactor {
+        secrets.totp_of(&ada).await.expect("reading should succeed"),
+        Some(KeptTotp {
             secret: sealed(b"first"),
             last_accepted: TotpStep::kept(100),
         })
     );
     assert_eq!(
         secrets
-            .second_factor_being_set_up(&ada)
+            .totp_being_set_up(&ada)
             .await
             .expect("reading should succeed"),
         Some(sealed(b"anew"))
@@ -582,7 +565,7 @@ pub async fn a_first_setup_begun_in_a_dropped_transaction_was_never_begun<S: Sec
     // then: nothing is being set up and no code kept
     assert_eq!(
         secrets
-            .second_factor_being_set_up(&ada)
+            .totp_being_set_up(&ada)
             .await
             .expect("reading should succeed"),
         None

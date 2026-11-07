@@ -45,7 +45,7 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
             .unwrap_or_else(|why| panic!("{why}"));
     adapters = adapters.signing_up(sign_up);
     if let Some(key) = totp_key {
-        adapters = adapters.sealing_second_factors(key);
+        adapters = adapters.sealing_totp_secrets(key);
     }
     if let Some(ceremonies) = key_ceremonies {
         adapters = adapters.holding_key_ceremonies(ceremonies);

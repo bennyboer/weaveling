@@ -36,8 +36,8 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::InvitationTakenUp { invitation } => AccountEventDTO::InvitationTakenUp {
             invitation: invitation.clone(),
         },
-        AccountEvent::SecondFactorAdded => AccountEventDTO::SecondFactorAdded,
-        AccountEvent::SecondFactorRemoved => AccountEventDTO::SecondFactorRemoved,
+        AccountEvent::TotpAdded => AccountEventDTO::TotpAdded,
+        AccountEvent::TotpRemoved => AccountEventDTO::TotpRemoved,
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
         | AccountEvent::Snapshotted { .. } => return None,
@@ -70,8 +70,8 @@ mod tests {
 
     use accounts_contract::{
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
-        LOCKED, PASSWORD_RESET, SECOND_FACTOR_ADDED, SECOND_FACTOR_REMOVED, SIGNED_UP,
-        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
+        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
+        TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
     };
     use accounts_core::{AccountId, KIND, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
@@ -152,8 +152,8 @@ mod tests {
                 },
                 INVITATION_TAKEN_UP,
             ),
-            (AccountEvent::SecondFactorAdded, SECOND_FACTOR_ADDED),
-            (AccountEvent::SecondFactorRemoved, SECOND_FACTOR_REMOVED),
+            (AccountEvent::TotpAdded, TOTP_ADDED),
+            (AccountEvent::TotpRemoved, TOTP_REMOVED),
         ]
     }
 
@@ -356,7 +356,8 @@ mod tests {
             sessions_since: None,
             operator: false,
             locks: BTreeMap::new(),
-            second_factor: None,
+            totp: None,
+            recovery_codes_left: 0,
         };
 
         // expect: no message is made of it

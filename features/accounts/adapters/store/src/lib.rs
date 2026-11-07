@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
 use accounts_core::{
-    AccountEvent, AccountName, DeclineReason, EmailAddress, Lock, LockKind, LockReason,
-    SecondFactor,
+    AccountEvent, AccountName, DeclineReason, EmailAddress, Lock, LockKind, LockReason, Totp,
 };
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
@@ -36,10 +35,10 @@ enum StoredAccountEvent {
     InvitationTakenUp {
         invitation: String,
     },
-    SecondFactorAdded,
+    TotpAdded,
     RecoveryCodesDrawn,
     RecoveryCodeUsed,
-    SecondFactorRemoved,
+    TotpRemoved,
     Snapshotted {
         email: String,
         name: String,
@@ -51,7 +50,9 @@ enum StoredAccountEvent {
         operator: bool,
         locks: Vec<StoredLock>,
         #[serde(default)]
-        second_factor: Option<StoredSecondFactor>,
+        totp: Option<StoredTotp>,
+        #[serde(default)]
+        recovery_codes_left: usize,
     },
 }
 
@@ -111,27 +112,20 @@ struct StoredLock {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-struct StoredSecondFactor {
+struct StoredTotp {
     #[serde(with = "time::serde::rfc3339")]
     since: OffsetDateTime,
-    recovery_codes_left: usize,
 }
 
-impl From<SecondFactor> for StoredSecondFactor {
-    fn from(factor: SecondFactor) -> Self {
-        Self {
-            since: factor.since,
-            recovery_codes_left: factor.recovery_codes_left,
-        }
+impl From<Totp> for StoredTotp {
+    fn from(totp: Totp) -> Self {
+        Self { since: totp.since }
     }
 }
 
-impl From<StoredSecondFactor> for SecondFactor {
-    fn from(factor: StoredSecondFactor) -> Self {
-        Self {
-            since: factor.since,
-            recovery_codes_left: factor.recovery_codes_left,
-        }
+impl From<StoredTotp> for Totp {
+    fn from(totp: StoredTotp) -> Self {
+        Self { since: totp.since }
     }
 }
 
@@ -178,10 +172,10 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::InvitationTakenUp { invitation } => Self::InvitationTakenUp {
                 invitation: invitation.clone(),
             },
-            AccountEvent::SecondFactorAdded => Self::SecondFactorAdded,
+            AccountEvent::TotpAdded => Self::TotpAdded,
             AccountEvent::RecoveryCodesDrawn => Self::RecoveryCodesDrawn,
             AccountEvent::RecoveryCodeUsed => Self::RecoveryCodeUsed,
-            AccountEvent::SecondFactorRemoved => Self::SecondFactorRemoved,
+            AccountEvent::TotpRemoved => Self::TotpRemoved,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -190,7 +184,8 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 sessions_since,
                 operator,
                 locks,
-                second_factor,
+                totp,
+                recovery_codes_left,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
@@ -206,7 +201,8 @@ impl From<&AccountEvent> for StoredAccountEvent {
                         since: lock.since,
                     })
                     .collect(),
-                second_factor: second_factor.map(Into::into),
+                totp: totp.map(Into::into),
+                recovery_codes_left: *recovery_codes_left,
             },
         }
     }
@@ -260,10 +256,10 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::InvitationTakenUp { invitation } => {
                 Self::InvitationTakenUp { invitation }
             }
-            StoredAccountEvent::SecondFactorAdded => Self::SecondFactorAdded,
+            StoredAccountEvent::TotpAdded => Self::TotpAdded,
             StoredAccountEvent::RecoveryCodesDrawn => Self::RecoveryCodesDrawn,
             StoredAccountEvent::RecoveryCodeUsed => Self::RecoveryCodeUsed,
-            StoredAccountEvent::SecondFactorRemoved => Self::SecondFactorRemoved,
+            StoredAccountEvent::TotpRemoved => Self::TotpRemoved,
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -272,7 +268,8 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 sessions_since,
                 operator,
                 locks,
-                second_factor,
+                totp,
+                recovery_codes_left,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 let locks = locks
@@ -301,7 +298,8 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     sessions_since,
                     operator,
                     locks,
-                    second_factor: second_factor.map(Into::into),
+                    totp: totp.map(Into::into),
+                    recovery_codes_left,
                 }
             }
         })
@@ -365,10 +363,10 @@ mod tests {
             AccountEvent::InvitationTakenUp {
                 invitation: "invitation_1".to_owned(),
             },
-            AccountEvent::SecondFactorAdded,
+            AccountEvent::TotpAdded,
             AccountEvent::RecoveryCodesDrawn,
             AccountEvent::RecoveryCodeUsed,
-            AccountEvent::SecondFactorRemoved,
+            AccountEvent::TotpRemoved,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -383,10 +381,10 @@ mod tests {
                         since: OffsetDateTime::UNIX_EPOCH + Duration::seconds(3_000),
                     },
                 )]),
-                second_factor: Some(SecondFactor {
+                totp: Some(Totp {
                     since: OffsetDateTime::UNIX_EPOCH + Duration::seconds(4_000),
-                    recovery_codes_left: 7,
                 }),
+                recovery_codes_left: 7,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -439,7 +437,8 @@ mod tests {
             sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
             operator: false,
             locks: BTreeMap::new(),
-            second_factor: None,
+            totp: None,
+            recovery_codes_left: 0,
         });
 
         // then: its moment of signing up is stored as a readable date

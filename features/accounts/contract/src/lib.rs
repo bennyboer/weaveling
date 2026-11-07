@@ -147,8 +147,8 @@ pub const BECAME_OPERATOR: &str = "account.became.operator";
 pub const STOPPED_BEING_OPERATOR: &str = "account.stopped.being.operator";
 pub const LOCKED: &str = "account.locked";
 pub const UNLOCKED: &str = "account.unlocked";
-pub const SECOND_FACTOR_ADDED: &str = "account.second.factor.added";
-pub const SECOND_FACTOR_REMOVED: &str = "account.second.factor.removed";
+pub const TOTP_ADDED: &str = "account.totp.added";
+pub const TOTP_REMOVED: &str = "account.totp.removed";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -182,10 +182,10 @@ pub enum AccountEventDTO {
     InvitationDeclined { invitation: String, reason: String },
     #[serde(rename = "INVITATION_TAKEN_UP")]
     InvitationTakenUp { invitation: String },
-    #[serde(rename = "SECOND_FACTOR_ADDED")]
-    SecondFactorAdded,
-    #[serde(rename = "SECOND_FACTOR_REMOVED")]
-    SecondFactorRemoved,
+    #[serde(rename = "TOTP_ADDED")]
+    TotpAdded,
+    #[serde(rename = "TOTP_REMOVED")]
+    TotpRemoved,
 }
 
 pub mod sign_up {
