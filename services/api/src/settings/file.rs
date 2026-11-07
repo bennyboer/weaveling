@@ -22,6 +22,7 @@ struct Filed {
 #[serde(default, deny_unknown_fields)]
 struct FiledServer {
     listen: Option<toml::Value>,
+    public_url: Option<toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -62,6 +63,7 @@ impl Settings {
 
         Ok(Self {
             listen: setting(key("server.listen"), filed.server.listen),
+            public_url: setting(key("server.public_url"), filed.server.public_url),
             database_url: setting(key("storage.database_url"), filed.storage.database_url),
             data: setting(key("storage.data"), filed.storage.data),
             accounts: setting(key("accounts.enabled"), filed.accounts.enabled),

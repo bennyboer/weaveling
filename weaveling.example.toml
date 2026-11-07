@@ -12,6 +12,13 @@
 # only, at port 3000; "0.0.0.0:3000" listens on every address it has.
 # WEAVELING_LISTEN
 # listen = "127.0.0.1:3000"
+#
+# Where people open the instance in their browser, which is not always where
+# it listens: behind a proxy, say. Keys and passkeys are bound to its domain
+# name, so without it none can be added, and moved to another domain, every
+# key added before stops working. https, or http only at localhost; no path.
+# WEAVELING_PUBLIC_URL
+# public_url = "https://weaveling.example.com"
 
 [storage]
 # Where the work is kept. Leave both out to keep it in memory, which a restart

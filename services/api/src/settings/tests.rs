@@ -505,3 +505,72 @@ fn the_browser_tests_settings_hold_a_totp_key() {
     // then: it holds a key, so two-step sign-in can be set up in every browser test
     assert!(settings.totp_key().expect("a key").is_some());
 }
+
+#[test]
+fn without_a_public_url_no_key_can_be_added() {
+    // given: no settings
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: no key ceremonies are held
+    assert!(settings.key_ceremonies().expect("none is fine").is_none());
+}
+
+#[test]
+fn a_public_url_is_read_from_the_file_and_a_variable_wins_over_it() {
+    // given: a settings file naming where the instance is served
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[server]\npublic_url = \"https://weaveling.example.com\"\n",
+    );
+
+    // when: the settings are read
+    let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("the file is read");
+
+    // then: keys can be made for it
+    assert!(filed.key_ceremonies().expect("an address").is_some());
+    // when: a variable names an address keys cannot be bound to
+    let refused = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_PUBLIC_URL, "http://weaveling.example.com")]),
+        &folder,
+    )
+    .expect("both are read")
+    .key_ceremonies();
+    // then: the variable's is the one refused, saying why
+    let refusal = refused.expect_err("http away from localhost").to_string();
+    assert!(
+        refusal.contains(WEAVELING_PUBLIC_URL) && refusal.contains("https"),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn a_public_url_keys_cannot_be_bound_to_says_where_it_was_written() {
+    // given: a settings file naming the instance by its IP address
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[server]\npublic_url = \"https://192.0.2.7\"\n",
+    );
+
+    // when: the key ceremonies are asked for
+    let refused = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("the file itself is read")
+        .key_ceremonies();
+
+    // then: it is refused, naming the key, the value and the reason
+    let refusal = refused.expect_err("an IP address").to_string();
+    assert!(
+        refusal.contains("server.public_url in")
+            && refusal.contains("https://192.0.2.7")
+            && refusal.contains("domain name"),
+        "{refusal}"
+    );
+}

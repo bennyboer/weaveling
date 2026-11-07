@@ -21,12 +21,18 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
     let mailing = settings.mailing();
     let sign_up = or_stop(settings.sign_up());
     let totp_key = or_stop(settings.totp_key());
+    let key_ceremonies = or_stop(settings.key_ceremonies());
     match accounts {
         Accounts::On => {
             tracing::info!("keeping the work {backend}, {accounts}, {sign_up}, {mailing}");
             if totp_key.is_none() {
                 tracing::warn!(
                     "no TOTP key is set, so two-step sign-in cannot be set up; see weaveling.example.toml"
+                );
+            }
+            if key_ceremonies.is_none() {
+                tracing::warn!(
+                    "no public URL is set, so no key or passkey can be added; see weaveling.example.toml"
                 );
             }
         }
@@ -40,6 +46,9 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
     adapters = adapters.signing_up(sign_up);
     if let Some(key) = totp_key {
         adapters = adapters.sealing_second_factors(key);
+    }
+    if let Some(ceremonies) = key_ceremonies {
+        adapters = adapters.holding_key_ceremonies(ceremonies);
     }
     if let Some(flakiness) = or_stop(settings.flakiness()) {
         tracing::warn!("flakiness is set: listeners refuse messages on purpose");

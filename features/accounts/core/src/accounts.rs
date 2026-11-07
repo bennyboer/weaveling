@@ -1,5 +1,6 @@
 mod codes;
 mod invitations;
+mod keys;
 mod operating;
 mod second_factors;
 mod second_step;
@@ -22,6 +23,7 @@ use crate::account::{Account, AccountCommand, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary};
 use crate::error::AccountsError;
 use crate::id::AccountId;
+use crate::key_ceremonies::KeyCeremonies;
 use crate::secrets::{
     EmailAddresses, InvitationTickets, Operators, Passwords, SecondFactors, SecretStores,
     SecretsError, Sessions, Verifications,
@@ -49,6 +51,7 @@ pub struct AccountsCore {
     invitation_tickets: Arc<dyn InvitationTickets>,
     second_factors: Arc<dyn SecondFactors>,
     totp_key: Option<TotpKey>,
+    key_ceremonies: Option<KeyCeremonies>,
     catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
@@ -88,6 +91,7 @@ impl AccountsCore {
             invitation_tickets,
             second_factors,
             totp_key: None,
+            key_ceremonies: None,
             catalog,
             mailer,
             clock,

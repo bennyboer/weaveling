@@ -10,7 +10,7 @@ mod sign_up;
 use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
-use accounts_core::{AccountsCore, AccountsError, OperatorCode, TotpKey};
+use accounts_core::{AccountsCore, AccountsError, KeyCeremonies, OperatorCode, TotpKey};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use authorizing::{AllowingEverything, Authorizer};
@@ -42,8 +42,9 @@ pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
 pub use settings::{
-    Setting, Settings, Unlistenable, UnreadableTotpKey, Unsettled, WEAVELING_CONFIG,
-    WEAVELING_LISTEN, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
+    Setting, Settings, Unlistenable, UnreadablePublicUrl, UnreadableTotpKey, Unsettled,
+    WEAVELING_CONFIG, WEAVELING_LISTEN, WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY,
+    WEAVELING_TOTP_KEY_FILE,
 };
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};
@@ -162,6 +163,15 @@ impl Adapters {
             accounts: self
                 .accounts
                 .map(|accounts| accounts.sealing_second_factors(key)),
+            ..self
+        }
+    }
+
+    pub fn holding_key_ceremonies(self, ceremonies: KeyCeremonies) -> Self {
+        Self {
+            accounts: self
+                .accounts
+                .map(|accounts| accounts.holding_key_ceremonies(ceremonies)),
             ..self
         }
     }

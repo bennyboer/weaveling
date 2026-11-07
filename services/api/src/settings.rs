@@ -1,5 +1,6 @@
 mod file;
 mod listen;
+mod public_url;
 mod setting;
 #[cfg(test)]
 mod tests;
@@ -18,6 +19,7 @@ use crate::{
 use file::BESIDE;
 
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
+pub use public_url::{UnreadablePublicUrl, WEAVELING_PUBLIC_URL};
 pub use setting::Setting;
 pub use totp_key::{UnreadableTotpKey, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE};
 
@@ -44,6 +46,8 @@ pub enum Unsettled {
     #[error(transparent)]
     Listen(#[from] Unlistenable),
     #[error(transparent)]
+    PublicUrl(#[from] UnreadablePublicUrl),
+    #[error(transparent)]
     TotpKey(#[from] UnreadableTotpKey),
 }
 
@@ -51,6 +55,7 @@ pub enum Unsettled {
 #[derive(Debug, Default)]
 pub struct Settings {
     listen: Option<Setting>,
+    public_url: Option<Setting>,
     database_url: Option<Setting>,
     data: Option<Setting>,
     accounts: Option<Setting>,
@@ -120,6 +125,7 @@ impl Settings {
 
         for (name, setting) in [
             (WEAVELING_LISTEN, &mut self.listen),
+            (WEAVELING_PUBLIC_URL, &mut self.public_url),
             (WEAVELING_DATABASE_URL, &mut self.database_url),
             (WEAVELING_DATA, &mut self.data),
             (WEAVELING_ACCOUNTS, &mut self.accounts),

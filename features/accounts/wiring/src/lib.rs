@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
-use accounts_core::{AccountCatalog, AccountEvent, AccountsCore, SecretStores, SigningUp, TotpKey};
+use accounts_core::{
+    AccountCatalog, AccountEvent, AccountsCore, KeyCeremonies, SecretStores, SigningUp, TotpKey,
+};
 use accounts_messaging::{
     CatalogueAccountsListener, KeepInvitationTicketsListener, RememberTrashedProjectsListener,
 };
@@ -117,6 +119,15 @@ impl AssembledAccounts {
     pub fn sealing_second_factors(self, key: TotpKey) -> Self {
         Self::serving(
             self.core.sealing_second_factors(key),
+            self.outbox,
+            self.listeners,
+            self.chores,
+        )
+    }
+
+    pub fn holding_key_ceremonies(self, ceremonies: KeyCeremonies) -> Self {
+        Self::serving(
+            self.core.holding_key_ceremonies(ceremonies),
             self.outbox,
             self.listeners,
             self.chores,
