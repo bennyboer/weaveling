@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::NavigateOptions;
-use leptos_router::components::{A, Redirect};
+use leptos_router::components::Redirect;
 
 use crate::accounts::{CurrentSession, SignInState, service};
 use crate::act::{Act, Here};
@@ -91,23 +91,11 @@ fn set_up_already() -> impl IntoView {
     (
         html::h1().child(speech::said("set-up-heading")),
         html::p().class("hint").child(speech::said("set-up-done")),
-        back(),
     )
 }
 
 pub fn without_accounts() -> impl IntoView {
-    (
-        html::p()
-            .class("hint")
-            .child(speech::said("operator-no-accounts")),
-        back(),
-    )
-}
-
-fn back() -> impl IntoView {
-    view! {
-        <A href=route::WORKSPACE attr:class="back">
-            {speech::said("missing-back")}
-        </A>
-    }
+    (html::p()
+        .class("hint")
+        .child(speech::said("operator-no-accounts")),)
 }

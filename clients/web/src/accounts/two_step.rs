@@ -1,7 +1,6 @@
 use accounts_contract::SettingUpSecondFactorDTO;
 use leptos::prelude::*;
 use leptos::{IntoView, component, ev, html, view};
-use leptos_router::components::A;
 use qrcodegen::{QrCode, QrCodeEcc};
 
 use crate::accounts::sign_in::{code_boxes, is_whole};
@@ -11,7 +10,6 @@ use crate::copy_button::copy_button;
 use crate::http::ApiError;
 use crate::moment;
 use crate::problem;
-use crate::route;
 use crate::setup;
 use crate::shell;
 use crate::speech;
@@ -22,7 +20,10 @@ const QUIET_ZONE: i32 = 2;
 enum Step {
     Overview,
     SettingUp(SettingUpSecondFactorDTO),
-    Keeping(Vec<String>),
+    Keeping {
+        codes: Vec<String>,
+        notice: &'static str,
+    },
 }
 
 #[component]
@@ -39,7 +40,7 @@ pub fn TwoStepSignInPage() -> impl IntoView {
                 Step::SettingUp(setting_up) => {
                     setting_up_view(session, setting_up, step).into_any()
                 }
-                Step::Keeping(codes) => keeping(codes, step).into_any(),
+                Step::Keeping { codes, notice } => keeping(codes, notice, step).into_any(),
             }),
     )
 }
@@ -61,7 +62,7 @@ fn overview(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
         SignInState::SignedIn(account) => (
             html::h1().child(speech::said("two-step-heading")),
             match account.second_factor {
-                Some(factor) => in_use(factor).into_any(),
+                Some(factor) => (in_use(factor), drawing(session, step)).into_any(),
                 None => html::p()
                     .class("hint")
                     .child(speech::said("two-step-off-hint"))
@@ -86,7 +87,6 @@ fn overview(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
                     .child(speech::said("two-step-unavailable"))
                     .into_any()
             },
-            back(),
         )
             .into_any(),
         _ => setup::without_accounts().into_any(),
@@ -129,7 +129,10 @@ fn setting_up_view(
             match service::finish_setting_up_second_factor(&typed).await {
                 Ok(codes) => {
                     session.look_again();
-                    step.set(Step::Keeping(codes));
+                    step.set(Step::Keeping {
+                        codes,
+                        notice: "two-step-on-now",
+                    });
                 }
                 Err(failed) => {
                     code.set(String::new());
@@ -195,7 +198,78 @@ fn setting_up_view(
     )
 }
 
-fn keeping(codes: Vec<String>, step: RwSignal<Step>) -> impl IntoView {
+fn drawing(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
+    let asking = RwSignal::new(false);
+    let code = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let drawing = Act::new(move |(), _: Here| {
+        refused.set(None);
+        let typed = code.get_untracked();
+
+        async move {
+            match service::draw_recovery_codes(&typed).await {
+                Ok(codes) => {
+                    session.look_again();
+                    step.set(Step::Keeping {
+                        codes,
+                        notice: "two-step-codes-drawn",
+                    });
+                }
+                Err(failed) => {
+                    code.set(String::new());
+                    refused.set(Some(failed));
+                }
+            }
+        }
+    });
+
+    Effect::new(move |_| {
+        if is_whole(&code.get()) {
+            drawing.start(());
+        }
+    });
+
+    html::section().class("drawing").child(move || {
+        if asking.get() {
+            html::form()
+                .on(ev::submit, move |event| {
+                    event.prevent_default();
+                    drawing.start(());
+                })
+                .child((
+                    html::p()
+                        .class("hint")
+                        .child(speech::said("two-step-draw-codes-hint")),
+                    code_boxes(speech::said("two-step-draw-codes-code"), code),
+                    move || refused.get().map(problem::problem),
+                    html::div().class("buttons").child((
+                        html::button()
+                            .r#type("button")
+                            .on(ev::click, move |_| {
+                                code.set(String::new());
+                                refused.set(None);
+                                asking.set(false);
+                            })
+                            .child(speech::said("two-step-cancel")),
+                        html::button()
+                            .r#type("submit")
+                            .class("primary")
+                            .attr("aria-busy", move || drawing.busy())
+                            .child(speech::said("two-step-draw-codes")),
+                    )),
+                ))
+                .into_any()
+        } else {
+            html::button()
+                .r#type("button")
+                .on(ev::click, move |_| asking.set(true))
+                .child(speech::said("two-step-draw-codes"))
+                .into_any()
+        }
+    })
+}
+
+fn keeping(codes: Vec<String>, notice: &'static str, step: RwSignal<Step>) -> impl IntoView {
     let kept = RwSignal::new(false);
     let written = codes.join("\n");
     let to_copy = written.clone();
@@ -204,7 +278,7 @@ fn keeping(codes: Vec<String>, step: RwSignal<Step>) -> impl IntoView {
         html::p()
             .class("notice")
             .role("status")
-            .child(speech::said("two-step-on-now")),
+            .child(speech::said(notice)),
         html::h1().child(speech::said("two-step-codes-heading")),
         html::p()
             .class("hint")
@@ -233,21 +307,23 @@ fn keeping(codes: Vec<String>, step: RwSignal<Step>) -> impl IntoView {
                 .on(ev::click, |_| _ = window().print())
                 .child(speech::said("two-step-codes-print")),
         )),
-        html::label().class("kept").child((
-            html::input()
-                .r#type("checkbox")
-                .prop("checked", move || kept.get())
-                .on(ev::change, move |event| {
-                    kept.set(event_target_checked(&event))
-                }),
-            html::span().child(speech::said("two-step-codes-kept")),
+        html::div().class("done").child((
+            html::label().class("kept").child((
+                html::input()
+                    .r#type("checkbox")
+                    .prop("checked", move || kept.get())
+                    .on(ev::change, move |event| {
+                        kept.set(event_target_checked(&event))
+                    }),
+                html::span().child(speech::said("two-step-codes-kept")),
+            )),
+            html::button()
+                .r#type("button")
+                .class("primary")
+                .prop("disabled", move || !kept.get())
+                .on(ev::click, move |_| step.set(Step::Overview))
+                .child(speech::said("two-step-done")),
         )),
-        html::button()
-            .r#type("button")
-            .class("primary")
-            .prop("disabled", move || !kept.get())
-            .on(ev::click, move |_| step.set(Step::Overview))
-            .child(speech::said("two-step-done")),
     )
 }
 
@@ -280,14 +356,6 @@ fn grouped(secret: &str) -> String {
         .map(|group| String::from_utf8_lossy(group).into_owned())
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn back() -> impl IntoView {
-    view! {
-        <A href=route::WORKSPACE attr:class="back">
-            {speech::said("missing-back")}
-        </A>
-    }
 }
 
 #[cfg(test)]

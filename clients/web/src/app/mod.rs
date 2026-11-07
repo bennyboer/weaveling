@@ -67,6 +67,7 @@ pub fn App() -> impl IntoView {
             }}
             {shell::status_bar()}
             {quiet_note::quiet_note()}
+            {crate::accounts::recovery_note()}
         </Router>
     }
 }

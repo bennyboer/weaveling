@@ -113,11 +113,11 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   await entered(page, THE_APP_CODE);
 
   // then: they are told it is on and that they were signed out elsewhere
-  await expect(page.getByRole("status")).toHaveText(
-    "Two-step sign-in is on. You were signed out everywhere else.",
-  );
+  await expect(
+    page.getByText("Two-step sign-in is on. You were signed out everywhere else."),
+  ).toBeVisible();
   // and: the ten recovery codes are shown
-  await expect(page.getByRole("listitem")).toHaveText(THE_RECOVERY_CODES);
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveText(THE_RECOVERY_CODES);
   // and: going on waits until they say they kept them
   const done = page.getByRole("button", { name: "Done" });
   await expect(done).toBeDisabled();

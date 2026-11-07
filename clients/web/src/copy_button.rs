@@ -39,7 +39,7 @@ pub fn copy_button(label: &'static str, text: String) -> impl IntoView {
         })
         .child((
             html::span()
-                .role("status")
+                .attr("aria-live", "polite")
                 .child(move || match copying.get() {
                     Copying::Waiting => said(),
                     Copying::Copied => copied(),

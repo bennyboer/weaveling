@@ -3,7 +3,7 @@ use accounts_contract::{
     NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SecondFactorCodeRequest,
     SendCodeRequest, ServiceModeDTO, SettingUpSecondFactorDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    VerifyEmailRequest, refused,
+    VerifyEmailRequest, refused, stage,
 };
 use gloo_net::http::Request;
 
@@ -28,6 +28,9 @@ const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SECOND_FACTOR_SETUP: &str = "/api/accounts/current/second-factor/setup";
+const RECOVERY_CODES: &str = "/api/accounts/current/second-factor/recovery-codes";
+const ANSWERED_BY_CODE: &str = "/api/sessions/current/second-factor";
+const ANSWERED_BY_RECOVERY_CODE: &str = "/api/sessions/current/recovery-code";
 const SECOND_FACTOR_SETUP_FINISH: &str = "/api/accounts/current/second-factor/setup/finish";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
@@ -41,9 +44,10 @@ pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     let response = http::sent(Request::get(CURRENT)).await?;
     let state = match response.status() {
         401 => SignInState::SignedOut,
-        _ => SignInState::SignedIn(as_signed_in_account(
-            http::parsed(response, SUBJECT).await?,
-        )?),
+        _ => match as_signed_in_account(http::parsed(response, SUBJECT).await?)? {
+            account if account.owes_second_factor => SignInState::OwingSecondFactor(account),
+            account => SignInState::SignedIn(account),
+        },
     };
 
     Ok((state, mode))
@@ -93,14 +97,14 @@ fn answered_at(invitation: &str, answer: Answer) -> String {
 /// Answers an invitation to the account, asking again a few times while it is refused as invalid: the list of one's invitations can show an invitation a moment before it can be taken up.
 pub async fn answer_invitation(invitation: &str, answer: Answer) -> Result<(), ApiError> {
     asking::until_it_holds(
-        || answered(invitation, answer),
+        || invitation_answered(invitation, answer),
         |answered| !not_yet_takeable(answered),
         asking::paused,
     )
     .await
 }
 
-async fn answered(invitation: &str, answer: Answer) -> Result<(), ApiError> {
+async fn invitation_answered(invitation: &str, answer: Answer) -> Result<(), ApiError> {
     http::checked(
         http::sent(Request::post(&answered_at(invitation, answer))).await?,
         ACCOUNT,
@@ -318,6 +322,36 @@ pub async fn finish_setting_up_second_factor(code: &str) -> Result<Vec<String>, 
     Ok(shown.codes)
 }
 
+pub async fn answer_with_code(code: &str) -> Result<SignedInAccount, ApiError> {
+    second_factor_answered(ANSWERED_BY_CODE, code).await
+}
+
+pub async fn answer_with_recovery_code(code: &str) -> Result<SignedInAccount, ApiError> {
+    second_factor_answered(ANSWERED_BY_RECOVERY_CODE, code).await
+}
+
+async fn second_factor_answered(at: &str, code: &str) -> Result<SignedInAccount, ApiError> {
+    let payload = SecondFactorCodeRequest {
+        code: code.to_owned(),
+    };
+    let response = http::sent_with(Request::post(at), &payload).await?;
+
+    as_signed_in_account(http::parsed(response, SUBJECT).await?)
+}
+
+pub async fn draw_recovery_codes(code: &str) -> Result<Vec<String>, ApiError> {
+    let payload = SecondFactorCodeRequest {
+        code: code.to_owned(),
+    };
+    let drawn: RecoveryCodesDTO = http::parsed(
+        http::sent_with(Request::post(RECOVERY_CODES), &payload).await?,
+        SUBJECT,
+    )
+    .await?;
+
+    Ok(drawn.codes)
+}
+
 pub async fn sign_out() -> Result<(), ApiError> {
     http::checked(http::sent(Request::delete(CURRENT)).await?, SUBJECT)
         .await
@@ -341,6 +375,7 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
         email: signed_in.email,
         operator: signed_in.operator,
         second_factor,
+        owes_second_factor: signed_in.stage == stage::SECOND_FACTOR_OWED,
     })
 }
 

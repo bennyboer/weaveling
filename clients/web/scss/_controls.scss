@@ -11,10 +11,22 @@ input {
     outline: 2px solid var(--ink);
     outline-offset: -1px;
   }
+
+  &:is([type="checkbox"], [type="radio"]) {
+    flex: none;
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    padding: 0;
+  }
 }
 
-button {
+button,
+a.button {
+  display: inline-block;
   padding: 0.6rem 1rem;
+  text-align: center;
+  text-decoration: none;
   border: 1px solid var(--line);
   border-radius: 0.375rem;
   background: transparent;

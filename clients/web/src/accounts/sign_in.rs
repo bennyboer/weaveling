@@ -5,7 +5,7 @@ use leptos::{IntoView, component, ev, html};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks;
 
-use crate::accounts::{CurrentSession, SigningUp, service};
+use crate::accounts::{CurrentSession, SignInState, SigningUp, service};
 use crate::act::{Act, Here};
 use crate::http::ApiError;
 use crate::invitations::service as invitations;
@@ -25,6 +25,8 @@ enum Form {
     EnterCode,
     AskReset,
     Reset,
+    SecondStep,
+    RecoveryStep,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -67,8 +69,15 @@ pub fn SignInPage() -> impl IntoView {
                 .to_owned()
         })
         .filter(|token| !token.is_empty());
+    let session = expect_context::<CurrentSession>();
+    let owing = match session.state() {
+        SignInState::OwingSecondFactor(account) => Some(account.email),
+        _ => None,
+    };
     let page = Page {
-        form: RwSignal::new(if invitation.is_some() {
+        form: RwSignal::new(if owing.is_some() {
+            Form::SecondStep
+        } else if invitation.is_some() {
             Form::Accept
         } else if location.pathname.get_untracked() == route::SETUP
             && expect_context::<CurrentSession>().operator_wanted()
@@ -77,7 +86,7 @@ pub fn SignInPage() -> impl IntoView {
         } else {
             Form::SignIn
         }),
-        email: RwSignal::new(String::new()),
+        email: RwSignal::new(owing.unwrap_or_default()),
         notice: RwSignal::new(None),
         invitation: RwSignal::new(invitation),
         operator_code: RwSignal::new(None),
@@ -96,6 +105,8 @@ pub fn SignInPage() -> impl IntoView {
                 Form::EnterCode => code_form(page).into_any(),
                 Form::AskReset => ask_reset_form(page).into_any(),
                 Form::Reset => reset_form(page).into_any(),
+                Form::SecondStep => second_step_form(page).into_any(),
+                Form::RecoveryStep => recovery_step_form(page).into_any(),
             }),
     )
 }
@@ -115,6 +126,11 @@ fn sign_in_form(page: Page) -> impl IntoView {
         let navigate = navigate.clone();
         asked(refused, async move {
             let mut account = service::sign_in(&given, &typed).await?;
+            if account.owes_second_factor {
+                session.owes_second_factor(account);
+                page.turn_to(Form::SecondStep, None);
+                return Ok(());
+            }
             if let Some(code) = operating
                 && service::become_operator(&code).await.is_ok()
             {
@@ -498,6 +514,129 @@ fn reset_form(page: Page) -> impl IntoView {
             page.turn_to(Form::SignIn, None)
         }),
     )
+}
+
+fn second_step_form(page: Page) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+    let code = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let answering = Act::new(move |(), _: Here| {
+        let typed = code.get_untracked();
+
+        asked(refused, async move {
+            match service::answer_with_code(&typed).await {
+                Ok(account) => {
+                    session.signed_in(account);
+                    Ok(())
+                }
+                Err(failed) => {
+                    code.set(String::new());
+                    Err(ran_out_or(page, failed))
+                }
+            }
+        })
+    });
+
+    Effect::new(move |_| {
+        if is_whole(&code.get()) {
+            answering.start(());
+        }
+    });
+
+    (
+        html::h1().child(speech::said("sign-in-heading")),
+        owing_as(page),
+        form(
+            move || answering.start(()),
+            (
+                code_boxes(speech::said("second-step-code"), code),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("second-step-confirm"), answering, ()),
+            ),
+        ),
+        turning(speech::said("second-step-recovery-instead"), move || {
+            page.turn_to(Form::RecoveryStep, None)
+        }),
+    )
+}
+
+fn recovery_step_form(page: Page) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+    let typed = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let answering = Act::new(move |(), _: Here| {
+        let given = typed.get_untracked();
+
+        asked(refused, async move {
+            let account = service::answer_with_recovery_code(&given)
+                .await
+                .map_err(|failed| ran_out_or(page, failed))?;
+            session.answered_by_recovery_code(account);
+
+            Ok(())
+        })
+    });
+
+    (
+        html::h1().child(speech::said("sign-in-heading")),
+        owing_as(page),
+        form(
+            move || answering.start(()),
+            (
+                html::label().class("field").child((
+                    html::span().child(speech::said("second-step-recovery-code")),
+                    html::input()
+                        .r#type("text")
+                        .class("recovery-code")
+                        .attr("autocomplete", "off")
+                        .attr("spellcheck", "false")
+                        .attr("autocapitalize", "off")
+                        .required(true)
+                        .prop("value", move || typed.get())
+                        .on(ev::input, move |event| {
+                            typed.set(event_target_value(&event))
+                        }),
+                )),
+                html::small()
+                    .class("hint")
+                    .child(speech::said("second-step-recovery-hint")),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("second-step-confirm"), answering, ()),
+            ),
+        ),
+        turning(speech::said("second-step-code-instead"), move || {
+            page.turn_to(Form::SecondStep, None)
+        }),
+        html::p()
+            .class("hint")
+            .child(speech::said("second-step-no-codes")),
+    )
+}
+
+fn ran_out_or(page: Page, failed: ApiError) -> ApiError {
+    if matches!(&failed, ApiError::Rejected(refusal) if refusal.kind.as_deref() == Some(refused::NOT_SIGNED_IN))
+    {
+        page.turn_to(Form::SignIn, Some("second-step-ran-out"));
+    }
+
+    failed
+}
+
+fn owing_as(page: Page) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+
+    html::p().class("sent-to").child((
+        move || page.email.get(),
+        " · ",
+        html::button()
+            .r#type("button")
+            .class("turning inline")
+            .on(ev::click, move |_| {
+                session.sign_out();
+                page.turn_to(Form::SignIn, None);
+            })
+            .child(speech::said("second-step-not-you")),
+    ))
 }
 
 fn refused_the_code(answer: &Result<(), ApiError>) -> bool {

@@ -45,7 +45,7 @@ test("the operator sees every account with what it is", async ({ page }) => {
       .getByRole("navigation", { name: "Sections" })
       .getByRole("link", { name: "Accounts" }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("listitem")).toHaveCount(3);
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(3);
   await expect(row(page, "Hedy Lamarr")).toContainText("hedy@example.com");
   await expect(row(page, "Hedy Lamarr")).toContainText("Address not confirmed");
   await expect(row(page, "Grace Hopper")).not.toContainText(
@@ -200,16 +200,16 @@ test("a long list comes a page at a time", async ({ page }) => {
   await page.goto("/instance");
 
   // then: the first page is listed
-  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(1);
   // when: more is asked for
   await page.getByRole("button", { name: "Show more" }).click();
   // then: the next page follows
-  await expect(page.getByRole("listitem")).toHaveCount(2);
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(2);
   // when: more is asked for again
   await page.getByRole("button", { name: "Show more" }).click();
 
   // then: all are listed and no more is offered
-  await expect(page.getByRole("listitem")).toHaveCount(3);
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Show more" })).toHaveCount(0);
 });
 

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlElement;
+use web_sys::{FocusOptions, HtmlElement};
 
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::side::Side;
@@ -131,6 +131,7 @@ impl Choosing {
     }
 }
 
+/// Gives the book the keys while scenes are chosen, leaving the view where it is: a browser scrolls what takes focus into view, and the book is taller than the window.
 pub fn hand_the_keys_to_the_book() {
     if let Some(book) = document()
         .query_selector("article.writing")
@@ -138,7 +139,9 @@ pub fn hand_the_keys_to_the_book() {
         .flatten()
         .and_then(|book| book.dyn_into::<HtmlElement>().ok())
     {
-        _ = book.focus();
+        let staying = FocusOptions::new();
+        staying.set_prevent_scroll(true);
+        _ = book.focus_with_options(&staying);
     }
 }
 

@@ -21,6 +21,7 @@ mod more_menu;
 mod nearness;
 mod notifications;
 mod outline;
+mod path;
 mod problem;
 mod projects;
 mod quiet_note;

@@ -718,9 +718,9 @@ test.describe("a browser asking for German, about what went wrong", () => {
 
     // then: it says so in german
     await expect(page.getByText("An dieser Adresse ist nichts gewoben.")).toBeVisible();
-    // and: leads back in german
+    // and: its path leads back in german
     await expect(
-      page.getByRole("link", { name: "Zurück zu deinen Projekten" }),
+      page.getByRole("navigation", { name: "Pfad" }).getByRole("link", { name: "Deine Projekte" }),
     ).toBeVisible();
   });
 

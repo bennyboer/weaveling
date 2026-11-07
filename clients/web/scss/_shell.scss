@@ -529,3 +529,68 @@
     font-weight: 500;
   }
 }
+
+.masthead > :is(.bell, .account, .more) {
+  margin-left: auto;
+}
+
+.masthead > :is(.theming, .bell, .account, .more) ~ :is(.bell, .account, .more) {
+  margin-left: 0;
+}
+
+.path {
+  flex-shrink: 0;
+  padding: 0 1.4rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+
+  ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 2.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  a,
+  [aria-current="page"] {
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.3rem;
+  }
+
+  a {
+    color: var(--muted);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ink);
+      background: var(--raised);
+    }
+  }
+
+  [aria-current="page"] {
+    overflow: hidden;
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .between {
+    display: grid;
+    place-items: center;
+    color: var(--dot);
+
+    svg {
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+  }
+}

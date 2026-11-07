@@ -16,6 +16,7 @@ use crate::members::service as members;
 use crate::members::sharing;
 use crate::more_menu;
 use crate::notifications::bell;
+use crate::path;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details;
 use crate::refusals::alarm;
@@ -79,7 +80,7 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     let sharing = RwSignal::new(false);
     let this_project = inside.as_ref().map(|inside| inside.project.clone());
 
-    html::header().class("masthead").child((
+    let header = html::header().class("masthead").child((
         view! {
             <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label=speech::said("masthead-all-projects")>
                 {mark()}
@@ -97,7 +98,9 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
                 .get()
                 .then(|| more_menu::more_menu(this_project.clone(), sharing))
         },
-    ))
+    ));
+
+    (header, path::path_bar())
 }
 
 const PHONE: &str = "(width <= 30rem)";

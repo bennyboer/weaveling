@@ -12,6 +12,18 @@ export const THE_OPERATOR_CODE = "346af3a2b90cbb3ab7cd3cb07ccc2a1f";
 export const THE_INVITATION = "5d1c0e7a9b3f4c6e8a2d7f1b0c9e3a5d";
 export const THE_TOTP_SECRET = "JBSWY3DPEHPK3PXPKZ4M2QHTJBSWY3DP";
 export const THE_APP_CODE = "481920";
+export const THE_NEW_RECOVERY_CODES = [
+  "n2ew3-cd4ef",
+  "n3ew4-cd5ef",
+  "n4ew5-cd6ef",
+  "n5ew6-cd7ef",
+  "n6ew7-cd8ef",
+  "n7ew8-cd9ef",
+  "n8ew9-cd2ef",
+  "n9ew2-cd3ef",
+  "n2ex3-cd4ef",
+  "n3ex4-cd5ef",
+];
 export const THE_RECOVERY_CODES = [
   "k7qp3-mx9tw",
   "r2dn8-vc4hf",
@@ -111,6 +123,8 @@ export type Server = {
   dismissed: string[];
   secondFactors: boolean;
   secondFactor: { since: string; recovery_codes_left: number } | null;
+  owing: boolean;
+  recoveryCodes: string[];
 };
 
 export type Noticed = {
@@ -169,6 +183,8 @@ export async function aServerWithAccounts(
     dismissed: [],
     secondFactors: false,
     secondFactor: null,
+    owing: false,
+    recoveryCodes: [...THE_RECOVERY_CODES],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -183,9 +199,13 @@ export async function aServerWithAccounts(
   );
   await page.route(at("/api/sessions/current"), async (route) => {
     if (route.request().method() === "DELETE") {
+      server.owing = false;
       server.signedIn = false;
       server.signedOut += 1;
       return route.fulfill({ status: 204 });
+    }
+    if (server.owing) {
+      return route.fulfill({ json: { ...ADA, stage: "second-factor-owed", operator: false } });
     }
     return server.signedIn
       ? route.fulfill({
@@ -204,6 +224,10 @@ export async function aServerWithAccounts(
     }
     if (!server.verified) {
       return refusing(route, 403, "address-not-verified");
+    }
+    if (server.secondFactor) {
+      server.owing = true;
+      return route.fulfill({ json: { ...ADA, stage: "second-factor-owed", operator: false } });
     }
     server.signedIn = true;
     return route.fulfill({ json: { ...ADA, operator: server.operator } });
@@ -330,6 +354,48 @@ export async function aServerWithAccounts(
     server.secondFactor = { since: new Date().toISOString(), recovery_codes_left: 10 };
     socketsToldTheSessionEnded(server);
     return route.fulfill({ json: { codes: THE_RECOVERY_CODES } });
+  });
+  const signedInAllTheWay = (route: Route) => {
+    server.owing = false;
+    server.signedIn = true;
+    return route.fulfill({
+      json: { ...ADA, operator: server.operator, second_factor: server.secondFactor },
+    });
+  };
+  await page.route(at("/api/sessions/current/second-factor"), async (route) => {
+    if (!server.owing) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    const { code } = route.request().postDataJSON();
+    if (code !== THE_APP_CODE) {
+      return refusing(route, 422, "second-factor-code-wrong");
+    }
+    return signedInAllTheWay(route);
+  });
+  await page.route(at("/api/sessions/current/recovery-code"), async (route) => {
+    if (!server.owing) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    const { code } = route.request().postDataJSON();
+    const typed = code.replace(/[\s-]/g, "").toLowerCase();
+    const at = server.recoveryCodes.findIndex((kept) => kept.replace("-", "") === typed);
+    if (at < 0 || !server.secondFactor) {
+      return refusing(route, 422, "recovery-code-wrong");
+    }
+    server.recoveryCodes.splice(at, 1);
+    server.secondFactor.recovery_codes_left = server.recoveryCodes.length;
+    return signedInAllTheWay(route);
+  });
+  await page.route(at("/api/accounts/current/second-factor/recovery-codes"), async (route) => {
+    const { code } = route.request().postDataJSON();
+    if (code !== THE_APP_CODE) {
+      return refusing(route, 422, "second-factor-code-wrong");
+    }
+    server.recoveryCodes = [...THE_NEW_RECOVERY_CODES];
+    if (server.secondFactor) {
+      server.secondFactor.recovery_codes_left = 10;
+    }
+    return route.fulfill({ json: { codes: THE_NEW_RECOVERY_CODES } });
   });
   await page.route(at("/api/operators"), async (route) => {
     if (!server.signedIn) {

@@ -1,7 +1,6 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::{IntoView, component, ev, html, view};
-use leptos_router::components::A;
+use leptos::{IntoView, component, ev, html};
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState, service};
@@ -85,11 +84,6 @@ pub fn InvitationPage() -> impl IntoView {
                         .child(speech::said("invitation-decline")),
                 ))
             }),
-            view! {
-                <A href=route::WORKSPACE attr:class="back">
-                    {speech::said("missing-back")}
-                </A>
-            },
         )),
     )
 }

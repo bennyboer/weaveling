@@ -108,6 +108,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     });
 
     let dragging_from = StoredValue::new(None::<Stop>);
+    let choosing_by_dragging = StoredValue::new(false);
     let pressing = window_event_listener(ev::pointerdown, move |event| {
         let pressed = (event.button() == 0)
             .then(|| stop_at(event.client_x(), event.client_y()))
@@ -136,6 +137,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             if over == from {
                 return;
             }
+            choosing_by_dragging.set_value(true);
             state.choosing.begin_at(from);
             crate::writing::choosing::hand_the_keys_to_the_book();
         }
@@ -151,10 +153,12 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             drawn_again_after_the_browser(state);
         }
         dragging_from.set_value(None);
+        choosing_by_dragging.set_value(false);
     });
     let cancelled = window_event_listener(ev::pointercancel, move |_| {
         state.moving.put_back();
         dragging_from.set_value(None);
+        choosing_by_dragging.set_value(false);
     });
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
     let copying = window_event_listener(ev::copy, move |event| state.copying.copied(&event));
@@ -201,7 +205,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         }))
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
-            if !is_the_book_itself(&event) {
+            if !is_the_book_itself(&event) && !choosing_by_dragging.get_value() {
                 state.choosing.let_go();
             }
             if let Some(section) = section_around(&event) {

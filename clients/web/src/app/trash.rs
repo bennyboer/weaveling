@@ -2,13 +2,11 @@ use fluent_bundle::FluentArgs;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
-use leptos_router::components::A;
 
 use crate::moment;
 use crate::problem;
 use crate::projects::model::TrashedProject;
 use crate::projects::workspace::Workspace;
-use crate::route;
 use crate::shell;
 use crate::speech;
 use crate::speech::Speech;
@@ -20,11 +18,6 @@ pub fn TrashPage(workspace: Workspace) -> impl IntoView {
         html::main().child(
             html::div().class("column").child((
                 html::h1().child(speech::said("trash-heading")),
-                view! {
-                    <A href=route::WORKSPACE attr:class="back">
-                        {speech::said("trash-back")}
-                    </A>
-                },
                 move || workspace.problem().map(problem::problem),
                 move || placeholder(workspace),
                 html::ul()

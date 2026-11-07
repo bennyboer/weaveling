@@ -3,6 +3,7 @@ pub mod invitation;
 mod listed;
 pub mod listing;
 mod lock_dialog;
+mod recovery_note;
 mod role_dialog;
 mod roster;
 pub mod service;
@@ -11,6 +12,7 @@ pub mod two_step;
 pub mod unreachable;
 
 pub use account_menu::account_in_masthead;
+pub use recovery_note::recovery_note;
 
 use accounts_contract::sign_up;
 use leptos::prelude::*;
@@ -27,6 +29,7 @@ pub struct SignedInAccount {
     pub email: String,
     pub operator: bool,
     pub second_factor: Option<SecondFactorInUse>,
+    pub owes_second_factor: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +44,7 @@ pub enum SignInState {
     Unreachable,
     NoAccounts,
     SignedOut,
+    OwingSecondFactor(SignedInAccount),
     SignedIn(SignedInAccount),
 }
 
@@ -74,6 +78,7 @@ pub struct CurrentSession {
     signing_up: RwSignal<SigningUp>,
     operator_wanted: RwSignal<bool>,
     second_factors: RwSignal<bool>,
+    by_recovery_code: RwSignal<bool>,
 }
 
 impl CurrentSession {
@@ -93,12 +98,17 @@ impl CurrentSession {
         self.second_factors.get()
     }
 
+    pub fn signed_in_by_recovery_code(self) -> bool {
+        self.by_recovery_code.get()
+    }
+
     pub fn asked() -> Self {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
             signing_up: RwSignal::new(SigningUp::Open),
             operator_wanted: RwSignal::new(false),
             second_factors: RwSignal::new(false),
+            by_recovery_code: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
         live::when_session_ended(move || session.state.set(SignInState::SignedOut));
@@ -143,6 +153,19 @@ impl CurrentSession {
         self.state.set(SignInState::SignedIn(account));
     }
 
+    pub fn owes_second_factor(self, account: SignedInAccount) {
+        self.state.set(SignInState::OwingSecondFactor(account));
+    }
+
+    pub fn answered_by_recovery_code(self, account: SignedInAccount) {
+        self.by_recovery_code.set(true);
+        self.signed_in(account);
+    }
+
+    pub fn recovery_code_noted(self) {
+        self.by_recovery_code.set(false);
+    }
+
     pub fn became_operator(self) {
         self.operator_wanted.set(false);
         self.state.update(|state| {
@@ -165,7 +188,7 @@ fn screen_for(state: &SignInState) -> Screen {
     match state {
         SignInState::Unknown => Screen::Blank,
         SignInState::Unreachable => Screen::Unreachable,
-        SignInState::SignedOut => Screen::SignIn,
+        SignInState::SignedOut | SignInState::OwingSecondFactor(_) => Screen::SignIn,
         SignInState::NoAccounts | SignInState::SignedIn(_) => Screen::Work,
     }
 }
@@ -208,6 +231,7 @@ mod tests {
                 email: "ada@example.com".to_owned(),
                 operator: false,
                 second_factor: None,
+                owes_second_factor: false,
             })),
             Screen::Work
         );

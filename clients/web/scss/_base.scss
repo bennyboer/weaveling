@@ -12,6 +12,18 @@ body {
   font: 300 16px/1.6 var(--reading);
 }
 
+a {
+  color: var(--accent);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+
+  &:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
 main {
   display: flex;
   flex-direction: column;
@@ -23,6 +35,12 @@ h1 {
   font: 500 2.9rem/1.05 var(--heading);
   margin: 0 0 0.5rem;
   letter-spacing: -0.02em;
+  hyphens: auto;
+  overflow-wrap: break-word;
+
+  @media (width <= 30rem) {
+    font-size: 2.1rem;
+  }
 }
 
 .tagline {
@@ -31,6 +49,3 @@ h1 {
   margin: 0 0 2.5rem;
 }
 
-.back {
-  margin-bottom: 1.5rem;
-}

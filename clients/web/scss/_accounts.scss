@@ -99,6 +99,11 @@
   margin-bottom: 1.5rem;
 }
 
+.signing-in > .problem,
+.operating > .problem {
+  margin-bottom: 1.25rem;
+}
+
 .operating .sections {
   display: flex;
   gap: 0.25rem;
@@ -624,11 +629,6 @@
   gap: 0.75rem;
 }
 
-.signing-in > .answers + .back,
-.signing-in > button + .back {
-  display: inline-block;
-  margin-top: 1.25rem;
-}
 
 .operating.two-step {
   width: min(32rem, 100% - 2rem);
@@ -654,6 +654,10 @@
 
   &:has(.steps) {
     width: min(50rem, 100% - 2rem);
+  }
+
+  > :is(button, a) {
+    align-self: flex-start;
   }
 
   .steps {
@@ -702,6 +706,12 @@
     flex-wrap: wrap;
     gap: 0.6rem;
     margin: 1rem 0;
+
+    @media (width <= 30rem) {
+      > * {
+        flex: 1 1 auto;
+      }
+    }
   }
 
   .recovery-codes {
@@ -722,17 +732,21 @@
     }
   }
 
+  .done {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
   .kept {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    margin: 1rem 0;
   }
 
-  .back {
-    display: block;
-    margin-top: 1.5rem;
-  }
 }
 
 
@@ -758,4 +772,58 @@
   .two-step :is(.buttons, .kept, .notice, .primary) {
     display: none;
   }
+}
+
+.recovery-note {
+  position: fixed;
+  top: 4.4rem;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(40rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.5rem 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+  background: var(--raised);
+  font-size: 0.9rem;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.14);
+  translate: -50% 0;
+
+  a {
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  button {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0.2rem;
+    border: none;
+  }
+
+  &.last {
+    border-color: var(--alarm);
+    color: var(--alarm);
+
+    a {
+      color: var(--alarm);
+    }
+  }
+}
+
+.signing-in .turning.inline {
+  display: inline;
+  margin: 0;
+}
+
+.signing-in input.recovery-code {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+
+.operating.two-step .drawing {
+  margin: 1rem 0;
 }

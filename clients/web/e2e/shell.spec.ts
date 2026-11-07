@@ -25,6 +25,7 @@ const laidOut = (page: import("@playwright/test").Page) =>
       window: { width: innerWidth, height: innerHeight },
       scrollHeight: document.documentElement.scrollHeight,
       masthead: box(".masthead"),
+      path: box(".path"),
       statusBar: box(".status-bar"),
       corkboard: box(".corkboard"),
       column: box(".column"),
@@ -32,7 +33,7 @@ const laidOut = (page: import("@playwright/test").Page) =>
     };
   });
 
-test("the board fills the window between the masthead and the status bar", async ({
+test("the board fills the window between the masthead with its path and the status bar", async ({
   page,
 }) => {
   // given: a project open on its board
@@ -41,11 +42,12 @@ test("the board fills the window between the masthead and the status bar", async
   // when: the page is measured
   const seen = await laidOut(page);
 
-  // then: the board fills the window between the masthead and the status bar
+  // then: the board fills the window between the masthead with its path and the status bar
   expect(seen.masthead!.width).toBe(seen.window.width);
   expect(seen.masthead!.top).toBe(0);
+  expect(seen.path!.top).toBe(seen.masthead!.height);
   expect(seen.corkboard!.left).toBe(0);
-  expect(seen.corkboard!.top).toBe(seen.masthead!.height);
+  expect(seen.corkboard!.top).toBe(seen.path!.top + seen.path!.height);
   expect(seen.corkboard!.top + seen.corkboard!.height).toBe(
     seen.statusBar!.top,
   );
