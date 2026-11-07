@@ -16,6 +16,7 @@ use leptos_router::path;
 
 use crate::accounts::invitation::InvitationPage;
 use crate::accounts::sign_in::SignInPage;
+use crate::accounts::two_step::TwoStepSignInPage;
 use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::board::BoardPage;
@@ -83,6 +84,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/trash") view=move || TrashPage(TrashPageProps { workspace }) />
             <Route path=path!("/invitation") view=InvitationPage />
             <Route path=path!("/setup") view=SetUpPage />
+            <Route path=path!("/account/two-step-sign-in") view=TwoStepSignInPage />
             <Route path=path!("/instance") view=InstancePage />
             <Route path=path!("/instance/accounts") view=InstanceAccountsPage />
             <Route path=path!("/instance/invitations") view=InstanceInvitationsPage />

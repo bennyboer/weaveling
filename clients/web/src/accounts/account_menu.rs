@@ -66,6 +66,17 @@ fn account_menu(
                             .class("account-email")
                             .child(account.email.clone()),
                         html::hr(),
+                        (session.second_factors() || account.second_factor.is_some()).then(|| {
+                            let on = account.second_factor.is_some();
+                            view! {
+                                <A href=route::TWO_STEP_SIGN_IN attr:role="menuitem" attr:class="two-step">
+                                    <span>{speech::said("two-step-menu")}</span>
+                                    <span class="state">
+                                        {speech::said(if on { "two-step-on" } else { "two-step-off" })}
+                                    </span>
+                                </A>
+                            }
+                        }),
                         account.operator.then(|| {
                             view! {
                                 <A href=route::INSTANCE_ACCOUNTS attr:role="menuitem">

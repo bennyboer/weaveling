@@ -10,6 +10,20 @@ export const HER_PASSWORD = "correct horse battery";
 export const THE_CODE = "123456";
 export const THE_OPERATOR_CODE = "346af3a2b90cbb3ab7cd3cb07ccc2a1f";
 export const THE_INVITATION = "5d1c0e7a9b3f4c6e8a2d7f1b0c9e3a5d";
+export const THE_TOTP_SECRET = "JBSWY3DPEHPK3PXPKZ4M2QHTJBSWY3DP";
+export const THE_APP_CODE = "481920";
+export const THE_RECOVERY_CODES = [
+  "k7qp3-mx9tw",
+  "r2dn8-vc4hf",
+  "b9wz4-tq7ke",
+  "m3hx6-pz2sn",
+  "f8cj5-yr3dq",
+  "t4vg9-nk6wb",
+  "z6ep2-hs8mx",
+  "q5rz7-dj3vc",
+  "w8nb4-gx9tp",
+  "h3ks6-cf2rz",
+];
 
 export type Listed = {
   id: string;
@@ -95,6 +109,8 @@ export type Server = {
   memberships: { project: string; role: string }[] | null;
   notices: Noticed[];
   dismissed: string[];
+  secondFactors: boolean;
+  secondFactor: { since: string; recovery_codes_left: number } | null;
 };
 
 export type Noticed = {
@@ -151,6 +167,8 @@ export async function aServerWithAccounts(
     memberships: null,
     notices: [],
     dismissed: [],
+    secondFactors: false,
+    secondFactor: null,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -159,6 +177,7 @@ export async function aServerWithAccounts(
         accounts: true,
         sign_up: server.signingUp,
         operator_wanted: server.operatorWanted && !server.operator,
+        second_factors: server.secondFactors,
       },
     }),
   );
@@ -170,7 +189,11 @@ export async function aServerWithAccounts(
     }
     return server.signedIn
       ? route.fulfill({
-          json: { ...(server.signedInAs ?? ADA), operator: server.operator },
+          json: {
+            ...(server.signedInAs ?? ADA),
+            operator: server.operator,
+            ...(server.secondFactor ? { second_factor: server.secondFactor } : {}),
+          },
         })
       : refusing(route, 401, "not-signed-in");
   });
@@ -284,6 +307,29 @@ export async function aServerWithAccounts(
     server.password = password;
     server.verified = true;
     return route.fulfill({ status: 204 });
+  });
+  await page.route(at("/api/accounts/current/second-factor/setup"), async (route) => {
+    if (!server.signedIn) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    if (!server.secondFactors) {
+      return refusing(route, 409, "second-factors-unavailable");
+    }
+    return route.fulfill({
+      json: {
+        secret: THE_TOTP_SECRET,
+        otpauth_uri: `otpauth://totp/Weaveling:ada%40example.com?secret=${THE_TOTP_SECRET}&issuer=Weaveling`,
+      },
+    });
+  });
+  await page.route(at("/api/accounts/current/second-factor/setup/finish"), async (route) => {
+    const { code } = route.request().postDataJSON();
+    if (code !== THE_APP_CODE) {
+      return refusing(route, 422, "second-factor-code-wrong");
+    }
+    server.secondFactor = { since: new Date().toISOString(), recovery_codes_left: 10 };
+    socketsToldTheSessionEnded(server);
+    return route.fulfill({ json: { codes: THE_RECOVERY_CODES } });
   });
   await page.route(at("/api/operators"), async (route) => {
     if (!server.signedIn) {
@@ -544,6 +590,11 @@ export function endedOn(server: Server, topic: string, why: string) {
 }
 
 export function sessionEndedOn(server: Server) {
+  server.signedIn = false;
+  socketsToldTheSessionEnded(server);
+}
+
+export function socketsToldTheSessionEnded(server: Server) {
   for (const socket of server.liveSockets) {
     socket.close({ code: 4401, reason: "session-ended" });
   }

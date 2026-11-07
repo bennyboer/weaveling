@@ -5,6 +5,7 @@ mod appearances;
 mod asking;
 mod avatar;
 mod boards;
+mod copy_button;
 mod dialog;
 mod drawer;
 mod http;

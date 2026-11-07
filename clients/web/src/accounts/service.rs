@@ -1,13 +1,14 @@
 use accounts_contract::{
     AccountPageDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockRequest,
-    NewPasswordRequest, PasswordResetRequest, SendCodeRequest, ServiceModeDTO, SignInRequest,
+    NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SecondFactorCodeRequest,
+    SendCodeRequest, ServiceModeDTO, SettingUpSecondFactorDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
     VerifyEmailRequest, refused,
 };
 use gloo_net::http::Request;
 
-use crate::accounts::listed::{AccountPage, ListedAccount};
-use crate::accounts::{SignInState, SignedInAccount};
+use crate::accounts::listed::{AccountPage, ListedAccount, moment};
+use crate::accounts::{SecondFactorInUse, SignInState, SignedInAccount};
 use crate::asking;
 use crate::http;
 use crate::http::ApiError;
@@ -26,6 +27,8 @@ const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
 const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
+const SECOND_FACTOR_SETUP: &str = "/api/accounts/current/second-factor/setup";
+const SECOND_FACTOR_SETUP_FINISH: &str = "/api/accounts/current/second-factor/setup/finish";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
 
@@ -38,7 +41,9 @@ pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     let response = http::sent(Request::get(CURRENT)).await?;
     let state = match response.status() {
         401 => SignInState::SignedOut,
-        _ => SignInState::SignedIn(as_signed_in_account(http::parsed(response, SUBJECT).await?)),
+        _ => SignInState::SignedIn(as_signed_in_account(
+            http::parsed(response, SUBJECT).await?,
+        )?),
     };
 
     Ok((state, mode))
@@ -120,7 +125,7 @@ pub async fn sign_up_by_invitation(
     };
     let response = http::sent_with(Request::post(BY_INVITATION), &payload).await?;
 
-    Ok(as_signed_in_account(http::parsed(response, SUBJECT).await?))
+    as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
 pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, ApiError> {
@@ -130,7 +135,7 @@ pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, Api
     };
     let response = http::sent_with(Request::post(SESSIONS), &payload).await?;
 
-    Ok(as_signed_in_account(http::parsed(response, SUBJECT).await?))
+    as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
 pub async fn sign_up(
@@ -292,19 +297,51 @@ fn locked(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }
 
+pub async fn begin_setting_up_second_factor() -> Result<SettingUpSecondFactorDTO, ApiError> {
+    http::parsed(
+        http::sent(Request::post(SECOND_FACTOR_SETUP)).await?,
+        SUBJECT,
+    )
+    .await
+}
+
+pub async fn finish_setting_up_second_factor(code: &str) -> Result<Vec<String>, ApiError> {
+    let payload = SecondFactorCodeRequest {
+        code: code.to_owned(),
+    };
+    let shown: RecoveryCodesDTO = http::parsed(
+        http::sent_with(Request::post(SECOND_FACTOR_SETUP_FINISH), &payload).await?,
+        SUBJECT,
+    )
+    .await?;
+
+    Ok(shown.codes)
+}
+
 pub async fn sign_out() -> Result<(), ApiError> {
     http::checked(http::sent(Request::delete(CURRENT)).await?, SUBJECT)
         .await
         .map(|_| ())
 }
 
-fn as_signed_in_account(signed_in: SignedInDTO) -> SignedInAccount {
-    SignedInAccount {
+fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiError> {
+    let second_factor = signed_in
+        .second_factor
+        .map(|factor| {
+            Ok::<_, ApiError>(SecondFactorInUse {
+                since: moment(&factor.since)?,
+                recovery_codes_left: factor.recovery_codes_left,
+            })
+        })
+        .transpose()?;
+
+    Ok(SignedInAccount {
         account: signed_in.account,
         name: signed_in.name,
         email: signed_in.email,
         operator: signed_in.operator,
-    }
+        second_factor,
+    })
 }
 
 #[cfg(test)]

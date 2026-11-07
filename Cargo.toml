@@ -39,6 +39,7 @@ gloo-net = { version = "0.7.0", features = ["json"] }
 leptos = "0.9.0-beta2"
 leptos_router = "0.9.0-beta2"
 indexmap = "2.14.0"
+qrcodegen = "1.8.0"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.8"
 totp-rs = "6.0.0"
@@ -58,6 +59,7 @@ unic-langid = "0.9.6"
 uuid = "1.24.0"
 js-sys = "0.3.106"
 wasm-bindgen = "0.2.127"
+wasm-bindgen-futures = "0.4.79"
 web-sys = "0.3.104"
 yrs = "0.28.0"
 

@@ -28,7 +28,7 @@ pub struct AccountPage {
     pub next: Option<String>,
 }
 
-fn moment(written: &str) -> Result<OffsetDateTime, ApiError> {
+pub(crate) fn moment(written: &str) -> Result<OffsetDateTime, ApiError> {
     OffsetDateTime::parse(written, &Rfc3339).map_err(|_| ApiError::Unexpected)
 }
 

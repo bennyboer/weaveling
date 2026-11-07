@@ -399,7 +399,7 @@ fn code_form(page: Page) -> impl IntoView {
         form(
             move || verifying.start(CodeAsk::Confirm),
             (
-                code_boxes(code),
+                code_boxes(speech::said("code-field"), code),
                 move || refused.get().map(problem::problem),
                 submitting(speech::said("code-confirm"), verifying, CodeAsk::Confirm),
             ),
@@ -479,7 +479,7 @@ fn reset_form(page: Page) -> impl IntoView {
         form(
             move || resetting.start(CodeAsk::Confirm),
             (
-                code_boxes(code),
+                code_boxes(speech::said("code-field"), code),
                 field(
                     speech::said("reset-password"),
                     "password",
@@ -519,11 +519,14 @@ fn sent_to(page: Page) -> impl IntoView {
 
 const CODE_LENGTH: usize = 6;
 
-fn code_boxes(code: RwSignal<String>) -> impl IntoView {
+pub(crate) fn code_boxes(
+    label: impl Fn() -> String + Send + Sync + 'static,
+    code: RwSignal<String>,
+) -> impl IntoView {
     let focused = RwSignal::new(false);
 
     html::label().class("field").child((
-        html::span().child(speech::said("code-field")),
+        html::span().child(label),
         html::div().class("code-boxes").child((
             html::input()
                 .r#type("text")
@@ -557,7 +560,7 @@ fn digits_of(typed: &str) -> String {
         .collect()
 }
 
-fn is_whole(code: &str) -> bool {
+pub(crate) fn is_whole(code: &str) -> bool {
     code.len() == CODE_LENGTH
 }
 

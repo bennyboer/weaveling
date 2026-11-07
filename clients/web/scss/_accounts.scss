@@ -629,3 +629,133 @@
   display: inline-block;
   margin-top: 1.25rem;
 }
+
+.operating.two-step {
+  width: min(32rem, 100% - 2rem);
+
+  h2 {
+    margin: 1.5rem 0 0.75rem;
+    font-size: 1rem;
+  }
+
+  .state {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+
+    .on {
+      padding: 0.1rem 0.6rem;
+      border-radius: 999px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      font-size: 0.8rem;
+    }
+  }
+
+  &:has(.steps) {
+    width: min(50rem, 100% - 2rem);
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: start;
+
+    @media (max-width: 44rem) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .scan {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .typing {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 9.5rem;
+  }
+
+  .qr-code {
+    display: block;
+    flex-shrink: 0;
+    width: 11rem;
+    height: 11rem;
+    border-radius: 0.375rem;
+    background: #fff;
+    fill: #000;
+  }
+
+  .key {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    letter-spacing: 0.05em;
+  }
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 1rem 0;
+  }
+
+  .recovery-codes {
+    columns: 2;
+    column-gap: 2.5rem;
+    margin: 1rem 0;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--raised);
+    list-style: none;
+    font-family: ui-monospace, monospace;
+    font-size: 1rem;
+    letter-spacing: 0.06em;
+
+    li {
+      padding: 0.25rem 0;
+    }
+  }
+
+  .kept {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 1rem 0;
+  }
+
+  .back {
+    display: block;
+    margin-top: 1.5rem;
+  }
+}
+
+
+
+.account .menu .two-step {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1.5rem;
+  white-space: nowrap;
+
+  span {
+    text-box: normal;
+  }
+
+  .state {
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+}
+
+@media print {
+  .two-step :is(.buttons, .kept, .notice, .primary) {
+    display: none;
+  }
+}

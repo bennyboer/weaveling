@@ -2,11 +2,18 @@ const RECONNECT_FIRST = 100;
 const RECONNECT_AT_MOST = 2500;
 const STEADY_AFTER = 3000;
 const SESSION_ENDED = 4401;
+const CURRENT_SESSION = "/api/sessions/current";
 
 let sessionEnded = () => {};
 
 export function whenSessionEnded(told) {
   sessionEnded = told;
+}
+
+function stillSignedIn() {
+  return fetch(CURRENT_SESSION, { credentials: "same-origin" })
+    .then((response) => response.status !== 401)
+    .catch(() => true);
 }
 
 function address(path) {
@@ -51,15 +58,20 @@ export class ReconnectingSocket {
       this.open = false;
       this.dropped();
       if (event.code === SESSION_ENDED) {
-        sessionEnded();
+        stillSignedIn().then((still) => (still ? this.reconnectLater() : sessionEnded()));
         return;
       }
-      if (!this.closed) {
-        const wait = Math.min(RECONNECT_FIRST * 2 ** this.failures, RECONNECT_AT_MOST);
-        this.failures += 1;
-        setTimeout(() => this.connect(), wait);
-      }
+      this.reconnectLater();
     };
+  }
+
+  reconnectLater() {
+    if (this.closed) {
+      return;
+    }
+    const wait = Math.min(RECONNECT_FIRST * 2 ** this.failures, RECONNECT_AT_MOST);
+    this.failures += 1;
+    setTimeout(() => this.connect(), wait);
   }
 
   send(data) {

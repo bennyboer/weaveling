@@ -7,6 +7,7 @@ mod role_dialog;
 mod roster;
 pub mod service;
 pub mod sign_in;
+pub mod two_step;
 pub mod unreachable;
 
 pub use account_menu::account_in_masthead;
@@ -14,6 +15,7 @@ pub use account_menu::account_in_masthead;
 use accounts_contract::sign_up;
 use leptos::prelude::*;
 use leptos::task;
+use time::OffsetDateTime;
 
 use crate::http;
 use crate::live;
@@ -24,6 +26,13 @@ pub struct SignedInAccount {
     pub name: String,
     pub email: String,
     pub operator: bool,
+    pub second_factor: Option<SecondFactorInUse>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SecondFactorInUse {
+    pub since: OffsetDateTime,
+    pub recovery_codes_left: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +73,7 @@ pub struct CurrentSession {
     state: RwSignal<SignInState>,
     signing_up: RwSignal<SigningUp>,
     operator_wanted: RwSignal<bool>,
+    second_factors: RwSignal<bool>,
 }
 
 impl CurrentSession {
@@ -79,11 +89,16 @@ impl CurrentSession {
         self.operator_wanted.get()
     }
 
+    pub fn second_factors(self) -> bool {
+        self.second_factors.get()
+    }
+
     pub fn asked() -> Self {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
             signing_up: RwSignal::new(SigningUp::Open),
             operator_wanted: RwSignal::new(false),
+            second_factors: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
         live::when_session_ended(move || session.state.set(SignInState::SignedOut));
@@ -97,6 +112,11 @@ impl CurrentSession {
         self.ask();
     }
 
+    /// Asks again who is signed in, showing what was known until the answer comes.
+    pub fn look_again(self) {
+        self.ask();
+    }
+
     fn ask(self) {
         task::spawn_local(async move {
             match service::current().await {
@@ -104,6 +124,7 @@ impl CurrentSession {
                     self.signing_up
                         .set(SigningUp::told(mode.sign_up.as_deref()));
                     self.operator_wanted.set(mode.operator_wanted);
+                    self.second_factors.set(mode.second_factors);
                     self.state.set(state);
                 }
                 Err(_) => self.state.set(SignInState::Unreachable),
@@ -186,6 +207,7 @@ mod tests {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,
+                second_factor: None,
             })),
             Screen::Work
         );

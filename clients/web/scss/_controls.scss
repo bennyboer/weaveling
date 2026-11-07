@@ -31,6 +31,21 @@ button {
     color: var(--alarm);
   }
 
+  &.primary {
+    border-color: var(--accent);
+    background-color: var(--accent);
+    color: var(--paper);
+
+    &:hover {
+      border-color: color-mix(in srgb, var(--accent) 80%, var(--ink));
+      background-color: color-mix(in srgb, var(--accent) 80%, var(--ink));
+    }
+
+    &[aria-busy="true"] {
+      background-image: linear-gradient(var(--paper), var(--paper));
+    }
+  }
+
   &:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -39,6 +54,31 @@ button {
       border-color: var(--line);
       color: var(--ink);
     }
+
+    &.primary:hover {
+      border-color: var(--accent);
+      background-color: var(--accent);
+      color: var(--paper);
+    }
+  }
+}
+
+button.copying {
+  display: inline-grid;
+  align-items: center;
+
+  > span {
+    grid-area: 1 / 1;
+    text-align: center;
+  }
+
+  .sizing {
+    visibility: hidden;
+  }
+
+  &.copied {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 }
 
