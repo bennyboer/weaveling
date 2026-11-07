@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
-use argon2::password_hash::{PasswordHasher, PasswordVerifier, SaltString};
-use argon2::{Argon2, PasswordHash as Phc};
-use rand_core::OsRng;
+use argon2::Argon2;
+use argon2::password_hash::phc::PasswordHash as Phc;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use thiserror::Error;
 
 pub struct Password(String);
@@ -44,9 +44,8 @@ impl Password {
     }
 
     pub fn hashed(&self) -> PasswordHash {
-        let salt = SaltString::generate(&mut OsRng);
-        let hash = Argon2::default()
-            .hash_password(self.0.as_bytes(), &salt)
+        let hash: Phc = Argon2::default()
+            .hash_password(self.0.as_bytes())
             .expect("Argon2 with its default parameters hashes any password");
 
         PasswordHash(hash.to_string())
@@ -67,11 +66,9 @@ impl PasswordHash {
     }
 
     pub fn admits(&self, tried: &str) -> bool {
-        Phc::new(&self.0).is_ok_and(|kept| {
-            Argon2::default()
-                .verify_password(tried.as_bytes(), &kept)
-                .is_ok()
-        })
+        Argon2::default()
+            .verify_password(tried.as_bytes(), self.0.as_str())
+            .is_ok()
     }
 }
 
@@ -126,6 +123,23 @@ mod tests {
         assert!(hash.admits(A_PASSWORD));
         // and: not another
         assert!(!hash.admits("incorrect horse battery"));
+    }
+
+    #[test]
+    fn a_hash_kept_in_the_written_form_admits_its_password_whatever_wrote_it() {
+        // given: a hash in the PHC form, as the reference vectors of Argon2id give it
+        let kept = PasswordHash::kept(
+            "$argon2id$v=19$m=256,t=2,p=1$c29tZXNhbHQ$nf65EOgLrQMR/uIPnA4rEsF5h7TKyQwu9U1bMCHGi/4"
+                .to_owned(),
+        );
+
+        // expect: it admits its password
+        assert!(
+            kept.admits("password"),
+            "passwords kept before a new version of the hashing are to sign in after it"
+        );
+        // and: no other
+        assert!(!kept.admits("passwort"));
     }
 
     #[test]

@@ -2,7 +2,6 @@ use std::fmt::{self, Debug, Formatter};
 
 use async_trait::async_trait;
 use hmac::{Hmac, KeyInit, Mac};
-use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::catalog::CatalogError;
@@ -68,7 +67,7 @@ impl TokenKey {
 
     pub fn drawn() -> Self {
         let mut drawn = [0_u8; Self::BYTES];
-        OsRng.fill_bytes(&mut drawn);
+        getrandom::fill(&mut drawn).expect("the system draws random bytes");
 
         Self(drawn)
     }

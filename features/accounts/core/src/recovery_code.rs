@@ -1,8 +1,8 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use argon2::password_hash::{PasswordHasher, PasswordVerifier, SaltString};
-use argon2::{Argon2, PasswordHash as Phc};
-use rand_core::{OsRng, RngCore};
+use argon2::Argon2;
+use argon2::password_hash::phc::PasswordHash as Phc;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 
 pub struct RecoveryCode(String);
 
@@ -30,9 +30,8 @@ impl RecoveryCode {
     }
 
     pub fn hashed(&self) -> RecoveryCodeHash {
-        let salt = SaltString::generate(&mut OsRng);
-        let hash = Argon2::default()
-            .hash_password(self.0.as_bytes(), &salt)
+        let hash: Phc = Argon2::default()
+            .hash_password(self.0.as_bytes())
             .expect("Argon2 with its default parameters hashes any code");
 
         RecoveryCodeHash(hash.to_string())
@@ -42,7 +41,7 @@ impl RecoveryCode {
         let fair = u8::MAX - u8::MAX % Self::ALPHABET.len() as u8;
         let mut drawn = String::with_capacity(Self::CHARS);
         while drawn.len() < Self::CHARS {
-            let byte = (OsRng.next_u32() & 0xff) as u8;
+            let byte = (getrandom::u32().expect("the system draws random bytes") & 0xff) as u8;
             if byte < fair {
                 drawn.push(Self::ALPHABET[usize::from(byte) % Self::ALPHABET.len()] as char);
             }
@@ -62,11 +61,9 @@ impl RecoveryCodeHash {
     }
 
     pub fn admits(&self, code: &RecoveryCode) -> bool {
-        Phc::new(&self.0).is_ok_and(|kept| {
-            Argon2::default()
-                .verify_password(code.0.as_bytes(), &kept)
-                .is_ok()
-        })
+        Argon2::default()
+            .verify_password(code.0.as_bytes(), self.0.as_str())
+            .is_ok()
     }
 }
 

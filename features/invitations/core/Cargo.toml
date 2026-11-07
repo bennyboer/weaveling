@@ -6,8 +6,8 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 hmac = { workspace = true }
-rand_core = { workspace = true }
-sha2 = "0.11.1"
+getrandom = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 

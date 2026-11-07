@@ -1,6 +1,5 @@
 use std::fmt::{self, Debug, Formatter};
 
-use rand_core::{OsRng, RngCore};
 use time::OffsetDateTime;
 use totp_rs::{Builder, Secret, Totp};
 
@@ -15,7 +14,7 @@ impl TotpSecret {
 
     pub fn drawn() -> Self {
         let mut drawn = vec![0_u8; Self::BYTES];
-        OsRng.fill_bytes(&mut drawn);
+        getrandom::fill(&mut drawn).expect("the system draws random bytes");
 
         Self(drawn)
     }

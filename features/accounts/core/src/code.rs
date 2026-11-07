@@ -1,4 +1,3 @@
-use rand_core::{OsRng, RngCore};
 use time::{Duration, OffsetDateTime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,7 +32,7 @@ impl VerificationCode {
     const FAIR_BELOW: u32 = u32::MAX - u32::MAX % Self::POSSIBLE_CODES;
 
     pub fn drawn() -> Self {
-        Self::fairly_from(|| OsRng.next_u32())
+        Self::fairly_from(|| getrandom::u32().expect("the system draws random bytes"))
     }
 
     fn fairly_from(mut draw: impl FnMut() -> u32) -> Self {

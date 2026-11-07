@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 
-use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
-use aes_gcm::{Aes256Gcm, Nonce};
+use aes_gcm::Aes256Gcm;
+use aes_gcm::aead::{Aead, Generate, KeyInit, Nonce, Payload};
 use thiserror::Error;
 
 use crate::id::AccountId;
@@ -39,7 +39,7 @@ impl TotpKey {
     }
 
     pub fn seal(&self, secret: &TotpSecret, account: &AccountId) -> SealedTotpSecret {
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let nonce = Nonce::<Aes256Gcm>::try_generate().expect("the system draws a nonce");
         let sealed = self
             .0
             .encrypt(
@@ -59,10 +59,11 @@ impl TotpKey {
             return None;
         }
         let (nonce, sealed) = sealed.0.split_at(Self::NONCE);
+        let nonce = Nonce::<Aes256Gcm>::try_from(nonce).ok()?;
 
         self.0
             .decrypt(
-                Nonce::from_slice(nonce),
+                &nonce,
                 Payload {
                     msg: sealed,
                     aad: account.as_uuid().as_bytes(),

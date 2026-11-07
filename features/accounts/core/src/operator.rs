@@ -1,7 +1,5 @@
 use std::fmt::{self, Debug, Formatter};
 
-use rand_core::{OsRng, RngCore};
-
 use crate::session;
 use crate::session::TokenDigest;
 
@@ -12,7 +10,7 @@ impl OperatorCode {
 
     pub fn drawn() -> Self {
         let mut drawn = [0_u8; Self::BYTES];
-        OsRng.fill_bytes(&mut drawn);
+        getrandom::fill(&mut drawn).expect("the system draws random bytes");
 
         Self(session::hex(&drawn))
     }
