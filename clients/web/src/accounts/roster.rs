@@ -47,9 +47,7 @@ impl Roster {
                     Intent::Unlock => service::unlock_account(&id, on.version).await?,
                     Intent::Appoint => service::appoint_operator(&id, on.version).await?,
                     Intent::Dismiss => service::dismiss_operator(&id, on.version).await?,
-                    Intent::TurnOffSecondFactor => {
-                        service::remove_second_factor(&id, on.version).await?
-                    }
+                    Intent::TurnOffSecondFactor => service::remove_totp(&id, on.version).await?,
                 }
 
                 Ok(answered(

@@ -2,7 +2,7 @@ use accounts_contract::{RecoveryCodesDTO, refused};
 use accounts_core::SecondFactors;
 use axum::http::StatusCode;
 
-use crate::second_factor_bench::{code_of, cookie_set_by, refused_as, served, with_a_key};
+use crate::totp_bench::{code_of, cookie_set_by, refused_as, served, with_a_key};
 
 #[tokio::test]
 async fn without_a_key_no_second_factor_is_set_up() {
@@ -14,11 +14,7 @@ async fn without_a_key_no_second_factor_is_set_up() {
     let begun = served.begin(&cookie).await;
 
     // then: it is refused, as the instance cannot keep one
-    refused_as(
-        &begun,
-        StatusCode::CONFLICT,
-        refused::SECOND_FACTORS_UNAVAILABLE,
-    );
+    refused_as(&begun, StatusCode::CONFLICT, refused::TOTP_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -142,7 +138,7 @@ async fn a_wrong_code_finishes_nothing_and_leaves_the_session_as_it_was() {
     refused_as(
         &finished,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
     // and: her session goes on, without a second factor
     assert_eq!(served.second_factor_shown(&cookie).await, None);
@@ -192,7 +188,7 @@ async fn wrong_codes_are_tried_five_times_before_waiting() {
         refused_as(
             &served.finish(&cookie, &wrong).await,
             StatusCode::UNPROCESSABLE_ENTITY,
-            refused::SECOND_FACTOR_CODE_WRONG,
+            refused::TOTP_CODE_WRONG,
         );
     }
 
@@ -234,14 +230,14 @@ async fn a_second_factor_set_up_anew_stays_as_it_was_until_the_new_one_is_finish
     refused_as(
         &served.finish(&cookie, &code_of(&first.secret, now)).await,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
 }
 
 #[tokio::test]
 async fn finishing_a_second_factor_set_up_anew_goes_on_signed_in_all_the_way() {
     // given: Ada with a second factor in use, setting up another
-    let set_up = crate::second_factor_bench::with_a_second_factor_set_up_at(1_700_000_060).await;
+    let set_up = crate::totp_bench::with_a_second_factor_set_up_at(1_700_000_060).await;
     let served = &set_up.served;
     let anew = served.begun(&set_up.cookie).await;
 

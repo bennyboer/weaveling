@@ -524,7 +524,7 @@ fn second_step_form(page: Page) -> impl IntoView {
         let typed = code.get_untracked();
 
         asked(refused, async move {
-            match service::answer_with_code(&typed).await {
+            match service::answer_with_totp(&typed).await {
                 Ok(account) => {
                     session.signed_in(account);
                     Ok(())

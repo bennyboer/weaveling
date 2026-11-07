@@ -78,7 +78,7 @@ pub struct CurrentSession {
     state: RwSignal<SignInState>,
     signing_up: RwSignal<SigningUp>,
     operator_wanted: RwSignal<bool>,
-    second_factors: RwSignal<bool>,
+    totp_offered: RwSignal<bool>,
     by_recovery_code: RwSignal<bool>,
 }
 
@@ -95,8 +95,8 @@ impl CurrentSession {
         self.operator_wanted.get()
     }
 
-    pub fn second_factors(self) -> bool {
-        self.second_factors.get()
+    pub fn totp_offered(self) -> bool {
+        self.totp_offered.get()
     }
 
     pub fn signed_in_by_recovery_code(self) -> bool {
@@ -108,7 +108,7 @@ impl CurrentSession {
             state: RwSignal::new(SignInState::Unknown),
             signing_up: RwSignal::new(SigningUp::Open),
             operator_wanted: RwSignal::new(false),
-            second_factors: RwSignal::new(false),
+            totp_offered: RwSignal::new(false),
             by_recovery_code: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
@@ -135,7 +135,7 @@ impl CurrentSession {
                     self.signing_up
                         .set(SigningUp::told(mode.sign_up.as_deref()));
                     self.operator_wanted.set(mode.operator_wanted);
-                    self.second_factors.set(mode.second_factors);
+                    self.totp_offered.set(mode.totp);
                     self.state.set(state);
                 }
                 Err(_) => self.state.set(SignInState::Unreachable),

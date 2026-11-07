@@ -1,11 +1,11 @@
-use accounts_contract::{AccountPageDTO, SecondFactorCodeRequest, SignInRequest, refused, stage};
+use accounts_contract::{AccountPageDTO, SignInRequest, TotpCodeRequest, refused, stage};
 use accounts_core::{AccountEvent, AccountId, EmailAddress, EmailAddresses, KIND, SecondFactors};
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum_test::TestResponse;
 use eventsourcing::{AggregateId, EventStore, Version};
 
-use crate::second_factor_bench::{
+use crate::totp_bench::{
     Served, code_of, cookie_set_by, refused_as, with_a_key, with_a_second_factor_set_up_at,
 };
 use crate::wiring::HER_PASSWORD;
@@ -17,9 +17,9 @@ const GRACE: &str = "grace@example.com";
 impl Served {
     async fn turn_off(&self, cookie: &str, code: &str) -> TestResponse {
         self.server
-            .delete("/accounts/current/second-factor")
+            .delete("/accounts/current/totp")
             .add_header(COOKIE, cookie.to_owned())
-            .json(&SecondFactorCodeRequest {
+            .json(&TotpCodeRequest {
                 code: code.to_owned(),
             })
             .await
@@ -27,7 +27,7 @@ impl Served {
 
     async fn removed_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/second-factor"))
+            .delete(&format!("/instance/accounts/{account}/totp"))
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
@@ -154,7 +154,7 @@ async fn a_wrong_code_turns_nothing_off() {
     refused_as(
         &refused,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
     assert!(served.second_factor_shown(&set_up.cookie).await.is_some());
     // and: the cookie she has still signs her in

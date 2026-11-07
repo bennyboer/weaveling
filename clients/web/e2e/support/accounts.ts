@@ -122,7 +122,7 @@ export type Server = {
   memberships: { project: string; role: string }[] | null;
   notices: Noticed[];
   dismissed: string[];
-  secondFactors: boolean;
+  totpOffered: boolean;
   secondFactor: { since: string; recovery_codes_left: number } | null;
   owing: boolean;
   recoveryCodes: string[];
@@ -182,7 +182,7 @@ export async function aServerWithAccounts(
     memberships: null,
     notices: [],
     dismissed: [],
-    secondFactors: false,
+    totpOffered: false,
     secondFactor: null,
     owing: false,
     recoveryCodes: [...THE_RECOVERY_CODES],
@@ -194,7 +194,7 @@ export async function aServerWithAccounts(
         accounts: true,
         sign_up: server.signingUp,
         operator_wanted: server.operatorWanted && !server.operator,
-        second_factors: server.secondFactors,
+        totp: server.totpOffered,
       },
     }),
   );
@@ -333,24 +333,24 @@ export async function aServerWithAccounts(
     server.verified = true;
     return route.fulfill({ status: 204 });
   });
-  await page.route(at("/api/accounts/current/second-factor"), async (route) => {
+  await page.route(at("/api/accounts/current/totp"), async (route) => {
     const { code } = route.request().postDataJSON();
     if (!server.secondFactor) {
       return refusing(route, 409, "no-second-factor");
     }
     if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "second-factor-code-wrong");
+      return refusing(route, 422, "totp-code-wrong");
     }
     server.secondFactor = null;
     socketsToldTheSessionEnded(server);
     return route.fulfill({ status: 204 });
   });
-  await page.route(at("/api/accounts/current/second-factor/setup"), async (route) => {
+  await page.route(at("/api/accounts/current/totp/setup"), async (route) => {
     if (!server.signedIn) {
       return refusing(route, 401, "not-signed-in");
     }
-    if (!server.secondFactors) {
-      return refusing(route, 409, "second-factors-unavailable");
+    if (!server.totpOffered) {
+      return refusing(route, 409, "totp-unavailable");
     }
     return route.fulfill({
       json: {
@@ -359,10 +359,10 @@ export async function aServerWithAccounts(
       },
     });
   });
-  await page.route(at("/api/accounts/current/second-factor/setup/finish"), async (route) => {
+  await page.route(at("/api/accounts/current/totp/setup/finish"), async (route) => {
     const { code } = route.request().postDataJSON();
     if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "second-factor-code-wrong");
+      return refusing(route, 422, "totp-code-wrong");
     }
     server.secondFactor = { since: new Date().toISOString(), recovery_codes_left: 10 };
     socketsToldTheSessionEnded(server);
@@ -375,13 +375,13 @@ export async function aServerWithAccounts(
       json: { ...ADA, operator: server.operator, second_factor: server.secondFactor },
     });
   };
-  await page.route(at("/api/sessions/current/second-factor"), async (route) => {
+  await page.route(at("/api/sessions/current/totp"), async (route) => {
     if (!server.owing) {
       return refusing(route, 401, "not-signed-in");
     }
     const { code } = route.request().postDataJSON();
     if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "second-factor-code-wrong");
+      return refusing(route, 422, "totp-code-wrong");
     }
     return signedInAllTheWay(route);
   });
@@ -399,10 +399,10 @@ export async function aServerWithAccounts(
     server.secondFactor.recovery_codes_left = server.recoveryCodes.length;
     return signedInAllTheWay(route);
   });
-  await page.route(at("/api/accounts/current/second-factor/recovery-codes"), async (route) => {
+  await page.route(at("/api/accounts/current/recovery-codes"), async (route) => {
     const { code } = route.request().postDataJSON();
     if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "second-factor-code-wrong");
+      return refusing(route, 422, "totp-code-wrong");
     }
     server.recoveryCodes = [...THE_NEW_RECOVERY_CODES];
     if (server.secondFactor) {
@@ -497,7 +497,7 @@ export async function aServerWithAccounts(
     return route.fulfill({ json: { accounts, next } });
   });
   await page.route(
-    (url) => /^\/api\/instance\/accounts\/[^/]+\/second-factor$/.test(url.pathname),
+    (url) => /^\/api\/instance\/accounts\/[^/]+\/totp$/.test(url.pathname),
     async (route) => {
       const id = new URL(route.request().url()).pathname.split("/")[4];
       const account = server.listed.find((listed) => listed.id === id);

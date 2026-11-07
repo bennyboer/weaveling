@@ -83,7 +83,7 @@ impl Workspace {
                     let outcome = service::create(&name, &details).await;
                     if let Ok(created) = &outcome {
                         listed.take_in(created.id.clone(), created.clone());
-                        opening.set(Opening::SettingUpSecondFactor);
+                        opening.set(Opening::SettingUpTotp);
                         arriving::open_once_it_answers(opening, created.clone(), Duration::ZERO);
                     }
 
@@ -193,14 +193,14 @@ impl Workspace {
         let (creating, opening) = (self.creating, self.opening);
 
         Signal::derive(move || {
-            creating.running() || matches!(opening.get(), Opening::SettingUpSecondFactor)
+            creating.running() || matches!(opening.get(), Opening::SettingUpTotp)
         })
     }
 
     pub fn setting_up(self) -> Signal<bool> {
         let opening = self.opening;
 
-        Signal::derive(move || matches!(opening.get(), Opening::SettingUpSecondFactor))
+        Signal::derive(move || matches!(opening.get(), Opening::SettingUpTotp))
     }
 
     pub fn created(self) -> Signal<Option<Project>> {

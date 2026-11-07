@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use accounts_contract::SettingUpSecondFactorDTO;
+use accounts_contract::SettingUpTotpDTO;
 use leptos::prelude::*;
 use leptos::{IntoView, component, ev, html, view};
 use qrcodegen::{QrCode, QrCodeEcc};
@@ -21,7 +21,7 @@ const QUIET_ZONE: i32 = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Step {
     Overview,
-    SettingUp(SettingUpSecondFactorDTO),
+    SettingUp(SettingUpTotpDTO),
     Keeping {
         codes: Vec<String>,
         notice: &'static str,
@@ -58,7 +58,7 @@ fn overview(
         refused.set(None);
 
         async move {
-            match service::begin_setting_up_second_factor().await {
+            match service::begin_setting_up_totp().await {
                 Ok(setting_up) => step.set(Step::SettingUp(setting_up)),
                 Err(failed) => refused.set(Some(failed)),
             }
@@ -85,7 +85,7 @@ fn overview(
             },
             move || refused.get().map(problem::problem),
             html::div().class("actions").child((
-                if session.second_factors() {
+                if session.totp_offered() {
                     html::button()
                         .r#type("button")
                         .class("primary")
@@ -137,7 +137,7 @@ fn in_use(factor: SecondFactorInUse) -> impl IntoView {
 
 fn setting_up_view(
     session: CurrentSession,
-    setting_up: SettingUpSecondFactorDTO,
+    setting_up: SettingUpTotpDTO,
     step: RwSignal<Step>,
 ) -> impl IntoView {
     let code = RwSignal::new(String::new());
@@ -147,7 +147,7 @@ fn setting_up_view(
         let typed = code.get_untracked();
 
         async move {
-            match service::finish_setting_up_second_factor(&typed).await {
+            match service::finish_setting_up_totp(&typed).await {
                 Ok(codes) => {
                     session.look_again();
                     step.set(Step::Keeping {
@@ -259,7 +259,7 @@ fn drawing(session: CurrentSession, step: RwSignal<Step>) -> impl IntoView {
 
 fn turning_off(session: CurrentSession, turned_off: RwSignal<bool>) -> impl IntoView {
     asking_a_code(&TURNING_OFF, move |typed| async move {
-        service::turn_off_second_factor(&typed).await?;
+        service::turn_off_totp(&typed).await?;
         turned_off.set(true);
         session.look_again();
 

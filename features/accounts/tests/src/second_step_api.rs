@@ -1,7 +1,7 @@
 use accounts_contract::{RecoveryCodesDTO, refused, stage};
 use axum::http::StatusCode;
 
-use crate::second_factor_bench::{
+use crate::totp_bench::{
     code_of, cookie_set_by, refused_as, with_a_key, with_a_second_factor_set_up_at,
 };
 
@@ -67,7 +67,7 @@ async fn a_code_serves_once_not_even_the_one_that_finished_setting_up_again() {
     refused_as(
         &again,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
     // when: a step later one session answers, and the other with the same code
     let code = code_of(&set_up.secret, served.at(A_STEP_LATER));
@@ -77,7 +77,7 @@ async fn a_code_serves_once_not_even_the_one_that_finished_setting_up_again() {
     refused_as(
         &replayed,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
 }
 
@@ -228,7 +228,7 @@ async fn drawing_new_recovery_codes_takes_a_code_of_the_app_and_a_second_factor(
     refused_as(
         &served.draw_recovery_codes(&set_up.cookie, "000000").await,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::SECOND_FACTOR_CODE_WRONG,
+        refused::TOTP_CODE_WRONG,
     );
     // and: an account without a second factor has none to draw for
     let without = with_a_key().await;

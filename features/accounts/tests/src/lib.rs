@@ -41,13 +41,13 @@ mod operators_api;
 mod password_reset;
 
 #[cfg(test)]
-mod second_factor_bench;
+mod totp_bench;
 
 #[cfg(test)]
-mod second_factor_off_api;
+mod totp_off_api;
 
 #[cfg(test)]
-mod second_factor_setup_api;
+mod totp_setup_api;
 
 #[cfg(test)]
 mod second_step_api;

@@ -1,9 +1,8 @@
 use accounts_contract::{
     AccountPageDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockRequest,
-    NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SecondFactorCodeRequest,
-    SendCodeRequest, ServiceModeDTO, SettingUpSecondFactorDTO, SignInRequest,
-    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    VerifyEmailRequest, refused, stage,
+    NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SendCodeRequest, ServiceModeDTO,
+    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, refused, stage,
 };
 use gloo_net::http::Request;
 
@@ -27,12 +26,12 @@ const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
 const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
-const SECOND_FACTOR: &str = "/api/accounts/current/second-factor";
-const SECOND_FACTOR_SETUP: &str = "/api/accounts/current/second-factor/setup";
-const RECOVERY_CODES: &str = "/api/accounts/current/second-factor/recovery-codes";
-const ANSWERED_BY_CODE: &str = "/api/sessions/current/second-factor";
+const TOTP: &str = "/api/accounts/current/totp";
+const TOTP_SETUP: &str = "/api/accounts/current/totp/setup";
+const RECOVERY_CODES: &str = "/api/accounts/current/recovery-codes";
+const ANSWERED_BY_TOTP: &str = "/api/sessions/current/totp";
 const ANSWERED_BY_RECOVERY_CODE: &str = "/api/sessions/current/recovery-code";
-const SECOND_FACTOR_SETUP_FINISH: &str = "/api/accounts/current/second-factor/setup/finish";
+const TOTP_SETUP_FINISH: &str = "/api/accounts/current/totp/setup/finish";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
 
@@ -302,20 +301,16 @@ fn locked(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }
 
-pub async fn begin_setting_up_second_factor() -> Result<SettingUpSecondFactorDTO, ApiError> {
-    http::parsed(
-        http::sent(Request::post(SECOND_FACTOR_SETUP)).await?,
-        SUBJECT,
-    )
-    .await
+pub async fn begin_setting_up_totp() -> Result<SettingUpTotpDTO, ApiError> {
+    http::parsed(http::sent(Request::post(TOTP_SETUP)).await?, SUBJECT).await
 }
 
-pub async fn finish_setting_up_second_factor(code: &str) -> Result<Vec<String>, ApiError> {
-    let payload = SecondFactorCodeRequest {
+pub async fn finish_setting_up_totp(code: &str) -> Result<Vec<String>, ApiError> {
+    let payload = TotpCodeRequest {
         code: code.to_owned(),
     };
     let shown: RecoveryCodesDTO = http::parsed(
-        http::sent_with(Request::post(SECOND_FACTOR_SETUP_FINISH), &payload).await?,
+        http::sent_with(Request::post(TOTP_SETUP_FINISH), &payload).await?,
         SUBJECT,
     )
     .await?;
@@ -323,8 +318,8 @@ pub async fn finish_setting_up_second_factor(code: &str) -> Result<Vec<String>, 
     Ok(shown.codes)
 }
 
-pub async fn answer_with_code(code: &str) -> Result<SignedInAccount, ApiError> {
-    second_factor_answered(ANSWERED_BY_CODE, code).await
+pub async fn answer_with_totp(code: &str) -> Result<SignedInAccount, ApiError> {
+    second_factor_answered(ANSWERED_BY_TOTP, code).await
 }
 
 pub async fn answer_with_recovery_code(code: &str) -> Result<SignedInAccount, ApiError> {
@@ -332,7 +327,7 @@ pub async fn answer_with_recovery_code(code: &str) -> Result<SignedInAccount, Ap
 }
 
 async fn second_factor_answered(at: &str, code: &str) -> Result<SignedInAccount, ApiError> {
-    let payload = SecondFactorCodeRequest {
+    let payload = TotpCodeRequest {
         code: code.to_owned(),
     };
     let response = http::sent_with(Request::post(at), &payload).await?;
@@ -340,23 +335,23 @@ async fn second_factor_answered(at: &str, code: &str) -> Result<SignedInAccount,
     as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
-pub async fn turn_off_second_factor(code: &str) -> Result<(), ApiError> {
-    let payload = SecondFactorCodeRequest {
+pub async fn turn_off_totp(code: &str) -> Result<(), ApiError> {
+    let payload = TotpCodeRequest {
         code: code.to_owned(),
     };
 
     http::checked(
-        http::sent_with(Request::delete(SECOND_FACTOR), &payload).await?,
+        http::sent_with(Request::delete(TOTP), &payload).await?,
         SUBJECT,
     )
     .await
     .map(|_| ())
 }
 
-pub async fn remove_second_factor(id: &str, on: u64) -> Result<(), ApiError> {
+pub async fn remove_totp(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
         http::sent(http::made_on(
-            Request::delete(&format!("{INSTANCE_ACCOUNTS}/{id}/second-factor")),
+            Request::delete(&format!("{INSTANCE_ACCOUNTS}/{id}/totp")),
             on,
         ))
         .await?,
@@ -367,7 +362,7 @@ pub async fn remove_second_factor(id: &str, on: u64) -> Result<(), ApiError> {
 }
 
 pub async fn draw_recovery_codes(code: &str) -> Result<Vec<String>, ApiError> {
-    let payload = SecondFactorCodeRequest {
+    let payload = TotpCodeRequest {
         code: code.to_owned(),
     };
     let drawn: RecoveryCodesDTO = http::parsed(

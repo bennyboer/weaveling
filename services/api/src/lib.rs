@@ -247,7 +247,7 @@ pub fn app(adapters: Adapters) -> Router {
             .accounts
             .is_some()
             .then(|| adapters.sign_up.told().to_owned()),
-        second_factors: adapters
+        totp: adapters
             .accounts
             .as_ref()
             .is_some_and(|accounts| accounts.core.keeps_totp()),

@@ -14,7 +14,7 @@ const NOT_YET_OPEN: &str = "project-not-yet-open";
 #[derive(Clone, Debug)]
 pub(super) enum Opening {
     Idle,
-    SettingUpSecondFactor,
+    SettingUpTotp,
     Opened(Project),
     Unopened(ApiError),
 }

@@ -111,13 +111,13 @@ pub struct SecondFactorDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct SettingUpSecondFactorDTO {
+pub struct SettingUpTotpDTO {
     pub secret: String,
     pub otpauth_uri: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct SecondFactorCodeRequest {
+pub struct TotpCodeRequest {
     pub code: String,
 }
 
@@ -134,7 +134,7 @@ pub struct ServiceModeDTO {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub operator_wanted: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub second_factors: bool,
+    pub totp: bool,
 }
 
 pub const SESSION_COOKIE: &str = "weaveling_session";
@@ -241,9 +241,9 @@ pub mod refused {
     pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
     pub const INVITATION_FOR_ANOTHER_ADDRESS: &str = "invitation-for-another-address";
     pub const INVITATION_NOT_BY_AN_OPERATOR: &str = "invitation-not-by-an-operator";
-    pub const SECOND_FACTORS_UNAVAILABLE: &str = "second-factors-unavailable";
-    pub const NOTHING_BEING_SET_UP: &str = "second-factor-nothing-being-set-up";
-    pub const SECOND_FACTOR_CODE_WRONG: &str = "second-factor-code-wrong";
+    pub const TOTP_UNAVAILABLE: &str = "totp-unavailable";
+    pub const NOTHING_BEING_SET_UP: &str = "totp-nothing-being-set-up";
+    pub const TOTP_CODE_WRONG: &str = "totp-code-wrong";
     pub const RECOVERY_CODE_WRONG: &str = "recovery-code-wrong";
     pub const NO_SECOND_FACTOR: &str = "no-second-factor";
 
@@ -281,9 +281,9 @@ pub mod refused {
         EMAIL_ADDRESS_HAS_ACCOUNT,
         INVITATION_FOR_ANOTHER_ADDRESS,
         INVITATION_NOT_BY_AN_OPERATOR,
-        SECOND_FACTORS_UNAVAILABLE,
+        TOTP_UNAVAILABLE,
         NOTHING_BEING_SET_UP,
-        SECOND_FACTOR_CODE_WRONG,
+        TOTP_CODE_WRONG,
         RECOVERY_CODE_WRONG,
         NO_SECOND_FACTOR,
     ];

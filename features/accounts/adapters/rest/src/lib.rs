@@ -1,9 +1,9 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockDTO,
     LockRequest, NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SESSION_COOKIE,
-    SecondFactorCodeRequest, SecondFactorDTO, SendCodeRequest, SettingUpSecondFactorDTO,
-    SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    VerifyEmailRequest, lock_kind, refused, stage,
+    SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest,
+    SignUpRequest, SignedInDTO, TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest,
+    lock_kind, refused, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
@@ -47,10 +47,7 @@ pub fn router(accounts: AccountsCore) -> Router {
             "/sessions/current",
             routing::get(current).delete(end_session),
         )
-        .route(
-            "/sessions/current/second-factor",
-            routing::post(answer_with_totp),
-        )
+        .route("/sessions/current/totp", routing::post(answer_with_totp))
         .route(
             "/sessions/current/recovery-code",
             routing::post(answer_with_recovery_code),
@@ -77,25 +74,22 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             "/accounts/current/invitations/{invitation}/decline",
             routing::post(decline_invitation_by_id),
         )
+        .route("/accounts/current/totp", routing::delete(turn_off_totp))
         .route(
-            "/accounts/current/second-factor",
-            routing::delete(turn_off_totp),
-        )
-        .route(
-            "/accounts/current/second-factor/setup",
+            "/accounts/current/totp/setup",
             routing::post(begin_setting_up_totp),
         )
         .route(
-            "/accounts/current/second-factor/setup/finish",
+            "/accounts/current/totp/setup/finish",
             routing::post(finish_setting_up_totp),
         )
         .route(
-            "/accounts/current/second-factor/recovery-codes",
+            "/accounts/current/recovery-codes",
             routing::post(draw_recovery_codes),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
-            "/instance/accounts/{account}/second-factor",
+            "/instance/accounts/{account}/totp",
             routing::delete(remove_totp),
         )
         .route(
@@ -303,13 +297,13 @@ async fn become_operator(
 async fn begin_setting_up_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
-) -> Result<Json<SettingUpSecondFactorDTO>, Problem> {
+) -> Result<Json<SettingUpTotpDTO>, Problem> {
     let setting_up = accounts
         .begin_setting_up_totp(&account)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(SettingUpSecondFactorDTO {
+    Ok(Json(SettingUpTotpDTO {
         secret: setting_up.secret,
         otpauth_uri: setting_up.otpauth_uri,
     }))
@@ -319,7 +313,7 @@ async fn finish_setting_up_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     headers: HeaderMap,
-    Json(request): Json<SecondFactorCodeRequest>,
+    Json(request): Json<TotpCodeRequest>,
 ) -> Result<Response, Problem> {
     let Some(session) = presented(&headers) else {
         return Err(not_signed_in());
@@ -342,7 +336,7 @@ async fn turn_off_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     headers: HeaderMap,
-    Json(request): Json<SecondFactorCodeRequest>,
+    Json(request): Json<TotpCodeRequest>,
 ) -> Result<Response, Problem> {
     let Some(session) = presented(&headers) else {
         return Err(not_signed_in());
@@ -372,7 +366,7 @@ async fn remove_totp(
 async fn draw_recovery_codes(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
-    Json(request): Json<SecondFactorCodeRequest>,
+    Json(request): Json<TotpCodeRequest>,
 ) -> Result<Json<RecoveryCodesDTO>, Problem> {
     let codes = accounts
         .draw_recovery_codes(&account, &request.code)
@@ -387,7 +381,7 @@ async fn draw_recovery_codes(
 async fn answer_with_totp(
     State(accounts): State<AccountsCore>,
     headers: HeaderMap,
-    Json(request): Json<SecondFactorCodeRequest>,
+    Json(request): Json<TotpCodeRequest>,
 ) -> Result<Response, Problem> {
     let Some(owing) = presented(&headers) else {
         return Err(not_signed_in());
@@ -403,7 +397,7 @@ async fn answer_with_totp(
 async fn answer_with_recovery_code(
     State(accounts): State<AccountsCore>,
     headers: HeaderMap,
-    Json(request): Json<SecondFactorCodeRequest>,
+    Json(request): Json<TotpCodeRequest>,
 ) -> Result<Response, Problem> {
     let Some(owing) = presented(&headers) else {
         return Err(not_signed_in());
@@ -705,15 +699,11 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
         }
-        AccountsError::TotpUnavailable => {
-            Problem::refused(refused::SECOND_FACTORS_UNAVAILABLE, refusal)
-        }
+        AccountsError::TotpUnavailable => Problem::refused(refused::TOTP_UNAVAILABLE, refusal),
         AccountsError::NothingBeingSetUp => {
             Problem::refused(refused::NOTHING_BEING_SET_UP, refusal)
         }
-        AccountsError::TotpCodeWrong => {
-            Problem::unprocessable(refused::SECOND_FACTOR_CODE_WRONG, refusal)
-        }
+        AccountsError::TotpCodeWrong => Problem::unprocessable(refused::TOTP_CODE_WRONG, refusal),
         AccountsError::RecoveryCodeWrong => {
             Problem::unprocessable(refused::RECOVERY_CODE_WRONG, refusal)
         }

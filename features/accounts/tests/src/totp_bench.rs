@@ -1,5 +1,5 @@
 use accounts_contract::{
-    RecoveryCodesDTO, SecondFactorCodeRequest, SettingUpSecondFactorDTO, SignInRequest, SignedInDTO,
+    RecoveryCodesDTO, SettingUpTotpDTO, SignInRequest, SignedInDTO, TotpCodeRequest,
 };
 use accounts_core::{AccountId, AccountsCore, EmailAddress, EmailAddresses, TotpKey};
 use axum::http::StatusCode;
@@ -100,12 +100,12 @@ impl Served {
 
     pub async fn begin(&self, cookie: &str) -> TestResponse {
         self.server
-            .post("/accounts/current/second-factor/setup")
+            .post("/accounts/current/totp/setup")
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
 
-    pub async fn begun(&self, cookie: &str) -> SettingUpSecondFactorDTO {
+    pub async fn begun(&self, cookie: &str) -> SettingUpTotpDTO {
         let response = self.begin(cookie).await;
         response.assert_status_ok();
 
@@ -114,9 +114,9 @@ impl Served {
 
     pub async fn finish(&self, cookie: &str, code: &str) -> TestResponse {
         self.server
-            .post("/accounts/current/second-factor/setup/finish")
+            .post("/accounts/current/totp/setup/finish")
             .add_header(COOKIE, cookie.to_owned())
-            .json(&SecondFactorCodeRequest {
+            .json(&TotpCodeRequest {
                 code: code.to_owned(),
             })
             .await
@@ -147,9 +147,9 @@ impl Served {
 
     pub async fn answer(&self, owing: &str, code: &str) -> TestResponse {
         self.server
-            .post("/sessions/current/second-factor")
+            .post("/sessions/current/totp")
             .add_header(COOKIE, owing.to_owned())
-            .json(&SecondFactorCodeRequest {
+            .json(&TotpCodeRequest {
                 code: code.to_owned(),
             })
             .await
@@ -159,7 +159,7 @@ impl Served {
         self.server
             .post("/sessions/current/recovery-code")
             .add_header(COOKIE, owing.to_owned())
-            .json(&SecondFactorCodeRequest {
+            .json(&TotpCodeRequest {
                 code: code.to_owned(),
             })
             .await
@@ -167,9 +167,9 @@ impl Served {
 
     pub async fn draw_recovery_codes(&self, cookie: &str, code: &str) -> TestResponse {
         self.server
-            .post("/accounts/current/second-factor/recovery-codes")
+            .post("/accounts/current/recovery-codes")
             .add_header(COOKIE, cookie.to_owned())
-            .json(&SecondFactorCodeRequest {
+            .json(&TotpCodeRequest {
                 code: code.to_owned(),
             })
             .await

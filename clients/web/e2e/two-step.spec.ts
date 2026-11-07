@@ -17,9 +17,9 @@ const accountButton = (page: Page) =>
 const twoStepInMenu = (page: Page) =>
   page.getByRole("menu").getByRole("menuitem", { name: /Two-step sign-in/ });
 
-async function signedIn(page: Page, { secondFactors = true } = {}): Promise<Server> {
+async function signedIn(page: Page, { totpOffered = true } = {}): Promise<Server> {
   const server = await aServerWithAccounts(page);
-  server.secondFactors = secondFactors;
+  server.totpOffered = totpOffered;
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect(accountButton(page)).toBeVisible();
@@ -57,7 +57,7 @@ test("two-step sign-in is off in the account menu until it is set up", async ({ 
 
 test("an instance without a key does not offer two-step sign-in", async ({ page }) => {
   // given: an author signed in on an instance that cannot keep second factors
-  await signedIn(page, { secondFactors: false });
+  await signedIn(page, { totpOffered: false });
 
   // when: they open their account
   await accountButton(page).click();
