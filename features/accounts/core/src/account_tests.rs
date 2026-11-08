@@ -677,6 +677,8 @@ fn a_second_factor_is_added_with_ten_recovery_codes() {
         Some(SecondFactor {
             since: clock::at(3_000),
             recovery_codes_left: 10,
+            answered_by_totp: true,
+            answered_by_key: false,
         })
     );
 }
@@ -718,6 +720,8 @@ fn a_second_factor_added_again_replaces_the_one_before() {
         Some(SecondFactor {
             since: clock::at(4_000),
             recovery_codes_left: 10,
+            answered_by_totp: true,
+            answered_by_key: false,
         })
     );
 }
@@ -902,6 +906,8 @@ fn a_second_step_key_as_the_first_second_factor_comes_with_ten_recovery_codes() 
         Some(SecondFactor {
             since: clock::at(3_000),
             recovery_codes_left: 10,
+            answered_by_totp: false,
+            answered_by_key: true,
         })
     );
     // and: a session begun before it no longer counts
@@ -934,6 +940,8 @@ fn a_second_step_key_beside_totp_draws_no_codes_and_the_second_step_keeps_its_mo
         Some(SecondFactor {
             since: clock::at(3_000),
             recovery_codes_left: 9,
+            answered_by_totp: true,
+            answered_by_key: true,
         })
     );
 }
@@ -1137,6 +1145,8 @@ fn turning_totp_off_beside_a_second_step_key_keeps_the_codes() {
         Some(SecondFactor {
             since: clock::at(4_000),
             recovery_codes_left: 9,
+            answered_by_totp: false,
+            answered_by_key: true,
         })
     );
 }

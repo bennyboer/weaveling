@@ -17,7 +17,12 @@ const accountButton = (page: Page) =>
 async function withASecondFactor(page: Page): Promise<Server> {
   const server = await aServerWithAccounts(page);
   server.totpOffered = true;
-  server.secondFactor = { since: "2026-11-06T22:14:20Z", recovery_codes_left: 10 };
+  server.secondFactor = {
+    since: "2026-11-06T22:14:20Z",
+    recovery_codes_left: 10,
+    answered_by_totp: true,
+    answered_by_key: false,
+  };
   await page.goto("/");
 
   return server;

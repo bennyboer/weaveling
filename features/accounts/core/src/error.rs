@@ -78,6 +78,8 @@ pub enum AccountsError {
     KeysUnavailable,
     #[error("no key is being added; begin again")]
     NoKeyBeingAdded,
+    #[error("no key is being asked for; begin again")]
+    NoKeyBeingAsked,
     #[error("the browser's answer makes no key for this instance")]
     KeyRefused,
     #[error("this key is added to an account already")]

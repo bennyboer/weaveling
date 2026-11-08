@@ -633,6 +633,7 @@ refused-recovery-code-wrong = That is not one of your recovery codes, or it was 
 refused-no-second-factor = This account has no two-step sign-in.
 refused-keys-unavailable = This Weaveling instance cannot add keys yet. Ask its operator to tell it where it is served.
 refused-no-key-being-added = Adding the key has to begin again.
+refused-no-key-being-asked = Asking for the key has to begin again.
 refused-key-refused = Your browser’s answer makes no key for this Weaveling instance. Try once more.
 refused-key-held-already = This key is added to an account already.
 refused-no-such-key = This account has no such key.

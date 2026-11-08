@@ -1,6 +1,6 @@
 use accounts_contract::{
-    AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, AddingKeyDTO,
-    BecomeOperatorRequest, DeclineInvitationRequest, KeyDTO, LockDTO, LockRequest,
+    AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
+    DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockDTO, LockRequest,
     NewPasswordRequest, PasswordRequest, PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest,
     SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
@@ -49,6 +49,11 @@ pub fn router(accounts: AccountsCore) -> Router {
             routing::get(current).delete(end_session),
         )
         .route("/sessions/current/totp", routing::post(answer_with_totp))
+        .route("/sessions/current/key", routing::post(answer_with_key))
+        .route(
+            "/sessions/current/key/challenge",
+            routing::post(begin_answering_with_key),
+        )
         .route(
             "/sessions/current/recovery-code",
             routing::post(answer_with_recovery_code),
@@ -401,13 +406,13 @@ async fn list_keys(
 async fn begin_adding_key(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
-) -> Result<Json<AddingKeyDTO>, Problem> {
+) -> Result<Json<KeyChallengeDTO>, Problem> {
     let options = accounts
         .begin_adding_key(&account)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(AddingKeyDTO { options }))
+    Ok(Json(KeyChallengeDTO { options }))
 }
 
 async fn finish_adding_key(
@@ -482,6 +487,37 @@ async fn draw_recovery_codes(
     Ok(Json(RecoveryCodesDTO {
         codes: codes.iter().map(ToString::to_string).collect(),
     }))
+}
+
+async fn begin_answering_with_key(
+    State(accounts): State<AccountsCore>,
+    headers: HeaderMap,
+) -> Result<Json<KeyChallengeDTO>, Problem> {
+    let Some(owing) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let options = accounts
+        .begin_answering_with_key(&owing)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(KeyChallengeDTO { options }))
+}
+
+async fn answer_with_key(
+    State(accounts): State<AccountsCore>,
+    headers: HeaderMap,
+    Json(request): Json<KeyAnswerRequest>,
+) -> Result<Response, Problem> {
+    let Some(owing) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let (token, signed_in) = accounts
+        .answer_with_key(&owing, &request.answer)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
 }
 
 async fn answer_with_totp(
@@ -687,6 +723,8 @@ fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
             .map(|factor| SecondFactorDTO {
                 since: text::serialize(factor.since),
                 recovery_codes_left: factor.recovery_codes_left,
+                answered_by_totp: factor.answered_by_totp,
+                answered_by_key: factor.answered_by_key,
             }),
     }
 }
@@ -823,6 +861,7 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::NoSecondFactorOwed => not_signed_in(),
         AccountsError::KeysUnavailable => Problem::refused(refused::KEYS_UNAVAILABLE, refusal),
         AccountsError::NoKeyBeingAdded => Problem::refused(refused::NO_KEY_BEING_ADDED, refusal),
+        AccountsError::NoKeyBeingAsked => Problem::refused(refused::NO_KEY_BEING_ASKED, refusal),
         AccountsError::KeyRefused => Problem::unprocessable(refused::KEY_REFUSED, refusal),
         AccountsError::KeyHeldAlready => Problem::refused(refused::KEY_HELD_ALREADY, refusal),
         AccountsError::NoSuchKey => Problem::not_found(refused::NO_SUCH_KEY, refusal),

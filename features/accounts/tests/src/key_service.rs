@@ -1,13 +1,13 @@
 use accounts_core::{
     AccountError, AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses,
-    KeyCeremonies, KeyCredentials, KeyId, KeyRole, SecondFactors, SessionToken,
+    KeyCeremonies, KeyCredentials, KeyId, KeyRole, SecondFactors, SessionToken, Stage,
 };
 use eventsourcing::ServiceError;
 use serde_json::{Value, json};
 use time::Duration;
 use webauthn_authenticator_rs::WebauthnAuthenticator;
 use webauthn_authenticator_rs::softpasskey::SoftPasskey;
-use webauthn_rs::prelude::{CreationChallengeResponse, Url};
+use webauthn_rs::prelude::{CreationChallengeResponse, RequestChallengeResponse, Url};
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -60,6 +60,16 @@ fn made_by(authenticator: &mut SoftPasskey, asked: Value) -> Value {
     serde_json::to_value(made).expect("the answer is plain data")
 }
 
+fn touch_of(authenticator: &mut SoftPasskey, asked: Value) -> Value {
+    let asked: RequestChallengeResponse =
+        serde_json::from_value(asked).expect("the browser is asked in the WebAuthn shape");
+    let touched = authenticator
+        .do_authentication(Url::parse(SERVED_AT).expect("a URL"), asked)
+        .expect("the authenticator signs the challenge");
+
+    serde_json::to_value(touched).expect("the answer is plain data")
+}
+
 impl Bench {
     async fn session_of(&self, email: &str) -> SessionToken {
         self.accounts
@@ -70,13 +80,27 @@ impl Bench {
     }
 
     async fn answered(&self, account: &AccountId) -> Value {
+        self.answered_by(&mut SoftPasskey::new(true), account).await
+    }
+
+    async fn answered_by(&self, authenticator: &mut SoftPasskey, account: &AccountId) -> Value {
         let asked = self
             .accounts
             .begin_adding_key(account)
             .await
             .expect("adding begins");
 
-        made_by(&mut SoftPasskey::new(true), asked)
+        made_by(authenticator, asked)
+    }
+
+    async fn touched_by(&self, authenticator: &mut SoftPasskey, owing: &SessionToken) -> Value {
+        let asked = self
+            .accounts
+            .begin_answering_with_key(owing)
+            .await
+            .expect("answering begins");
+
+        touch_of(authenticator, asked)
     }
 
     async fn added(
@@ -449,5 +473,122 @@ async fn guessing_the_password_to_remove_a_key_is_throttled() {
     assert!(
         matches!(waiting, Err(AccountsError::Throttled { .. })),
         "{waiting:?}"
+    );
+}
+
+async fn with_a_key(bench: &Bench, email: &str) -> (AccountId, SoftPasskey) {
+    let account = signed_up(&bench.wired, email).await;
+    let session = bench.session_of(email).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let answer = bench.answered_by(&mut authenticator, &account).await;
+    bench
+        .accounts
+        .finish_adding_key(&account, "YubiKey blue", &answer, &session)
+        .await
+        .expect("the key is added");
+
+    (account, authenticator)
+}
+
+#[tokio::test]
+async fn a_session_owing_its_second_factor_is_signed_in_by_a_touch_of_the_key() {
+    // given: an account with a key, signing in anew and owing its second factor
+    let bench = bench();
+    let (ada, mut authenticator) = with_a_key(&bench, ADA).await;
+    let owing = bench.session_of(ADA).await;
+    let before = bench
+        .wired
+        .secrets
+        .credentials_of(&ada)
+        .await
+        .expect("reading should succeed");
+
+    // when: the key is touched to answer it
+    let touch = bench.touched_by(&mut authenticator, &owing).await;
+    let (signed_in, account) = bench
+        .accounts
+        .answer_with_key(&owing, &touch)
+        .await
+        .expect("the touch answers the second step");
+
+    // then: a session signed in all the way opens, in place of the owing one
+    assert_eq!(account.session.stage, Stage::SignedIn);
+    assert!(bench.is_open(&signed_in).await);
+    assert!(!bench.is_open(&owing).await);
+    // and: the key's credential is written anew, its counter moved on
+    let after = bench
+        .wired
+        .secrets
+        .credentials_of(&ada)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].0, before[0].0);
+    assert_ne!(after[0].1.written, before[0].1.written);
+}
+
+#[tokio::test]
+async fn a_touch_answers_once() {
+    // given: a session owing its second factor, answered by a touch
+    let bench = bench();
+    let (_, mut authenticator) = with_a_key(&bench, ADA).await;
+    let owing = bench.session_of(ADA).await;
+    let touch = bench.touched_by(&mut authenticator, &owing).await;
+    let other_owing = bench.session_of(ADA).await;
+    bench
+        .accounts
+        .answer_with_key(&owing, &touch)
+        .await
+        .expect("the touch answers the second step");
+
+    // when: the same touch is given again, for another session owing
+    let again = bench.accounts.answer_with_key(&other_owing, &touch).await;
+
+    // then: it is refused, nothing being asked of that session
+    assert!(
+        matches!(again, Err(AccountsError::NoKeyBeingAsked)),
+        "{again:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_touch_given_for_another_accounts_asking_answers_nothing() {
+    // given: two accounts with keys, both owing their second factor
+    let bench = bench();
+    let (_, _) = with_a_key(&bench, ADA).await;
+    let (_, mut theirs) = with_a_key(&bench, GRACE).await;
+    let hers = bench.session_of(ADA).await;
+    let their_owing = bench.session_of(GRACE).await;
+    bench
+        .accounts
+        .begin_answering_with_key(&hers)
+        .await
+        .expect("answering begins");
+
+    // when: the second account's touch is given for the first
+    let touch = bench.touched_by(&mut theirs, &their_owing).await;
+    let crossed = bench.accounts.answer_with_key(&hers, &touch).await;
+
+    // then: it is refused
+    assert!(
+        matches!(crossed, Err(AccountsError::KeyRefused)),
+        "{crossed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_session_owing_nothing_is_not_asked_for_a_key() {
+    // given: an account without a second factor, signed in all the way
+    let bench = bench();
+    signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+
+    // when: answering with a key is begun for that session
+    let begun = bench.accounts.begin_answering_with_key(&session).await;
+
+    // then: it is refused, nothing being owed
+    assert!(
+        matches!(begun, Err(AccountsError::NoSecondFactorOwed)),
+        "{begun:?}"
     );
 }

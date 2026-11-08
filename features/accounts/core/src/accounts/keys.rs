@@ -8,7 +8,7 @@ use crate::account::{AccountCommand, AccountError};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::key::{Key, KeyId, KeyName, KeyRole};
-use crate::key_ceremonies::{KeyCeremonies, KeyNotAdded};
+use crate::key_ceremonies::{CeremonyFailed, KeyCeremonies};
 use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
 use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
@@ -86,8 +86,8 @@ impl AccountsCore {
         let credential = ceremonies
             .finish_adding(account, answer, self.clock.now())
             .map_err(|refused| match refused {
-                KeyNotAdded::NothingUnderWay => AccountsError::NoKeyBeingAdded,
-                KeyNotAdded::Refused => AccountsError::KeyRefused,
+                CeremonyFailed::NothingUnderWay => AccountsError::NoKeyBeingAdded,
+                CeremonyFailed::Refused => AccountsError::KeyRefused,
             })?;
         let key = KeyId::generate(self.clock.now());
         let codes = RecoveryCode::drawn();
@@ -230,7 +230,7 @@ impl AccountsCore {
         Ok(())
     }
 
-    fn key_ceremonies(&self) -> Result<&KeyCeremonies, AccountsError> {
+    pub(super) fn key_ceremonies(&self) -> Result<&KeyCeremonies, AccountsError> {
         self.key_ceremonies
             .as_ref()
             .ok_or(AccountsError::KeysUnavailable)

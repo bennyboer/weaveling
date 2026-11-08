@@ -5,34 +5,68 @@ use serde_json::Value;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use webauthn_rs::prelude::{
-    Credential, CredentialID, RegisterPublicKeyCredential, SecurityKeyRegistration, Url,
+    Credential, CredentialID, PublicKeyCredential, RegisterPublicKeyCredential, SecurityKey,
+    SecurityKeyAuthentication, SecurityKeyRegistration, Url,
 };
 use webauthn_rs::{Webauthn, WebauthnBuilder};
 
 use crate::id::AccountId;
+use crate::key::KeyId;
 use crate::secrets::KeyCredential;
 
 /// Adding keys and passkeys and signing in with them, for this instance: every key is bound to the domain it is served at, so moving it voids every key.
 #[derive(Debug, Clone)]
 pub struct KeyCeremonies {
     webauthn: Webauthn,
-    adding: Arc<Mutex<HashMap<AccountId, UnderWay<SecurityKeyRegistration>>>>,
+    adding: Arc<UnderWay<SecurityKeyRegistration>>,
+    answering: Arc<UnderWay<SecurityKeyAuthentication>>,
 }
 
-/// What the server keeps of a ceremony between asking the browser and hearing back: never written down, so a restart only asks for it to begin again.
+/// What the server keeps of each account's ceremony between asking the browser and hearing back: never written down, so a restart only asks for it to begin again.
 #[derive(Debug)]
-struct UnderWay<S> {
-    state: S,
-    begun: OffsetDateTime,
+struct UnderWay<S>(Mutex<HashMap<AccountId, (S, OffsetDateTime)>>);
+
+/// Why the browser's answer does not count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CeremonyFailed {
+    #[error("nothing is under way for this account; begin again")]
+    NothingUnderWay,
+    #[error("this answer is no key's for this instance")]
+    Refused,
 }
 
-/// Why the browser's answer adds no key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum KeyNotAdded {
-    #[error("no key is being added; begin again")]
-    NothingUnderWay,
-    #[error("this answer makes no key for this instance")]
-    Refused,
+impl<S> Default for UnderWay<S> {
+    fn default() -> Self {
+        Self(Mutex::default())
+    }
+}
+
+impl<S> UnderWay<S> {
+    /// Holds a ceremony begun, in place of the account's one before; the oldest gives way when too many are under way.
+    fn hold(&self, account: &AccountId, state: S, now: OffsetDateTime) {
+        let mut held = self.0.lock().expect("the ceremonies are not poisoned");
+        held.retain(|_, (_, begun)| now - *begun < KeyCeremonies::LASTS);
+        if held.len() >= KeyCeremonies::MOST_UNDER_WAY
+            && let Some(oldest) = held
+                .iter()
+                .min_by_key(|(_, (_, begun))| *begun)
+                .map(|(account, _)| *account)
+        {
+            held.remove(&oldest);
+        }
+        held.insert(*account, (state, now));
+    }
+
+    /// The account's ceremony, once, if it is still in time.
+    fn take(&self, account: &AccountId, now: OffsetDateTime) -> Result<S, CeremonyFailed> {
+        self.0
+            .lock()
+            .expect("the ceremonies are not poisoned")
+            .remove(account)
+            .filter(|(_, begun)| now - *begun < KeyCeremonies::LASTS)
+            .map(|(state, _)| state)
+            .ok_or(CeremonyFailed::NothingUnderWay)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -81,6 +115,7 @@ impl KeyCeremonies {
             .map(|webauthn| Self {
                 webauthn,
                 adding: Arc::default(),
+                answering: Arc::default(),
             })
             .map_err(|_| InvalidPublicUrl::NoUrl)
     }
@@ -109,17 +144,7 @@ impl KeyCeremonies {
                 None,
             )
             .expect("a security key registration begins for any account");
-        let mut adding = self.adding.lock().expect("the ceremonies are not poisoned");
-        adding.retain(|_, under_way| now - under_way.begun < Self::LASTS);
-        if adding.len() >= Self::MOST_UNDER_WAY
-            && let Some(oldest) = adding
-                .iter()
-                .min_by_key(|(_, under_way)| under_way.begun)
-                .map(|(account, _)| *account)
-        {
-            adding.remove(&oldest);
-        }
-        adding.insert(*account, UnderWay { state, begun: now });
+        self.adding.hold(account, state, now);
 
         serde_json::to_value(asked).expect("what a browser is asked is plain data")
     }
@@ -130,20 +155,14 @@ impl KeyCeremonies {
         account: &AccountId,
         answer: &Value,
         now: OffsetDateTime,
-    ) -> Result<KeyCredential, KeyNotAdded> {
-        let under_way = self
-            .adding
-            .lock()
-            .expect("the ceremonies are not poisoned")
-            .remove(account)
-            .filter(|under_way| now - under_way.begun < Self::LASTS)
-            .ok_or(KeyNotAdded::NothingUnderWay)?;
+    ) -> Result<KeyCredential, CeremonyFailed> {
+        let state = self.adding.take(account, now)?;
         let answer: RegisterPublicKeyCredential =
-            serde_json::from_value(answer.clone()).map_err(|_| KeyNotAdded::Refused)?;
+            serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
         let key = self
             .webauthn
-            .finish_securitykey_registration(&answer, &under_way.state)
-            .map_err(|_| KeyNotAdded::Refused)?;
+            .finish_securitykey_registration(&answer, &state)
+            .map_err(|_| CeremonyFailed::Refused)?;
         let credential = Credential::from(key);
 
         Ok(KeyCredential {
@@ -151,6 +170,60 @@ impl KeyCeremonies {
             written: serde_json::to_string(&credential).expect("a credential is plain data"),
         })
     }
+
+    /// Asks the browser for a touch of one of the keys held, to answer the account's second step.
+    pub(crate) fn begin_answering(
+        &self,
+        account: &AccountId,
+        held: &[(KeyId, KeyCredential)],
+        now: OffsetDateTime,
+    ) -> Result<Value, CeremonyFailed> {
+        let keys: Vec<SecurityKey> = held
+            .iter()
+            .filter_map(|(_, credential)| read(credential))
+            .map(SecurityKey::from)
+            .collect();
+        let (asked, state) = self
+            .webauthn
+            .start_securitykey_authentication(&keys)
+            .map_err(|_| CeremonyFailed::Refused)?;
+        self.answering.hold(account, state, now);
+
+        Ok(serde_json::to_value(asked).expect("what a browser is asked is plain data"))
+    }
+
+    /// Finishes the account's answering with the browser's answer, once: the key that answered, and its credential as it is now, its counter moved on.
+    pub(crate) fn finish_answering(
+        &self,
+        account: &AccountId,
+        answer: &Value,
+        held: &[(KeyId, KeyCredential)],
+        now: OffsetDateTime,
+    ) -> Result<(KeyId, String), CeremonyFailed> {
+        let state = self.answering.take(account, now)?;
+        let answer: PublicKeyCredential =
+            serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
+        let answered = self
+            .webauthn
+            .finish_securitykey_authentication(&answer, &state)
+            .map_err(|_| CeremonyFailed::Refused)?;
+        let (key, credential) = held
+            .iter()
+            .find(|(_, credential)| credential.id.as_slice() == answered.cred_id().as_slice())
+            .and_then(|(key, credential)| Some((*key, read(credential)?)))
+            .ok_or(CeremonyFailed::Refused)?;
+        let mut renewed = SecurityKey::from(credential);
+        renewed.update_credential(&answered);
+
+        Ok((
+            key,
+            serde_json::to_string(&Credential::from(renewed)).expect("a credential is plain data"),
+        ))
+    }
+}
+
+fn read(credential: &KeyCredential) -> Option<Credential> {
+    serde_json::from_str(&credential.written).ok()
 }
 
 #[cfg(test)]

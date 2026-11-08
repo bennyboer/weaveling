@@ -633,6 +633,7 @@ refused-recovery-code-wrong = Ese no es uno de tus códigos de recuperación, o 
 refused-no-second-factor = Esta cuenta no tiene inicio de sesión en dos pasos.
 refused-keys-unavailable = Esta instancia de Weaveling aún no puede añadir llaves. Pide a quien la opera que le indique en qué dirección se sirve.
 refused-no-key-being-added = Hay que empezar de nuevo a añadir la llave.
+refused-no-key-being-asked = Hay que volver a empezar a pedir la llave.
 refused-key-refused = La respuesta de tu navegador no crea ninguna llave para esta instancia de Weaveling. Inténtalo otra vez.
 refused-key-held-already = Esta llave ya pertenece a una cuenta.
 refused-no-such-key = Esta cuenta no tiene esa llave.

@@ -208,6 +208,11 @@ impl Account {
             .map(|since| SecondFactor {
                 since,
                 recovery_codes_left: self.recovery_codes_left,
+                answered_by_totp: self.totp.is_some(),
+                answered_by_key: self
+                    .keys
+                    .values()
+                    .any(|key| key.role == KeyRole::SecondFactor),
             })
     }
 

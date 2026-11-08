@@ -123,7 +123,12 @@ export type Server = {
   notices: Noticed[];
   dismissed: string[];
   totpOffered: boolean;
-  secondFactor: { since: string; recovery_codes_left: number } | null;
+  secondFactor: {
+    since: string;
+    recovery_codes_left: number;
+    answered_by_totp: boolean;
+    answered_by_key: boolean;
+  } | null;
   owing: boolean;
   recoveryCodes: string[];
 };
@@ -366,7 +371,12 @@ export async function aServerWithAccounts(
     if (code !== THE_APP_CODE) {
       return refusing(route, 422, "totp-code-wrong");
     }
-    server.secondFactor = { since: new Date().toISOString(), recovery_codes_left: 10 };
+    server.secondFactor = {
+      since: new Date().toISOString(),
+      recovery_codes_left: 10,
+      answered_by_totp: true,
+      answered_by_key: false,
+    };
     socketsToldTheSessionEnded(server);
     return route.fulfill({ json: { codes: THE_RECOVERY_CODES } });
   });

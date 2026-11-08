@@ -108,6 +108,8 @@ pub struct SignedInDTO {
 pub struct SecondFactorDTO {
     pub since: String,
     pub recovery_codes_left: usize,
+    pub answered_by_totp: bool,
+    pub answered_by_key: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -149,8 +151,13 @@ pub struct KeyDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AddingKeyDTO {
+pub struct KeyChallengeDTO {
     pub options: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeyAnswerRequest {
+    pub answer: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -301,6 +308,7 @@ pub mod refused {
     pub const NO_SECOND_FACTOR: &str = "no-second-factor";
     pub const KEYS_UNAVAILABLE: &str = "keys-unavailable";
     pub const NO_KEY_BEING_ADDED: &str = "no-key-being-added";
+    pub const NO_KEY_BEING_ASKED: &str = "no-key-being-asked";
     pub const KEY_REFUSED: &str = "key-refused";
     pub const KEY_HELD_ALREADY: &str = "key-held-already";
     pub const NO_SUCH_KEY: &str = "no-such-key";
@@ -312,7 +320,7 @@ pub mod refused {
     pub const TOO_MANY_KEYS: &str = "too-many-keys";
     pub const PASSWORD_WRONG: &str = "password-wrong";
 
-    pub const EVERY: [&str; 50] = [
+    pub const EVERY: [&str; 51] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -353,6 +361,7 @@ pub mod refused {
         NO_SECOND_FACTOR,
         KEYS_UNAVAILABLE,
         NO_KEY_BEING_ADDED,
+        NO_KEY_BEING_ASKED,
         KEY_REFUSED,
         KEY_HELD_ALREADY,
         NO_SUCH_KEY,

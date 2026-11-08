@@ -133,7 +133,12 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
 test("a code of the app turns it off, and it says so", async ({ page }) => {
   // given: an author signed in with two-step sign-in on, on its page
   const server = await signedIn(page);
-  server.secondFactor = { since: "2026-11-06T22:14:20Z", recovery_codes_left: 10 };
+  server.secondFactor = {
+    since: "2026-11-06T22:14:20Z",
+    recovery_codes_left: 10,
+    answered_by_totp: true,
+    answered_by_key: false,
+  };
   await page.goto("/account/two-step-sign-in");
 
   // when: they turn it off with a code that is not their app's

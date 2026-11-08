@@ -1,6 +1,6 @@
 use accounts_contract::{
-    AddKeyRequest, AddedKeyDTO, AddingKeyDTO, KeyDTO, PasswordRequest, RenameKeyRequest, key_role,
-    refused,
+    AddKeyRequest, AddedKeyDTO, KeyAnswerRequest, KeyChallengeDTO, KeyDTO, PasswordRequest,
+    RenameKeyRequest, SignedInDTO, key_role, refused, stage,
 };
 use accounts_core::KeyCeremonies;
 use axum::http::StatusCode;
@@ -9,7 +9,7 @@ use axum_test::TestResponse;
 use serde_json::{Value, json};
 use webauthn_authenticator_rs::WebauthnAuthenticator;
 use webauthn_authenticator_rs::softpasskey::SoftPasskey;
-use webauthn_rs::prelude::{CreationChallengeResponse, Url};
+use webauthn_rs::prelude::{CreationChallengeResponse, RequestChallengeResponse, Url};
 
 use crate::totp_bench::{Served, cookie_set_by, refused_as, served};
 use crate::wiring::HER_PASSWORD;
@@ -27,9 +27,13 @@ async fn with_key_ceremonies() -> Served {
 }
 
 fn made_for(asked: Value) -> Value {
+    made_by(&mut SoftPasskey::new(true), asked)
+}
+
+fn made_by(authenticator: &mut SoftPasskey, asked: Value) -> Value {
     let asked: CreationChallengeResponse =
         serde_json::from_value(asked).expect("the browser is asked in the WebAuthn shape");
-    let made = SoftPasskey::new(true)
+    let made = authenticator
         .do_registration(Url::parse(SERVED_AT).expect("a URL"), asked)
         .expect("the authenticator makes a key");
 
@@ -48,7 +52,7 @@ impl Served {
         let response = self.challenge(cookie).await;
         response.assert_status_ok();
 
-        made_for(response.json::<AddingKeyDTO>().options)
+        made_for(response.json::<KeyChallengeDTO>().options)
     }
 
     async fn add(&self, cookie: &str, name: &str, answer: Value) -> TestResponse {
@@ -252,6 +256,95 @@ async fn keys_are_for_the_signed_in_only() {
     // and: so does beginning to add one
     refused_as(
         &served.server.post("/accounts/current/keys/challenge").await,
+        StatusCode::UNAUTHORIZED,
+        refused::NOT_SIGNED_IN,
+    );
+}
+
+fn touch_of(authenticator: &mut SoftPasskey, asked: Value) -> Value {
+    let asked: RequestChallengeResponse =
+        serde_json::from_value(asked).expect("the browser is asked in the WebAuthn shape");
+    let touched = authenticator
+        .do_authentication(Url::parse(SERVED_AT).expect("a URL"), asked)
+        .expect("the authenticator signs the challenge");
+
+    serde_json::to_value(touched).expect("the answer is plain data")
+}
+
+impl Served {
+    async fn asked_for_a_key(&self, owing: &str) -> TestResponse {
+        self.server
+            .post("/sessions/current/key/challenge")
+            .add_header(COOKIE, owing.to_owned())
+            .await
+    }
+
+    async fn answer_with_key(&self, owing: &str, answer: Value) -> TestResponse {
+        self.server
+            .post("/sessions/current/key")
+            .add_header(COOKIE, owing.to_owned())
+            .json(&KeyAnswerRequest { answer })
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_session_owing_its_second_factor_is_signed_in_by_a_touch_of_the_key() {
+    // given: an author with a key, signing in anew and owing the second factor
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let mut authenticator = SoftPasskey::new(true);
+    let asked = served
+        .challenge(&cookie)
+        .await
+        .json::<KeyChallengeDTO>()
+        .options;
+    let made = made_by(&mut authenticator, asked);
+    served
+        .add(&cookie, "YubiKey blue", made)
+        .await
+        .assert_status(StatusCode::CREATED);
+    let owing = served.signed_in().await;
+
+    // when: the key is asked for and touched
+    let asked = served.asked_for_a_key(&owing).await;
+    asked.assert_status_ok();
+    let touch = touch_of(&mut authenticator, asked.json::<KeyChallengeDTO>().options);
+    let answered = served.answer_with_key(&owing, touch).await;
+
+    // then: the author is signed in all the way, in a session of its own
+    answered.assert_status_ok();
+    let signed_in = answered.json::<SignedInDTO>();
+    assert_eq!(signed_in.stage, stage::SIGNED_IN);
+    assert_ne!(cookie_set_by(&answered), owing);
+    // and: the second step is told to be answered by a key, not by an app
+    let factor = signed_in.second_factor.expect("a second factor");
+    assert!(factor.answered_by_key);
+    assert!(!factor.answered_by_totp);
+}
+
+#[tokio::test]
+async fn a_touch_with_nothing_asked_is_refused_and_nobody_signed_in_is_asked_nothing() {
+    // given: an author with a key, owing the second factor, never asked for the key
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let made = served.key_made(&cookie).await;
+    served
+        .add(&cookie, "YubiKey blue", made)
+        .await
+        .assert_status(StatusCode::CREATED);
+    let owing = served.signed_in().await;
+
+    // when: an answer is given
+    let unasked = served
+        .answer_with_key(&owing, json!({ "id": "nonsense" }))
+        .await;
+
+    // then: it is refused, the asking to begin again
+    refused_as(&unasked, StatusCode::CONFLICT, refused::NO_KEY_BEING_ASKED);
+    // and: without a session, nothing is asked for
+    refused_as(
+        &served.server.post("/sessions/current/key/challenge").await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );
