@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountId, KeptTotp, RecoveryCodeHash, SealedTotpSecret, SecretsError, TotpStep,
+    AccountId, KeptTotp, RecoveryCodeHash, SealedTotpSecret, SecondStepWay, SecretsError, TotpStep,
 };
 use futures_util::future;
 use transacting::Tried;
@@ -95,6 +95,34 @@ impl<S: Secrets> Committing<'_, S> {
         transacting::retrying!(self.transactions, |transaction| {
             self.store
                 .forget_totp(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn forget_recovery_codes(&self, account: &AccountId) -> Result<(), SecretsError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .forget_recovery_codes(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn note_answered_by(
+        &self,
+        account: &AccountId,
+        way: SecondStepWay,
+    ) -> Result<(), SecretsError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .note_answered_by(transaction, account, way)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -422,7 +450,7 @@ pub async fn a_recovery_code_used_by_many_at_once_goes_to_one<S: Secrets>(
     );
 }
 
-pub async fn forgetting_a_totp_takes_its_setup_and_codes_along<S: Secrets>(
+pub async fn forgetting_a_totp_takes_its_setup_along_and_leaves_the_codes<S: Secrets>(
     secrets: &Committing<'_, S>,
 ) {
     // given: an account with a second factor, a new one being set up, and recovery codes
@@ -450,7 +478,7 @@ pub async fn forgetting_a_totp_takes_its_setup_and_codes_along<S: Secrets>(
         .await
         .expect("forgetting should succeed");
 
-    // then: it has none in use, none being set up and no codes
+    // then: it has none in use and none being set up
     assert_eq!(
         secrets.totp_of(&ada).await.expect("reading should succeed"),
         None
@@ -462,6 +490,14 @@ pub async fn forgetting_a_totp_takes_its_setup_and_codes_along<S: Secrets>(
             .expect("reading should succeed"),
         None
     );
+    // and: its recovery codes stay, belonging to the second step
+    assert_eq!(secrets.codes_of(&ada).await, ["$argon2id$a"]);
+    // when: its recovery codes are forgotten
+    secrets
+        .forget_recovery_codes(&ada)
+        .await
+        .expect("forgetting should succeed");
+    // then: it has none
     assert!(secrets.codes_of(&ada).await.is_empty());
     // and: the other account keeps its own
     assert!(
@@ -522,6 +558,11 @@ pub async fn totp_writes_in_a_dropped_transaction_leave_it_as_it_was<S: Secrets>
         .forget_totp(&mut writing, &ada)
         .await
         .expect("forgetting should succeed");
+    secrets
+        .store
+        .forget_recovery_codes(&mut writing, &ada)
+        .await
+        .expect("forgetting should succeed");
     drop(writing);
 
     // then: the second factor in use, the one being set up and the codes are as they were
@@ -571,4 +612,67 @@ pub async fn a_first_setup_begun_in_a_dropped_transaction_was_never_begun<S: Sec
         None
     );
     assert!(secrets.codes_of(&ada).await.is_empty());
+}
+
+pub async fn the_way_that_answered_last_is_noted_for_each_account_in_place_of_the_one_before<
+    S: Secrets,
+>(
+    secrets: &Committing<'_, S>,
+) {
+    // given: two accounts, neither answered yet
+    let ada = an_account(1_000);
+    let grace = an_account(2_000);
+    assert_eq!(
+        secrets
+            .answered_last_by(&ada)
+            .await
+            .expect("reading should succeed"),
+        None
+    );
+
+    // when: the first answers by the app, then by a key, and the second by the app
+    secrets
+        .note_answered_by(&ada, SecondStepWay::Totp)
+        .await
+        .expect("noting should succeed");
+    secrets
+        .note_answered_by(&ada, SecondStepWay::Key)
+        .await
+        .expect("noting should succeed");
+    secrets
+        .note_answered_by(&grace, SecondStepWay::Totp)
+        .await
+        .expect("noting should succeed");
+
+    // then: each reads its own last
+    assert_eq!(
+        secrets
+            .answered_last_by(&ada)
+            .await
+            .expect("reading should succeed"),
+        Some(SecondStepWay::Key)
+    );
+    assert_eq!(
+        secrets
+            .answered_last_by(&grace)
+            .await
+            .expect("reading should succeed"),
+        Some(SecondStepWay::Totp)
+    );
+    // when: a way is noted in a transaction that is dropped
+    let mut writing = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .note_answered_by(&mut writing, &ada, SecondStepWay::Totp)
+        .await
+        .expect("noting should succeed");
+    drop(writing);
+    // then: the one before stays
+    assert_eq!(
+        secrets
+            .answered_last_by(&ada)
+            .await
+            .expect("reading should succeed"),
+        Some(SecondStepWay::Key)
+    );
 }

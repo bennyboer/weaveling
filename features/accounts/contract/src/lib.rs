@@ -110,6 +110,13 @@ pub struct SecondFactorDTO {
     pub recovery_codes_left: usize,
     pub answered_by_totp: bool,
     pub answered_by_key: bool,
+    pub preferred_way: String,
+    pub asked_way: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PreferredWayRequest {
+    pub preferred_way: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -248,6 +255,12 @@ pub mod sign_up {
     pub const BY_INVITATION: &str = "invitation";
 }
 
+pub mod second_step_way {
+    pub const TOTP: &str = "totp";
+    pub const KEY: &str = "key";
+    pub const LAST_USED: &str = "last-used";
+}
+
 pub mod key_role {
     pub const PRIMARY: &str = "primary";
     pub const SECOND_FACTOR: &str = "second-factor";
@@ -319,8 +332,9 @@ pub mod refused {
     pub const KEY_NAME_TOO_LONG: &str = "key-name-too-long";
     pub const TOO_MANY_KEYS: &str = "too-many-keys";
     pub const PASSWORD_WRONG: &str = "password-wrong";
+    pub const PREFERRED_WAY_UNKNOWN: &str = "preferred-way-unknown";
 
-    pub const EVERY: [&str; 51] = [
+    pub const EVERY: [&str; 52] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -372,5 +386,6 @@ pub mod refused {
         KEY_NAME_TOO_LONG,
         TOO_MANY_KEYS,
         PASSWORD_WRONG,
+        PREFERRED_WAY_UNKNOWN,
     ];
 }

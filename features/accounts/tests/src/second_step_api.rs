@@ -4,6 +4,7 @@ use axum::http::StatusCode;
 use crate::totp_bench::{
     code_of, cookie_set_by, refused_as, with_a_key, with_a_second_factor_set_up_at,
 };
+use crate::wiring::HER_PASSWORD;
 
 const SET_UP_AT: i64 = 1_700_000_060;
 const A_STEP_LATER: i64 = SET_UP_AT + 30;
@@ -182,15 +183,14 @@ async fn wrong_answers_of_either_kind_are_tried_five_times_before_waiting() {
 }
 
 #[tokio::test]
-async fn new_recovery_codes_are_drawn_for_a_code_of_the_app_and_the_old_ones_end() {
+async fn new_recovery_codes_are_drawn_for_the_password_and_the_old_ones_end() {
     // given: Ada with a second factor, signed in all the way
     let set_up = with_a_second_factor_set_up_at(SET_UP_AT).await;
     let served = &set_up.served;
 
-    // when: she draws new recovery codes with a code of her app
-    let now = served.at(A_STEP_LATER);
+    // when: she draws new recovery codes with her password
     let drawn = served
-        .draw_recovery_codes(&set_up.cookie, &code_of(&set_up.secret, now))
+        .draw_recovery_codes(&set_up.cookie, HER_PASSWORD)
         .await;
 
     // then: ten new codes are shown
@@ -219,22 +219,24 @@ async fn new_recovery_codes_are_drawn_for_a_code_of_the_app_and_the_old_ones_end
 }
 
 #[tokio::test]
-async fn drawing_new_recovery_codes_takes_a_code_of_the_app_and_a_second_factor() {
+async fn drawing_new_recovery_codes_takes_the_password_and_a_second_factor() {
     // given: Ada with a second factor, signed in all the way
     let set_up = with_a_second_factor_set_up_at(SET_UP_AT).await;
     let served = &set_up.served;
 
-    // expect: a wrong code draws nothing
+    // expect: a wrong password draws nothing
     refused_as(
-        &served.draw_recovery_codes(&set_up.cookie, "000000").await,
+        &served
+            .draw_recovery_codes(&set_up.cookie, "not her password")
+            .await,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::TOTP_CODE_WRONG,
+        refused::PASSWORD_WRONG,
     );
     // and: an account without a second factor has none to draw for
     let without = with_a_key().await;
     let cookie = without.signed_in().await;
     refused_as(
-        &without.draw_recovery_codes(&cookie, "123456").await,
+        &without.draw_recovery_codes(&cookie, HER_PASSWORD).await,
         StatusCode::CONFLICT,
         refused::NO_SECOND_FACTOR,
     );

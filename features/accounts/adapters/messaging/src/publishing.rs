@@ -50,6 +50,7 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         },
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
+        | AccountEvent::PreferredWayChosen { .. }
         | AccountEvent::Snapshotted { .. } => return None,
     })
 }
@@ -392,6 +393,7 @@ mod tests {
             totp: None,
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
+            preferred_way: accounts_core::PreferredWay::LastUsed,
         };
 
         // expect: no message is made of it

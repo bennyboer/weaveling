@@ -1,4 +1,4 @@
-use accounts_contract::{AccountPageDTO, SignInRequest, TotpCodeRequest, refused, stage};
+use accounts_contract::{AccountPageDTO, PasswordRequest, SignInRequest, refused, stage};
 use accounts_core::{AccountEvent, AccountId, EmailAddress, EmailAddresses, KIND, SecondFactors};
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
@@ -15,12 +15,12 @@ const A_STEP_LATER: i64 = SET_UP_AT + 30;
 const GRACE: &str = "grace@example.com";
 
 impl Served {
-    async fn turn_off(&self, cookie: &str, code: &str) -> TestResponse {
+    async fn turn_off(&self, cookie: &str, password: &str) -> TestResponse {
         self.server
             .delete("/accounts/current/totp")
             .add_header(COOKIE, cookie.to_owned())
-            .json(&TotpCodeRequest {
-                code: code.to_owned(),
+            .json(&PasswordRequest {
+                password: password.to_owned(),
             })
             .await
     }
@@ -92,7 +92,7 @@ impl Served {
 }
 
 #[tokio::test]
-async fn a_code_of_the_app_turns_the_second_factor_off_and_a_password_signs_in_alone_again() {
+async fn her_password_turns_totp_off_and_a_password_signs_in_alone_again() {
     // given: Ada with a second factor, signed in on two devices
     let set_up = with_a_second_factor_set_up_at(SET_UP_AT).await;
     let served = &set_up.served;
@@ -104,11 +104,9 @@ async fn a_code_of_the_app_turns_the_second_factor_off_and_a_password_signs_in_a
             .await,
     );
 
-    // when: she turns it off on one with a code of her app, a step later
-    let now = served.at(A_STEP_LATER + 30);
-    let turned_off = served
-        .turn_off(&set_up.cookie, &code_of(&set_up.secret, now))
-        .await;
+    // when: she turns it off on one with her password, a step later
+    served.at(A_STEP_LATER + 30);
+    let turned_off = served.turn_off(&set_up.cookie, HER_PASSWORD).await;
 
     // then: it is off, and her session goes on under a new cookie
     turned_off.assert_status(StatusCode::NO_CONTENT);
@@ -120,7 +118,7 @@ async fn a_code_of_the_app_turns_the_second_factor_off_and_a_password_signs_in_a
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );
-    // and: her secret and recovery codes are forgotten
+    // and: her secret and recovery codes are forgotten, nothing else answering the second step
     let secrets = &served.wired.secrets;
     assert_eq!(
         secrets
@@ -142,19 +140,19 @@ async fn a_code_of_the_app_turns_the_second_factor_off_and_a_password_signs_in_a
 }
 
 #[tokio::test]
-async fn a_wrong_code_turns_nothing_off() {
+async fn a_wrong_password_turns_nothing_off() {
     // given: Ada with a second factor, signed in
     let set_up = with_a_second_factor_set_up_at(SET_UP_AT).await;
     let served = &set_up.served;
 
-    // when: she turns it off with a code that is not her app's
-    let refused = served.turn_off(&set_up.cookie, "000000").await;
+    // when: she turns it off with a password that is not hers
+    let refused = served.turn_off(&set_up.cookie, "not her password").await;
 
     // then: it is refused, and the second factor stays
     refused_as(
         &refused,
         StatusCode::UNPROCESSABLE_ENTITY,
-        refused::TOTP_CODE_WRONG,
+        refused::PASSWORD_WRONG,
     );
     assert!(served.second_factor_shown(&set_up.cookie).await.is_some());
     // and: the cookie she has still signs her in
@@ -169,7 +167,7 @@ async fn nothing_is_turned_off_where_there_is_no_second_factor() {
 
     // expect: turning it off is refused
     refused_as(
-        &served.turn_off(&cookie, "123456").await,
+        &served.turn_off(&cookie, HER_PASSWORD).await,
         StatusCode::CONFLICT,
         refused::NO_SECOND_FACTOR,
     );

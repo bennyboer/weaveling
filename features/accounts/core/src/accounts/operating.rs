@@ -86,9 +86,8 @@ impl AccountsCore {
             eventsourcing::tries_for(expected),
             |transaction| {
                 self.still_operating(transaction, by).await?;
-                self.second_factors
-                    .forget_totp(transaction, account)
-                    .await?;
+                let holder = self.get(account).await?.state;
+                self.forgetting_totp(transaction, account, &holder).await?;
                 self.commanded_in(
                     transaction,
                     account,

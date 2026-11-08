@@ -136,6 +136,8 @@ export type Server = {
   keyAskedFor: number;
   renewalLags: number;
   renewing: boolean;
+  preferredWay: "totp" | "key" | "last-used";
+  answeredLastBy: "totp" | "key" | null;
 };
 
 export type HeldKey = {
@@ -209,6 +211,8 @@ export async function aServerWithAccounts(
     keyAskedFor: 60000,
     renewalLags: 0,
     renewing: false,
+    preferredWay: "last-used",
+    answeredLastBy: null,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -239,7 +243,7 @@ export async function aServerWithAccounts(
           ...ADA,
           stage: "second-factor-owed",
           operator: false,
-          second_factor: server.secondFactor,
+          second_factor: secondFactorTold(server),
         },
       });
     }
@@ -248,7 +252,7 @@ export async function aServerWithAccounts(
           json: {
             ...(server.signedInAs ?? ADA),
             operator: server.operator,
-            ...(server.secondFactor ? { second_factor: server.secondFactor } : {}),
+            ...(server.secondFactor ? { second_factor: secondFactorTold(server) } : {}),
           },
         })
       : refusing(route, 401, "not-signed-in");
@@ -268,7 +272,7 @@ export async function aServerWithAccounts(
           ...ADA,
           stage: "second-factor-owed",
           operator: false,
-          second_factor: server.secondFactor,
+          second_factor: secondFactorTold(server),
         },
       });
     }
@@ -376,14 +380,18 @@ export async function aServerWithAccounts(
     return route.fulfill({ status: 204 });
   });
   await page.route(at("/api/accounts/current/totp"), async (route) => {
-    const { code } = route.request().postDataJSON();
-    if (!server.secondFactor) {
+    const { password } = route.request().postDataJSON();
+    if (password !== server.password) {
+      return refusing(route, 422, "password-wrong");
+    }
+    if (!server.secondFactor?.answered_by_totp) {
       return refusing(route, 409, "no-second-factor");
     }
-    if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "totp-code-wrong");
+    if (server.secondFactor.answered_by_key) {
+      server.secondFactor.answered_by_totp = false;
+    } else {
+      server.secondFactor = null;
     }
-    server.secondFactor = null;
     socketsToldTheSessionEnded(server);
     return route.fulfill({ status: 204 });
   });
@@ -423,6 +431,14 @@ export async function aServerWithAccounts(
     name: key.name,
     role: key.role,
     since: key.since,
+  });
+  await page.route(at("/api/accounts/current/second-step/preferred"), async (route) => {
+    const { preferred_way } = route.request().postDataJSON();
+    if (!["totp", "key", "last-used"].includes(preferred_way)) {
+      return refusing(route, 400, "preferred-way-unknown");
+    }
+    server.preferredWay = preferred_way;
+    return route.fulfill({ status: 204 });
   });
   await page.route(at("/api/accounts/current/keys/challenge"), async (route) => {
     if (!server.keysOffered) {
@@ -522,7 +538,7 @@ export async function aServerWithAccounts(
     server.owing = false;
     server.signedIn = true;
     return route.fulfill({
-      json: { ...ADA, operator: server.operator, second_factor: server.secondFactor },
+      json: { ...ADA, operator: server.operator, second_factor: secondFactorTold(server) },
     });
   };
   await page.route(at("/api/sessions/current/key/challenge"), async (route) => {
@@ -559,6 +575,7 @@ export async function aServerWithAccounts(
     if (!secondStepKeys().some((key) => key.credential === answer.rawId)) {
       return refusing(route, 422, "key-refused");
     }
+    server.answeredLastBy = "key";
     return signedInAllTheWay(route);
   });
   await page.route(at("/api/sessions/current/totp"), async (route) => {
@@ -569,6 +586,7 @@ export async function aServerWithAccounts(
     if (code !== THE_APP_CODE) {
       return refusing(route, 422, "totp-code-wrong");
     }
+    server.answeredLastBy = "totp";
     return signedInAllTheWay(route);
   });
   await page.route(at("/api/sessions/current/recovery-code"), async (route) => {
@@ -586,9 +604,12 @@ export async function aServerWithAccounts(
     return signedInAllTheWay(route);
   });
   await page.route(at("/api/accounts/current/recovery-codes"), async (route) => {
-    const { code } = route.request().postDataJSON();
-    if (code !== THE_APP_CODE) {
-      return refusing(route, 422, "totp-code-wrong");
+    const { password } = route.request().postDataJSON();
+    if (password !== server.password) {
+      return refusing(route, 422, "password-wrong");
+    }
+    if (!server.secondFactor) {
+      return refusing(route, 409, "no-second-factor");
     }
     server.recoveryCodes = [...THE_NEW_RECOVERY_CODES];
     if (server.secondFactor) {
@@ -869,6 +890,19 @@ export function endedOn(server: Server, topic: string, why: string) {
 export function sessionEndedOn(server: Server) {
   server.signedIn = false;
   socketsToldTheSessionEnded(server);
+}
+
+function secondFactorTold(server: Server) {
+  const factor = server.secondFactor;
+  if (!factor) {
+    return null;
+  }
+  const answers = (way: string | null) =>
+    (way === "totp" && factor.answered_by_totp) || (way === "key" && factor.answered_by_key);
+  const wished = server.preferredWay === "last-used" ? server.answeredLastBy : server.preferredWay;
+  const askedWay = answers(wished) ? wished : factor.answered_by_key ? "key" : "totp";
+
+  return { ...factor, preferred_way: server.preferredWay, asked_way: askedWay };
 }
 
 async function sessionRenewed(server: Server) {

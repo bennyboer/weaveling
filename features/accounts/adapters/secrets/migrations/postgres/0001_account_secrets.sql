@@ -71,3 +71,8 @@ CREATE TABLE account_key_credentials (
     written        TEXT  NOT NULL,
     PRIMARY KEY (account, key)
 );
+
+CREATE TABLE account_second_steps (
+    account           TEXT COLLATE "C" PRIMARY KEY,
+    answered_last_by  TEXT COLLATE "C" NOT NULL
+);

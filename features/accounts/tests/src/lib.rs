@@ -20,6 +20,9 @@ mod becoming_operator;
 mod first_operator;
 
 #[cfg(test)]
+mod preferred_way_api;
+
+#[cfg(test)]
 mod gate_api;
 
 #[cfg(test)]

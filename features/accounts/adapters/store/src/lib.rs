@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use accounts_core::{
     AccountEvent, AccountName, DeclineReason, EmailAddress, Key, KeyId, KeyName, KeyRole, Lock,
-    LockKind, LockReason, Totp,
+    LockKind, LockReason, PreferredWay, SecondStepWay, Totp,
 };
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,9 @@ enum StoredAccountEvent {
     KeyRemoved {
         key: String,
     },
+    PreferredWayChosen {
+        way: StoredPreferredWay,
+    },
     Snapshotted {
         email: String,
         name: String,
@@ -68,7 +71,38 @@ enum StoredAccountEvent {
         keys: Vec<StoredKey>,
         #[serde(default)]
         recovery_codes_left: usize,
+        #[serde(default)]
+        preferred_way: StoredPreferredWay,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "kebab-case")]
+enum StoredPreferredWay {
+    Totp,
+    Key,
+    #[default]
+    LastUsed,
+}
+
+impl From<PreferredWay> for StoredPreferredWay {
+    fn from(way: PreferredWay) -> Self {
+        match way {
+            PreferredWay::Chosen(SecondStepWay::Totp) => Self::Totp,
+            PreferredWay::Chosen(SecondStepWay::Key) => Self::Key,
+            PreferredWay::LastUsed => Self::LastUsed,
+        }
+    }
+}
+
+impl From<StoredPreferredWay> for PreferredWay {
+    fn from(way: StoredPreferredWay) -> Self {
+        match way {
+            StoredPreferredWay::Totp => Self::Chosen(SecondStepWay::Totp),
+            StoredPreferredWay::Key => Self::Chosen(SecondStepWay::Key),
+            StoredPreferredWay::LastUsed => Self::LastUsed,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -237,6 +271,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::KeyRemoved { key } => Self::KeyRemoved {
                 key: key.to_string(),
             },
+            AccountEvent::PreferredWayChosen { way } => {
+                Self::PreferredWayChosen { way: (*way).into() }
+            }
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -248,6 +285,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 totp,
                 keys,
                 recovery_codes_left,
+                preferred_way,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
@@ -274,6 +312,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                     })
                     .collect(),
                 recovery_codes_left: *recovery_codes_left,
+                preferred_way: (*preferred_way).into(),
             },
         }
     }
@@ -353,6 +392,9 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::KeyRemoved { key } => Self::KeyRemoved {
                 key: key.parse().map_err(|_| UnreadableAccountEvent)?,
             },
+            StoredAccountEvent::PreferredWayChosen { way } => {
+                Self::PreferredWayChosen { way: way.into() }
+            }
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -364,6 +406,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 totp,
                 keys,
                 recovery_codes_left,
+                preferred_way,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 let keys = keys
@@ -416,6 +459,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     totp: totp.map(Into::into),
                     keys,
                     recovery_codes_left,
+                    preferred_way: preferred_way.into(),
                 }
             }
         })
@@ -495,6 +539,12 @@ mod tests {
             AccountEvent::KeyRemoved {
                 key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
             },
+            AccountEvent::PreferredWayChosen {
+                way: PreferredWay::Chosen(SecondStepWay::Totp),
+            },
+            AccountEvent::PreferredWayChosen {
+                way: PreferredWay::LastUsed,
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -521,6 +571,7 @@ mod tests {
                     },
                 )]),
                 recovery_codes_left: 7,
+                preferred_way: PreferredWay::Chosen(SecondStepWay::Key),
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -576,6 +627,7 @@ mod tests {
             totp: None,
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
+            preferred_way: PreferredWay::LastUsed,
         });
 
         // then: its moment of signing up is stored as a readable date

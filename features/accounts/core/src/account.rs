@@ -9,7 +9,7 @@ use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use crate::recovery_code::RecoveryCode;
-use crate::second_factor::{SecondFactor, Totp};
+use crate::second_factor::{PreferredWay, SecondFactor, SecondStepWay, Totp};
 use email::EmailAddress;
 
 pub const KIND: AggregateType = AggregateType::of("account");
@@ -31,6 +31,7 @@ const TOTP_REMOVED: EventName = EventName::of("TOTP_REMOVED");
 const KEY_ADDED: EventName = EventName::of("KEY_ADDED");
 const KEY_RENAMED: EventName = EventName::of("KEY_RENAMED");
 const KEY_REMOVED: EventName = EventName::of("KEY_REMOVED");
+const PREFERRED_WAY_CHOSEN: EventName = EventName::of("PREFERRED_WAY_CHOSEN");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +71,7 @@ pub enum AccountCommand {
     RemoveKey {
         key: KeyId,
     },
+    ChoosePreferredWay(PreferredWay),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +118,9 @@ pub enum AccountEvent {
     KeyRemoved {
         key: KeyId,
     },
+    PreferredWayChosen {
+        way: PreferredWay,
+    },
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -127,6 +132,7 @@ pub enum AccountEvent {
         totp: Option<Totp>,
         keys: BTreeMap<KeyId, Key>,
         recovery_codes_left: usize,
+        preferred_way: PreferredWay,
     },
 }
 
@@ -142,6 +148,7 @@ pub struct Account {
     totp: Option<Totp>,
     keys: BTreeMap<KeyId, Key>,
     recovery_codes_left: usize,
+    preferred_way: PreferredWay,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -216,6 +223,44 @@ impl Account {
             })
     }
 
+    /// Whether a key answers the second step besides TOTP.
+    pub fn answers_second_step_without_totp(&self) -> bool {
+        self.keys
+            .values()
+            .any(|key| key.role == KeyRole::SecondFactor)
+    }
+
+    /// Whether TOTP or another key answers the second step besides this key.
+    pub fn answers_second_step_without_key(&self, removed: &KeyId) -> bool {
+        self.totp.is_some()
+            || self
+                .keys
+                .iter()
+                .any(|(key, held)| key != removed && held.role == KeyRole::SecondFactor)
+    }
+
+    pub fn preferred_way(&self) -> PreferredWay {
+        self.preferred_way
+    }
+
+    /// The way the second step is asked first: the one chosen, else the one that answered last, while it still answers; else a key before the app.
+    pub fn asked_way(&self, answered_last: Option<SecondStepWay>) -> Option<SecondStepWay> {
+        let answers = |way: &SecondStepWay| match way {
+            SecondStepWay::Totp => self.totp.is_some(),
+            SecondStepWay::Key => self.answers_second_step_without_totp(),
+        };
+        let wished = match self.preferred_way {
+            PreferredWay::Chosen(way) => Some(way),
+            PreferredWay::LastUsed => answered_last,
+        };
+
+        wished.filter(answers).or_else(|| {
+            [SecondStepWay::Key, SecondStepWay::Totp]
+                .into_iter()
+                .find(answers)
+        })
+    }
+
     pub fn keys(&self) -> &BTreeMap<KeyId, Key> {
         &self.keys
     }
@@ -257,6 +302,7 @@ impl Event for AccountEvent {
             Self::KeyAdded { .. } => KEY_ADDED,
             Self::KeyRenamed { .. } => KEY_RENAMED,
             Self::KeyRemoved { .. } => KEY_REMOVED,
+            Self::PreferredWayChosen { .. } => PREFERRED_WAY_CHOSEN,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -302,7 +348,8 @@ impl Aggregate for Account {
             | AccountCommand::RemoveTotp
             | AccountCommand::AddKey { .. }
             | AccountCommand::RenameKey { .. }
-            | AccountCommand::RemoveKey { .. } => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::RemoveKey { .. }
+            | AccountCommand::ChoosePreferredWay(_) => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -319,6 +366,7 @@ impl Aggregate for Account {
                 totp: None,
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
+                preferred_way: PreferredWay::default(),
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
@@ -331,6 +379,7 @@ impl Aggregate for Account {
                 totp: None,
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
+                preferred_way: PreferredWay::default(),
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -343,6 +392,7 @@ impl Aggregate for Account {
                 totp,
                 keys,
                 recovery_codes_left,
+                preferred_way,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -354,6 +404,7 @@ impl Aggregate for Account {
                 totp: *totp,
                 keys: keys.clone(),
                 recovery_codes_left: *recovery_codes_left,
+                preferred_way: *preferred_way,
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
@@ -369,7 +420,8 @@ impl Aggregate for Account {
             | AccountEvent::TotpRemoved
             | AccountEvent::KeyAdded { .. }
             | AccountEvent::KeyRenamed { .. }
-            | AccountEvent::KeyRemoved { .. } => None,
+            | AccountEvent::KeyRemoved { .. }
+            | AccountEvent::PreferredWayChosen { .. } => None,
         }
     }
 
@@ -459,6 +511,10 @@ impl Aggregate for Account {
             }
             AccountCommand::RemoveKey { key } if !self.keys.contains_key(&key) => Ok(vec![]),
             AccountCommand::RemoveKey { key } => Ok(vec![AccountEvent::KeyRemoved { key }]),
+            AccountCommand::ChoosePreferredWay(way) if way == self.preferred_way => Ok(vec![]),
+            AccountCommand::ChoosePreferredWay(way) => {
+                Ok(vec![AccountEvent::PreferredWayChosen { way }])
+            }
         }
     }
 
@@ -519,6 +575,7 @@ impl Aggregate for Account {
                 self.keys.remove(key);
                 self.sessions_since = Some(metadata.occurred_at);
             }
+            AccountEvent::PreferredWayChosen { way } => self.preferred_way = *way,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -530,6 +587,7 @@ impl Aggregate for Account {
                 totp,
                 keys,
                 recovery_codes_left,
+                preferred_way,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -541,6 +599,7 @@ impl Aggregate for Account {
                 self.totp = *totp;
                 self.keys = keys.clone();
                 self.recovery_codes_left = *recovery_codes_left;
+                self.preferred_way = *preferred_way;
             }
         }
     }
@@ -557,6 +616,7 @@ impl Aggregate for Account {
             totp: self.totp,
             keys: self.keys.clone(),
             recovery_codes_left: self.recovery_codes_left,
+            preferred_way: self.preferred_way,
         }
     }
 }

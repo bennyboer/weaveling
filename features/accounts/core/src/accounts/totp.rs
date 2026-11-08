@@ -1,5 +1,7 @@
 use super::AccountsCore;
-use crate::account::AccountCommand;
+use transacting::Transaction;
+
+use crate::account::{Account, AccountCommand};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
@@ -113,38 +115,17 @@ impl AccountsCore {
         Ok((token, codes))
     }
 
-    /// Draws new recovery codes in place of the old, for a current code of the app.
+    /// Draws new recovery codes in place of the old, for the account's password, whatever answers its second step.
     pub async fn draw_recovery_codes(
         &self,
         account: &AccountId,
-        code: &str,
+        password: &str,
     ) -> Result<Vec<RecoveryCode>, AccountsError> {
-        let key = self.totp_key()?;
-        let who = account.to_string();
-        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
-        let Some(kept) = self.second_factors.totp_of(account).await? else {
-            return Err(AccountsError::NoSecondFactor);
-        };
-        let Some(secret) = key.unseal(&kept.secret, account) else {
-            return Err(AccountsError::TotpCodeWrong);
-        };
-        let Some(step) = secret.accepts(code, self.clock.now(), Some(kept.last_accepted)) else {
-            return Err(AccountsError::TotpCodeWrong);
-        };
+        self.password_confirmed(account, password).await?;
         let codes = RecoveryCode::drawn();
         let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
 
         transacting::retrying!(&*self.transactions, |transaction| {
-            if !self
-                .second_factors
-                .accept_step(transaction, account, step)
-                .await?
-            {
-                return Err(AccountsError::TotpCodeWrong);
-            }
-            self.second_factors
-                .keep_recovery_codes(transaction, account, &hashes)
-                .await?;
             self.commanded_in(
                 transaction,
                 account,
@@ -153,52 +134,36 @@ impl AccountsCore {
                 &account.acting(),
             )
             .await?;
+            self.second_factors
+                .keep_recovery_codes(transaction, account, &hashes)
+                .await?;
 
             Ok::<_, AccountsError>(())
         })?;
-        self.throttles
-            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
-            .await?;
 
         Ok(codes)
     }
 
-    /// Turns TOTP off for a current code of the app, so every other session ends, and this one goes on as a new one.
+    /// Turns TOTP off for the account's password, so every other session ends, and this one goes on as a new one; the recovery codes go too where nothing else answers the second step.
     pub async fn turn_off_totp(
         &self,
         account: &AccountId,
-        code: &str,
+        password: &str,
         session: &SessionToken,
     ) -> Result<SessionToken, AccountsError> {
-        let key = self.totp_key()?;
-        let who = account.to_string();
-        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
-        let Some(kept) = self.second_factors.totp_of(account).await? else {
-            return Err(AccountsError::NoSecondFactor);
-        };
-        let Some(secret) = key.unseal(&kept.secret, account) else {
-            return Err(AccountsError::TotpCodeWrong);
-        };
-        let Some(step) = secret.accepts(code, self.clock.now(), Some(kept.last_accepted)) else {
-            return Err(AccountsError::TotpCodeWrong);
-        };
-        let holder = self.get(account).await?.state;
+        self.password_confirmed(account, password).await?;
 
         let (token, _) = transacting::retrying!(&*self.transactions, |transaction| {
-            if !self
-                .second_factors
-                .accept_step(transaction, account, step)
-                .await?
-            {
-                return Err(AccountsError::TotpCodeWrong);
+            let standing = self.get(account).await?;
+            if standing.state.totp().is_none() {
+                return Err(AccountsError::NoSecondFactor);
             }
-            self.second_factors
-                .forget_totp(transaction, account)
+            self.forgetting_totp(transaction, account, &standing.state)
                 .await?;
             self.commanded_in(
                 transaction,
                 account,
-                None,
+                Some(standing.version),
                 AccountCommand::RemoveTotp,
                 &account.acting(),
             )
@@ -208,18 +173,34 @@ impl AccountsCore {
             self.session_opened_within(
                 transaction,
                 *account,
-                holder.clone(),
+                standing.state,
                 Stage::SignedIn,
                 self.clock.now(),
             )
             .await
         })?;
-        self.throttles
-            .clear(Guarded::CheckingSecondFactor.as_str(), &who)
-            .await?;
         self.check_sessions();
 
         Ok(token)
+    }
+
+    /// Forgets the account's TOTP, and its recovery codes where no key answers the second step without it.
+    pub(super) async fn forgetting_totp(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        holder: &Account,
+    ) -> Result<(), AccountsError> {
+        self.second_factors
+            .forget_totp(transaction, account)
+            .await?;
+        if !holder.answers_second_step_without_totp() {
+            self.second_factors
+                .forget_recovery_codes(transaction, account)
+                .await?;
+        }
+
+        Ok(())
     }
 
     pub(super) fn totp_key(&self) -> Result<&TotpKey, AccountsError> {

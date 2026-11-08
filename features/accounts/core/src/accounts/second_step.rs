@@ -3,12 +3,13 @@ use serde_json::Value;
 use transacting::Transaction;
 
 use super::{AccountsCore, SignedIn};
-use crate::account::AccountCommand;
+use crate::account::{Account, AccountCommand};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::key::{KeyId, KeyRole};
 use crate::key_ceremonies::CeremonyFailed;
 use crate::recovery_code::RecoveryCode;
+use crate::second_factor::{PreferredWay, SecondStepWay};
 use crate::secrets::KeyCredential;
 use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
@@ -42,6 +43,9 @@ impl AccountsCore {
             {
                 return Err(AccountsError::TotpCodeWrong);
             }
+            self.second_factors
+                .note_answered_by(transaction, &account, SecondStepWay::Totp)
+                .await?;
 
             self.signed_in_after(transaction, token, &account).await
         })?;
@@ -143,6 +147,9 @@ impl AccountsCore {
             {
                 return Err(AccountsError::KeyRefused);
             }
+            self.second_factors
+                .note_answered_by(transaction, &account, SecondStepWay::Key)
+                .await?;
 
             self.signed_in_after(transaction, token, &account).await
         })?;
@@ -172,6 +179,36 @@ impl AccountsCore {
                     .is_some_and(|held| held.role == KeyRole::SecondFactor)
             })
             .collect())
+    }
+
+    /// The way the account's second step is asked first, as it chose, or as it answered last.
+    pub async fn asked_way(
+        &self,
+        account: &AccountId,
+        holder: &Account,
+    ) -> Result<Option<SecondStepWay>, AccountsError> {
+        if holder.second_factor().is_none() {
+            return Ok(None);
+        }
+
+        Ok(holder.asked_way(self.second_factors.answered_last_by(account).await?))
+    }
+
+    pub async fn choose_preferred_way(
+        &self,
+        account: &AccountId,
+        way: PreferredWay,
+    ) -> Result<(), AccountsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.commanded_in(
+                transaction,
+                account,
+                None,
+                AccountCommand::ChoosePreferredWay(way),
+                &account.acting(),
+            )
+            .await
+        })
     }
 
     async fn owing(&self, token: &SessionToken) -> Result<AccountId, AccountsError> {

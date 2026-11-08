@@ -183,6 +183,11 @@ impl AccountsCore {
             self.key_credentials
                 .forget_credential(transaction, account, key)
                 .await?;
+            if !standing.state.answers_second_step_without_key(key) {
+                self.second_factors
+                    .forget_recovery_codes(transaction, account)
+                    .await?;
+            }
             self.commanded_in(
                 transaction,
                 account,
@@ -208,7 +213,7 @@ impl AccountsCore {
     }
 
     /// Whether the password is the account's, throttled as signing in is, by the account.
-    async fn password_confirmed(
+    pub(super) async fn password_confirmed(
         &self,
         account: &AccountId,
         password: &str,

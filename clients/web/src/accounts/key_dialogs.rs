@@ -125,7 +125,7 @@ pub fn removing(
                     .class("hint")
                     .child(speech::said("key-remove-hint")),
                 html::label().class("field").child((
-                    html::span().child(speech::said("key-remove-password")),
+                    html::span().child(speech::said("security-password")),
                     html::input()
                         .r#type("password")
                         .attr("autocomplete", "current-password")

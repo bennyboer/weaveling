@@ -10,7 +10,8 @@ use serde_json::Value;
 use crate::accounts::authenticator::{self, NoKey};
 use crate::accounts::sign_in::{code_boxes, is_whole};
 use crate::accounts::{
-    CurrentSession, HeldKey, SecondFactorInUse, SignInState, key_dialogs, service,
+    CurrentSession, HeldKey, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState,
+    key_dialogs, service,
 };
 use crate::act::{Act, Here};
 use crate::copy_button::copy_button;
@@ -228,6 +229,9 @@ fn overview(
                             .child(speech::said(message))
                     })
                 },
+                factor
+                    .filter(|factor| factor.answered_by_totp && factor.answered_by_key)
+                    .map(|factor| preferred_way_choice(session, factor, refused)),
                 html::ul().class("ways").child((
                     move || {
                         keys.get()
@@ -287,6 +291,56 @@ fn overview(
 
 /// A menu item: its message, whether it is dangerous, and what choosing it does.
 type MenuItem = (&'static str, bool, Box<dyn Fn() + Send + Sync + 'static>);
+
+/// Which way the second step is asked first, offered once more than one way answers it.
+fn preferred_way_choice(
+    session: CurrentSession,
+    factor: SecondFactorInUse,
+    refused: RwSignal<Option<ApiError>>,
+) -> impl IntoView {
+    let choosing = Act::new(move |way: PreferredWay, _: Here| {
+        refused.set(None);
+
+        async move {
+            match service::choose_preferred_way(way).await {
+                Ok(()) => session.look_again(),
+                Err(failed) => refused.set(Some(failed)),
+            }
+        }
+    });
+    let option = move |way: PreferredWay, title: &'static str, hint: &'static str| {
+        html::label().class("option").child((
+            html::input()
+                .r#type("radio")
+                .attr("name", "preferred-way")
+                .prop("checked", factor.preferred_way == way)
+                .on(ev::change, move |_| choosing.start(way)),
+            html::span().child((
+                html::span().class("title").child(speech::said(title)),
+                html::span().class("hint").child(speech::said(hint)),
+            )),
+        ))
+    };
+
+    html::fieldset().class("preferred-way").child((
+        html::legend().child(speech::said("security-preferred-way")),
+        option(
+            PreferredWay::Chosen(SecondStepWay::Key),
+            "security-preferred-key",
+            "security-preferred-key-hint",
+        ),
+        option(
+            PreferredWay::Chosen(SecondStepWay::Totp),
+            "security-preferred-app",
+            "security-preferred-app-hint",
+        ),
+        option(
+            PreferredWay::LastUsed,
+            "security-preferred-last-used",
+            "security-preferred-last-used-hint",
+        ),
+    ))
+}
 
 /// A way's ⋮, holding what can be done with it: one menu open on the page at a time.
 fn way_menu(
@@ -527,31 +581,28 @@ fn setting_up_view(
     )
 }
 
-/// A change that asks for a code of the app first.
+/// A change that asks for the password first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Asked {
     Drawing,
     TurningOff,
 }
 
-/// The words of a change asked for by a code of the app: what it does, the field and the button that does it.
-struct CodeAsked {
+/// The words of a change asked for by the password: what it does, and the button that does it.
+struct PasswordAsked {
     hint: &'static str,
-    field: &'static str,
     confirming: &'static str,
     danger: bool,
 }
 
-const DRAWING: CodeAsked = CodeAsked {
+const DRAWING: PasswordAsked = PasswordAsked {
     hint: "two-step-draw-codes-hint",
-    field: "two-step-draw-codes-code",
     confirming: "two-step-draw-codes",
     danger: false,
 };
 
-const TURNING_OFF: CodeAsked = CodeAsked {
+const TURNING_OFF: PasswordAsked = PasswordAsked {
     hint: "two-step-turn-off-hint",
-    field: "two-step-turn-off-code",
     confirming: "two-step-turn-off",
     danger: true,
 };
@@ -561,8 +612,8 @@ fn drawing(
     step: RwSignal<Step>,
     asking: RwSignal<Option<Asked>>,
 ) -> impl IntoView {
-    asking_a_code(&DRAWING, asking, move |typed| async move {
-        let codes = service::draw_recovery_codes(&typed).await?;
+    asking_the_password(&DRAWING, asking, move |password| async move {
+        let codes = service::draw_recovery_codes(&password).await?;
         session.look_again();
         step.set(Step::Keeping {
             codes,
@@ -578,8 +629,8 @@ fn turning_off(
     turned_off: RwSignal<bool>,
     asking: RwSignal<Option<Asked>>,
 ) -> impl IntoView {
-    asking_a_code(&TURNING_OFF, asking, move |typed| async move {
-        service::turn_off_totp(&typed).await?;
+    asking_the_password(&TURNING_OFF, asking, move |password| async move {
+        service::turn_off_totp(&password).await?;
         asking.set(None);
         turned_off.set(true);
         session.look_again();
@@ -588,31 +639,24 @@ fn turning_off(
     })
 }
 
-fn asking_a_code<Fu>(
-    words: &'static CodeAsked,
+fn asking_the_password<Fu>(
+    words: &'static PasswordAsked,
     asking: RwSignal<Option<Asked>>,
     answer: impl Fn(String) -> Fu + 'static,
 ) -> impl IntoView
 where
     Fu: Future<Output = Result<(), ApiError>> + 'static,
 {
-    let code = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
     let answering = Act::new(move |(), _: Here| {
         refused.set(None);
-        let answered = answer(code.get_untracked());
+        let answered = answer(password.get_untracked());
 
         async move {
             if let Err(failed) = answered.await {
-                code.set(String::new());
                 refused.set(Some(failed));
             }
-        }
-    });
-
-    Effect::new(move |_| {
-        if is_whole(&code.get()) {
-            answering.start(());
         }
     });
 
@@ -624,7 +668,17 @@ where
             })
             .child((
                 html::p().class("hint").child(speech::said(words.hint)),
-                code_boxes(speech::said(words.field), code),
+                html::label().class("field").child((
+                    html::span().child(speech::said("security-password")),
+                    html::input()
+                        .r#type("password")
+                        .attr("autocomplete", "current-password")
+                        .required(true)
+                        .prop("value", move || password.get())
+                        .on(ev::input, move |event| {
+                            password.set(event_target_value(&event))
+                        }),
+                )),
                 move || refused.get().map(problem::problem),
                 html::div().class("buttons").child((
                     html::button()

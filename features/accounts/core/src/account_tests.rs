@@ -11,7 +11,7 @@ use crate::decline::DeclineReason;
 use crate::key::{KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
-use crate::second_factor::SecondFactor;
+use crate::second_factor::{PreferredWay, SecondFactor, SecondStepWay};
 
 fn herself() -> Agent {
     Agent::Account("account_1".into())
@@ -259,6 +259,12 @@ fn a_snapshot_holds_everything_the_account_is() {
     account.apply(
         &a_key_added("YubiKey blue", KeyRole::SecondFactor),
         &stamped(9, clock::at(2_950)),
+    );
+    account.apply(
+        &AccountEvent::PreferredWayChosen {
+            way: PreferredWay::Chosen(SecondStepWay::Totp),
+        },
+        &stamped(10, clock::at(2_960)),
     );
 
     // when: an account is born of its snapshot
@@ -1149,4 +1155,68 @@ fn turning_totp_off_beside_a_second_step_key_keeps_the_codes() {
             answered_by_key: true,
         })
     );
+}
+
+#[test]
+fn the_way_asked_first_is_the_one_chosen_else_the_one_used_last_else_a_key() {
+    // given: an account with TOTP and a second-step key, choosing nothing
+    let mut account = with_a_second_factor_since(3_000);
+    adding(
+        &mut account,
+        a_key(),
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        4_000,
+    );
+
+    // expect: the way used last is asked first, and a key where none was used yet
+    assert_eq!(account.preferred_way(), PreferredWay::LastUsed);
+    assert_eq!(
+        account.asked_way(Some(SecondStepWay::Totp)),
+        Some(SecondStepWay::Totp)
+    );
+    assert_eq!(account.asked_way(None), Some(SecondStepWay::Key));
+    // when: the app is chosen
+    let chosen = account
+        .decide(
+            AccountCommand::ChoosePreferredWay(PreferredWay::Chosen(SecondStepWay::Totp)),
+            &herself(),
+        )
+        .expect("a way may be chosen");
+    for event in &chosen {
+        account.apply(event, &stamped(11, clock::at(5_000)));
+    }
+    // then: the app is asked first, whatever answered last
+    assert_eq!(
+        account.asked_way(Some(SecondStepWay::Key)),
+        Some(SecondStepWay::Totp)
+    );
+    // and: choosing it again changes nothing
+    assert_eq!(
+        account.decide(
+            AccountCommand::ChoosePreferredWay(PreferredWay::Chosen(SecondStepWay::Totp)),
+            &herself()
+        ),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn a_way_that_no_longer_answers_is_not_asked_first() {
+    // given: an account that chose keys first, with TOTP alone answering
+    let mut account = with_a_second_factor_since(3_000);
+    account.apply(
+        &AccountEvent::PreferredWayChosen {
+            way: PreferredWay::Chosen(SecondStepWay::Key),
+        },
+        &stamped(11, clock::at(4_000)),
+    );
+
+    // expect: the app is asked first, keys answering nothing
+    assert_eq!(
+        account.asked_way(Some(SecondStepWay::Key)),
+        Some(SecondStepWay::Totp)
+    );
+    // and: an account without a second step is asked nothing first
+    assert_eq!(a_verified_account().asked_way(None), None);
 }

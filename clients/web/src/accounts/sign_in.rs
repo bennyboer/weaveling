@@ -7,7 +7,8 @@ use leptos_router::hooks;
 
 use crate::accounts::authenticator::{self, NoKey};
 use crate::accounts::{
-    CurrentSession, SecondFactorInUse, SignInState, SignedInAccount, SigningUp, service,
+    CurrentSession, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState, SignedInAccount,
+    SigningUp, service,
 };
 use crate::act::{Act, Here};
 use crate::http::ApiError;
@@ -32,6 +33,7 @@ enum Form {
     SecondStep,
     KeyStep,
     RecoveryStep,
+    AnotherWay,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -81,7 +83,7 @@ pub fn SignInPage() -> impl IntoView {
     };
     let page = Page {
         form: RwSignal::new(if let Some(account) = &owing {
-            first_way(account)
+            asked_form(account)
         } else if invitation.is_some() {
             Form::Accept
         } else if location.pathname.get_untracked() == route::SETUP
@@ -113,6 +115,7 @@ pub fn SignInPage() -> impl IntoView {
                 Form::SecondStep => second_step_form(page).into_any(),
                 Form::KeyStep => key_step_form(page).into_any(),
                 Form::RecoveryStep => recovery_step_form(page).into_any(),
+                Form::AnotherWay => another_way_form(page).into_any(),
             }),
     )
 }
@@ -133,7 +136,7 @@ fn sign_in_form(page: Page) -> impl IntoView {
         asked(refused, async move {
             let mut account = service::sign_in(&given, &typed).await?;
             if account.owes_second_factor {
-                let first = first_way(&account);
+                let first = asked_form(&account);
                 session.owes_second_factor(account);
                 page.turn_to(first, None);
                 return Ok(());
@@ -527,12 +530,20 @@ fn second_step_form(page: Page) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
+    let first_from_now_on = RwSignal::new(false);
     let answering = Act::new(move |(), _: Here| {
         let typed = code.get_untracked();
+        let making_first = first_from_now_on.get_untracked();
 
         asked(refused, async move {
             match service::answer_with_totp(&typed).await {
                 Ok(account) => {
+                    if making_first {
+                        _ = service::choose_preferred_way(PreferredWay::Chosen(
+                            SecondStepWay::Totp,
+                        ))
+                        .await;
+                    }
                     session.signed_in(account);
                     Ok(())
                 }
@@ -557,18 +568,12 @@ fn second_step_form(page: Page) -> impl IntoView {
             move || answering.start(()),
             (
                 code_boxes(speech::said("second-step-code"), code),
+                first_from_now_on_box(SecondStepWay::Totp, first_from_now_on),
                 move || refused.get().map(problem::problem),
                 submitting(speech::said("second-step-confirm"), answering, ()),
             ),
         ),
-        owed().is_some_and(|owed| owed.answered_by_key).then(|| {
-            turning(speech::said("second-step-key-instead"), move || {
-                page.turn_to(Form::KeyStep, None)
-            })
-        }),
-        turning(speech::said("second-step-recovery-instead"), move || {
-            page.turn_to(Form::RecoveryStep, None)
-        }),
+        another_way(page),
     )
 }
 
@@ -577,8 +582,10 @@ fn key_step_form(page: Page) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let refused = RwSignal::new(None::<ApiError>);
     let said = RwSignal::new(None::<&'static str>);
+    let first_from_now_on = RwSignal::new(false);
     let answering = Act::new(move |(), _: Here| {
         said.set(None);
+        let making_first = first_from_now_on.get_untracked();
 
         asked(refused, async move {
             let asked = service::begin_answering_with_key()
@@ -598,6 +605,9 @@ fn key_step_form(page: Page) -> impl IntoView {
             let account = service::answer_with_key(touch)
                 .await
                 .map_err(|failed| ran_out_or(page, failed))?;
+            if making_first {
+                _ = service::choose_preferred_way(PreferredWay::Chosen(SecondStepWay::Key)).await;
+            }
             session.signed_in(account);
 
             Ok(())
@@ -625,22 +635,91 @@ fn key_step_form(page: Page) -> impl IntoView {
                 .attr("aria-busy", move || answering.busy())
                 .on(ev::click, move |_| answering.start(()))
                 .child(speech::said("second-step-key-use")),
+            first_from_now_on_box(SecondStepWay::Key, first_from_now_on),
         )),
-        owed().is_some_and(|owed| owed.answered_by_totp).then(|| {
-            turning(speech::said("second-step-code-instead"), move || {
-                page.turn_to(Form::SecondStep, None)
-            })
-        }),
-        turning(speech::said("second-step-recovery-instead"), move || {
-            page.turn_to(Form::RecoveryStep, None)
-        }),
+        another_way(page),
     )
 }
 
-/// The way the second step is asked first: a key where the account has one, else the app's code.
-fn first_way(account: &SignedInAccount) -> Form {
+/// Offers to ask this way first from now on, where another is asked first; the choice is kept only once the step succeeds.
+fn first_from_now_on_box(way: SecondStepWay, checked: RwSignal<bool>) -> impl IntoView {
+    owed().is_some_and(|owed| owed.asked_way != way).then(|| {
+        html::label().class("first-from-now-on").child((
+            html::input()
+                .r#type("checkbox")
+                .prop("checked", move || checked.get())
+                .on(ev::change, move |event| {
+                    checked.set(event_target_checked(&event))
+                }),
+            html::span().child(speech::said("second-step-first-from-now-on")),
+        ))
+    })
+}
+
+fn another_way(page: Page) -> impl IntoView {
+    turning(speech::said("second-step-another-way"), move || {
+        page.turn_to(Form::AnotherWay, None)
+    })
+}
+
+/// Every way that answers the account's second step, the one asked first among them, recovery codes last.
+fn another_way_form(page: Page) -> impl IntoView {
+    let owed = owed();
+    let way = move |form: Form, title: &'static str, hint: &'static str, first: bool| {
+        html::li().child(
+            html::button()
+                .r#type("button")
+                .class("way")
+                .on(ev::click, move |_| page.turn_to(form, None))
+                .child((
+                    html::span().class("title").child(speech::said(title)),
+                    html::span().class("hint").child(speech::said(if first {
+                        "another-way-asked-first"
+                    } else {
+                        hint
+                    })),
+                )),
+        )
+    };
+    let asked_way = owed.map(|owed| owed.asked_way);
+
+    (
+        html::h1().child(speech::said("another-way-heading")),
+        owing_as(page),
+        html::p()
+            .class("hint")
+            .child(speech::said("another-way-hint")),
+        html::ul().class("other-ways").child((
+            owed.is_some_and(|owed| owed.answered_by_key).then(|| {
+                way(
+                    Form::KeyStep,
+                    "another-way-key",
+                    "another-way-key-hint",
+                    asked_way == Some(SecondStepWay::Key),
+                )
+            }),
+            owed.is_none_or(|owed| owed.answered_by_totp).then(|| {
+                way(
+                    Form::SecondStep,
+                    "another-way-app",
+                    "another-way-app-hint",
+                    asked_way == Some(SecondStepWay::Totp),
+                )
+            }),
+            way(
+                Form::RecoveryStep,
+                "another-way-recovery",
+                "another-way-recovery-hint",
+                false,
+            ),
+        )),
+    )
+}
+
+/// The way the second step is asked first, as the server told it.
+fn asked_form(account: &SignedInAccount) -> Form {
     match account.second_factor {
-        Some(factor) if factor.answered_by_key => Form::KeyStep,
+        Some(factor) if factor.asked_way == SecondStepWay::Key => Form::KeyStep,
         _ => Form::SecondStep,
     }
 }
@@ -697,16 +776,7 @@ fn recovery_step_form(page: Page) -> impl IntoView {
                 submitting(speech::said("second-step-confirm"), answering, ()),
             ),
         ),
-        owed().is_some_and(|owed| owed.answered_by_key).then(|| {
-            turning(speech::said("second-step-key-instead"), move || {
-                page.turn_to(Form::KeyStep, None)
-            })
-        }),
-        owed().is_none_or(|owed| owed.answered_by_totp).then(|| {
-            turning(speech::said("second-step-code-instead"), move || {
-                page.turn_to(Form::SecondStep, None)
-            })
-        }),
+        another_way(page),
         html::p()
             .class("hint")
             .child(speech::said("second-step-no-codes")),

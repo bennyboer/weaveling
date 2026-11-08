@@ -1,6 +1,7 @@
 use accounts_core::{
     AccountError, AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses,
-    KeyCeremonies, KeyCredentials, KeyId, KeyRole, SecondFactors, SessionToken, Stage,
+    KeyCeremonies, KeyCredentials, KeyId, KeyRole, SecondFactors, SecondStepWay, SessionToken,
+    Stage,
 };
 use eventsourcing::ServiceError;
 use serde_json::{Value, json};
@@ -591,4 +592,207 @@ async fn a_session_owing_nothing_is_not_asked_for_a_key() {
         matches!(begun, Err(AccountsError::NoSecondFactorOwed)),
         "{begun:?}"
     );
+}
+
+fn with_totp_too(bench: Bench) -> Bench {
+    Bench {
+        accounts: bench.accounts.sealing_totp_secrets(
+            accounts_core::TotpKey::from_hex(crate::totp_bench::KEY).expect("a test key"),
+        ),
+        wired: bench.wired,
+    }
+}
+
+async fn totp_set_up(bench: &Bench, account: &AccountId, session: &SessionToken) -> SessionToken {
+    totp_set_up_with_secret(bench, account, session).await.0
+}
+
+async fn totp_set_up_with_secret(
+    bench: &Bench,
+    account: &AccountId,
+    session: &SessionToken,
+) -> (SessionToken, String) {
+    let setting_up = bench
+        .accounts
+        .begin_setting_up_totp(account)
+        .await
+        .expect("setting up begins");
+    let code = crate::totp_bench::code_of(&setting_up.secret, 1_700_000_000);
+    let session = bench
+        .accounts
+        .finish_setting_up_totp(account, &code, session)
+        .await
+        .expect("the code finishes setting up")
+        .0;
+
+    (session, setting_up.secret)
+}
+
+async fn codes_kept(bench: &Bench, account: &AccountId) -> usize {
+    bench
+        .wired
+        .secrets
+        .recovery_codes_of(account)
+        .await
+        .expect("reading should succeed")
+        .len()
+}
+
+#[tokio::test]
+async fn turning_totp_off_beside_a_key_keeps_the_recovery_codes() {
+    // given: an account with TOTP and a key answering its second step
+    let bench = with_totp_too(bench());
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let session = totp_set_up(&bench, &ada, &session).await;
+    let added = bench.added(&ada, "YubiKey blue", &session).await;
+
+    // when: TOTP is turned off for her password
+    bench
+        .accounts
+        .turn_off_totp(&ada, HER_PASSWORD, &added.session)
+        .await
+        .expect("her password turns it off");
+
+    // then: the recovery codes stay, the key still answering the second step
+    assert_eq!(codes_kept(&bench, &ada).await, 10);
+    let account = bench
+        .wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state;
+    assert_eq!(
+        account
+            .second_factor()
+            .map(|factor| factor.recovery_codes_left),
+        Some(10)
+    );
+}
+
+#[tokio::test]
+async fn removing_a_key_keeps_the_codes_while_totp_answers_and_forgets_them_with_the_last() {
+    // given: an account with TOTP and a key answering its second step
+    let bench = with_totp_too(bench());
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let session = totp_set_up(&bench, &ada, &session).await;
+    let added = bench.added(&ada, "YubiKey blue", &session).await;
+
+    // when: the key is removed
+    let session = bench
+        .accounts
+        .remove_key(&ada, &added.key, HER_PASSWORD, &added.session)
+        .await
+        .expect("her password removes it");
+
+    // then: the codes stay, TOTP still answering
+    assert_eq!(codes_kept(&bench, &ada).await, 10);
+    // when: TOTP is turned off as well
+    bench
+        .accounts
+        .turn_off_totp(&ada, HER_PASSWORD, &session)
+        .await
+        .expect("her password turns it off");
+    // then: the codes are forgotten with the last second factor
+    assert_eq!(codes_kept(&bench, &ada).await, 0);
+}
+
+#[tokio::test]
+async fn new_recovery_codes_are_drawn_for_the_password_where_only_a_key_answers() {
+    // given: an account whose second step only a key answers
+    let bench = bench();
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    bench.added(&ada, "YubiKey blue", &session).await;
+    let before = bench
+        .wired
+        .secrets
+        .recovery_codes_of(&ada)
+        .await
+        .expect("reading should succeed");
+
+    // when: new codes are drawn with a wrong password
+    let wrong = bench
+        .accounts
+        .draw_recovery_codes(&ada, "not her password")
+        .await;
+
+    // then: it is refused
+    assert!(
+        matches!(wrong, Err(AccountsError::PasswordWrong)),
+        "{wrong:?}"
+    );
+    // when: they are drawn with her password
+    let drawn = bench
+        .accounts
+        .draw_recovery_codes(&ada, HER_PASSWORD)
+        .await
+        .expect("her password draws them");
+    // then: ten new codes replace the old
+    assert_eq!(drawn.len(), 10);
+    assert_ne!(
+        bench
+            .wired
+            .secrets
+            .recovery_codes_of(&ada)
+            .await
+            .expect("reading should succeed"),
+        before
+    );
+}
+
+#[tokio::test]
+async fn the_way_that_answered_last_is_asked_first_next_time() {
+    // given: an account with TOTP and a key
+    let bench = with_totp_too(bench());
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let (session, secret) = totp_set_up_with_secret(&bench, &ada, &session).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let answer = bench.answered_by(&mut authenticator, &ada).await;
+    bench
+        .accounts
+        .finish_adding_key(&ada, "YubiKey blue", &answer, &session)
+        .await
+        .expect("the key is added");
+    let asked_way = async || {
+        let account = bench
+            .wired
+            .account(&ada)
+            .await
+            .expect("the account should exist")
+            .state;
+        bench
+            .accounts
+            .asked_way(&ada, &account)
+            .await
+            .expect("reading should succeed")
+    };
+
+    // expect: a key is asked first, nothing having answered yet
+    assert_eq!(asked_way().await, Some(SecondStepWay::Key));
+    // when: a sign-in's second step is answered by the app
+    bench
+        .wired
+        .clock
+        .set(clock::at(1_700_000_000) + Duration::seconds(30));
+    let owing = bench.session_of(ADA).await;
+    bench
+        .accounts
+        .answer_with_totp(&owing, &crate::totp_bench::code_of(&secret, 1_700_000_030))
+        .await
+        .expect("the app's code answers");
+    // then: the app is asked first next time
+    assert_eq!(asked_way().await, Some(SecondStepWay::Totp));
+    // when: the next one is answered by the key
+    let owing = bench.session_of(ADA).await;
+    let touch = bench.touched_by(&mut authenticator, &owing).await;
+    bench
+        .accounts
+        .answer_with_key(&owing, &touch)
+        .await
+        .expect("the touch answers");
+    // then: the key is asked first again
+    assert_eq!(asked_way().await, Some(SecondStepWay::Key));
 }

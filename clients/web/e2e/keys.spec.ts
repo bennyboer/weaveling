@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   ADA,
   HER_PASSWORD,
+  THE_APP_CODE,
   THE_RECOVERY_CODES,
   aServerWithAccounts,
   signIn,
@@ -226,7 +227,6 @@ test("a key added answers the second step when signing in again, once the author
 
   // then: the key is asked for, the browser's dialog waiting for a click
   await expect(page.getByText("Touch your security key.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Use the code from your app instead" })).toHaveCount(0);
   // when: they use the key
   await page.getByRole("button", { name: "Use the key" }).click();
   // then: they are signed in
@@ -246,11 +246,11 @@ test("a key not touched leaves the second step to try again, or another way", as
 
   // then: they are told, and still asked for the second step
   await expect(page.getByText("No key was touched. Try once more, or use another way.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Use a recovery code instead" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use another way" })).toBeVisible();
   await expect(accountButton(page)).toHaveCount(0);
 });
 
-test("with a key and an app, the key is asked first and the app's code is a click away", async ({
+test("with a key and an app, the key is asked first and another way is a click away", async ({
   page,
 }) => {
   // given: an author whose second step is answered by a key and an app, signing in
@@ -263,12 +263,71 @@ test("with a key and an app, the key is asked first and the app's code is a clic
 
   // then: the key is asked for first
   await expect(page.getByText("Touch your security key.")).toBeVisible();
-  // when: they turn to the app's code
-  await page.getByRole("button", { name: "Use the code from your app instead" }).click();
-  // then: the code is asked for, the key a click away again
+  // when: they look for another way
+  await page.getByRole("button", { name: "Use another way" }).click();
+  // then: every way is offered, the key told as asked first, recovery codes last
+  const ways = page.getByRole("main").getByRole("listitem");
+  await expect(ways).toHaveCount(3);
+  await expect(ways.nth(0)).toContainText("Security key");
+  await expect(ways.nth(0)).toContainText("Asked first right now");
+  await expect(ways.nth(1)).toContainText("Authenticator app");
+  await expect(ways.nth(2)).toContainText("Recovery code");
+  // when: they choose the app
+  await page.getByRole("button", { name: /^Authenticator app/ }).click();
+  // then: its code is asked for, and to use it first from now on is offered
   await expect(page.getByLabel("The code your app shows for Weaveling")).toBeVisible();
-  await page.getByRole("button", { name: "Use a security key instead" }).click();
-  await expect(page.getByText("Touch your security key.")).toBeVisible();
+  await expect(page.getByLabel("Use this way first from now on")).toBeVisible();
+});
+
+test("a way used once is asked first next time, and one kept as first stays first", async ({
+  page,
+}) => {
+  // given: an author whose second step a key and the app answer, signing in, the key asked first
+  const server = await aServerWithAccounts(page);
+  server.totpOffered = true;
+  aKeyHeld(server, "YubiKey blue");
+  server.secondFactor!.answered_by_totp = true;
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+
+  // when: they answer by the app, asking to use it first from now on
+  await page.getByRole("button", { name: "Use another way" }).click();
+  await page.getByRole("button", { name: /^Authenticator app/ }).click();
+  await page.getByLabel("Use this way first from now on").check();
+  await page.getByLabel("The code your app shows for Weaveling").fill(THE_APP_CODE);
+
+  // then: they are signed in, and the app is kept as first
+  await expect(accountButton(page)).toBeVisible();
+  await expect.poll(() => server.preferredWay).toBe("totp");
+  // when: they sign in again
+  await accountButton(page).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await signIn(page, ADA.email, HER_PASSWORD);
+  // then: the app's code is asked first
+  await expect(page.getByLabel("The code your app shows for Weaveling")).toBeVisible();
+});
+
+test("the security page offers which way is asked first, once more than one answers", async ({
+  page,
+}) => {
+  // given: an author whose second step a key and the app answer, on their security page
+  const server = await aServerWithAccounts(page);
+  server.totpOffered = true;
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  aKeyHeld(server, "YubiKey blue");
+  server.secondFactor!.answered_by_totp = true;
+  await page.goto("/account/security");
+  const first = page.getByRole("group", { name: "Ask first for" });
+
+  // then: the one used last is asked first
+  await expect(first.getByLabel(/^The one I used last/)).toBeChecked();
+  // when: they choose the app
+  await first.getByLabel(/^The authenticator app/).check();
+  // then: it is kept
+  await expect.poll(() => server.preferredWay).toBe("totp");
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Ask first for" }).getByLabel(/^The authenticator app/)).toBeChecked();
 });
 
 test("the recovery codes are shown even when the renewed session's cookie comes after its socket was told the old one ended", async ({
@@ -290,4 +349,27 @@ test("the recovery codes are shown even when the renewed session's cookie comes 
   await expect(page.getByRole("heading", { name: "Keep these recovery codes" })).toBeVisible();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText(THE_RECOVERY_CODES);
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+});
+
+test("turning the app off beside a key keeps the recovery codes", async ({ page }) => {
+  // given: an author whose second step a key and the app answer, on their security page
+  const server = await aServerWithAccounts(page);
+  server.totpOffered = true;
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  aKeyHeld(server, "YubiKey blue");
+  server.secondFactor!.answered_by_totp = true;
+  await page.goto("/account/security");
+
+  // when: they turn the app off with their password
+  await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
+  await page.getByRole("menuitem", { name: "Turn off" }).click();
+  const asking = page.getByRole("main").locator("form");
+  await asking.getByLabel("Your password, to be sure it’s you").fill(HER_PASSWORD);
+  await asking.getByRole("button", { name: "Turn off" }).click();
+
+  // then: the app is gone, while the key and the recovery codes stay
+  await expect(ways(page)).not.toContainText("Authenticator app");
+  await expect(ways(page)).toContainText("Security key “YubiKey blue”");
+  await expect(ways(page)).toContainText("10 of 10 left");
 });

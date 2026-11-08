@@ -41,6 +41,22 @@ pub struct SecondFactorInUse {
     pub recovery_codes_left: usize,
     pub answered_by_totp: bool,
     pub answered_by_key: bool,
+    pub preferred_way: PreferredWay,
+    pub asked_way: SecondStepWay,
+}
+
+/// A way of answering the second step, recovery codes aside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecondStepWay {
+    Totp,
+    Key,
+}
+
+/// Which way the account chose to be asked first: one way, or whichever answered last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreferredWay {
+    Chosen(SecondStepWay),
+    LastUsed,
 }
 
 /// A key of the account answering its second step, as its Security page lists it.

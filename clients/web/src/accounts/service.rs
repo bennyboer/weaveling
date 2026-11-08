@@ -1,14 +1,17 @@
 use accounts_contract::{
     AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
     KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockRequest, NewPasswordRequest, PasswordRequest,
-    PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest, SendCodeRequest, ServiceModeDTO,
-    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, refused, stage,
+    PasswordResetRequest, PreferredWayRequest, RecoveryCodesDTO, RenameKeyRequest, SendCodeRequest,
+    ServiceModeDTO, SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest,
+    SignedInDTO, TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, refused,
+    second_step_way, stage,
 };
 use gloo_net::http::Request;
 
 use crate::accounts::listed::{AccountPage, ListedAccount, moment};
-use crate::accounts::{HeldKey, SecondFactorInUse, SignInState, SignedInAccount};
+use crate::accounts::{
+    HeldKey, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState, SignedInAccount,
+};
 use crate::asking;
 use crate::http;
 use crate::http::ApiError;
@@ -29,6 +32,7 @@ const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const TOTP: &str = "/api/accounts/current/totp";
 const KEYS: &str = "/api/accounts/current/keys";
+const PREFERRED_WAY: &str = "/api/accounts/current/second-step/preferred";
 const KEY_CHALLENGE: &str = "/api/accounts/current/keys/challenge";
 const ANSWERED_BY_KEY: &str = "/api/sessions/current/key";
 const KEY_ASKED: &str = "/api/sessions/current/key/challenge";
@@ -327,6 +331,32 @@ pub async fn answer_with_totp(code: &str) -> Result<SignedInAccount, ApiError> {
     second_factor_answered(ANSWERED_BY_TOTP, code).await
 }
 
+fn way_of(told: &str) -> Result<SecondStepWay, ApiError> {
+    match told {
+        second_step_way::TOTP => Ok(SecondStepWay::Totp),
+        second_step_way::KEY => Ok(SecondStepWay::Key),
+        _ => Err(ApiError::Unexpected),
+    }
+}
+
+pub async fn choose_preferred_way(way: PreferredWay) -> Result<(), ApiError> {
+    let payload = PreferredWayRequest {
+        preferred_way: match way {
+            PreferredWay::Chosen(SecondStepWay::Totp) => second_step_way::TOTP,
+            PreferredWay::Chosen(SecondStepWay::Key) => second_step_way::KEY,
+            PreferredWay::LastUsed => second_step_way::LAST_USED,
+        }
+        .to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::put(PREFERRED_WAY), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
 pub async fn begin_answering_with_key() -> Result<serde_json::Value, ApiError> {
     let asked: KeyChallengeDTO =
         http::parsed(http::sent(Request::post(KEY_ASKED)).await?, SUBJECT).await?;
@@ -354,9 +384,9 @@ async fn second_factor_answered(at: &str, code: &str) -> Result<SignedInAccount,
     as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
-pub async fn turn_off_totp(code: &str) -> Result<(), ApiError> {
-    let payload = TotpCodeRequest {
-        code: code.to_owned(),
+pub async fn turn_off_totp(password: &str) -> Result<(), ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
     };
 
     http::checked(
@@ -380,9 +410,9 @@ pub async fn remove_totp(id: &str, on: u64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-pub async fn draw_recovery_codes(code: &str) -> Result<Vec<String>, ApiError> {
-    let payload = TotpCodeRequest {
-        code: code.to_owned(),
+pub async fn draw_recovery_codes(password: &str) -> Result<Vec<String>, ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
     };
     let drawn: RecoveryCodesDTO = http::parsed(
         http::sent_with(Request::post(RECOVERY_CODES), &payload).await?,
@@ -408,6 +438,11 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
                 recovery_codes_left: factor.recovery_codes_left,
                 answered_by_totp: factor.answered_by_totp,
                 answered_by_key: factor.answered_by_key,
+                preferred_way: match factor.preferred_way.as_str() {
+                    second_step_way::LAST_USED => PreferredWay::LastUsed,
+                    chosen => PreferredWay::Chosen(way_of(chosen)?),
+                },
+                asked_way: way_of(&factor.asked_way)?,
             })
         })
         .transpose()?;

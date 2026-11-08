@@ -37,7 +37,8 @@ async function owingTheSecondStep(page: Page): Promise<Server> {
 }
 
 async function answeredWithARecoveryCode(page: Page, code: string) {
-  await page.getByRole("button", { name: "Use a recovery code instead" }).click();
+  await page.getByRole("button", { name: "Use another way" }).click();
+  await page.getByRole("button", { name: /^Recovery code/ }).click();
   await page.getByLabel("One of your recovery codes").fill(code);
   await page.getByRole("button", { name: "Confirm" }).click();
 }
@@ -162,16 +163,18 @@ test("a second step that ran out goes back to signing in, saying why", async ({ 
   await expect(page.getByText("Signing in took too long.")).toBeVisible();
 });
 
-test("new recovery codes are drawn for a code of the app, and shown once", async ({ page }) => {
+test("new recovery codes are drawn for the password, and shown once", async ({ page }) => {
   // given: an author signed in with two-step sign-in, on its page
   await owingTheSecondStep(page);
   await page.getByLabel("The code your app shows for Weaveling").fill(THE_APP_CODE);
   await accountButton(page).click();
   await page.getByRole("menuitem", { name: "Security" }).click();
 
-  // when: they draw new codes with a code of their app
+  // when: they draw new codes with their password
   await page.getByRole("button", { name: "Draw new codes" }).click();
-  await page.getByLabel("A code from your app, to be sure it’s you").fill(THE_APP_CODE);
+  const asking = page.getByRole("main").locator("form");
+  await asking.getByLabel("Your password, to be sure it’s you").fill(HER_PASSWORD);
+  await asking.getByRole("button", { name: "Draw new codes" }).click();
 
   // then: the new codes are shown, the old ones said to be over
   await expect(

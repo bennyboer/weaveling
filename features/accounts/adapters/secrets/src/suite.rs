@@ -2908,7 +2908,7 @@ macro_rules! conformance_tests {
         );
         $crate::secrets_conformance_case!(
             $workbench,
-            forgetting_a_totp_takes_its_setup_and_codes_along
+            forgetting_a_totp_takes_its_setup_along_and_leaves_the_codes
         );
         $crate::secrets_conformance_case!(
             $workbench,
@@ -2941,6 +2941,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             credential_writes_in_a_dropped_transaction_leave_them_as_they_were
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            the_way_that_answered_last_is_noted_for_each_account_in_place_of_the_one_before
         );
     };
 }

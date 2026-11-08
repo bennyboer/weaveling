@@ -5,8 +5,8 @@ use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
     InvitationTicket, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators,
     PasswordHash, Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret,
-    SecondFactors, SecretsError, Session, Sessions, Stage, TokenDigest, TotpStep, VerificationCode,
-    Verifications,
+    SecondFactors, SecondStepWay, SecretsError, Session, Sessions, Stage, TokenDigest, TotpStep,
+    VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -178,6 +178,16 @@ const USE_RECOVERY_CODE: &str =
     "DELETE FROM account_recovery_codes WHERE account = $1 AND code_hash = $2";
 
 const FORGET_TOTP: &str = "DELETE FROM account_totps WHERE account = $1";
+
+const NOTE_ANSWERED_BY: &str = "
+    INSERT INTO account_second_steps (account, answered_last_by)
+    VALUES ($1, $2)
+    ON CONFLICT (account) DO UPDATE
+    SET answered_last_by = EXCLUDED.answered_last_by
+";
+
+const ANSWERED_LAST_BY: &str =
+    "SELECT answered_last_by FROM account_second_steps WHERE account = $1";
 
 const KEEP_CREDENTIAL: &str = "
     INSERT INTO account_key_credentials (account, key, credential_id, written)
@@ -843,6 +853,35 @@ impl SecondFactors for PostgresSecrets {
         Ok(())
     }
 
+    async fn note_answered_by(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        way: SecondStepWay,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(NOTE_ANSWERED_BY)
+            .bind(account.to_string())
+            .bind(written_way(way))
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn answered_last_by(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SecondStepWay>, SecretsError> {
+        let written: Option<String> = sqlx::query_scalar(ANSWERED_LAST_BY)
+            .bind(account.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(written.as_deref().and_then(read_way))
+    }
+
     async fn recovery_codes_of(
         &self,
         account: &AccountId,
@@ -882,6 +921,15 @@ impl SecondFactors for PostgresSecrets {
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         sqlx::query(FORGET_RECOVERY_CODES)
             .bind(account.to_string())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
@@ -971,5 +1019,20 @@ impl KeyCredentials for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+}
+
+fn written_way(way: SecondStepWay) -> &'static str {
+    match way {
+        SecondStepWay::Totp => "totp",
+        SecondStepWay::Key => "key",
+    }
+}
+
+fn read_way(written: &str) -> Option<SecondStepWay> {
+    match written {
+        "totp" => Some(SecondStepWay::Totp),
+        "key" => Some(SecondStepWay::Key),
+        _ => None,
     }
 }

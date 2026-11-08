@@ -6,7 +6,8 @@ use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
     InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators, PasswordHash,
     Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors,
-    SecretsError, Session, Sessions, TokenDigest, TotpStep, VerificationCode, Verifications,
+    SecondStepWay, SecretsError, Session, Sessions, TokenDigest, TotpStep, VerificationCode,
+    Verifications,
 };
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -26,6 +27,7 @@ struct Kept {
     totps: HashMap<AccountId, KeptTotpSecrets>,
     recovery_codes: HashMap<AccountId, Vec<RecoveryCodeHash>>,
     key_credentials: HashMap<AccountId, BTreeMap<KeyId, KeyCredential>>,
+    answered_last_by: HashMap<AccountId, SecondStepWay>,
 }
 
 #[derive(Clone, Default)]
@@ -745,9 +747,44 @@ impl SecondFactors for InMemorySecrets {
         let mut kept = self.kept();
         self.undo_totp_on_rollback(transaction, &kept, account)?;
         kept.totps.remove(account);
+
+        Ok(())
+    }
+
+    async fn forget_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
         kept.recovery_codes.remove(account);
 
         Ok(())
+    }
+
+    async fn note_answered_by(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        way: SecondStepWay,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        let holder = *account;
+        let before = kept.answered_last_by.get(account).copied();
+        self.undo_on_rollback(transaction, move |kept| {
+            restore(&mut kept.answered_last_by, holder, before);
+        })?;
+        kept.answered_last_by.insert(*account, way);
+
+        Ok(())
+    }
+
+    async fn answered_last_by(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SecondStepWay>, SecretsError> {
+        Ok(self.kept().answered_last_by.get(account).copied())
     }
 }
 

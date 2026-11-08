@@ -1,15 +1,16 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
     DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockDTO, LockRequest,
-    NewPasswordRequest, PasswordRequest, PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest,
-    SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest,
-    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused, stage,
+    NewPasswordRequest, PasswordRequest, PasswordResetRequest, PreferredWayRequest,
+    RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
+    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused,
+    second_step_way, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
     InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword, KeyId, KeyRole,
-    LockKind, Session, SessionToken, SignedIn, Stage,
+    LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -98,6 +99,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             routing::get(list_keys).post(finish_adding_key),
         )
         .route(
+            "/accounts/current/second-step/preferred",
+            routing::put(choose_preferred_way),
+        )
+        .route(
             "/accounts/current/keys/challenge",
             routing::post(begin_adding_key),
         )
@@ -182,7 +187,7 @@ async fn sign_up_by_invitation(
     Ok((
         StatusCode::CREATED,
         [(SET_COOKIE, holding(&token))],
-        Json(to_dto(&signed_in)),
+        Json(told(&accounts, &signed_in).await?),
     )
         .into_response())
 }
@@ -244,7 +249,11 @@ async fn begin_session(
         .await
         .map_err(problem_of)?;
 
-    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 async fn take_up_invitation(
@@ -354,13 +363,13 @@ async fn turn_off_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     headers: HeaderMap,
-    Json(request): Json<TotpCodeRequest>,
+    Json(request): Json<PasswordRequest>,
 ) -> Result<Response, Problem> {
     let Some(session) = presented(&headers) else {
         return Err(not_signed_in());
     };
     let token = accounts
-        .turn_off_totp(&account, &request.code, &session)
+        .turn_off_totp(&account, &request.password, &session)
         .await
         .map_err(problem_of)?;
 
@@ -477,10 +486,10 @@ async fn remove_key(
 async fn draw_recovery_codes(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
-    Json(request): Json<TotpCodeRequest>,
+    Json(request): Json<PasswordRequest>,
 ) -> Result<Json<RecoveryCodesDTO>, Problem> {
     let codes = accounts
-        .draw_recovery_codes(&account, &request.code)
+        .draw_recovery_codes(&account, &request.password)
         .await
         .map_err(problem_of)?;
 
@@ -517,7 +526,11 @@ async fn answer_with_key(
         .await
         .map_err(problem_of)?;
 
-    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 async fn answer_with_totp(
@@ -533,7 +546,11 @@ async fn answer_with_totp(
         .await
         .map_err(problem_of)?;
 
-    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 async fn answer_with_recovery_code(
@@ -549,7 +566,11 @@ async fn answer_with_recovery_code(
         .await
         .map_err(problem_of)?;
 
-    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 pub const PAGE: usize = 100;
@@ -687,12 +708,13 @@ async fn current(
         return Err(not_signed_in());
     };
 
-    accounts
+    let signed_in = accounts
         .signed_in(&token)
         .await
         .map_err(problem_of)?
-        .map(|signed_in| Json(to_dto(&signed_in)))
-        .ok_or_else(not_signed_in)
+        .ok_or_else(not_signed_in)?;
+
+    Ok(Json(told(&accounts, &signed_in).await?))
 }
 
 async fn end_session(
@@ -706,8 +728,13 @@ async fn end_session(
     Ok(([(SET_COOKIE, letting_go())], StatusCode::NO_CONTENT).into_response())
 }
 
-fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
-    SignedInDTO {
+async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInDTO, Problem> {
+    let asked_way = accounts
+        .asked_way(&signed_in.session.account, &signed_in.account)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(SignedInDTO {
         account: signed_in.session.account.to_string(),
         name: signed_in.account.name().to_string(),
         email: signed_in.account.email().to_string(),
@@ -717,16 +744,52 @@ fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
-        second_factor: signed_in
-            .account
-            .second_factor()
-            .map(|factor| SecondFactorDTO {
+        second_factor: signed_in.account.second_factor().zip(asked_way).map(
+            |(factor, asked_way)| SecondFactorDTO {
                 since: text::serialize(factor.since),
                 recovery_codes_left: factor.recovery_codes_left,
                 answered_by_totp: factor.answered_by_totp,
                 answered_by_key: factor.answered_by_key,
-            }),
+                preferred_way: match signed_in.account.preferred_way() {
+                    PreferredWay::Chosen(way) => way_named(way),
+                    PreferredWay::LastUsed => second_step_way::LAST_USED,
+                }
+                .to_owned(),
+                asked_way: way_named(asked_way).to_owned(),
+            },
+        ),
+    })
+}
+
+fn way_named(way: SecondStepWay) -> &'static str {
+    match way {
+        SecondStepWay::Totp => second_step_way::TOTP,
+        SecondStepWay::Key => second_step_way::KEY,
     }
+}
+
+async fn choose_preferred_way(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<PreferredWayRequest>,
+) -> Result<StatusCode, Problem> {
+    let way = match request.preferred_way.as_str() {
+        second_step_way::TOTP => PreferredWay::Chosen(SecondStepWay::Totp),
+        second_step_way::KEY => PreferredWay::Chosen(SecondStepWay::Key),
+        second_step_way::LAST_USED => PreferredWay::LastUsed,
+        _ => {
+            return Err(Problem::rejected(
+                refused::PREFERRED_WAY_UNKNOWN,
+                "a second step is asked first by totp, by key, or as it was answered last",
+            ));
+        }
+    };
+    accounts
+        .choose_preferred_way(&account, way)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn holding(token: &SessionToken) -> String {
@@ -871,6 +934,9 @@ fn problem_of(refusal: AccountsError) -> Problem {
         }
         AccountsError::Events(ServiceError::Refused(AccountError::TooManyKeys)) => {
             Problem::refused(refused::TOO_MANY_KEYS, refusal)
+        }
+        AccountsError::Events(ServiceError::Refused(AccountError::NoSecondFactor)) => {
+            Problem::refused(refused::NO_SECOND_FACTOR, refusal)
         }
         AccountsError::Events(ServiceError::Refused(AccountError::NoSuchKey)) => {
             Problem::not_found(refused::NO_SUCH_KEY, refusal)

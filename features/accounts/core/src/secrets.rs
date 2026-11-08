@@ -11,6 +11,7 @@ use crate::id::AccountId;
 use crate::key::KeyId;
 use crate::password::PasswordHash;
 use crate::recovery_code::RecoveryCodeHash;
+use crate::second_factor::SecondStepWay;
 use crate::session::{Session, TokenDigest};
 use crate::ticket::InvitationTicket;
 use crate::totp::TotpStep;
@@ -311,11 +312,31 @@ pub trait SecondFactors: Send + Sync {
         code: &RecoveryCodeHash,
     ) -> Result<bool, SecretsError>;
 
+    /// Forgets the account's TOTP, the one in use and any being set up; its recovery codes stay, belonging to the second step.
     async fn forget_totp(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError>;
+
+    async fn forget_recovery_codes(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
+
+    /// Notes the way that answered the account's second step, in place of the one before.
+    async fn note_answered_by(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        way: SecondStepWay,
+    ) -> Result<(), SecretsError>;
+
+    async fn answered_last_by(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<SecondStepWay>, SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

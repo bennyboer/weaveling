@@ -40,7 +40,7 @@ pub use name::{AccountName, InvalidAccountName};
 pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
 pub use recovery_code::{RecoveryCode, RecoveryCodeHash};
-pub use second_factor::{SecondFactor, Totp};
+pub use second_factor::{PreferredWay, SecondFactor, SecondStepWay, Totp};
 pub use secrets::{
     Attempt, Dismissal, EmailAddresses, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials,
     Operators, Passwords, SecondFactors, SecretStores, SecretsError, Sessions, Verifications,

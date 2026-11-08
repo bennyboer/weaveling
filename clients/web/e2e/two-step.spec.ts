@@ -137,7 +137,7 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   await expect(page.getByText(THE_RECOVERY_CODES[0])).toHaveCount(0);
 });
 
-test("a code of the app turns it off, and it says so", async ({ page }) => {
+test("the password turns it off, and it says so", async ({ page }) => {
   // given: an author signed in with two-step sign-in on, on its page
   const server = await signedIn(page);
   server.secondFactor = {
@@ -149,15 +149,18 @@ test("a code of the app turns it off, and it says so", async ({ page }) => {
   await page.goto("/account/two-step-sign-in");
   await expect(page).toHaveURL(/\/account\/security$/);
 
-  // when: they turn it off with a code that is not their app's
+  // when: they turn it off with a password that is not theirs
   await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
   await page.getByRole("menuitem", { name: "Turn off" }).click();
-  await page.getByLabel("A code from your app, to be sure it’s you").fill("000000");
+  const asking = page.getByRole("main").locator("form");
+  await asking.getByLabel("Your password, to be sure it’s you").fill("not her password");
+  await asking.getByRole("button", { name: "Turn off" }).click();
   // then: they are told so, and it stays on
-  await expect(page.getByText("That is not the code your app shows.")).toBeVisible();
+  await expect(page.getByText("That is not your password.")).toBeVisible();
   expect(server.secondFactor).not.toBeNull();
-  // when: they enter the code their app shows
-  await page.getByLabel("A code from your app, to be sure it’s you").fill(THE_APP_CODE);
+  // when: they give their password
+  await asking.getByLabel("Your password, to be sure it’s you").fill(HER_PASSWORD);
+  await asking.getByRole("button", { name: "Turn off" }).click();
   // then: they are told it is off, and may set it up again
   await expect(
     page.getByText("Two-step sign-in is off. You were signed out everywhere else."),

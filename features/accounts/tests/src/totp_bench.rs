@@ -1,5 +1,6 @@
 use accounts_contract::{
-    RecoveryCodesDTO, SettingUpTotpDTO, SignInRequest, SignedInDTO, TotpCodeRequest,
+    PasswordRequest, RecoveryCodesDTO, SettingUpTotpDTO, SignInRequest, SignedInDTO,
+    TotpCodeRequest,
 };
 use accounts_core::{AccountId, AccountsCore, EmailAddress, EmailAddresses, TotpKey};
 use axum::http::StatusCode;
@@ -165,12 +166,12 @@ impl Served {
             .await
     }
 
-    pub async fn draw_recovery_codes(&self, cookie: &str, code: &str) -> TestResponse {
+    pub async fn draw_recovery_codes(&self, cookie: &str, password: &str) -> TestResponse {
         self.server
             .post("/accounts/current/recovery-codes")
             .add_header(COOKIE, cookie.to_owned())
-            .json(&TotpCodeRequest {
-                code: code.to_owned(),
+            .json(&PasswordRequest {
+                password: password.to_owned(),
             })
             .await
     }
