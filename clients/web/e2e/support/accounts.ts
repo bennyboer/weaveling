@@ -131,6 +131,17 @@ export type Server = {
   } | null;
   owing: boolean;
   recoveryCodes: string[];
+  keysOffered: boolean;
+  keys: HeldKey[];
+  keyAskedFor: number;
+};
+
+export type HeldKey = {
+  key: string;
+  name: string;
+  role: "primary" | "second-factor";
+  since: string;
+  credential: string;
 };
 
 export type Noticed = {
@@ -191,6 +202,9 @@ export async function aServerWithAccounts(
     secondFactor: null,
     owing: false,
     recoveryCodes: [...THE_RECOVERY_CODES],
+    keysOffered: false,
+    keys: [],
+    keyAskedFor: 60000,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -200,7 +214,7 @@ export async function aServerWithAccounts(
           sign_up: server.signingUp,
           operator_wanted: server.operatorWanted && !server.operator,
           can_set_up_totp: server.totpOffered,
-          can_add_keys: false,
+          can_add_keys: server.keysOffered,
         },
       },
     }),
@@ -379,6 +393,107 @@ export async function aServerWithAccounts(
     };
     socketsToldTheSessionEnded(server);
     return route.fulfill({ json: { codes: THE_RECOVERY_CODES } });
+  });
+  const theKeyNamed = (url: URL) =>
+    /^\/api\/accounts\/current\/keys\/(?!challenge$)[^/]+$/.test(url.pathname);
+  const secondStepKeys = () => server.keys.filter((key) => key.role === "second-factor");
+  const listed = (key: HeldKey) => ({
+    key: key.key,
+    name: key.name,
+    role: key.role,
+    since: key.since,
+  });
+  await page.route(at("/api/accounts/current/keys/challenge"), async (route) => {
+    if (!server.keysOffered) {
+      return refusing(route, 409, "keys-unavailable");
+    }
+    const challenge = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+      "base64url",
+    );
+    return route.fulfill({
+      json: {
+        options: {
+          publicKey: {
+            rp: { id: "localhost", name: "Weaveling" },
+            user: {
+              id: Buffer.from(ADA.account).toString("base64url"),
+              name: ADA.email,
+              displayName: ADA.name,
+            },
+            challenge,
+            pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+            timeout: server.keyAskedFor,
+            attestation: "none",
+            authenticatorSelection: { userVerification: "preferred" },
+            excludeCredentials: server.keys.map((key) => ({
+              type: "public-key",
+              id: key.credential,
+            })),
+          },
+        },
+      },
+    });
+  });
+  await page.route(at("/api/accounts/current/keys"), async (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({ json: server.keys.map(listed) });
+    }
+    const { name, answer } = route.request().postDataJSON();
+    if (!name.trim()) {
+      return refusing(route, 422, "key-name-blank");
+    }
+    if (server.keys.some((key) => key.name === name)) {
+      return refusing(route, 409, "key-name-taken");
+    }
+    const key = `key_${crypto.randomUUID().replaceAll("-", "").slice(0, 22)}`;
+    server.keys.push({
+      key,
+      name,
+      role: "second-factor",
+      since: new Date().toISOString(),
+      credential: answer.rawId,
+    });
+    socketsToldTheSessionEnded(server);
+    if (server.secondFactor) {
+      server.secondFactor.answered_by_key = true;
+      return route.fulfill({ status: 201, json: { key } });
+    }
+    server.recoveryCodes = [...THE_RECOVERY_CODES];
+    server.secondFactor = {
+      since: new Date().toISOString(),
+      recovery_codes_left: 10,
+      answered_by_totp: false,
+      answered_by_key: true,
+    };
+    return route.fulfill({ status: 201, json: { key, recovery_codes: THE_RECOVERY_CODES } });
+  });
+  await page.route(theKeyNamed, async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1);
+    const held = server.keys.find((key) => key.key === id);
+    if (!held) {
+      return refusing(route, 404, "no-such-key");
+    }
+    if (route.request().method() === "PATCH") {
+      const { name } = route.request().postDataJSON();
+      if (server.keys.some((key) => key !== held && key.name === name)) {
+        return refusing(route, 409, "key-name-taken");
+      }
+      held.name = name;
+      return route.fulfill({ status: 204 });
+    }
+    const { password } = route.request().postDataJSON();
+    if (password !== server.password) {
+      return refusing(route, 422, "password-wrong");
+    }
+    server.keys = server.keys.filter((key) => key !== held);
+    if (server.secondFactor) {
+      server.secondFactor.answered_by_key = secondStepKeys().length > 0;
+      if (!server.secondFactor.answered_by_key && !server.secondFactor.answered_by_totp) {
+        server.secondFactor = null;
+      }
+    }
+    socketsToldTheSessionEnded(server);
+    return route.fulfill({ status: 204 });
   });
   const signedInAllTheWay = (route: Route) => {
     server.owing = false;

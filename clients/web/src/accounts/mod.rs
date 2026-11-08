@@ -1,5 +1,7 @@
 mod account_menu;
+mod authenticator;
 pub mod invitation;
+mod key_dialogs;
 mod listed;
 pub mod listing;
 mod lock_dialog;
@@ -39,6 +41,14 @@ pub struct SecondFactorInUse {
     pub recovery_codes_left: usize,
     pub answered_by_totp: bool,
     pub answered_by_key: bool,
+}
+
+/// A key of the account answering its second step, as its Security page lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldKey {
+    pub id: String,
+    pub name: String,
+    pub since: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +91,7 @@ pub struct CurrentSession {
     signing_up: RwSignal<SigningUp>,
     operator_wanted: RwSignal<bool>,
     totp_offered: RwSignal<bool>,
+    keys_offered: RwSignal<bool>,
     by_recovery_code: RwSignal<bool>,
 }
 
@@ -97,6 +108,10 @@ impl CurrentSession {
         self.operator_wanted.get()
     }
 
+    pub fn keys_offered(self) -> bool {
+        self.keys_offered.get()
+    }
+
     pub fn totp_offered(self) -> bool {
         self.totp_offered.get()
     }
@@ -111,6 +126,7 @@ impl CurrentSession {
             signing_up: RwSignal::new(SigningUp::Open),
             operator_wanted: RwSignal::new(false),
             totp_offered: RwSignal::new(false),
+            keys_offered: RwSignal::new(false),
             by_recovery_code: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
@@ -142,6 +158,8 @@ impl CurrentSession {
                         .set(accounts.is_some_and(|accounts| accounts.operator_wanted));
                     self.totp_offered
                         .set(accounts.is_some_and(|accounts| accounts.can_set_up_totp));
+                    self.keys_offered
+                        .set(accounts.is_some_and(|accounts| accounts.can_add_keys));
                     self.state.set(state);
                 }
                 Err(_) => self.state.set(SignInState::Unreachable),

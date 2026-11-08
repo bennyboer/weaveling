@@ -2,12 +2,16 @@ use std::future::Future;
 
 use accounts_contract::SettingUpTotpDTO;
 use leptos::prelude::*;
-use leptos::{IntoView, component, ev, html, view};
+use leptos::{IntoView, component, ev, html, task, view};
 use leptos_router::components::Redirect;
 use qrcodegen::{QrCode, QrCodeEcc};
+use serde_json::Value;
 
+use crate::accounts::authenticator::{self, NoKey};
 use crate::accounts::sign_in::{code_boxes, is_whole};
-use crate::accounts::{CurrentSession, SecondFactorInUse, SignInState, service};
+use crate::accounts::{
+    CurrentSession, HeldKey, SecondFactorInUse, SignInState, key_dialogs, service,
+};
 use crate::act::{Act, Here};
 use crate::copy_button::copy_button;
 use crate::http::ApiError;
@@ -57,6 +61,16 @@ pub fn MovedToSecurity() -> impl IntoView {
     view! { <Redirect path=route::SECURITY options=setup::replacing() /> }
 }
 
+/// What a key's dialog is about: naming the key the browser just made, or one the account holds.
+#[derive(Debug, Clone, PartialEq)]
+enum KeyDialog {
+    Naming(Value),
+    Renaming(HeldKey),
+    Removing(HeldKey),
+}
+
+const THE_APP: &str = "app";
+
 fn overview(
     session: CurrentSession,
     step: RwSignal<Step>,
@@ -64,11 +78,109 @@ fn overview(
 ) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
     let asking = RwSignal::new(None::<Asked>);
-    let menu = RwSignal::new(false);
-    let clicking_away = window_event_listener(ev::click, move |_| menu.set(false));
+    let menu = RwSignal::new(None::<String>);
+    let keys = RwSignal::new(Vec::<HeldKey>::new());
+    let dialog = RwSignal::new(None::<KeyDialog>);
+    let in_dialog = RwSignal::new(None::<ApiError>);
+    let said = RwSignal::new(None::<&'static str>);
+    let clicking_away = window_event_listener(ev::click, move |_| menu.set(None));
     let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
-            menu.set(false);
+            menu.set(None);
+        }
+    });
+    let look = move || {
+        task::spawn_local(async move {
+            match service::keys().await {
+                Ok(held) => keys.set(held),
+                Err(failed) => refused.set(Some(failed)),
+            }
+        })
+    };
+    look();
+    let close = move || {
+        in_dialog.set(None);
+        dialog.set(None);
+    };
+    let adding = Act::new(move |(), _: Here| {
+        refused.set(None);
+        said.set(None);
+
+        async move {
+            let asked = match service::begin_adding_key().await {
+                Ok(asked) => asked,
+                Err(failed) => return refused.set(Some(failed)),
+            };
+            match authenticator::made(&asked).await {
+                Ok(answer) => dialog.set(Some(KeyDialog::Naming(answer))),
+                Err(NoKey::Cancelled) => said.set(Some("key-not-made")),
+                Err(NoKey::HeldAlready) => said.set(Some("key-held-here")),
+                Err(NoKey::Failed) => said.set(Some("key-failed")),
+            }
+        }
+    });
+    let naming = Act::new(move |name: String, _: Here| {
+        in_dialog.set(None);
+        let answer = match dialog.get_untracked() {
+            Some(KeyDialog::Naming(answer)) => Some(answer),
+            _ => None,
+        };
+
+        async move {
+            let Some(answer) = answer else { return };
+            match service::finish_adding_key(&name, answer).await {
+                Ok(codes) => {
+                    dialog.set(None);
+                    session.look_again();
+                    look();
+                    match codes {
+                        Some(codes) => step.set(Step::Keeping {
+                            codes,
+                            notice: "key-added-with-codes",
+                        }),
+                        None => said.set(Some("key-added")),
+                    }
+                }
+                Err(failed) => in_dialog.set(Some(failed)),
+            }
+        }
+    });
+    let renaming = Act::new(move |name: String, _: Here| {
+        in_dialog.set(None);
+        let renamed = match dialog.get_untracked() {
+            Some(KeyDialog::Renaming(key)) => Some(key.id),
+            _ => None,
+        };
+
+        async move {
+            let Some(id) = renamed else { return };
+            match service::rename_key(&id, &name).await {
+                Ok(()) => {
+                    dialog.set(None);
+                    look();
+                }
+                Err(failed) => in_dialog.set(Some(failed)),
+            }
+        }
+    });
+    let removing = Act::new(move |password: String, _: Here| {
+        in_dialog.set(None);
+        let removed = match dialog.get_untracked() {
+            Some(KeyDialog::Removing(key)) => Some(key.id),
+            _ => None,
+        };
+
+        async move {
+            let Some(id) = removed else { return };
+            match service::remove_key(&id, &password).await {
+                Ok(()) => {
+                    dialog.set(None);
+                    said.set(Some("key-removed"));
+                    session.look_again();
+                    look();
+                }
+                Err(failed) => in_dialog.set(Some(failed)),
+            }
         }
     });
     on_cleanup(move || {
@@ -108,7 +220,21 @@ fn overview(
                         .class("hint")
                         .child(speech::said("security-second-step-hint"))
                 }),
+                move || {
+                    said.get().map(|message| {
+                        html::p()
+                            .class("notice")
+                            .role("status")
+                            .child(speech::said(message))
+                    })
+                },
                 html::ul().class("ways").child((
+                    move || {
+                        keys.get()
+                            .into_iter()
+                            .map(|key| key_row(key, menu, dialog))
+                            .collect_view()
+                    },
                     app.map(|app| app_row(app, menu, asking, beginning)),
                     factor.map(|factor| codes_row(factor, asking)),
                 )),
@@ -118,23 +244,40 @@ fn overview(
                     None => ().into_any(),
                 },
                 move || refused.get().map(problem::problem),
-                app.is_none().then(|| {
-                    html::div()
-                        .class("actions")
-                        .child(if session.totp_offered() {
-                            html::button()
-                                .r#type("button")
-                                .attr("aria-busy", move || beginning.busy())
-                                .on(ev::click, move |_| beginning.start(()))
-                                .child(speech::said("security-set-up-app"))
-                                .into_any()
-                        } else {
-                            html::p()
-                                .class("hint")
-                                .child(speech::said("two-step-unavailable"))
-                                .into_any()
-                        })
-                }),
+                html::div().class("actions").child((
+                    (session.keys_offered() && authenticator::supported()).then(|| {
+                        html::button()
+                            .r#type("button")
+                            .attr("aria-busy", move || adding.busy())
+                            .on(ev::click, move |_| adding.start(()))
+                            .child(speech::said("security-add-key"))
+                    }),
+                    (app.is_none() && session.totp_offered()).then(|| {
+                        html::button()
+                            .r#type("button")
+                            .attr("aria-busy", move || beginning.busy())
+                            .on(ev::click, move |_| beginning.start(()))
+                            .child(speech::said("security-set-up-app"))
+                    }),
+                    (!session.keys_offered() && !session.totp_offered()).then(|| {
+                        html::p()
+                            .class("hint")
+                            .child(speech::said("two-step-unavailable"))
+                    }),
+                )),
+                move || {
+                    dialog.get().map(|shown| match shown {
+                        KeyDialog::Naming(_) => {
+                            key_dialogs::naming_the_new_key(naming, in_dialog, close).into_any()
+                        }
+                        KeyDialog::Renaming(key) => {
+                            key_dialogs::renaming(key.name, renaming, in_dialog, close).into_any()
+                        }
+                        KeyDialog::Removing(key) => {
+                            key_dialogs::removing(&key.name, removing, in_dialog, close).into_any()
+                        }
+                    })
+                },
             )
                 .into_any()
         }
@@ -142,25 +285,114 @@ fn overview(
     }
 }
 
+/// A menu item: its message, whether it is dangerous, and what choosing it does.
+type MenuItem = (&'static str, bool, Box<dyn Fn() + Send + Sync + 'static>);
+
+/// A way's ⋮, holding what can be done with it: one menu open on the page at a time.
+fn way_menu(
+    menu: RwSignal<Option<String>>,
+    named: String,
+    labelled: String,
+    items: Vec<MenuItem>,
+) -> impl IntoView {
+    let this = named;
+    let open = {
+        let this = this.clone();
+        Memo::new(move |_| menu.get().as_deref() == Some(this.as_str()))
+    };
+    let items = StoredValue::new(items);
+
+    html::div()
+        .class("way-actions")
+        .on(ev::click, |event| event.stop_propagation())
+        .child((
+            html::button()
+                .r#type("button")
+                .class("menu-button")
+                .attr("aria-label", labelled.clone())
+                .attr("title", labelled)
+                .attr("aria-haspopup", "menu")
+                .attr("aria-expanded", move || open.get().to_string())
+                .on(ev::click, move |_| {
+                    menu.update(|shown| {
+                        *shown = (shown.as_deref() != Some(this.as_str())).then(|| this.clone())
+                    })
+                })
+                .child(icons::mark(Icon::More)),
+            move || {
+                open.get().then(|| {
+                    html::div()
+                        .class("menu")
+                        .role("menu")
+                        .child(items.with_value(|listed| {
+                            listed
+                                .iter()
+                                .enumerate()
+                                .map(|(at, (label, danger, _))| {
+                                    html::button()
+                                        .r#type("button")
+                                        .role("menuitem")
+                                        .class(("danger", *danger))
+                                        .on(ev::click, move |_| {
+                                            menu.set(None);
+                                            items.with_value(|listed| (listed[at].2)());
+                                        })
+                                        .child(speech::said(label))
+                                })
+                                .collect_view()
+                        }))
+                })
+            },
+        ))
+}
+
+fn key_row(
+    key: HeldKey,
+    menu: RwSignal<Option<String>>,
+    dialog: RwSignal<Option<KeyDialog>>,
+) -> impl IntoView {
+    let renamed = key.clone();
+    let removed = key.clone();
+
+    html::li().class("way").child((
+        html::div().class("what").child((
+            html::p().class("name").child(speech::say_about(
+                "security-key-named",
+                "name",
+                &key.name,
+            )),
+            html::p().class("meta").child(speech::say_about(
+                "security-key-added",
+                "when",
+                &moment::human_time(key.since),
+            )),
+        )),
+        way_menu(
+            menu,
+            key.id.clone(),
+            speech::say_about("security-key-actions", "name", &key.name),
+            vec![
+                (
+                    "key-rename",
+                    false,
+                    Box::new(move || dialog.set(Some(KeyDialog::Renaming(renamed.clone())))),
+                ),
+                (
+                    "key-remove",
+                    true,
+                    Box::new(move || dialog.set(Some(KeyDialog::Removing(removed.clone())))),
+                ),
+            ],
+        ),
+    ))
+}
+
 fn app_row(
     app: SecondFactorInUse,
-    menu: RwSignal<bool>,
+    menu: RwSignal<Option<String>>,
     asking: RwSignal<Option<Asked>>,
     beginning: Act<()>,
 ) -> impl IntoView {
-    let labelled = speech::said("security-app-actions");
-    let item = move |label: &'static str, danger: bool, chosen: Box<dyn Fn() + 'static>| {
-        html::button()
-            .r#type("button")
-            .role("menuitem")
-            .class(("danger", danger))
-            .on(ev::click, move |_| {
-                menu.set(false);
-                chosen();
-            })
-            .child(speech::said(label))
-    };
-
     html::li().class("way").child((
         html::div().class("what").child((
             html::p().class("name").child(speech::said("security-app")),
@@ -170,36 +402,23 @@ fn app_row(
                 &moment::human_time(app.since),
             )),
         )),
-        html::div()
-            .class("way-actions")
-            .on(ev::click, |event| event.stop_propagation())
-            .child((
-                html::button()
-                    .r#type("button")
-                    .class("menu-button")
-                    .attr("aria-label", labelled)
-                    .attr("title", labelled)
-                    .attr("aria-haspopup", "menu")
-                    .attr("aria-expanded", move || menu.get().to_string())
-                    .on(ev::click, move |_| menu.update(|open| *open = !*open))
-                    .child(icons::mark(Icon::More)),
-                move || {
-                    menu.get().then(|| {
-                        html::div().class("menu").role("menu").child((
-                            item(
-                                "two-step-set-up-anew",
-                                false,
-                                Box::new(move || beginning.start(())),
-                            ),
-                            item(
-                                "two-step-turn-off",
-                                true,
-                                Box::new(move || asking.set(Some(Asked::TurningOff))),
-                            ),
-                        ))
-                    })
-                },
-            )),
+        way_menu(
+            menu,
+            THE_APP.to_owned(),
+            speech::say("security-app-actions"),
+            vec![
+                (
+                    "two-step-set-up-anew",
+                    false,
+                    Box::new(move || beginning.start(())),
+                ),
+                (
+                    "two-step-turn-off",
+                    true,
+                    Box::new(move || asking.set(Some(Asked::TurningOff))),
+                ),
+            ],
+        ),
     ))
 }
 

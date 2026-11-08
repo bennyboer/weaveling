@@ -71,7 +71,7 @@ fn step(crumb: Crumb, here: bool) -> impl IntoView {
             .child(named)
             .into_any(),
         (Some(href), false) => view! { <A href=href exact=true>{named}</A> }.into_any(),
-        (None, false) => html::span().child(named).into_any(),
+        (None, false) => html::span().class("passing").child(named).into_any(),
     };
 
     html::li().class(("home", home)).child((

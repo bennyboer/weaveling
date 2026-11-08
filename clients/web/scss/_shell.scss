@@ -561,9 +561,14 @@
   }
 
   a,
+  .passing,
   [aria-current="page"] {
     padding: 0.2rem 0.4rem;
     border-radius: 0.3rem;
+  }
+
+  .passing {
+    color: var(--muted);
   }
 
   a {

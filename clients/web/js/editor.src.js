@@ -13,6 +13,7 @@ import { SceneSync } from "./sync.js";
 export { SyncConnection } from "./sync.js";
 export { LiveSubscription } from "./live.js";
 export { whenSessionEnded } from "./reconnecting.js";
+export { keysSupported, makeKey, touchKey } from "./keys.js";
 
 const FRAGMENT = "prose";
 

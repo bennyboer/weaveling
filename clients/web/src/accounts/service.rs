@@ -1,13 +1,14 @@
 use accounts_contract::{
-    AccountPageDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockRequest,
-    NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SendCodeRequest, ServiceModeDTO,
+    AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
+    KeyChallengeDTO, KeyDTO, LockRequest, NewPasswordRequest, PasswordRequest,
+    PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest, SendCodeRequest, ServiceModeDTO,
     SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, refused, stage,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, refused, stage,
 };
 use gloo_net::http::Request;
 
 use crate::accounts::listed::{AccountPage, ListedAccount, moment};
-use crate::accounts::{SecondFactorInUse, SignInState, SignedInAccount};
+use crate::accounts::{HeldKey, SecondFactorInUse, SignInState, SignedInAccount};
 use crate::asking;
 use crate::http;
 use crate::http::ApiError;
@@ -27,6 +28,8 @@ const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const TOTP: &str = "/api/accounts/current/totp";
+const KEYS: &str = "/api/accounts/current/keys";
+const KEY_CHALLENGE: &str = "/api/accounts/current/keys/challenge";
 const TOTP_SETUP: &str = "/api/accounts/current/totp/setup";
 const RECOVERY_CODES: &str = "/api/accounts/current/recovery-codes";
 const ANSWERED_BY_TOTP: &str = "/api/sessions/current/totp";
@@ -401,6 +404,74 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
         second_factor,
         owes_second_factor: signed_in.stage == stage::SECOND_FACTOR_OWED,
     })
+}
+
+/// The account's keys answering its second step, the oldest first.
+pub async fn keys() -> Result<Vec<HeldKey>, ApiError> {
+    let listed: Vec<KeyDTO> = http::parsed(http::sent(Request::get(KEYS)).await?, SUBJECT).await?;
+
+    listed
+        .into_iter()
+        .filter(|key| key.role == key_role::SECOND_FACTOR)
+        .map(|key| {
+            Ok(HeldKey {
+                since: moment(&key.since)?,
+                id: key.key,
+                name: key.name,
+            })
+        })
+        .collect()
+}
+
+pub async fn begin_adding_key() -> Result<serde_json::Value, ApiError> {
+    let asked: KeyChallengeDTO =
+        http::parsed(http::sent(Request::post(KEY_CHALLENGE)).await?, SUBJECT).await?;
+
+    Ok(asked.options)
+}
+
+/// Adds the key the browser made, under its name: the recovery codes, where it is the first second step.
+pub async fn finish_adding_key(
+    name: &str,
+    answer: serde_json::Value,
+) -> Result<Option<Vec<String>>, ApiError> {
+    let payload = AddKeyRequest {
+        name: name.to_owned(),
+        answer,
+    };
+    let added: AddedKeyDTO = http::parsed(
+        http::sent_with(Request::post(KEYS), &payload).await?,
+        SUBJECT,
+    )
+    .await?;
+
+    Ok(added.recovery_codes)
+}
+
+pub async fn rename_key(id: &str, name: &str) -> Result<(), ApiError> {
+    let payload = RenameKeyRequest {
+        name: name.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::patch(&format!("{KEYS}/{id}")), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn remove_key(id: &str, password: &str) -> Result<(), ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::delete(&format!("{KEYS}/{id}")), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
 }
 
 #[cfg(test)]
