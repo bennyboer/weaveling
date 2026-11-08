@@ -134,6 +134,8 @@ export type Server = {
   keysOffered: boolean;
   keys: HeldKey[];
   keyAskedFor: number;
+  renewalLags: number;
+  renewing: boolean;
 };
 
 export type HeldKey = {
@@ -205,6 +207,8 @@ export async function aServerWithAccounts(
     keysOffered: false,
     keys: [],
     keyAskedFor: 60000,
+    renewalLags: 0,
+    renewing: false,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -226,8 +230,18 @@ export async function aServerWithAccounts(
       server.signedOut += 1;
       return route.fulfill({ status: 204 });
     }
+    if (server.renewing) {
+      return refusing(route, 401, "not-signed-in");
+    }
     if (server.owing) {
-      return route.fulfill({ json: { ...ADA, stage: "second-factor-owed", operator: false } });
+      return route.fulfill({
+        json: {
+          ...ADA,
+          stage: "second-factor-owed",
+          operator: false,
+          second_factor: server.secondFactor,
+        },
+      });
     }
     return server.signedIn
       ? route.fulfill({
@@ -249,7 +263,14 @@ export async function aServerWithAccounts(
     }
     if (server.secondFactor) {
       server.owing = true;
-      return route.fulfill({ json: { ...ADA, stage: "second-factor-owed", operator: false } });
+      return route.fulfill({
+        json: {
+          ...ADA,
+          stage: "second-factor-owed",
+          operator: false,
+          second_factor: server.secondFactor,
+        },
+      });
     }
     server.signedIn = true;
     return route.fulfill({ json: { ...ADA, operator: server.operator } });
@@ -453,10 +474,10 @@ export async function aServerWithAccounts(
       since: new Date().toISOString(),
       credential: answer.rawId,
     });
-    socketsToldTheSessionEnded(server);
+    await sessionRenewed(server);
     if (server.secondFactor) {
       server.secondFactor.answered_by_key = true;
-      return route.fulfill({ status: 201, json: { key } });
+      return route.fulfill({ status: 201, json: { key } }).finally(() => (server.renewing = false));
     }
     server.recoveryCodes = [...THE_RECOVERY_CODES];
     server.secondFactor = {
@@ -465,7 +486,9 @@ export async function aServerWithAccounts(
       answered_by_totp: false,
       answered_by_key: true,
     };
-    return route.fulfill({ status: 201, json: { key, recovery_codes: THE_RECOVERY_CODES } });
+    return route
+      .fulfill({ status: 201, json: { key, recovery_codes: THE_RECOVERY_CODES } })
+      .finally(() => (server.renewing = false));
   });
   await page.route(theKeyNamed, async (route) => {
     const id = new URL(route.request().url()).pathname.split("/").at(-1);
@@ -502,6 +525,42 @@ export async function aServerWithAccounts(
       json: { ...ADA, operator: server.operator, second_factor: server.secondFactor },
     });
   };
+  await page.route(at("/api/sessions/current/key/challenge"), async (route) => {
+    if (!server.owing) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    if (secondStepKeys().length === 0) {
+      return refusing(route, 404, "no-such-key");
+    }
+    return route.fulfill({
+      json: {
+        options: {
+          publicKey: {
+            challenge: Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString(
+              "base64url",
+            ),
+            rpId: "localhost",
+            timeout: server.keyAskedFor,
+            userVerification: "preferred",
+            allowCredentials: secondStepKeys().map((key) => ({
+              type: "public-key",
+              id: key.credential,
+            })),
+          },
+        },
+      },
+    });
+  });
+  await page.route(at("/api/sessions/current/key"), async (route) => {
+    if (!server.owing) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    const { answer } = route.request().postDataJSON();
+    if (!secondStepKeys().some((key) => key.credential === answer.rawId)) {
+      return refusing(route, 422, "key-refused");
+    }
+    return signedInAllTheWay(route);
+  });
   await page.route(at("/api/sessions/current/totp"), async (route) => {
     if (!server.owing) {
       return refusing(route, 401, "not-signed-in");
@@ -810,6 +869,14 @@ export function endedOn(server: Server, topic: string, why: string) {
 export function sessionEndedOn(server: Server) {
   server.signedIn = false;
   socketsToldTheSessionEnded(server);
+}
+
+async function sessionRenewed(server: Server) {
+  socketsToldTheSessionEnded(server);
+  if (server.renewalLags > 0) {
+    server.renewing = true;
+    await new Promise((lagged) => setTimeout(lagged, server.renewalLags));
+  }
 }
 
 export function socketsToldTheSessionEnded(server: Server) {

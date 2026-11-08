@@ -1,6 +1,6 @@
 use accounts_contract::{
     AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
-    KeyChallengeDTO, KeyDTO, LockRequest, NewPasswordRequest, PasswordRequest,
+    KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockRequest, NewPasswordRequest, PasswordRequest,
     PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest, SendCodeRequest, ServiceModeDTO,
     SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
     TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, refused, stage,
@@ -30,6 +30,8 @@ const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const TOTP: &str = "/api/accounts/current/totp";
 const KEYS: &str = "/api/accounts/current/keys";
 const KEY_CHALLENGE: &str = "/api/accounts/current/keys/challenge";
+const ANSWERED_BY_KEY: &str = "/api/sessions/current/key";
+const KEY_ASKED: &str = "/api/sessions/current/key/challenge";
 const TOTP_SETUP: &str = "/api/accounts/current/totp/setup";
 const RECOVERY_CODES: &str = "/api/accounts/current/recovery-codes";
 const ANSWERED_BY_TOTP: &str = "/api/sessions/current/totp";
@@ -323,6 +325,20 @@ pub async fn finish_setting_up_totp(code: &str) -> Result<Vec<String>, ApiError>
 
 pub async fn answer_with_totp(code: &str) -> Result<SignedInAccount, ApiError> {
     second_factor_answered(ANSWERED_BY_TOTP, code).await
+}
+
+pub async fn begin_answering_with_key() -> Result<serde_json::Value, ApiError> {
+    let asked: KeyChallengeDTO =
+        http::parsed(http::sent(Request::post(KEY_ASKED)).await?, SUBJECT).await?;
+
+    Ok(asked.options)
+}
+
+pub async fn answer_with_key(answer: serde_json::Value) -> Result<SignedInAccount, ApiError> {
+    let response =
+        http::sent_with(Request::post(ANSWERED_BY_KEY), &KeyAnswerRequest { answer }).await?;
+
+    as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
 pub async fn answer_with_recovery_code(code: &str) -> Result<SignedInAccount, ApiError> {

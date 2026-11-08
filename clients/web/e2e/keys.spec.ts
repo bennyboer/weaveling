@@ -14,7 +14,7 @@ test.use({ baseURL: "http://localhost:8080" });
 async function aSecurityKey(page: Page) {
   const devtools = await page.context().newCDPSession(page);
   await devtools.send("WebAuthn.enable");
-  await devtools.send("WebAuthn.addVirtualAuthenticator", {
+  const { authenticatorId } = await devtools.send("WebAuthn.addVirtualAuthenticator", {
     options: {
       protocol: "ctap2",
       transport: "usb",
@@ -24,6 +24,10 @@ async function aSecurityKey(page: Page) {
       automaticPresenceSimulation: true,
     },
   });
+
+  return async () => {
+    await devtools.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+  };
 }
 
 async function onTheSecurityPage(
@@ -193,4 +197,97 @@ test("an instance that cannot add keys offers none", async ({ page }) => {
   // then: no key can be added, an authenticator app still can
   await expect(page.getByRole("button", { name: "Add a security key" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Set up an authenticator app" })).toBeVisible();
+});
+
+const accountButton = (page: Page) =>
+  page.getByRole("banner").getByRole("button", { name: "Account: Ada Lovelace" });
+
+async function withAKeyAdded(page: Page) {
+  const server = await onTheSecurityPage(page);
+  const lost = await aSecurityKey(page);
+  await page.getByRole("button", { name: "Add a security key" }).click();
+  const naming = page.getByRole("dialog", { name: "Your key is made" });
+  await naming.getByLabel("Name").fill("YubiKey blue");
+  await naming.getByRole("button", { name: "Add the key" }).click();
+  await page.getByLabel("I have kept them somewhere safe").check();
+  await page.getByRole("button", { name: "Done" }).click();
+  await accountButton(page).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await signIn(page, ADA.email, HER_PASSWORD);
+
+  return { server, lost };
+}
+
+test("a key added answers the second step when signing in again, once the author asks for it", async ({
+  page,
+}) => {
+  // given: an author who added a key, signing in again with their password
+  await withAKeyAdded(page);
+
+  // then: the key is asked for, the browser's dialog waiting for a click
+  await expect(page.getByText("Touch your security key.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use the code from your app instead" })).toHaveCount(0);
+  // when: they use the key
+  await page.getByRole("button", { name: "Use the key" }).click();
+  // then: they are signed in
+  await expect(accountButton(page)).toBeVisible();
+});
+
+test("a key not touched leaves the second step to try again, or another way", async ({
+  page,
+}) => {
+  // given: an author owing the second step, their key no longer at hand
+  const { server, lost } = await withAKeyAdded(page);
+  await lost();
+  server.keyAskedFor = 1000;
+
+  // when: they try to use the key
+  await page.getByRole("button", { name: "Use the key" }).click();
+
+  // then: they are told, and still asked for the second step
+  await expect(page.getByText("No key was touched. Try once more, or use another way.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use a recovery code instead" })).toBeVisible();
+  await expect(accountButton(page)).toHaveCount(0);
+});
+
+test("with a key and an app, the key is asked first and the app's code is a click away", async ({
+  page,
+}) => {
+  // given: an author whose second step is answered by a key and an app, signing in
+  const server = await aServerWithAccounts(page);
+  server.totpOffered = true;
+  aKeyHeld(server, "YubiKey blue");
+  server.secondFactor!.answered_by_totp = true;
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+
+  // then: the key is asked for first
+  await expect(page.getByText("Touch your security key.")).toBeVisible();
+  // when: they turn to the app's code
+  await page.getByRole("button", { name: "Use the code from your app instead" }).click();
+  // then: the code is asked for, the key a click away again
+  await expect(page.getByLabel("The code your app shows for Weaveling")).toBeVisible();
+  await page.getByRole("button", { name: "Use a security key instead" }).click();
+  await expect(page.getByText("Touch your security key.")).toBeVisible();
+});
+
+test("the recovery codes are shown even when the renewed session's cookie comes after its socket was told the old one ended", async ({
+  page,
+}) => {
+  // given: an author following live on their security page, the server's renewal lagging behind its sockets
+  const server = await onTheSecurityPage(page);
+  await expect.poll(() => server.liveSockets.length).toBeGreaterThan(0);
+  server.renewalLags = 500;
+  await aSecurityKey(page);
+
+  // when: they add their first key
+  await page.getByRole("button", { name: "Add a security key" }).click();
+  const naming = page.getByRole("dialog", { name: "Your key is made" });
+  await naming.getByLabel("Name").fill("YubiKey blue");
+  await naming.getByRole("button", { name: "Add the key" }).click();
+
+  // then: they stay signed in and are shown the recovery codes
+  await expect(page.getByRole("heading", { name: "Keep these recovery codes" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("listitem")).toHaveText(THE_RECOVERY_CODES);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
 });

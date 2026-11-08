@@ -9,6 +9,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = makeKey, catch)]
     async fn make_key(asked: &str) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = touchKey, catch)]
+    async fn touch_key(asked: &str) -> Result<JsValue, JsValue>;
 }
 
 /// Why the browser made or showed no key.
@@ -27,6 +30,11 @@ pub fn supported() -> bool {
 /// The browser's dialog making a key, as the server asked for it.
 pub async fn made(asked: &Value) -> Result<Value, NoKey> {
     answered(make_key(&asked.to_string()).await)
+}
+
+/// The browser's dialog asking for a touch of a key, as the server asked for it.
+pub async fn touched(asked: &Value) -> Result<Value, NoKey> {
+    answered(touch_key(&asked.to_string()).await)
 }
 
 fn answered(given: Result<JsValue, JsValue>) -> Result<Value, NoKey> {

@@ -120,7 +120,7 @@ impl KeyCeremonies {
             .map_err(|_| InvalidPublicUrl::NoUrl)
     }
 
-    /// Asks the browser to make a key answering the account's second step, none of the keys it holds already; a begun adding replaces the one before.
+    /// Asks the browser to make a key answering the account's second step, none of the keys it holds already; a begun adding replaces the one before. Not asking for credProtect, which browsers refuse for a key that is not resident and only prefers checking its user, and which a second step after the password does not need.
     pub(crate) fn begin_adding(
         &self,
         account: &AccountId,
@@ -133,7 +133,7 @@ impl KeyCeremonies {
             .iter()
             .map(|credential| CredentialID::from(credential.id.clone()))
             .collect();
-        let (asked, state) = self
+        let (mut asked, state) = self
             .webauthn
             .start_securitykey_registration(
                 account.as_uuid(),
@@ -144,6 +144,9 @@ impl KeyCeremonies {
                 None,
             )
             .expect("a security key registration begins for any account");
+        if let Some(extensions) = asked.public_key.extensions.as_mut() {
+            extensions.cred_protect = None;
+        }
         self.adding.hold(account, state, now);
 
         serde_json::to_value(asked).expect("what a browser is asked is plain data")
@@ -302,5 +305,30 @@ mod tests {
             // then: it is refused for that reason
             assert_eq!(ceremonies.err(), Some(reason), "{address}");
         }
+    }
+
+    #[test]
+    fn a_key_for_the_second_step_is_asked_for_without_credprotect() {
+        // given: an instance making keys
+        let ceremonies =
+            KeyCeremonies::serving_at("https://weaveling.example.com").expect("ceremonies");
+        let account = AccountId::generate(clock::at(1_000));
+
+        // when: adding a key begins
+        let asked =
+            ceremonies.begin_adding(&account, "ada@example.com", "Ada", &[], clock::at(1_000));
+
+        // then: the browser is asked for no credential protection, which it would refuse
+        let extensions = &asked["publicKey"]["extensions"];
+        assert!(
+            extensions.get("credentialProtectionPolicy").is_none(),
+            "{extensions}"
+        );
+        assert!(
+            extensions
+                .get("enforceCredentialProtectionPolicy")
+                .is_none(),
+            "{extensions}"
+        );
     }
 }

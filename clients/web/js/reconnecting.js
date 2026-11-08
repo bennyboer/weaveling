@@ -3,6 +3,7 @@ const RECONNECT_AT_MOST = 2500;
 const STEADY_AFTER = 3000;
 const SESSION_ENDED = 4401;
 const CURRENT_SESSION = "/api/sessions/current";
+const RENEWAL_ON_ITS_WAY = 1500;
 
 let sessionEnded = () => {};
 
@@ -10,10 +11,17 @@ export function whenSessionEnded(told) {
   sessionEnded = told;
 }
 
-function stillSignedIn() {
+function signedIn() {
   return fetch(CURRENT_SESSION, { credentials: "same-origin" })
     .then((response) => response.status !== 401)
     .catch(() => true);
+}
+
+function stillSignedIn() {
+  return signedIn().then(
+    (still) =>
+      still || new Promise((waited) => setTimeout(waited, RENEWAL_ON_ITS_WAY)).then(signedIn),
+  );
 }
 
 function address(path) {

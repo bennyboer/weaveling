@@ -33,6 +33,7 @@ pub enum Icon {
     Share,
     Trash,
     Home,
+    Key,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -65,6 +66,9 @@ pub fn mark(icon: Icon) -> impl IntoView {
         }
         Icon::Bell => "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",
         Icon::Home => "M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
+        Icon::Key => {
+            "M9 2h6a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM12 6h.01M10 17h4"
+        }
         Icon::Trash => {
             "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"
         }

@@ -902,3 +902,25 @@
     margin: 1rem 0 0;
   }
 }
+
+.signing-in .key-asked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.6rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--paper);
+  text-align: center;
+
+  > svg {
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--accent);
+  }
+
+  p {
+    margin: 0;
+  }
+}

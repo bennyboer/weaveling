@@ -5,9 +5,13 @@ use leptos::{IntoView, component, ev, html};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks;
 
-use crate::accounts::{CurrentSession, SignInState, SigningUp, service};
+use crate::accounts::authenticator::{self, NoKey};
+use crate::accounts::{
+    CurrentSession, SecondFactorInUse, SignInState, SignedInAccount, SigningUp, service,
+};
 use crate::act::{Act, Here};
 use crate::http::ApiError;
+use crate::icons::{self, Icon};
 use crate::invitations::service as invitations;
 use crate::problem;
 use crate::route;
@@ -26,6 +30,7 @@ enum Form {
     AskReset,
     Reset,
     SecondStep,
+    KeyStep,
     RecoveryStep,
 }
 
@@ -71,12 +76,12 @@ pub fn SignInPage() -> impl IntoView {
         .filter(|token| !token.is_empty());
     let session = expect_context::<CurrentSession>();
     let owing = match session.state() {
-        SignInState::OwingSecondFactor(account) => Some(account.email),
+        SignInState::OwingSecondFactor(account) => Some(account),
         _ => None,
     };
     let page = Page {
-        form: RwSignal::new(if owing.is_some() {
-            Form::SecondStep
+        form: RwSignal::new(if let Some(account) = &owing {
+            first_way(account)
         } else if invitation.is_some() {
             Form::Accept
         } else if location.pathname.get_untracked() == route::SETUP
@@ -86,7 +91,7 @@ pub fn SignInPage() -> impl IntoView {
         } else {
             Form::SignIn
         }),
-        email: RwSignal::new(owing.unwrap_or_default()),
+        email: RwSignal::new(owing.map(|account| account.email).unwrap_or_default()),
         notice: RwSignal::new(None),
         invitation: RwSignal::new(invitation),
         operator_code: RwSignal::new(None),
@@ -106,6 +111,7 @@ pub fn SignInPage() -> impl IntoView {
                 Form::AskReset => ask_reset_form(page).into_any(),
                 Form::Reset => reset_form(page).into_any(),
                 Form::SecondStep => second_step_form(page).into_any(),
+                Form::KeyStep => key_step_form(page).into_any(),
                 Form::RecoveryStep => recovery_step_form(page).into_any(),
             }),
     )
@@ -127,8 +133,9 @@ fn sign_in_form(page: Page) -> impl IntoView {
         asked(refused, async move {
             let mut account = service::sign_in(&given, &typed).await?;
             if account.owes_second_factor {
+                let first = first_way(&account);
                 session.owes_second_factor(account);
-                page.turn_to(Form::SecondStep, None);
+                page.turn_to(first, None);
                 return Ok(());
             }
             if let Some(code) = operating
@@ -554,10 +561,96 @@ fn second_step_form(page: Page) -> impl IntoView {
                 submitting(speech::said("second-step-confirm"), answering, ()),
             ),
         ),
+        owed().is_some_and(|owed| owed.answered_by_key).then(|| {
+            turning(speech::said("second-step-key-instead"), move || {
+                page.turn_to(Form::KeyStep, None)
+            })
+        }),
         turning(speech::said("second-step-recovery-instead"), move || {
             page.turn_to(Form::RecoveryStep, None)
         }),
     )
+}
+
+/// Asks for a touch of one of the account's keys; the browser's own dialog opens only once asked for, so one who meant another way is not interrupted.
+fn key_step_form(page: Page) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+    let refused = RwSignal::new(None::<ApiError>);
+    let said = RwSignal::new(None::<&'static str>);
+    let answering = Act::new(move |(), _: Here| {
+        said.set(None);
+
+        asked(refused, async move {
+            let asked = service::begin_answering_with_key()
+                .await
+                .map_err(|failed| ran_out_or(page, failed))?;
+            let touch = match authenticator::touched(&asked).await {
+                Ok(touch) => touch,
+                Err(NoKey::Cancelled | NoKey::HeldAlready) => {
+                    said.set(Some("second-step-key-not-touched"));
+                    return Ok(());
+                }
+                Err(NoKey::Failed) => {
+                    said.set(Some("second-step-key-failed"));
+                    return Ok(());
+                }
+            };
+            let account = service::answer_with_key(touch)
+                .await
+                .map_err(|failed| ran_out_or(page, failed))?;
+            session.signed_in(account);
+
+            Ok(())
+        })
+    });
+
+    (
+        html::h1().child(speech::said("sign-in-heading")),
+        owing_as(page),
+        html::section().class("key-asked").child((
+            icons::mark(Icon::Key),
+            html::p().child(speech::said("second-step-key-touch")),
+            move || {
+                said.get().map(|message| {
+                    html::p()
+                        .class("hint")
+                        .role("status")
+                        .child(speech::said(message))
+                })
+            },
+            move || refused.get().map(problem::problem),
+            html::button()
+                .r#type("button")
+                .class("primary")
+                .attr("aria-busy", move || answering.busy())
+                .on(ev::click, move |_| answering.start(()))
+                .child(speech::said("second-step-key-use")),
+        )),
+        owed().is_some_and(|owed| owed.answered_by_totp).then(|| {
+            turning(speech::said("second-step-code-instead"), move || {
+                page.turn_to(Form::SecondStep, None)
+            })
+        }),
+        turning(speech::said("second-step-recovery-instead"), move || {
+            page.turn_to(Form::RecoveryStep, None)
+        }),
+    )
+}
+
+/// The way the second step is asked first: a key where the account has one, else the app's code.
+fn first_way(account: &SignedInAccount) -> Form {
+    match account.second_factor {
+        Some(factor) if factor.answered_by_key => Form::KeyStep,
+        _ => Form::SecondStep,
+    }
+}
+
+/// The second step the session owes, as the account told it.
+fn owed() -> Option<SecondFactorInUse> {
+    match expect_context::<CurrentSession>().state.get_untracked() {
+        SignInState::OwingSecondFactor(account) => account.second_factor,
+        _ => None,
+    }
 }
 
 fn recovery_step_form(page: Page) -> impl IntoView {
@@ -604,8 +697,15 @@ fn recovery_step_form(page: Page) -> impl IntoView {
                 submitting(speech::said("second-step-confirm"), answering, ()),
             ),
         ),
-        turning(speech::said("second-step-code-instead"), move || {
-            page.turn_to(Form::SecondStep, None)
+        owed().is_some_and(|owed| owed.answered_by_key).then(|| {
+            turning(speech::said("second-step-key-instead"), move || {
+                page.turn_to(Form::KeyStep, None)
+            })
+        }),
+        owed().is_none_or(|owed| owed.answered_by_totp).then(|| {
+            turning(speech::said("second-step-code-instead"), move || {
+                page.turn_to(Form::SecondStep, None)
+            })
         }),
         html::p()
             .class("hint")
