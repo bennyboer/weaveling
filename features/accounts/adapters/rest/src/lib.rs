@@ -1,14 +1,15 @@
 use accounts_contract::{
-    AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockDTO,
-    LockRequest, NewPasswordRequest, PasswordResetRequest, RecoveryCodesDTO, SESSION_COOKIE,
-    SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest,
-    SignUpRequest, SignedInDTO, TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest,
-    lock_kind, refused, stage,
+    AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, AddingKeyDTO,
+    BecomeOperatorRequest, DeclineInvitationRequest, KeyDTO, LockDTO, LockRequest,
+    NewPasswordRequest, PasswordRequest, PasswordResetRequest, RecoveryCodesDTO, RenameKeyRequest,
+    SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
-    InvalidEmailAddress, InvalidLockReason, InvalidPassword, LockKind, Session, SessionToken,
-    SignedIn, Stage,
+    InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword, KeyId, KeyRole,
+    LockKind, Session, SessionToken, SignedIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -86,6 +87,18 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/accounts/current/recovery-codes",
             routing::post(draw_recovery_codes),
+        )
+        .route(
+            "/accounts/current/keys",
+            routing::get(list_keys).post(finish_adding_key),
+        )
+        .route(
+            "/accounts/current/keys/challenge",
+            routing::post(begin_adding_key),
+        )
+        .route(
+            "/accounts/current/keys/{key}",
+            routing::patch(rename_key).delete(remove_key),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
@@ -363,6 +376,99 @@ async fn remove_totp(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn list_keys(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+) -> Result<Json<Vec<KeyDTO>>, Problem> {
+    let keys = accounts.keys_of(&account).await.map_err(problem_of)?;
+
+    Ok(Json(
+        keys.iter()
+            .map(|(key, held)| KeyDTO {
+                key: key.to_string(),
+                name: held.name.to_string(),
+                role: match held.role {
+                    KeyRole::Primary => key_role::PRIMARY,
+                    KeyRole::SecondFactor => key_role::SECOND_FACTOR,
+                }
+                .to_owned(),
+                since: text::serialize(held.since),
+            })
+            .collect(),
+    ))
+}
+
+async fn begin_adding_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+) -> Result<Json<AddingKeyDTO>, Problem> {
+    let options = accounts
+        .begin_adding_key(&account)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(AddingKeyDTO { options }))
+}
+
+async fn finish_adding_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    headers: HeaderMap,
+    Json(request): Json<AddKeyRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let added = accounts
+        .finish_adding_key(&account, &request.name, &request.answer, &session)
+        .await
+        .map_err(problem_of)?;
+
+    Ok((
+        StatusCode::CREATED,
+        [(SET_COOKIE, holding(&added.session))],
+        Json(AddedKeyDTO {
+            key: added.key.to_string(),
+            recovery_codes: added
+                .recovery_codes
+                .map(|codes| codes.iter().map(ToString::to_string).collect()),
+        }),
+    )
+        .into_response())
+}
+
+async fn rename_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(key): Path<String>,
+    Json(request): Json<RenameKeyRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .rename_key(&account, &key_named(&key)?, &request.name)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remove_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<PasswordRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let token = accounts
+        .remove_key(&account, &key_named(&key)?, &request.password, &session)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], StatusCode::NO_CONTENT).into_response())
+}
+
 async fn draw_recovery_codes(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
@@ -504,6 +610,12 @@ fn account_named(given: &str) -> Result<AccountId, Problem> {
     given
         .parse()
         .map_err(|_| Problem::rejected(refused::ACCOUNT_ID_INVALID, "this is no account's id"))
+}
+
+fn key_named(given: &str) -> Result<KeyId, Problem> {
+    given
+        .parse()
+        .map_err(|_| Problem::rejected(refused::KEY_ID_INVALID, "this is no key's id"))
 }
 
 fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
@@ -709,6 +821,32 @@ fn problem_of(refusal: AccountsError) -> Problem {
         }
         AccountsError::NoSecondFactor => Problem::refused(refused::NO_SECOND_FACTOR, refusal),
         AccountsError::NoSecondFactorOwed => not_signed_in(),
+        AccountsError::KeysUnavailable => Problem::refused(refused::KEYS_UNAVAILABLE, refusal),
+        AccountsError::NoKeyBeingAdded => Problem::refused(refused::NO_KEY_BEING_ADDED, refusal),
+        AccountsError::KeyRefused => Problem::unprocessable(refused::KEY_REFUSED, refusal),
+        AccountsError::KeyHeldAlready => Problem::refused(refused::KEY_HELD_ALREADY, refusal),
+        AccountsError::NoSuchKey => Problem::not_found(refused::NO_SUCH_KEY, refusal),
+        AccountsError::PasswordWrong => Problem::unprocessable(refused::PASSWORD_WRONG, refusal),
+        AccountsError::Events(ServiceError::Refused(AccountError::KeyNameTaken)) => {
+            Problem::refused(refused::KEY_NAME_TAKEN, refusal)
+        }
+        AccountsError::Events(ServiceError::Refused(AccountError::TooManyKeys)) => {
+            Problem::refused(refused::TOO_MANY_KEYS, refusal)
+        }
+        AccountsError::Events(ServiceError::Refused(AccountError::NoSuchKey)) => {
+            Problem::not_found(refused::NO_SUCH_KEY, refusal)
+        }
+        AccountsError::InvalidKeyName(reason) => match reason {
+            InvalidKeyName::Blank => Problem::unprocessable(refused::KEY_NAME_BLANK, reason),
+            InvalidKeyName::ControlCharacter => {
+                Problem::unprocessable(refused::KEY_NAME_CONTROL_CHARACTER, reason)
+            }
+            InvalidKeyName::TooLong { max, actual } => {
+                Problem::unprocessable(refused::KEY_NAME_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
+            }
+        },
         unserveable => Problem::unexpected(unserveable),
     }
 }

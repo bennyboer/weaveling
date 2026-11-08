@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use accounts_core::{KeyCeremonies, TotpKey};
 use authorizing::{Act, Authorizer};
 use axum::Router;
 use axum::body;
@@ -99,17 +100,27 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
         (
             Accounts::On,
             SignUp::Open,
-            json!({ "accounts": true, "sign_up": "open", "operator_wanted": true }),
+            json!({ "accounts": {
+                "sign_up": "open",
+                "operator_wanted": true,
+                "can_set_up_totp": false,
+                "can_add_keys": false,
+            } }),
         ),
         (
             Accounts::On,
             SignUp::ByInvitation,
-            json!({ "accounts": true, "sign_up": "invitation", "operator_wanted": true }),
+            json!({ "accounts": {
+                "sign_up": "invitation",
+                "operator_wanted": true,
+                "can_set_up_totp": false,
+                "can_add_keys": false,
+            } }),
         ),
         (
             Accounts::Off,
             SignUp::ByInvitation,
-            json!({ "accounts": false }),
+            json!({ "accounts": null }),
         ),
     ] {
         let server = TestServer::new(weaveling_service_api::app(
@@ -129,6 +140,33 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
             "without accounts nobody signs up, so the way in is not told"
         );
     }
+}
+
+#[tokio::test]
+async fn the_service_says_whether_totp_can_be_set_up_and_keys_added() {
+    // given: a server holding a TOTP key and told where it is served
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::On, Arc::new(SystemClock))
+            .await
+            .sealing_totp_secrets(
+                TotpKey::from_hex(
+                    "7e57000000000000000000000000000000000000000000000000000000007e57",
+                )
+                .expect("a test key"),
+            )
+            .holding_key_ceremonies(
+                KeyCeremonies::serving_at("https://weaveling.example.com").expect("a public URL"),
+            ),
+    ));
+
+    // when: its mode is asked
+    let answered = server.get("/api/service/mode").await;
+
+    // then: it says both can be done
+    answered.assert_status_ok();
+    let accounts = &answered.json::<Value>()["accounts"];
+    assert_eq!(accounts["can_set_up_totp"], true);
+    assert_eq!(accounts["can_add_keys"], true);
 }
 
 #[tokio::test]
@@ -174,7 +212,7 @@ async fn unless_told_otherwise_anyone_may_sign_up() {
 
     // then: anyone may sign up
     assert_eq!(
-        server.get("/api/service/mode").await.json::<Value>()["sign_up"],
+        server.get("/api/service/mode").await.json::<Value>()["accounts"]["sign_up"],
         "open"
     );
 }
@@ -617,7 +655,12 @@ async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged
     // then: no operator is wanted any more
     assert_eq!(
         told,
-        json!({ "accounts": true, "sign_up": "invitation" }),
+        json!({ "accounts": {
+            "sign_up": "invitation",
+            "operator_wanted": false,
+            "can_set_up_totp": false,
+            "can_add_keys": false,
+        } }),
         "with an operator there, nobody is asked to set the instance up any more"
     );
     // and: an operator code signs nobody up

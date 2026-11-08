@@ -128,13 +128,52 @@ pub struct RecoveryCodesDTO {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ServiceModeDTO {
-    pub accounts: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sign_up: Option<String>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default)]
+    pub accounts: Option<AccountsModeDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AccountsModeDTO {
+    pub sign_up: String,
     pub operator_wanted: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub totp: bool,
+    pub can_set_up_totp: bool,
+    pub can_add_keys: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeyDTO {
+    pub key: String,
+    pub name: String,
+    pub role: String,
+    pub since: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AddingKeyDTO {
+    pub options: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AddKeyRequest {
+    pub name: String,
+    pub answer: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AddedKeyDTO {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_codes: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RenameKeyRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PasswordRequest {
+    pub password: String,
 }
 
 pub const SESSION_COOKIE: &str = "weaveling_session";
@@ -260,8 +299,20 @@ pub mod refused {
     pub const TOTP_CODE_WRONG: &str = "totp-code-wrong";
     pub const RECOVERY_CODE_WRONG: &str = "recovery-code-wrong";
     pub const NO_SECOND_FACTOR: &str = "no-second-factor";
+    pub const KEYS_UNAVAILABLE: &str = "keys-unavailable";
+    pub const NO_KEY_BEING_ADDED: &str = "no-key-being-added";
+    pub const KEY_REFUSED: &str = "key-refused";
+    pub const KEY_HELD_ALREADY: &str = "key-held-already";
+    pub const NO_SUCH_KEY: &str = "no-such-key";
+    pub const KEY_ID_INVALID: &str = "key-id-invalid";
+    pub const KEY_NAME_TAKEN: &str = "key-name-taken";
+    pub const KEY_NAME_BLANK: &str = "key-name-blank";
+    pub const KEY_NAME_CONTROL_CHARACTER: &str = "key-name-control-character";
+    pub const KEY_NAME_TOO_LONG: &str = "key-name-too-long";
+    pub const TOO_MANY_KEYS: &str = "too-many-keys";
+    pub const PASSWORD_WRONG: &str = "password-wrong";
 
-    pub const EVERY: [&str; 38] = [
+    pub const EVERY: [&str; 50] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -300,5 +351,17 @@ pub mod refused {
         TOTP_CODE_WRONG,
         RECOVERY_CODE_WRONG,
         NO_SECOND_FACTOR,
+        KEYS_UNAVAILABLE,
+        NO_KEY_BEING_ADDED,
+        KEY_REFUSED,
+        KEY_HELD_ALREADY,
+        NO_SUCH_KEY,
+        KEY_ID_INVALID,
+        KEY_NAME_TAKEN,
+        KEY_NAME_BLANK,
+        KEY_NAME_CONTROL_CHARACTER,
+        KEY_NAME_TOO_LONG,
+        TOO_MANY_KEYS,
+        PASSWORD_WRONG,
     ];
 }

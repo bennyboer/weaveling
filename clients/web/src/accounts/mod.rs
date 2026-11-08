@@ -132,10 +132,14 @@ impl CurrentSession {
         task::spawn_local(async move {
             match service::current().await {
                 Ok((state, mode)) => {
-                    self.signing_up
-                        .set(SigningUp::told(mode.sign_up.as_deref()));
-                    self.operator_wanted.set(mode.operator_wanted);
-                    self.totp_offered.set(mode.totp);
+                    let accounts = mode.accounts.as_ref();
+                    self.signing_up.set(SigningUp::told(
+                        accounts.map(|accounts| accounts.sign_up.as_str()),
+                    ));
+                    self.operator_wanted
+                        .set(accounts.is_some_and(|accounts| accounts.operator_wanted));
+                    self.totp_offered
+                        .set(accounts.is_some_and(|accounts| accounts.can_set_up_totp));
                     self.state.set(state);
                 }
                 Err(_) => self.state.set(SignInState::Unreachable),

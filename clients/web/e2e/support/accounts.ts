@@ -191,10 +191,12 @@ export async function aServerWithAccounts(
   await page.route(at("/api/service/mode"), (route) =>
     route.fulfill({
       json: {
-        accounts: true,
-        sign_up: server.signingUp,
-        operator_wanted: server.operatorWanted && !server.operator,
-        totp: server.totpOffered,
+        accounts: {
+          sign_up: server.signingUp,
+          operator_wanted: server.operatorWanted && !server.operator,
+          can_set_up_totp: server.totpOffered,
+          can_add_keys: false,
+        },
       },
     }),
   );

@@ -35,6 +35,9 @@ mod invitation_tickets;
 mod key_service;
 
 #[cfg(test)]
+mod keys_api;
+
+#[cfg(test)]
 mod locking;
 
 #[cfg(test)]

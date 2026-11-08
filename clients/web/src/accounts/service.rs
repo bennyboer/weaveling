@@ -37,7 +37,7 @@ const ACCOUNT: &str = "account";
 
 pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
-    if !mode.accounts {
+    if mode.accounts.is_none() {
         return Ok((SignInState::NoAccounts, mode));
     }
 

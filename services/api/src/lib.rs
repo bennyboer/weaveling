@@ -9,7 +9,7 @@ mod sign_up;
 
 use std::sync::Arc;
 
-use accounts_contract::ServiceModeDTO;
+use accounts_contract::{AccountsModeDTO, ServiceModeDTO};
 use accounts_core::{AccountsCore, AccountsError, KeyCeremonies, OperatorCode, TotpKey};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
@@ -241,16 +241,12 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 
 pub fn app(adapters: Adapters) -> Router {
     let told = ServiceModeDTO {
-        operator_wanted: false,
-        accounts: adapters.accounts.is_some(),
-        sign_up: adapters
-            .accounts
-            .is_some()
-            .then(|| adapters.sign_up.told().to_owned()),
-        totp: adapters
-            .accounts
-            .as_ref()
-            .is_some_and(|accounts| accounts.core.keeps_totp()),
+        accounts: adapters.accounts.as_ref().map(|accounts| AccountsModeDTO {
+            sign_up: adapters.sign_up.told().to_owned(),
+            operator_wanted: false,
+            can_set_up_totp: accounts.core.keeps_totp(),
+            can_add_keys: accounts.core.keeps_keys(),
+        }),
     };
     let operating = adapters
         .accounts
@@ -319,17 +315,19 @@ async fn mode(
     told: ServiceModeDTO,
     operating: Option<AccountsCore>,
 ) -> Result<Json<ServiceModeDTO>, Problem> {
-    let operator_wanted = match operating {
-        Some(accounts) => accounts
-            .operator_wanted()
-            .await
-            .map_err(Problem::unexpected)?,
-        None => false,
+    let (Some(accounts), Some(operating)) = (told.accounts, operating) else {
+        return Ok(Json(ServiceModeDTO { accounts: None }));
     };
+    let operator_wanted = operating
+        .operator_wanted()
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(Json(ServiceModeDTO {
-        operator_wanted,
-        ..told
+        accounts: Some(AccountsModeDTO {
+            operator_wanted,
+            ..accounts
+        }),
     }))
 }
 

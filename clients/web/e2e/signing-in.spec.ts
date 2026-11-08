@@ -155,7 +155,7 @@ test("a server out of reach says so, and can be asked again", async ({
   await page.route(
     (url) => url.pathname === "/api/service/mode",
     (route) =>
-      reachable ? route.fulfill({ json: { accounts: false } }) : route.abort(),
+      reachable ? route.fulfill({ json: { accounts: null } }) : route.abort(),
   );
 
   // when: the page opens

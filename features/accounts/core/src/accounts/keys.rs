@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use eventsourcing::ServiceError;
 use serde_json::Value;
 
@@ -5,7 +7,7 @@ use super::AccountsCore;
 use crate::account::{AccountCommand, AccountError};
 use crate::error::AccountsError;
 use crate::id::AccountId;
-use crate::key::{KeyId, KeyName, KeyRole};
+use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::key_ceremonies::{KeyCeremonies, KeyNotAdded};
 use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
 use crate::session::{SessionToken, Stage};
@@ -29,6 +31,13 @@ impl AccountsCore {
 
     pub fn keeps_keys(&self) -> bool {
         self.key_ceremonies.is_some()
+    }
+
+    pub async fn keys_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<BTreeMap<KeyId, Key>, AccountsError> {
+        Ok(self.get(account).await?.state.keys().clone())
     }
 
     /// What the browser is asked to make a key answering the account's second step with.
