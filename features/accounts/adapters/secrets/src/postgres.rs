@@ -3,9 +3,10 @@ use transacting::Transaction;
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, KeptTotp, Operators, PasswordHash, Passwords,
-    PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session,
-    Sessions, Stage, TokenDigest, TotpStep, VerificationCode, Verifications,
+    InvitationTicket, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators,
+    PasswordHash, Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret,
+    SecondFactors, SecretsError, Session, Sessions, Stage, TokenDigest, TotpStep, VerificationCode,
+    Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -177,6 +178,20 @@ const USE_RECOVERY_CODE: &str =
     "DELETE FROM account_recovery_codes WHERE account = $1 AND code_hash = $2";
 
 const FORGET_TOTP: &str = "DELETE FROM account_totps WHERE account = $1";
+
+const KEEP_CREDENTIAL: &str = "
+    INSERT INTO account_key_credentials (account, key, credential_id, written)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT DO NOTHING
+";
+
+const CREDENTIALS_OF: &str = "SELECT key, credential_id, written FROM account_key_credentials WHERE account = $1 ORDER BY key";
+
+const RENEW_CREDENTIAL: &str =
+    "UPDATE account_key_credentials SET written = $3 WHERE account = $1 AND key = $2";
+
+const FORGET_CREDENTIAL: &str =
+    "DELETE FROM account_key_credentials WHERE account = $1 AND key = $2";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
@@ -869,6 +884,88 @@ impl SecondFactors for PostgresSecrets {
             .map_err(unreachable)?;
         sqlx::query(FORGET_RECOVERY_CODES)
             .bind(account.to_string())
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+}
+
+fn to_credential(row: &PgRow) -> Result<(KeyId, KeyCredential), SecretsError> {
+    let key: String = row.try_get("key").map_err(unreachable)?;
+
+    Ok((
+        key.parse().map_err(unreachable)?,
+        KeyCredential {
+            id: row.try_get("credential_id").map_err(unreachable)?,
+            written: row.try_get("written").map_err(unreachable)?,
+        },
+    ))
+}
+
+#[async_trait]
+impl KeyCredentials for PostgresSecrets {
+    async fn keep_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        credential: &KeyCredential,
+    ) -> Result<bool, SecretsError> {
+        let kept = sqlx::query(KEEP_CREDENTIAL)
+            .bind(account.to_string())
+            .bind(key.to_string())
+            .bind(credential.id.as_slice())
+            .bind(credential.written.as_str())
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.rows_affected() == 1)
+    }
+
+    async fn credentials_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<(KeyId, KeyCredential)>, SecretsError> {
+        sqlx::query(CREDENTIALS_OF)
+            .bind(account.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(to_credential)
+            .collect()
+    }
+
+    async fn renew_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        written: &str,
+    ) -> Result<bool, SecretsError> {
+        let renewed = sqlx::query(RENEW_CREDENTIAL)
+            .bind(account.to_string())
+            .bind(key.to_string())
+            .bind(written)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(renewed.rows_affected() == 1)
+    }
+
+    async fn forget_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(FORGET_CREDENTIAL)
+            .bind(account.to_string())
+            .bind(key.to_string())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

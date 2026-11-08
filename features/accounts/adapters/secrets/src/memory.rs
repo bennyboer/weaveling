@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, KeptTotp, Operators, PasswordHash, Passwords, PendingVerification,
-    RecoveryCodeHash, SealedTotpSecret, SecondFactors, SecretsError, Session, Sessions,
-    TokenDigest, TotpStep, VerificationCode, Verifications,
+    InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators, PasswordHash,
+    Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors,
+    SecretsError, Session, Sessions, TokenDigest, TotpStep, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -25,6 +25,7 @@ struct Kept {
     trashed_projects: HashMap<String, (u64, bool)>,
     totps: HashMap<AccountId, KeptTotpSecrets>,
     recovery_codes: HashMap<AccountId, Vec<RecoveryCodeHash>>,
+    key_credentials: HashMap<AccountId, BTreeMap<KeyId, KeyCredential>>,
 }
 
 #[derive(Clone, Default)]
@@ -69,6 +70,22 @@ impl InMemorySecrets {
         self.undo_on_rollback(transaction, move |kept| {
             restore(&mut kept.totps, holder, factor);
             restore(&mut kept.recovery_codes, holder, codes);
+        })
+    }
+}
+
+impl InMemorySecrets {
+    fn undo_credentials_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+        kept: &Kept,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let holder = *account;
+        let credentials = kept.key_credentials.get(account).cloned();
+
+        self.undo_on_rollback(transaction, move |kept| {
+            restore(&mut kept.key_credentials, holder, credentials);
         })
     }
 }
@@ -729,6 +746,92 @@ impl SecondFactors for InMemorySecrets {
         self.undo_totp_on_rollback(transaction, &kept, account)?;
         kept.totps.remove(account);
         kept.recovery_codes.remove(account);
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl KeyCredentials for InMemorySecrets {
+    async fn keep_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        credential: &KeyCredential,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        let held = kept
+            .key_credentials
+            .values()
+            .flat_map(BTreeMap::values)
+            .any(|held| held.id == credential.id);
+        if held {
+            return Ok(false);
+        }
+        self.undo_credentials_on_rollback(transaction, &kept, account)?;
+        kept.key_credentials
+            .entry(*account)
+            .or_default()
+            .insert(*key, credential.clone());
+
+        Ok(true)
+    }
+
+    async fn credentials_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<(KeyId, KeyCredential)>, SecretsError> {
+        Ok(self
+            .kept()
+            .key_credentials
+            .get(account)
+            .map(|held| {
+                held.iter()
+                    .map(|(key, credential)| (*key, credential.clone()))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    async fn renew_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        written: &str,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        let held = kept
+            .key_credentials
+            .get(account)
+            .is_some_and(|held| held.contains_key(key));
+        if !held {
+            return Ok(false);
+        }
+        self.undo_credentials_on_rollback(transaction, &kept, account)?;
+        if let Some(credential) = kept
+            .key_credentials
+            .get_mut(account)
+            .and_then(|held| held.get_mut(key))
+        {
+            written.clone_into(&mut credential.written);
+        }
+
+        Ok(true)
+    }
+
+    async fn forget_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_credentials_on_rollback(transaction, &kept, account)?;
+        if let Some(held) = kept.key_credentials.get_mut(account) {
+            held.remove(key);
+        }
 
         Ok(())
     }

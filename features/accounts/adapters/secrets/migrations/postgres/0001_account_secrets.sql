@@ -63,3 +63,11 @@ CREATE TABLE account_recovery_codes (
     code_hash  TEXT COLLATE "C" NOT NULL,
     PRIMARY KEY (account, code_hash)
 );
+
+CREATE TABLE account_key_credentials (
+    account        TEXT COLLATE "C" NOT NULL,
+    key            TEXT COLLATE "C" NOT NULL,
+    credential_id  BYTEA NOT NULL UNIQUE,
+    written        TEXT  NOT NULL,
+    PRIMARY KEY (account, key)
+);

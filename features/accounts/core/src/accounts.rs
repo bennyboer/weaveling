@@ -77,6 +77,7 @@ impl AccountsCore {
             operators,
             invitation_tickets,
             second_factors,
+            key_credentials: _,
         } = secrets;
 
         Self {

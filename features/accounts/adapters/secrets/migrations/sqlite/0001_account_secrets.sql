@@ -63,3 +63,11 @@ CREATE TABLE account_recovery_codes (
     code_hash  TEXT NOT NULL,
     PRIMARY KEY (account, code_hash)
 );
+
+CREATE TABLE account_key_credentials (
+    account        TEXT NOT NULL,
+    key            TEXT NOT NULL,
+    credential_id  BLOB NOT NULL UNIQUE,
+    written        TEXT NOT NULL,
+    PRIMARY KEY (account, key)
+);

@@ -42,8 +42,8 @@ pub use password::{InvalidPassword, Password, PasswordHash};
 pub use recovery_code::{RecoveryCode, RecoveryCodeHash};
 pub use second_factor::{SecondFactor, Totp};
 pub use secrets::{
-    Attempt, Dismissal, EmailAddresses, InvitationTickets, KeptTotp, Operators, Passwords,
-    SecondFactors, SecretStores, SecretsError, Sessions, Verifications,
+    Attempt, Dismissal, EmailAddresses, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials,
+    Operators, Passwords, SecondFactors, SecretStores, SecretsError, Sessions, Verifications,
 };
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use signing_up::SigningUp;

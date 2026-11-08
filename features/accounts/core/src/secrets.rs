@@ -8,6 +8,7 @@ use time::OffsetDateTime;
 
 use crate::code::{CodePurpose, PendingVerification, VerificationCode};
 use crate::id::AccountId;
+use crate::key::KeyId;
 use crate::password::PasswordHash;
 use crate::recovery_code::RecoveryCodeHash;
 use crate::session::{Session, TokenDigest};
@@ -35,6 +36,7 @@ pub struct SecretStores {
     pub operators: Arc<dyn Operators>,
     pub invitation_tickets: Arc<dyn InvitationTickets>,
     pub second_factors: Arc<dyn SecondFactors>,
+    pub key_credentials: Arc<dyn KeyCredentials>,
 }
 
 impl SecretStores {
@@ -47,6 +49,7 @@ impl SecretStores {
             + Operators
             + InvitationTickets
             + SecondFactors
+            + KeyCredentials
             + 'static,
     {
         Self {
@@ -57,7 +60,8 @@ impl SecretStores {
             throttles,
             operators: secrets.clone(),
             invitation_tickets: secrets.clone(),
-            second_factors: secrets,
+            second_factors: secrets.clone(),
+            key_credentials: secrets,
         }
     }
 }
@@ -319,4 +323,46 @@ pub enum Dismissal {
     Dismissed,
     LastOne,
     NotAppointed,
+}
+
+/// A key's credential as webauthn-rs wrote it, kept whole and unread here: its public key, its counter, what it can do. Its id is the browser's, the same across every account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyCredential {
+    pub id: Vec<u8>,
+    pub written: String,
+}
+
+/// The credentials of every account's keys, one a key, each credential held by one key of one account only.
+#[async_trait]
+pub trait KeyCredentials: Send + Sync {
+    /// Keeps a new key's credential; false where a key of any account holds a credential by that id already.
+    async fn keep_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        credential: &KeyCredential,
+    ) -> Result<bool, SecretsError>;
+
+    /// An account's credentials, the oldest key first.
+    async fn credentials_of(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<(KeyId, KeyCredential)>, SecretsError>;
+
+    /// Writes a key's credential anew, as it is after a use; false where the key holds none.
+    async fn renew_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+        written: &str,
+    ) -> Result<bool, SecretsError>;
+
+    async fn forget_credential(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        key: &KeyId,
+    ) -> Result<(), SecretsError>;
 }

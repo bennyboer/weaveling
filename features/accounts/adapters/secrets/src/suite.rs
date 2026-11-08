@@ -1,8 +1,8 @@
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification,
-    SecondFactors, SecretsError, Session, SessionToken, Sessions, Stage, TokenDigest,
-    VerificationCode, Verifications,
+    InvitationTicket, InvitationTickets, KeyCredentials, Operators, PasswordHash, Passwords,
+    PendingVerification, SecondFactors, SecretsError, Session, SessionToken, Sessions, Stage,
+    TokenDigest, VerificationCode, Verifications,
 };
 use std::ops::Deref;
 
@@ -10,8 +10,10 @@ use futures_util::future;
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions, Tried};
 
+mod key_credentials;
 mod second_factors;
 
+pub use key_credentials::*;
 pub use second_factors::*;
 
 pub trait Secrets:
@@ -20,6 +22,7 @@ pub trait Secrets:
     + Operators
     + Passwords
     + SecondFactors
+    + KeyCredentials
     + Sessions
     + Verifications
 {
@@ -31,6 +34,7 @@ impl<
         + Operators
         + Passwords
         + SecondFactors
+        + KeyCredentials
         + Sessions
         + Verifications,
 > Secrets for S
@@ -2913,6 +2917,30 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             a_first_setup_begun_in_a_dropped_transaction_was_never_begun
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_accounts_credentials_are_its_own_the_oldest_key_first
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            no_credential_is_held_by_two_keys_of_any_accounts
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_credential_offered_by_many_at_once_is_kept_once
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_renewed_credential_reads_as_renewed_and_only_where_it_is_held
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_forgotten_credential_is_gone_and_may_be_kept_again
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            credential_writes_in_a_dropped_transaction_leave_them_as_they_were
         );
     };
 }
