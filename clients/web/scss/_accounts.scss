@@ -217,7 +217,7 @@
   }
 }
 
-.operating .accounts .actions {
+:is(.operating .accounts .actions, .operating.security .way-actions) {
   position: relative;
 
   .menu-button {
@@ -675,7 +675,7 @@
 }
 
 
-.operating.two-step {
+.operating.security {
   width: min(32rem, 100% - 2rem);
 
   h2 {
@@ -796,25 +796,8 @@
 
 
 
-.account .menu .two-step {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 1.5rem;
-  white-space: nowrap;
-
-  span {
-    text-box: normal;
-  }
-
-  .state {
-    color: var(--muted);
-    font-size: 0.85em;
-  }
-}
-
 @media print {
-  .two-step :is(.buttons, .kept, .notice, .primary) {
+  .security :is(.buttons, .kept, .notice, .primary) {
     display: none;
   }
 }
@@ -869,7 +852,7 @@
   letter-spacing: 0.08em;
 }
 
-.operating.two-step .actions {
+.operating.security .actions {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -879,5 +862,43 @@
   > .asking:has(form) {
     flex-basis: 100%;
     order: 1;
+  }
+}
+
+.operating.security {
+  .ways {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .way {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--line);
+
+    &:last-child {
+      border-bottom: 1px solid var(--line);
+    }
+  }
+
+  .what {
+    flex: 1;
+    min-width: 0;
+
+    p {
+      margin: 0;
+    }
+  }
+
+  .meta {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .asking {
+    margin: 1rem 0 0;
   }
 }

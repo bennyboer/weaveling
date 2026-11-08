@@ -7,7 +7,7 @@ pub const WORKSPACE: &str = "/";
 pub const TRASH: &str = "/trash";
 pub const INVITATION: &str = "/invitation";
 pub const SETUP: &str = "/setup";
-pub const TWO_STEP_SIGN_IN: &str = "/account/two-step-sign-in";
+pub const SECURITY: &str = "/account/security";
 pub const INSTANCE_ACCOUNTS: &str = "/instance/accounts";
 pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 

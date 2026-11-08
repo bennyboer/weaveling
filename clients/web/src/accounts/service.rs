@@ -387,6 +387,8 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
             Ok::<_, ApiError>(SecondFactorInUse {
                 since: moment(&factor.since)?,
                 recovery_codes_left: factor.recovery_codes_left,
+                answered_by_totp: factor.answered_by_totp,
+                answered_by_key: factor.answered_by_key,
             })
         })
         .transpose()?;

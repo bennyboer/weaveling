@@ -14,8 +14,8 @@ import {
 const accountButton = (page: Page) =>
   page.getByRole("banner").getByRole("button", { name: "Account: Ada Lovelace" });
 
-const twoStepInMenu = (page: Page) =>
-  page.getByRole("menu").getByRole("menuitem", { name: /Two-step sign-in/ });
+const securityInMenu = (page: Page) =>
+  page.getByRole("menu").getByRole("menuitem", { name: "Security" });
 
 async function signedIn(page: Page, { totpOffered = true } = {}): Promise<Server> {
   const server = await aServerWithAccounts(page);
@@ -29,7 +29,7 @@ async function signedIn(page: Page, { totpOffered = true } = {}): Promise<Server
 
 async function settingUp(page: Page) {
   await accountButton(page).click();
-  await twoStepInMenu(page).click();
+  await securityInMenu(page).click();
   await page.getByRole("button", { name: "Set up" }).click();
   await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toBeVisible();
 }
@@ -38,21 +38,25 @@ async function entered(page: Page, code: string) {
   await page.getByLabel("Code", { exact: true }).fill(code);
 }
 
-test("two-step sign-in is off in the account menu until it is set up", async ({ page }) => {
+test("the account menu leads to the security page, which offers a second step", async ({
+  page,
+}) => {
   // given: an author signed in on an instance that keeps second factors
   await signedIn(page);
 
-  // when: they open their account
+  // when: they open their account and follow its security
   await accountButton(page).click();
-
-  // then: two-step sign-in shows as off
-  await expect(twoStepInMenu(page)).toContainText("Off");
-  // when: they follow it
-  await twoStepInMenu(page).click();
-  // then: its page says what it does and offers to set it up
-  await expect(page.getByRole("heading", { name: "Two-step sign-in" })).toBeVisible();
+  await securityInMenu(page).click();
+  // then: the security page says what a second step does and offers to set up an app
+  await expect(page).toHaveURL(/\/account\/security$/);
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
   await expect(page.getByText("a password alone signs nobody in")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Set up" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Set up an authenticator app" })).toBeVisible();
+  // and: the path names the account, then the page, one step apart
+  const path = page.getByRole("navigation", { name: "Path" });
+  await expect(path.getByRole("listitem").nth(1)).toHaveText("Your account");
+  await expect(path.getByRole("listitem").nth(2)).toHaveText("Security");
+  await expect(path.locator(".between")).toHaveCount(2);
 });
 
 test("an instance without a key does not offer two-step sign-in", async ({ page }) => {
@@ -62,9 +66,9 @@ test("an instance without a key does not offer two-step sign-in", async ({ page 
   // when: they open their account
   await accountButton(page).click();
 
-  // then: two-step sign-in is not offered
+  // then: no security page is offered
   await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
-  await expect(twoStepInMenu(page)).toHaveCount(0);
+  await expect(securityInMenu(page)).toHaveCount(0);
 });
 
 test("setting up shows the QR code and the key to type, and changes nothing until confirmed", async ({
@@ -123,9 +127,12 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   await expect(done).toBeDisabled();
   await page.getByLabel("I have kept them somewhere safe").check();
   await done.click();
-  // then: two-step sign-in shows as on, with all ten codes left
-  await expect(page.getByText("Recovery codes left: 10 of 10")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Set up anew" })).toBeVisible();
+  // then: the app shows as a way of answering the second step, with all ten codes left
+  const ways = page.getByRole("main").getByRole("list");
+  await expect(ways).toContainText("Authenticator app");
+  await expect(ways).toContainText("10 of 10 left");
+  await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
+  await expect(page.getByRole("menuitem", { name: "Set up anew" })).toBeVisible();
   // and: the codes are not shown again
   await expect(page.getByText(THE_RECOVERY_CODES[0])).toHaveCount(0);
 });
@@ -140,9 +147,11 @@ test("a code of the app turns it off, and it says so", async ({ page }) => {
     answered_by_key: false,
   };
   await page.goto("/account/two-step-sign-in");
+  await expect(page).toHaveURL(/\/account\/security$/);
 
   // when: they turn it off with a code that is not their app's
-  await page.getByRole("button", { name: "Turn off" }).click();
+  await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
+  await page.getByRole("menuitem", { name: "Turn off" }).click();
   await page.getByLabel("A code from your app, to be sure it’s you").fill("000000");
   // then: they are told so, and it stays on
   await expect(page.getByText("That is not the code your app shows.")).toBeVisible();
@@ -153,7 +162,7 @@ test("a code of the app turns it off, and it says so", async ({ page }) => {
   await expect(
     page.getByText("Two-step sign-in is off. You were signed out everywhere else."),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Set up" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Set up an authenticator app" })).toBeVisible();
   expect(server.secondFactor).toBeNull();
 });
 

@@ -34,7 +34,7 @@ pub fn recovery_note() -> impl IntoView {
                         speech::say_about("recovery-note", "left", &left.to_string())
                     }),
                     view! {
-                        <A href=route::TWO_STEP_SIGN_IN on:click=move |_| session.recovery_code_noted()>
+                        <A href=route::SECURITY on:click=move |_| session.recovery_code_noted()>
                             {speech::said("recovery-note-set-up-anew")}
                         </A>
                     },

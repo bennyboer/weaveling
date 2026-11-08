@@ -65,22 +65,24 @@ fn step(crumb: Crumb, here: bool) -> impl IntoView {
         }
     };
 
-    html::li()
-        .class(("home", home))
-        .child(match (crumb.leads_to, here) {
-            (Some(href), false) => (
-                view! { <A href=href exact=true>{named.clone()}</A> }.into_any(),
-                html::span()
-                    .class("between")
-                    .attr("aria-hidden", "true")
-                    .child(icons::mark(Icon::Closed)),
-            )
-                .into_any(),
-            _ => html::span()
-                .attr("aria-current", "page")
-                .child(named)
-                .into_any(),
-        })
+    let shown = match (crumb.leads_to, here) {
+        (_, true) => html::span()
+            .attr("aria-current", "page")
+            .child(named)
+            .into_any(),
+        (Some(href), false) => view! { <A href=href exact=true>{named}</A> }.into_any(),
+        (None, false) => html::span().child(named).into_any(),
+    };
+
+    html::li().class(("home", home)).child((
+        shown,
+        (!here).then(|| {
+            html::span()
+                .class("between")
+                .attr("aria-hidden", "true")
+                .child(icons::mark(Icon::Closed))
+        }),
+    ))
 }
 
 fn named(label: &Label) -> String {
@@ -110,7 +112,7 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
         ["trash"] => vec![said("trash-heading", None)],
         ["invitation"] => vec![said("path-invitation", None)],
         ["setup"] => vec![said("set-up-heading", None)],
-        ["account", "two-step-sign-in"] => vec![said("two-step-heading", None)],
+        ["account", "security"] => vec![said("path-account", None), said("security-heading", None)],
         ["instance", rest @ ..] => {
             let manage = said("account-menu-operator", Some("/instance".to_owned()));
             match rest {

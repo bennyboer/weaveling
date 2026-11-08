@@ -7,9 +7,9 @@ mod recovery_note;
 mod role_dialog;
 mod roster;
 mod second_factor_dialog;
+pub mod security;
 pub mod service;
 pub mod sign_in;
-pub mod two_step;
 pub mod unreachable;
 
 pub use account_menu::account_in_masthead;
@@ -37,6 +37,8 @@ pub struct SignedInAccount {
 pub struct SecondFactorInUse {
     pub since: OffsetDateTime,
     pub recovery_codes_left: usize,
+    pub answered_by_totp: bool,
+    pub answered_by_key: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

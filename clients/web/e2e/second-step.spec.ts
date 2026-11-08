@@ -167,7 +167,7 @@ test("new recovery codes are drawn for a code of the app, and shown once", async
   await owingTheSecondStep(page);
   await page.getByLabel("The code your app shows for Weaveling").fill(THE_APP_CODE);
   await accountButton(page).click();
-  await page.getByRole("menuitem", { name: /Two-step sign-in/ }).click();
+  await page.getByRole("menuitem", { name: "Security" }).click();
 
   // when: they draw new codes with a code of their app
   await page.getByRole("button", { name: "Draw new codes" }).click();
