@@ -7,6 +7,7 @@ use transacting::{Failure, LostRace};
 
 use crate::account::AccountError;
 use crate::catalog::CatalogError;
+use crate::key::InvalidKeyName;
 use crate::lock::InvalidLockReason;
 use crate::name::InvalidAccountName;
 use crate::password::InvalidPassword;
@@ -21,6 +22,8 @@ pub enum AccountsError {
     InvalidName(#[from] InvalidAccountName),
     #[error(transparent)]
     InvalidPassword(#[from] InvalidPassword),
+    #[error("a key's name: {0}")]
+    InvalidKeyName(InvalidKeyName),
     #[error("{0}")]
     InvalidLockReason(InvalidLockReason),
     #[error("this is not the code that was sent")]
@@ -71,6 +74,18 @@ pub enum AccountsError {
     NoSecondFactorOwed,
     #[error("this account has no second factor")]
     NoSecondFactor,
+    #[error("this Weaveling instance is not told where it is served, so it cannot add keys")]
+    KeysUnavailable,
+    #[error("no key is being added; begin again")]
+    NoKeyBeingAdded,
+    #[error("the browser's answer makes no key for this instance")]
+    KeyRefused,
+    #[error("this key is added to an account already")]
+    KeyHeldAlready,
+    #[error("this account holds no such key")]
+    NoSuchKey,
+    #[error("this is not the account's password")]
+    PasswordWrong,
     #[error("too many tries; wait {wait} before trying again")]
     Throttled { wait: Duration },
     #[error(transparent)]

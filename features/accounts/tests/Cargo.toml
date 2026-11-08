@@ -16,6 +16,8 @@ axum-test = { workspace = true }
 serde_json = { workspace = true }
 time = { workspace = true }
 totp-rs = { workspace = true }
+webauthn-rs = { workspace = true }
+webauthn-authenticator-rs = { version = "0.6.2", features = ["softpasskey"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }

@@ -5,6 +5,7 @@ pub enum Guarded {
     SigningIn,
     SendingCodes,
     CheckingSecondFactor,
+    ConfirmingPassword,
 }
 
 impl Guarded {
@@ -13,6 +14,7 @@ impl Guarded {
             Self::SigningIn => "signing-in",
             Self::SendingCodes => "sending-codes",
             Self::CheckingSecondFactor => "checking-second-factor",
+            Self::ConfirmingPassword => "confirming-password",
         }
     }
 
@@ -21,6 +23,7 @@ impl Guarded {
             Self::SigningIn => Rule { free: 5 },
             Self::SendingCodes => Rule { free: 3 },
             Self::CheckingSecondFactor => Rule { free: 5 },
+            Self::ConfirmingPassword => Rule { free: 5 },
         }
     }
 }
@@ -48,6 +51,7 @@ mod tests {
             Guarded::SigningIn.as_str(),
             Guarded::SendingCodes.as_str(),
             Guarded::CheckingSecondFactor.as_str(),
+            Guarded::ConfirmingPassword.as_str(),
         ];
         assert!(
             names

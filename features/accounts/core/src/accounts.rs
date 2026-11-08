@@ -25,14 +25,15 @@ use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::key_ceremonies::KeyCeremonies;
 use crate::secrets::{
-    EmailAddresses, InvitationTickets, Operators, Passwords, SecondFactors, SecretStores,
-    SecretsError, Sessions, Verifications,
+    EmailAddresses, InvitationTickets, KeyCredentials, Operators, Passwords, SecondFactors,
+    SecretStores, SecretsError, Sessions, Verifications,
 };
 use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
 use crate::totp_key::TotpKey;
 use email::EmailAddress;
 
+pub use keys::AddedKey;
 pub use sessions::SignedIn;
 pub use totp::SettingUpTotp;
 
@@ -51,6 +52,7 @@ pub struct AccountsCore {
     invitation_tickets: Arc<dyn InvitationTickets>,
     second_factors: Arc<dyn SecondFactors>,
     totp_key: Option<TotpKey>,
+    key_credentials: Arc<dyn KeyCredentials>,
     key_ceremonies: Option<KeyCeremonies>,
     catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
@@ -77,7 +79,7 @@ impl AccountsCore {
             operators,
             invitation_tickets,
             second_factors,
-            key_credentials: _,
+            key_credentials,
         } = secrets;
 
         Self {
@@ -91,6 +93,7 @@ impl AccountsCore {
             operators,
             invitation_tickets,
             second_factors,
+            key_credentials,
             totp_key: None,
             key_ceremonies: None,
             catalog,
