@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use accounts_core::{
-    AccountEvent, AccountName, DeclineReason, EmailAddress, Lock, LockKind, LockReason, Totp,
+    AccountEvent, AccountName, DeclineReason, EmailAddress, Key, KeyId, KeyName, KeyRole, Lock,
+    LockKind, LockReason, Totp,
 };
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,18 @@ enum StoredAccountEvent {
     RecoveryCodesDrawn,
     RecoveryCodeUsed,
     TotpRemoved,
+    KeyAdded {
+        key: String,
+        name: String,
+        role: StoredKeyRole,
+    },
+    KeyRenamed {
+        key: String,
+        name: String,
+    },
+    KeyRemoved {
+        key: String,
+    },
     Snapshotted {
         email: String,
         name: String,
@@ -51,6 +64,8 @@ enum StoredAccountEvent {
         locks: Vec<StoredLock>,
         #[serde(default)]
         totp: Option<StoredTotp>,
+        #[serde(default)]
+        keys: Vec<StoredKey>,
         #[serde(default)]
         recovery_codes_left: usize,
     },
@@ -129,6 +144,40 @@ impl From<StoredTotp> for Totp {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredKeyRole {
+    Primary,
+    SecondFactor,
+}
+
+impl From<KeyRole> for StoredKeyRole {
+    fn from(role: KeyRole) -> Self {
+        match role {
+            KeyRole::Primary => Self::Primary,
+            KeyRole::SecondFactor => Self::SecondFactor,
+        }
+    }
+}
+
+impl From<StoredKeyRole> for KeyRole {
+    fn from(role: StoredKeyRole) -> Self {
+        match role {
+            StoredKeyRole::Primary => Self::Primary,
+            StoredKeyRole::SecondFactor => Self::SecondFactor,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredKey {
+    key: String,
+    name: String,
+    role: StoredKeyRole,
+    #[serde(with = "time::serde::rfc3339")]
+    since: OffsetDateTime,
+}
+
 pub fn codec() -> Codec<AccountEvent> {
     Codec {
         body: |event| {
@@ -176,6 +225,18 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::RecoveryCodesDrawn => Self::RecoveryCodesDrawn,
             AccountEvent::RecoveryCodeUsed => Self::RecoveryCodeUsed,
             AccountEvent::TotpRemoved => Self::TotpRemoved,
+            AccountEvent::KeyAdded { key, name, role } => Self::KeyAdded {
+                key: key.to_string(),
+                name: name.to_string(),
+                role: (*role).into(),
+            },
+            AccountEvent::KeyRenamed { key, name } => Self::KeyRenamed {
+                key: key.to_string(),
+                name: name.to_string(),
+            },
+            AccountEvent::KeyRemoved { key } => Self::KeyRemoved {
+                key: key.to_string(),
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -185,6 +246,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 operator,
                 locks,
                 totp,
+                keys,
                 recovery_codes_left,
             } => Self::Snapshotted {
                 email: email.to_string(),
@@ -202,6 +264,15 @@ impl From<&AccountEvent> for StoredAccountEvent {
                     })
                     .collect(),
                 totp: totp.map(Into::into),
+                keys: keys
+                    .iter()
+                    .map(|(key, held)| StoredKey {
+                        key: key.to_string(),
+                        name: held.name.to_string(),
+                        role: held.role.into(),
+                        since: held.since,
+                    })
+                    .collect(),
                 recovery_codes_left: *recovery_codes_left,
             },
         }
@@ -223,6 +294,13 @@ fn readable(
 
 fn readable_reason(reason: &str) -> Result<LockReason, UnreadableAccountEvent> {
     LockReason::new(reason).map_err(|_| UnreadableAccountEvent)
+}
+
+fn readable_key(key: &str, name: &str) -> Result<(KeyId, KeyName), UnreadableAccountEvent> {
+    Ok((
+        key.parse().map_err(|_| UnreadableAccountEvent)?,
+        KeyName::new(name).map_err(|_| UnreadableAccountEvent)?,
+    ))
 }
 
 impl TryFrom<StoredAccountEvent> for AccountEvent {
@@ -260,6 +338,21 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::RecoveryCodesDrawn => Self::RecoveryCodesDrawn,
             StoredAccountEvent::RecoveryCodeUsed => Self::RecoveryCodeUsed,
             StoredAccountEvent::TotpRemoved => Self::TotpRemoved,
+            StoredAccountEvent::KeyAdded { key, name, role } => {
+                let (key, name) = readable_key(&key, &name)?;
+                Self::KeyAdded {
+                    key,
+                    name,
+                    role: role.into(),
+                }
+            }
+            StoredAccountEvent::KeyRenamed { key, name } => {
+                let (key, name) = readable_key(&key, &name)?;
+                Self::KeyRenamed { key, name }
+            }
+            StoredAccountEvent::KeyRemoved { key } => Self::KeyRemoved {
+                key: key.parse().map_err(|_| UnreadableAccountEvent)?,
+            },
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -269,9 +362,31 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 operator,
                 locks,
                 totp,
+                keys,
                 recovery_codes_left,
             } => {
                 let (email, name) = readable(&email, &name)?;
+                let keys = keys
+                    .into_iter()
+                    .map(
+                        |StoredKey {
+                             key,
+                             name,
+                             role,
+                             since,
+                         }| {
+                            let (key, name) = readable_key(&key, &name)?;
+                            Ok((
+                                key,
+                                Key {
+                                    name,
+                                    role: role.into(),
+                                    since,
+                                },
+                            ))
+                        },
+                    )
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
                 let locks = locks
                     .into_iter()
                     .map(
@@ -299,6 +414,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     operator,
                     locks,
                     totp: totp.map(Into::into),
+                    keys,
                     recovery_codes_left,
                 }
             }
@@ -367,6 +483,18 @@ mod tests {
             AccountEvent::RecoveryCodesDrawn,
             AccountEvent::RecoveryCodeUsed,
             AccountEvent::TotpRemoved,
+            AccountEvent::KeyAdded {
+                key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
+                name: KeyName::new("YubiKey blue").expect("a plain name"),
+                role: KeyRole::SecondFactor,
+            },
+            AccountEvent::KeyRenamed {
+                key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
+                name: KeyName::new("Keyring").expect("a plain name"),
+            },
+            AccountEvent::KeyRemoved {
+                key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -384,6 +512,14 @@ mod tests {
                 totp: Some(Totp {
                     since: OffsetDateTime::UNIX_EPOCH + Duration::seconds(4_000),
                 }),
+                keys: BTreeMap::from([(
+                    KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
+                    Key {
+                        name: KeyName::new("MacBook").expect("a plain name"),
+                        role: KeyRole::Primary,
+                        since: OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000),
+                    },
+                )]),
                 recovery_codes_left: 7,
             },
         ] {
@@ -438,6 +574,7 @@ mod tests {
             operator: false,
             locks: BTreeMap::new(),
             totp: None,
+            keys: BTreeMap::new(),
             recovery_codes_left: 0,
         });
 

@@ -1,5 +1,5 @@
-use accounts_contract::{AccountEventDTO, PersonalDTO, decline_reason, lock_kind};
-use accounts_core::{AccountEvent, AccountName, DeclineReason, EmailAddress, LockKind};
+use accounts_contract::{AccountEventDTO, PersonalDTO, decline_reason, key_role, lock_kind};
+use accounts_core::{AccountEvent, AccountName, DeclineReason, EmailAddress, KeyRole, LockKind};
 use eventsourcing::Recorded;
 use messaging::Message;
 
@@ -38,6 +38,16 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         },
         AccountEvent::TotpAdded => AccountEventDTO::TotpAdded,
         AccountEvent::TotpRemoved => AccountEventDTO::TotpRemoved,
+        AccountEvent::KeyAdded { key, role, .. } => AccountEventDTO::KeyAdded {
+            key: key.to_string(),
+            role: role_named(*role).to_owned(),
+        },
+        AccountEvent::KeyRenamed { key, .. } => AccountEventDTO::KeyRenamed {
+            key: key.to_string(),
+        },
+        AccountEvent::KeyRemoved { key } => AccountEventDTO::KeyRemoved {
+            key: key.to_string(),
+        },
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
         | AccountEvent::Snapshotted { .. } => return None,
@@ -58,6 +68,13 @@ fn declined_for(reason: DeclineReason) -> &'static str {
     }
 }
 
+fn role_named(role: KeyRole) -> &'static str {
+    match role {
+        KeyRole::Primary => key_role::PRIMARY,
+        KeyRole::SecondFactor => key_role::SECOND_FACTOR,
+    }
+}
+
 fn named(kind: LockKind) -> &'static str {
     match kind {
         LockKind::Operator => lock_kind::OPERATOR,
@@ -70,10 +87,10 @@ mod tests {
 
     use accounts_contract::{
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
-        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
-        TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
+        KEY_ADDED, KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP,
+        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
     };
-    use accounts_core::{AccountId, KIND, LockReason};
+    use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
 
@@ -154,6 +171,22 @@ mod tests {
             ),
             (AccountEvent::TotpAdded, TOTP_ADDED),
             (AccountEvent::TotpRemoved, TOTP_REMOVED),
+            (
+                AccountEvent::KeyAdded {
+                    key: a_key(),
+                    name: KeyName::new("YubiKey blue").expect("a plain name"),
+                    role: KeyRole::SecondFactor,
+                },
+                KEY_ADDED,
+            ),
+            (
+                AccountEvent::KeyRenamed {
+                    key: a_key(),
+                    name: KeyName::new("Keyring").expect("a plain name"),
+                },
+                KEY_RENAMED,
+            ),
+            (AccountEvent::KeyRemoved { key: a_key() }, KEY_REMOVED),
         ]
     }
 
@@ -357,6 +390,7 @@ mod tests {
             operator: false,
             locks: BTreeMap::new(),
             totp: None,
+            keys: BTreeMap::new(),
             recovery_codes_left: 0,
         };
 
@@ -392,5 +426,38 @@ mod tests {
                 .expect("what we wrote must be readable"),
             id
         );
+    }
+
+    fn a_key() -> KeyId {
+        KeyId::generate(clock::at(5_000))
+    }
+
+    #[test]
+    fn a_key_is_published_with_its_role_but_never_its_name() {
+        // given: a key added under a name its author chose
+        let id = an_account();
+        let key = a_key();
+
+        // when: it is published
+        let message = published(
+            &id,
+            AccountEvent::KeyAdded {
+                key,
+                name: KeyName::new("Ada's YubiKey").expect("a plain name"),
+                role: KeyRole::SecondFactor,
+            },
+        );
+
+        // then: it tells the key and its role, and nothing of its name
+        let body: AccountEventDTO = serde_json::from_value(message.payload["event"].clone())
+            .expect("the body is the contract's");
+        assert_eq!(
+            body,
+            AccountEventDTO::KeyAdded {
+                key: key.to_string(),
+                role: key_role::SECOND_FACTOR.to_owned(),
+            }
+        );
+        assert!(!message.payload.to_string().contains("YubiKey"));
     }
 }

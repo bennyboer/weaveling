@@ -8,6 +8,7 @@ use email::EmailAddress;
 use std::collections::BTreeMap;
 
 use crate::decline::DeclineReason;
+use crate::key::{KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use crate::second_factor::SecondFactor;
@@ -255,6 +256,10 @@ fn a_snapshot_holds_everything_the_account_is() {
         &AccountEvent::RecoveryCodeUsed,
         &stamped(8, clock::at(2_900)),
     );
+    account.apply(
+        &a_key_added("YubiKey blue", KeyRole::SecondFactor),
+        &stamped(9, clock::at(2_950)),
+    );
 
     // when: an account is born of its snapshot
     let restored = Account::from_first(&account.snapshot(), &stamped(9, clock::at(3_000)))
@@ -280,6 +285,10 @@ fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
     further.apply(
         &AccountEvent::RecoveryCodeUsed,
         &stamped(8, clock::at(2_900)),
+    );
+    further.apply(
+        &a_key_added("MacBook", KeyRole::Primary),
+        &stamped(9, clock::at(2_950)),
     );
     // and: an account that is only signed up
     let mut behind = a_signed_up_account();
@@ -818,4 +827,316 @@ fn nothing_about_a_second_factor_happens_before_signing_up() {
             Err(AccountError::NotSignedUpYet)
         );
     }
+}
+
+fn a_key() -> KeyId {
+    KeyId::generate(clock::at(5_000))
+}
+
+fn named(name: &str) -> KeyName {
+    KeyName::new(name).expect("a plain key name")
+}
+
+fn a_key_added(name: &str, role: KeyRole) -> AccountEvent {
+    AccountEvent::KeyAdded {
+        key: a_key(),
+        name: named(name),
+        role,
+    }
+}
+
+fn adding(
+    account: &mut Account,
+    key: KeyId,
+    name: &str,
+    role: KeyRole,
+    at: i64,
+) -> Vec<AccountEvent> {
+    let added = account
+        .decide(
+            AccountCommand::AddKey {
+                key,
+                name: named(name),
+                role,
+            },
+            &herself(),
+        )
+        .expect("the key may be added");
+    for event in &added {
+        account.apply(event, &stamped(10, clock::at(at)));
+    }
+
+    added
+}
+
+#[test]
+fn a_second_step_key_as_the_first_second_factor_comes_with_ten_recovery_codes() {
+    // given: a verified account without a second factor
+    let mut account = a_verified_account();
+    let key = a_key();
+
+    // when: a key is added to answer the second step
+    let added = adding(
+        &mut account,
+        key,
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        3_000,
+    );
+
+    // then: it is added, and recovery codes drawn
+    assert_eq!(
+        added,
+        vec![
+            AccountEvent::KeyAdded {
+                key,
+                name: named("YubiKey blue"),
+                role: KeyRole::SecondFactor,
+            },
+            AccountEvent::RecoveryCodesDrawn,
+        ]
+    );
+    // and: the account has a second step from that moment, with ten codes
+    assert_eq!(
+        account.second_factor(),
+        Some(SecondFactor {
+            since: clock::at(3_000),
+            recovery_codes_left: 10,
+        })
+    );
+    // and: a session begun before it no longer counts
+    assert!(!account.counts_session_begun(clock::at(2_999)));
+}
+
+#[test]
+fn a_second_step_key_beside_totp_draws_no_codes_and_the_second_step_keeps_its_moment() {
+    // given: an account with TOTP and a recovery code used
+    let mut account = with_a_second_factor_since(3_000);
+    account.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(4, clock::at(3_500)),
+    );
+
+    // when: a key is added to answer the second step as well
+    let added = adding(
+        &mut account,
+        a_key(),
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        4_000,
+    );
+
+    // then: no codes are drawn
+    assert_eq!(added.len(), 1);
+    // and: the second step is still the one since TOTP, its codes as they were
+    assert_eq!(
+        account.second_factor(),
+        Some(SecondFactor {
+            since: clock::at(3_000),
+            recovery_codes_left: 9,
+        })
+    );
+}
+
+#[test]
+fn a_primary_key_is_no_second_factor_and_ends_no_session() {
+    // given: a verified account without a second factor
+    let mut account = a_verified_account();
+
+    // when: a passkey signing in alone is added
+    let added = adding(&mut account, a_key(), "MacBook", KeyRole::Primary, 3_000);
+
+    // then: no codes are drawn, and there is no second step
+    assert_eq!(added.len(), 1);
+    assert_eq!(account.second_factor(), None);
+    // and: a session begun before it still counts
+    assert!(account.counts_session_begun(clock::at(2_000)));
+    // and: the account holds the key
+    assert_eq!(account.keys().len(), 1);
+}
+
+#[test]
+fn no_two_keys_of_an_account_share_an_id_or_a_name() {
+    // given: an account holding a key
+    let mut account = a_verified_account();
+    let key = a_key();
+    adding(
+        &mut account,
+        key,
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        3_000,
+    );
+
+    // expect: one more by the same id is refused
+    assert_eq!(
+        account.decide(
+            AccountCommand::AddKey {
+                key,
+                name: named("YubiKey green"),
+                role: KeyRole::SecondFactor,
+            },
+            &herself()
+        ),
+        Err(AccountError::KeyAlreadyAdded)
+    );
+    // and: one more by the same name is refused
+    assert_eq!(
+        account.decide(
+            AccountCommand::AddKey {
+                key: KeyId::generate(clock::at(5_001)),
+                name: named("YubiKey blue"),
+                role: KeyRole::Primary,
+            },
+            &herself()
+        ),
+        Err(AccountError::KeyNameTaken)
+    );
+}
+
+#[test]
+fn an_account_holds_at_most_twenty_keys() {
+    // given: an account holding twenty keys
+    let mut account = a_verified_account();
+    for number in 0..Account::MOST_KEYS {
+        adding(
+            &mut account,
+            KeyId::generate(clock::at(5_000)),
+            &format!("Key {number}"),
+            KeyRole::Primary,
+            3_000,
+        );
+    }
+
+    // expect: one more is refused
+    assert_eq!(
+        account.decide(
+            AccountCommand::AddKey {
+                key: KeyId::generate(clock::at(5_000)),
+                name: named("One too many"),
+                role: KeyRole::Primary,
+            },
+            &herself()
+        ),
+        Err(AccountError::TooManyKeys)
+    );
+}
+
+#[test]
+fn a_key_is_renamed_to_a_name_no_other_key_has() {
+    // given: an account holding two keys
+    let mut account = a_verified_account();
+    let blue = a_key();
+    let green = KeyId::generate(clock::at(5_001));
+    adding(
+        &mut account,
+        blue,
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        3_000,
+    );
+    adding(
+        &mut account,
+        green,
+        "YubiKey green",
+        KeyRole::SecondFactor,
+        3_000,
+    );
+    let rename = |key, name: &str| AccountCommand::RenameKey {
+        key,
+        name: named(name),
+    };
+
+    // expect: renaming one to the other's name is refused
+    assert_eq!(
+        account.decide(rename(blue, "YubiKey green"), &herself()),
+        Err(AccountError::KeyNameTaken)
+    );
+    // and: renaming one to its own name changes nothing
+    assert_eq!(
+        account.decide(rename(blue, "YubiKey blue"), &herself()),
+        Ok(vec![])
+    );
+    // and: renaming a key the account does not hold is refused
+    assert_eq!(
+        account.decide(
+            rename(KeyId::generate(clock::at(5_002)), "Lost"),
+            &herself()
+        ),
+        Err(AccountError::NoSuchKey)
+    );
+    // when: one is renamed to a free name
+    let renamed = account
+        .decide(rename(blue, "Keyring"), &herself())
+        .expect("a free name");
+    for event in &renamed {
+        account.apply(event, &stamped(11, clock::at(4_000)));
+    }
+    // then: it holds that name
+    assert_eq!(account.keys()[&blue].name, named("Keyring"));
+}
+
+#[test]
+fn removing_the_last_second_factor_drops_the_codes_and_ends_every_session() {
+    // given: an account whose only second factor is a key
+    let mut account = a_verified_account();
+    let key = a_key();
+    adding(
+        &mut account,
+        key,
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        3_000,
+    );
+
+    // when: the key is removed
+    let removed = account
+        .decide(AccountCommand::RemoveKey { key }, &herself())
+        .expect("its key");
+    assert_eq!(removed, vec![AccountEvent::KeyRemoved { key }]);
+    account.apply(&removed[0], &stamped(11, clock::at(4_000)));
+
+    // then: there is no second step, nor codes for one
+    assert_eq!(account.second_factor(), None);
+    assert!(account.keys().is_empty());
+    assert_eq!(
+        account.decide(AccountCommand::UseRecoveryCode, &herself()),
+        Err(AccountError::NoSecondFactor)
+    );
+    // and: a session begun before no longer counts
+    assert!(!account.counts_session_begun(clock::at(3_999)));
+    // and: removing it again changes nothing
+    assert_eq!(
+        account.decide(AccountCommand::RemoveKey { key }, &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn turning_totp_off_beside_a_second_step_key_keeps_the_codes() {
+    // given: an account with TOTP, a code used, and a second-step key added later
+    let mut account = with_a_second_factor_since(3_000);
+    account.apply(
+        &AccountEvent::RecoveryCodeUsed,
+        &stamped(4, clock::at(3_500)),
+    );
+    adding(
+        &mut account,
+        a_key(),
+        "YubiKey blue",
+        KeyRole::SecondFactor,
+        4_000,
+    );
+
+    // when: TOTP is turned off
+    account.apply(&AccountEvent::TotpRemoved, &stamped(11, clock::at(5_000)));
+
+    // then: the key answers the second step since it was added, the codes kept
+    assert_eq!(
+        account.second_factor(),
+        Some(SecondFactor {
+            since: clock::at(4_000),
+            recovery_codes_left: 9,
+        })
+    );
 }

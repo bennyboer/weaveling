@@ -149,6 +149,9 @@ pub const LOCKED: &str = "account.locked";
 pub const UNLOCKED: &str = "account.unlocked";
 pub const TOTP_ADDED: &str = "account.totp.added";
 pub const TOTP_REMOVED: &str = "account.totp.removed";
+pub const KEY_ADDED: &str = "account.key.added";
+pub const KEY_RENAMED: &str = "account.key.renamed";
+pub const KEY_REMOVED: &str = "account.key.removed";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -186,11 +189,22 @@ pub enum AccountEventDTO {
     TotpAdded,
     #[serde(rename = "TOTP_REMOVED")]
     TotpRemoved,
+    #[serde(rename = "KEY_ADDED")]
+    KeyAdded { key: String, role: String },
+    #[serde(rename = "KEY_RENAMED")]
+    KeyRenamed { key: String },
+    #[serde(rename = "KEY_REMOVED")]
+    KeyRemoved { key: String },
 }
 
 pub mod sign_up {
     pub const OPEN: &str = "open";
     pub const BY_INVITATION: &str = "invitation";
+}
+
+pub mod key_role {
+    pub const PRIMARY: &str = "primary";
+    pub const SECOND_FACTOR: &str = "second-factor";
 }
 
 pub mod decline_reason {

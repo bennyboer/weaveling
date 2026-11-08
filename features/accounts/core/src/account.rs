@@ -5,6 +5,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::decline::DeclineReason;
+use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use crate::recovery_code::RecoveryCode;
@@ -27,6 +28,9 @@ const TOTP_ADDED: EventName = EventName::of("TOTP_ADDED");
 const RECOVERY_CODES_DRAWN: EventName = EventName::of("RECOVERY_CODES_DRAWN");
 const RECOVERY_CODE_USED: EventName = EventName::of("RECOVERY_CODE_USED");
 const TOTP_REMOVED: EventName = EventName::of("TOTP_REMOVED");
+const KEY_ADDED: EventName = EventName::of("KEY_ADDED");
+const KEY_RENAMED: EventName = EventName::of("KEY_RENAMED");
+const KEY_REMOVED: EventName = EventName::of("KEY_REMOVED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +58,18 @@ pub enum AccountCommand {
     DrawRecoveryCodes,
     UseRecoveryCode,
     RemoveTotp,
+    AddKey {
+        key: KeyId,
+        name: KeyName,
+        role: KeyRole,
+    },
+    RenameKey {
+        key: KeyId,
+        name: KeyName,
+    },
+    RemoveKey {
+        key: KeyId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +104,18 @@ pub enum AccountEvent {
     RecoveryCodesDrawn,
     RecoveryCodeUsed,
     TotpRemoved,
+    KeyAdded {
+        key: KeyId,
+        name: KeyName,
+        role: KeyRole,
+    },
+    KeyRenamed {
+        key: KeyId,
+        name: KeyName,
+    },
+    KeyRemoved {
+        key: KeyId,
+    },
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -97,6 +125,7 @@ pub enum AccountEvent {
         operator: bool,
         locks: BTreeMap<LockKind, Lock>,
         totp: Option<Totp>,
+        keys: BTreeMap<KeyId, Key>,
         recovery_codes_left: usize,
     },
 }
@@ -111,6 +140,7 @@ pub struct Account {
     operator: bool,
     locks: BTreeMap<LockKind, Lock>,
     totp: Option<Totp>,
+    keys: BTreeMap<KeyId, Key>,
     recovery_codes_left: usize,
 }
 
@@ -130,9 +160,19 @@ pub enum AccountError {
     NoSecondFactor,
     #[error("the account has no recovery code left")]
     NoRecoveryCodeLeft,
+    #[error("the account holds a key by that id already")]
+    KeyAlreadyAdded,
+    #[error("the account holds no key by that id")]
+    NoSuchKey,
+    #[error("another key of the account has that name")]
+    KeyNameTaken,
+    #[error("an account holds at most {} keys", Account::MOST_KEYS)]
+    TooManyKeys,
 }
 
 impl Account {
+    pub const MOST_KEYS: usize = 20;
+
     pub fn email(&self) -> &EmailAddress {
         &self.email
     }
@@ -154,10 +194,25 @@ impl Account {
     }
 
     pub fn second_factor(&self) -> Option<SecondFactor> {
-        self.totp.map(|totp| SecondFactor {
-            since: totp.since,
-            recovery_codes_left: self.recovery_codes_left,
-        })
+        let second_step_keys = self
+            .keys
+            .values()
+            .filter(|key| key.role == KeyRole::SecondFactor)
+            .map(|key| key.since);
+
+        self.totp
+            .map(|totp| totp.since)
+            .into_iter()
+            .chain(second_step_keys)
+            .min()
+            .map(|since| SecondFactor {
+                since,
+                recovery_codes_left: self.recovery_codes_left,
+            })
+    }
+
+    pub fn keys(&self) -> &BTreeMap<KeyId, Key> {
+        &self.keys
     }
 
     pub fn totp(&self) -> Option<Totp> {
@@ -194,6 +249,9 @@ impl Event for AccountEvent {
             Self::RecoveryCodesDrawn => RECOVERY_CODES_DRAWN,
             Self::RecoveryCodeUsed => RECOVERY_CODE_USED,
             Self::TotpRemoved => TOTP_REMOVED,
+            Self::KeyAdded { .. } => KEY_ADDED,
+            Self::KeyRenamed { .. } => KEY_RENAMED,
+            Self::KeyRemoved { .. } => KEY_REMOVED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -236,7 +294,10 @@ impl Aggregate for Account {
             | AccountCommand::AddTotp
             | AccountCommand::DrawRecoveryCodes
             | AccountCommand::UseRecoveryCode
-            | AccountCommand::RemoveTotp => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::RemoveTotp
+            | AccountCommand::AddKey { .. }
+            | AccountCommand::RenameKey { .. }
+            | AccountCommand::RemoveKey { .. } => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -251,6 +312,7 @@ impl Aggregate for Account {
                 operator: false,
                 locks: BTreeMap::new(),
                 totp: None,
+                keys: BTreeMap::new(),
                 recovery_codes_left: 0,
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
@@ -262,6 +324,7 @@ impl Aggregate for Account {
                 operator: false,
                 locks: BTreeMap::new(),
                 totp: None,
+                keys: BTreeMap::new(),
                 recovery_codes_left: 0,
             }),
             AccountEvent::Snapshotted {
@@ -273,6 +336,7 @@ impl Aggregate for Account {
                 operator,
                 locks,
                 totp,
+                keys,
                 recovery_codes_left,
             } => Some(Self {
                 email: email.clone(),
@@ -283,6 +347,7 @@ impl Aggregate for Account {
                 operator: *operator,
                 locks: locks.clone(),
                 totp: *totp,
+                keys: keys.clone(),
                 recovery_codes_left: *recovery_codes_left,
             }),
             AccountEvent::EmailVerified
@@ -296,7 +361,10 @@ impl Aggregate for Account {
             | AccountEvent::TotpAdded
             | AccountEvent::RecoveryCodesDrawn
             | AccountEvent::RecoveryCodeUsed
-            | AccountEvent::TotpRemoved => None,
+            | AccountEvent::TotpRemoved
+            | AccountEvent::KeyAdded { .. }
+            | AccountEvent::KeyRenamed { .. }
+            | AccountEvent::KeyRemoved { .. } => None,
         }
     }
 
@@ -354,6 +422,38 @@ impl Aggregate for Account {
             AccountCommand::UseRecoveryCode => Ok(vec![AccountEvent::RecoveryCodeUsed]),
             AccountCommand::RemoveTotp if self.totp.is_none() => Ok(vec![]),
             AccountCommand::RemoveTotp => Ok(vec![AccountEvent::TotpRemoved]),
+            AccountCommand::AddKey { key, .. } if self.keys.contains_key(&key) => {
+                Err(AccountError::KeyAlreadyAdded)
+            }
+            AccountCommand::AddKey { .. } if self.keys.len() >= Self::MOST_KEYS => {
+                Err(AccountError::TooManyKeys)
+            }
+            AccountCommand::AddKey { ref name, .. } if self.names_a_key(name) => {
+                Err(AccountError::KeyNameTaken)
+            }
+            AccountCommand::AddKey { key, name, role } => {
+                let first_second_factor =
+                    role == KeyRole::SecondFactor && self.second_factor().is_none();
+                let added = AccountEvent::KeyAdded { key, name, role };
+
+                Ok(if first_second_factor {
+                    vec![added, AccountEvent::RecoveryCodesDrawn]
+                } else {
+                    vec![added]
+                })
+            }
+            AccountCommand::RenameKey { key, .. } if !self.keys.contains_key(&key) => {
+                Err(AccountError::NoSuchKey)
+            }
+            AccountCommand::RenameKey { key, name } if self.keys[&key].name == name => Ok(vec![]),
+            AccountCommand::RenameKey { ref name, .. } if self.names_a_key(name) => {
+                Err(AccountError::KeyNameTaken)
+            }
+            AccountCommand::RenameKey { key, name } => {
+                Ok(vec![AccountEvent::KeyRenamed { key, name }])
+            }
+            AccountCommand::RemoveKey { key } if !self.keys.contains_key(&key) => Ok(vec![]),
+            AccountCommand::RemoveKey { key } => Ok(vec![AccountEvent::KeyRemoved { key }]),
         }
     }
 
@@ -384,19 +484,34 @@ impl Aggregate for Account {
                 });
                 self.sessions_since = Some(metadata.occurred_at);
             }
-            AccountEvent::RecoveryCodesDrawn => {
-                if self.second_factor().is_some() {
-                    self.recovery_codes_left = RecoveryCode::DRAWN;
-                }
-            }
+            AccountEvent::RecoveryCodesDrawn => self.recovery_codes_left = RecoveryCode::DRAWN,
             AccountEvent::RecoveryCodeUsed => {
                 self.recovery_codes_left = self.recovery_codes_left.saturating_sub(1);
             }
             AccountEvent::TotpRemoved => {
                 self.totp = None;
-                if self.second_factor().is_none() {
-                    self.recovery_codes_left = 0;
+                self.sessions_since = Some(metadata.occurred_at);
+            }
+            AccountEvent::KeyAdded { key, name, role } => {
+                self.keys.insert(
+                    *key,
+                    Key {
+                        name: name.clone(),
+                        role: *role,
+                        since: metadata.occurred_at,
+                    },
+                );
+                if *role == KeyRole::SecondFactor {
+                    self.sessions_since = Some(metadata.occurred_at);
                 }
+            }
+            AccountEvent::KeyRenamed { key, name } => {
+                if let Some(held) = self.keys.get_mut(key) {
+                    held.name = name.clone();
+                }
+            }
+            AccountEvent::KeyRemoved { key } => {
+                self.keys.remove(key);
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::Snapshotted {
@@ -408,6 +523,7 @@ impl Aggregate for Account {
                 operator,
                 locks,
                 totp,
+                keys,
                 recovery_codes_left,
             } => {
                 self.email = email.clone();
@@ -418,6 +534,7 @@ impl Aggregate for Account {
                 self.operator = *operator;
                 self.locks = locks.clone();
                 self.totp = *totp;
+                self.keys = keys.clone();
                 self.recovery_codes_left = *recovery_codes_left;
             }
         }
@@ -433,7 +550,14 @@ impl Aggregate for Account {
             operator: self.operator,
             locks: self.locks.clone(),
             totp: self.totp,
+            keys: self.keys.clone(),
             recovery_codes_left: self.recovery_codes_left,
         }
+    }
+}
+
+impl Account {
+    fn names_a_key(&self, name: &KeyName) -> bool {
+        self.keys.values().any(|held| held.name == *name)
     }
 }
