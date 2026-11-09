@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "./e2e",
   outputDir: "../../target/web/e2e",
   fullyParallel: true,
-  workers: process.env.CI ? 2 : 4,
+  workers: process.env.CI ? 2 : 12,
   retries: 1,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
@@ -14,7 +14,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "cargo leptos serve -- --config clients/web/e2e/weaveling.toml",
+    command: "cargo leptos serve --split -- --config clients/web/e2e/weaveling.toml",
     cwd: "../..",
     url: "http://127.0.0.1:3000/api/service/health",
     reuseExistingServer: true,

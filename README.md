@@ -125,7 +125,7 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
   cd clients/web && npm install && npx playwright install chromium
   ```
 
-- **Docker**, only for the tests that run against a real PostgreSQL. `cargo test` without them needs nothing:
+- **Docker**, only for the tests that run against a real PostgreSQL. `cargo nextest run` without them needs nothing:
 
   ```bash
   docker compose up -d
@@ -138,18 +138,34 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
 One process: the API serves the client beside `/api`, and [cargo-leptos](https://github.com/leptos-rs/cargo-leptos) builds both and watches them (`cargo install --locked cargo-leptos` once; it needs `node` on the path for the editor's JavaScript, and if a `wasm-bindgen` of your own is installed, it must be the version `Cargo.lock` names).
 
 ```bash
-cargo leptos watch
+cargo dev
 ```
 
-Then **open http://localhost:3000**. A change to the client rebuilds it and reloads the page, a change to the styles swaps them in without a reload, and a change to the server rebuilds and restarts it, then reloads the page. Arguments for the server go after `--`, as in `cargo leptos watch -- --config my.toml`.
+`cargo dev` is an alias, in `.cargo/config.toml`, for `cargo leptos watch --split`. Then **open http://localhost:3000**. Always pass `--split` when calling cargo-leptos yourself: the views are loaded as they are opened (`clients/web/src/app/lazy.rs`), and a build without it shows a blank page, its code asking for a module only the split makes. A change to the client rebuilds it and reloads the page, a change to the styles swaps them in without a reload, and a change to the server rebuilds and restarts it, then reloads the page. Arguments for the server go after `--`, as in `cargo dev -- --config my.toml`.
 
 `TraceLayer` emits at DEBUG while `tracing_subscriber` defaults to INFO, so you get no request log unless you ask for one:
 
 ```bash
-RUST_LOG=info,tower_http=debug cargo leptos watch
+RUST_LOG=info,tower_http=debug cargo dev
 ```
 
-The API alone, without the client, still runs as `cargo run -p weaveling-service-api`. For a release, `cargo leptos build --release` writes the client to `target/site` and the server to `target/release`; start the server with `client_dir` (`WEAVELING_CLIENT_DIR`) naming that folder.
+The API alone, without the client, still runs as `cargo run -p weaveling-service-api`.
+
+### Running a release build
+
+Build the client, split by view and sized for the web, and the server beside it:
+
+```bash
+cargo build-release
+```
+
+`cargo build-release` is an alias, in `.cargo/config.toml`, for `cargo leptos build --release --split`. That writes the client to `target/site` (`page.html`, the styles, fonts and icons, and `pkg/` with the WebAssembly chunks) and the server to `target/release/weaveling-service-api` (`.exe` on Windows). The two travel together: copy both wherever the instance runs. Then start the server, naming the client's folder:
+
+```bash
+WEAVELING_CLIENT_DIR=target/site ./target/release/weaveling-service-api --config weaveling.toml
+```
+
+or with `client_dir = "target/site"` under `[server]` in the settings file. Without either, the server answers `/api` only and hands out no client. It listens on `127.0.0.1:3000` unless told otherwise (below); behind a proxy, set `public_url` to the address people open, or no passkey can be added. The files are handed out uncompressed, so let the proxy in front compress them, gzip or brotli: the first download is about 1.9 MB raw and 0.5 MB compressed.
 
 **Settings are read once, at startup:** built-in defaults, then a `weaveling.toml` beside the server (or the file `--config <path>` or `WEAVELING_CONFIG` names), then the variables below, the later winning. [`weaveling.example.toml`](./weaveling.example.toml) names every key, each with the variable of the same meaning. A value the server cannot read stops it, saying which key in which file or which variable holds it. The API listens on `127.0.0.1:3000` unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port, `0.0.0.0:3000` to be reached from other machines.
 
@@ -183,7 +199,7 @@ cd clients/web
 npm test
 ```
 
-Playwright starts the server with `cargo leptos serve` if it isn't running and reuses it if it is, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
+Playwright starts the server with `cargo leptos serve --split` if it isn't running and reuses it if it is, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
 
 `npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3000 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
 
@@ -198,14 +214,14 @@ Two things to know before writing more of these. Selectors are **role plus acces
 | Command | Does |
 |---|---|
 | `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — cargo-leptos builds it, for a different target. |
-| `cargo test` | Runs the workspace test suite. Nothing here needs a database. |
-| `cargo test --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`. |
+| `cargo nextest run` | Runs the workspace test suite, every test of every crate at once ([cargo-nextest](https://nexte.st), `cargo install --locked cargo-nextest`). Nothing here needs a database. `cargo test` still works, only slower, as it runs one test binary after another. |
+| `cargo nextest run --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`, whose PostgreSQL takes 300 connections, as the tests run many at once; `.config/nextest.toml` lets only two of the API's journeys on PostgreSQL run together, which also keeps CI under its 100. |
 | `cargo fmt --all` | Formats everything. |
 | `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
 | `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
 | — | CI runs all of the above plus the browser suite, against a PostgreSQL service container. See [.github/workflows/check.yml](./.github/workflows/check.yml). |
 | `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without building it. |
-| `cargo leptos build --release` | Produces the optimised client in `target/site` and the server beside it. |
+| `cargo build-release` | Produces the optimised client, split by view, in `target/site` and the server beside it (`cargo leptos build --release --split`). |
 | `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the server itself if it isn't already up, and reuses it if it is. |
 
 ### Layout

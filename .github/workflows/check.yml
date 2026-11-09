@@ -56,8 +56,10 @@ jobs:
       - name: lint the client
         run: cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown -- -D warnings
 
+      - uses: taiki-e/install-action@nextest
+
       - name: test
-        run: cargo test --workspace --all-features
+        run: cargo nextest run --workspace --all-features
 
   browser:
     runs-on: ubuntu-latest
@@ -90,10 +92,6 @@ jobs:
         working-directory: clients/web
         run: npm run test:local
 
-      - name: test in a browser, against the split release build
-        working-directory: clients/web
-        run: npm run test:split
-
       - name: keep the traces of what failed
         if: failure()
         uses: actions/upload-artifact@v4
@@ -102,5 +100,4 @@ jobs:
           path: |
             target/web/e2e
             target/web/e2e-local
-            target/web/e2e-split
           retention-days: 14

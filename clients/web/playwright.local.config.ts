@@ -15,6 +15,7 @@ const inherited = Object.fromEntries(
 
 export default defineConfig({
   ...served,
+  workers: process.env.CI ? 2 : 4,
   outputDir: "../../target/web/e2e-local",
   webServer: {
     ...server,

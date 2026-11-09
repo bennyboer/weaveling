@@ -21,7 +21,8 @@ default-members = [
 ]
 
 # cargo-leptos builds the client and starts the server that serves it beside /api:
-# `cargo leptos watch` while developing, `cargo leptos build --release` for a release.
+# `cargo leptos watch --split` while developing, `cargo leptos build --release --split` for a release;
+# always with --split, as the views are loaded as they are opened and nothing works unsplit.
 [[workspace.metadata.leptos]]
 name = "weaveling"
 lib-package = "weaveling-client-web"

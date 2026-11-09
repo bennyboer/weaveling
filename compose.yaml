@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
+    # The tests run many at once, each with a schema and a small pool of its own.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: weaveling
       POSTGRES_PASSWORD: weaveling

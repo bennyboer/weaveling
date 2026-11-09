@@ -12,6 +12,7 @@ fn a_folder() -> PathBuf {
         std::process::id(),
         FOLDERS.fetch_add(1, Ordering::Relaxed)
     ));
+    let _gone = fs::remove_dir_all(&folder);
     fs::create_dir_all(&folder).expect("a folder can be made");
 
     folder

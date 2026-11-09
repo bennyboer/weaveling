@@ -1,0 +1,8 @@
+# The API's journeys on PostgreSQL open a schema and a pool for every feature each,
+# so only a few at once, or together they take more connections than the server allows.
+[test-groups]
+postgres-journeys = { max-threads = 2 }
+
+[[profile.default.overrides]]
+filter = "binary(on_postgres)"
+test-group = "postgres-journeys"

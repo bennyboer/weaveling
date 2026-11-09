@@ -1,2 +1,8 @@
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "link-arg=-zstack-size=4194304"]
+
+[alias]
+# The client and the server, built, served at http://localhost:3000 and rebuilt on every change.
+dev = "leptos watch --split"
+# The client and the server built for a release: the client in target/site, split by view and sized for the web.
+build-release = "leptos build --release --split"

@@ -23,6 +23,7 @@ const inherited = Object.fromEntries(
 
 export default defineConfig({
   ...served,
+  workers: process.env.CI ? 2 : 4,
   outputDir: "../../target/web/e2e-accounts",
   globalSetup: "./e2e/support/signed-in.ts",
   use: { ...served.use, storageState: signedIn },

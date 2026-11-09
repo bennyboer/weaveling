@@ -2,11 +2,6 @@ import { test, expect } from "@playwright/test";
 
 import { aNewProject, openTheOutline } from "./support/shell";
 
-test.skip(
-  process.env.WEAVELING_E2E_SPLIT !== "on",
-  "only a split build loads views as they are opened",
-);
-
 test("a view's code is fetched only once the view is opened", async ({
   page,
 }) => {

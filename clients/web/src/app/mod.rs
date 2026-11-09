@@ -1,7 +1,7 @@
 mod board;
 mod idea;
 mod ideas;
-/// The views loaded only once they are opened: a build split by `cargo leptos build --split` fetches each one's code as its own chunk, so opening Weaveling waits for none of them.
+/// The views loaded only once they are opened: each one's code is a chunk of its own, fetched when it is first opened, so opening Weaveling waits for none of them; every build is therefore split, `--split`.
 mod lazy;
 mod members;
 mod missing;
