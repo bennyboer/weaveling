@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::Failure;
 
-pub const TRIES: u8 = 5;
+pub const TRIES: u8 = 8;
 const FIRST_PAUSE: Duration = Duration::from_millis(10);
 
 pub trait LostRace {

@@ -689,6 +689,7 @@ refused-key-name-too-long = A key’s name can be at most { $max } characters lo
 refused-too-many-keys = An account holds at most 20 keys. Remove one first.
 refused-password-wrong = That is not your password.
 refused-preferred-way-unknown = A second step is asked first by the app, by a key, or as it was answered last.
+refused-key-role-unknown = A key signs in alone, as a passkey, or answers the second step.
 instance-account-appoint = Make operator
 instance-account-dismiss = Take away the operator role
 instance-appoint-dialog = Make { $name } an operator

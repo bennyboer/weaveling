@@ -163,6 +163,23 @@ pub struct KeyChallengeDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PasskeyChallengeDTO {
+    pub signing_in: String,
+    pub options: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PasskeySignInRequest {
+    pub signing_in: String,
+    pub answer: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeyChallengeRequest {
+    pub role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct KeyAnswerRequest {
     pub answer: serde_json::Value,
 }
@@ -333,8 +350,9 @@ pub mod refused {
     pub const TOO_MANY_KEYS: &str = "too-many-keys";
     pub const PASSWORD_WRONG: &str = "password-wrong";
     pub const PREFERRED_WAY_UNKNOWN: &str = "preferred-way-unknown";
+    pub const KEY_ROLE_UNKNOWN: &str = "key-role-unknown";
 
-    pub const EVERY: [&str; 52] = [
+    pub const EVERY: [&str; 53] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -387,5 +405,6 @@ pub mod refused {
         TOO_MANY_KEYS,
         PASSWORD_WRONG,
         PREFERRED_WAY_UNKNOWN,
+        KEY_ROLE_UNKNOWN,
     ];
 }

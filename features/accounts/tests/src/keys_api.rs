@@ -1,6 +1,7 @@
 use accounts_contract::{
-    AddKeyRequest, AddedKeyDTO, KeyAnswerRequest, KeyChallengeDTO, KeyDTO, PasswordRequest,
-    RenameKeyRequest, SignedInDTO, key_role, refused, stage,
+    AddKeyRequest, AddedKeyDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
+    PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest, RenameKeyRequest, SignedInDTO,
+    key_role, refused, stage,
 };
 use accounts_core::KeyCeremonies;
 use axum::http::StatusCode;
@@ -347,5 +348,127 @@ async fn a_touch_with_nothing_asked_is_refused_and_nobody_signed_in_is_asked_not
         &served.server.post("/sessions/current/key/challenge").await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
+    );
+}
+
+impl Served {
+    async fn challenge_as(&self, cookie: &str, role: &str) -> TestResponse {
+        self.server
+            .post("/accounts/current/keys/challenge")
+            .add_header(COOKIE, cookie.to_owned())
+            .json(&KeyChallengeRequest {
+                role: role.to_owned(),
+            })
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_passkey_is_asked_for_resident_and_checking_its_user_and_listed_as_signing_in_alone() {
+    // given: a signed-in author
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+
+    // when: adding a passkey begins
+    let asked = served.challenge_as(&cookie, key_role::PRIMARY).await;
+
+    // then: the browser is asked for a resident credential that checks its user
+    asked.assert_status_ok();
+    let options = asked.json::<KeyChallengeDTO>().options;
+    let selection = &options["publicKey"]["authenticatorSelection"];
+    assert_eq!(selection["residentKey"], "required");
+    assert_eq!(selection["userVerification"], "required");
+    // when: the passkey made is added
+    let mut eased = options;
+    eased["publicKey"]["authenticatorSelection"]["residentKey"] = "discouraged".into();
+    eased["publicKey"]["authenticatorSelection"]["requireResidentKey"] = false.into();
+    let added = served.add(&cookie, "MacBook", made_for(eased)).await;
+    // then: it is listed as signing in alone, with no recovery codes
+    added.assert_status(StatusCode::CREATED);
+    assert!(added.json::<AddedKeyDTO>().recovery_codes.is_none());
+    let cookie = cookie_set_by(&added);
+    assert_eq!(served.keys(&cookie).await[0].role, key_role::PRIMARY);
+}
+
+#[tokio::test]
+async fn a_key_asked_for_in_a_role_that_is_none_is_rejected() {
+    // given: a signed-in author
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+
+    // expect: a role that is none is rejected
+    refused_as(
+        &served.challenge_as(&cookie, "bodyguard").await,
+        StatusCode::BAD_REQUEST,
+        refused::KEY_ROLE_UNKNOWN,
+    );
+}
+
+impl Served {
+    async fn passkey_signing_in(&self) -> PasskeyChallengeDTO {
+        let asked = self.server.post("/sessions/passkey/challenge").await;
+        asked.assert_status_ok();
+
+        asked.json()
+    }
+
+    async fn sign_in_with_passkey(&self, signing_in: &str, answer: Value) -> TestResponse {
+        self.server
+            .post("/sessions/passkey")
+            .json(&PasskeySignInRequest {
+                signing_in: signing_in.to_owned(),
+                answer,
+            })
+            .await
+    }
+}
+
+#[tokio::test]
+async fn a_passkey_signs_in_alone_under_a_new_cookie_with_no_address_typed() {
+    // given: an author with a passkey, made over REST
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let mut authenticator = SoftPasskey::new(true);
+    let mut asked = served
+        .challenge_as(&cookie, key_role::PRIMARY)
+        .await
+        .json::<KeyChallengeDTO>()
+        .options;
+    asked["publicKey"]["authenticatorSelection"]["residentKey"] = "discouraged".into();
+    asked["publicKey"]["authenticatorSelection"]["requireResidentKey"] = false.into();
+    let made = made_by(&mut authenticator, asked);
+    let credential = made["rawId"].clone();
+    served
+        .add(&cookie, "MacBook", made)
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // when: signing in by passkey is begun by nobody, and the passkey touched
+    let signing_in = served.passkey_signing_in().await;
+    let mut options = signing_in.options;
+    assert!(
+        options.get("mediation").is_none(),
+        "a button asks too, not only autofill"
+    );
+    options["publicKey"]["allowCredentials"] = json!([{ "type": "public-key", "id": credential }]);
+    let mut touch = touch_of(&mut authenticator, options);
+    touch["response"]["userHandle"] =
+        crate::key_service::base64_url(served.ada.as_uuid().as_bytes()).into();
+    let signed_in = served
+        .sign_in_with_passkey(&signing_in.signing_in, touch.clone())
+        .await;
+
+    // then: she is signed in all the way, under a cookie of her own
+    signed_in.assert_status_ok();
+    assert_eq!(signed_in.json::<SignedInDTO>().stage, stage::SIGNED_IN);
+    let renewed = cookie_set_by(&signed_in);
+    assert_eq!(served.keys(&renewed).await.len(), 1);
+    // and: the same touch signs in nobody again
+    refused_as(
+        &served
+            .sign_in_with_passkey(&signing_in.signing_in, touch)
+            .await,
+        StatusCode::CONFLICT,
+        refused::NO_KEY_BEING_ASKED,
     );
 }

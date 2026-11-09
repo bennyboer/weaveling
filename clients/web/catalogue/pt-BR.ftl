@@ -689,6 +689,7 @@ refused-key-name-too-long = O nome de uma chave pode ter no máximo { $max } car
 refused-too-many-keys = Uma conta tem no máximo 20 chaves. Remova uma primeiro.
 refused-password-wrong = Essa não é a sua senha.
 refused-preferred-way-unknown = A segunda etapa é pedida primeiro pelo app, por uma chave ou como foi respondida da última vez.
+refused-key-role-unknown = Uma chave entra sozinha, como chave de acesso, ou responde à segunda etapa.
 instance-account-appoint = Tornar operador
 instance-account-dismiss = Tirar o papel de operador
 instance-appoint-dialog = Tornar { $name } operador

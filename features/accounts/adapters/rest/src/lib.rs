@@ -1,16 +1,16 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
-    DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockDTO, LockRequest,
-    NewPasswordRequest, PasswordRequest, PasswordResetRequest, PreferredWayRequest,
-    RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
-    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused,
-    second_step_way, stage,
+    DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
+    LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
+    PasswordRequest, PasswordResetRequest, PreferredWayRequest, RecoveryCodesDTO, RenameKeyRequest,
+    SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused, second_step_way, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
     InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword, KeyId, KeyRole,
-    LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn, Stage,
+    LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn, SigningIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -51,6 +51,11 @@ pub fn router(accounts: AccountsCore) -> Router {
         )
         .route("/sessions/current/totp", routing::post(answer_with_totp))
         .route("/sessions/current/key", routing::post(answer_with_key))
+        .route(
+            "/sessions/passkey/challenge",
+            routing::post(begin_signing_in_with_passkey),
+        )
+        .route("/sessions/passkey", routing::post(sign_in_with_passkey))
         .route(
             "/sessions/current/key/challenge",
             routing::post(begin_answering_with_key),
@@ -415,9 +420,20 @@ async fn list_keys(
 async fn begin_adding_key(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
+    asked: Option<Json<KeyChallengeRequest>>,
 ) -> Result<Json<KeyChallengeDTO>, Problem> {
+    let role = match asked.as_ref().map(|Json(asked)| asked.role.as_str()) {
+        None | Some(key_role::SECOND_FACTOR) => KeyRole::SecondFactor,
+        Some(key_role::PRIMARY) => KeyRole::Primary,
+        Some(_) => {
+            return Err(Problem::rejected(
+                refused::KEY_ROLE_UNKNOWN,
+                "a key signs in alone, as a passkey, or answers the second step",
+            ));
+        }
+    };
     let options = accounts
-        .begin_adding_key(&account)
+        .begin_adding_key(&account, role)
         .await
         .map_err(problem_of)?;
 
@@ -496,6 +512,35 @@ async fn draw_recovery_codes(
     Ok(Json(RecoveryCodesDTO {
         codes: codes.iter().map(ToString::to_string).collect(),
     }))
+}
+
+async fn begin_signing_in_with_passkey(
+    State(accounts): State<AccountsCore>,
+) -> Result<Json<PasskeyChallengeDTO>, Problem> {
+    let (signing_in, options) = accounts
+        .begin_signing_in_with_passkey()
+        .map_err(problem_of)?;
+
+    Ok(Json(PasskeyChallengeDTO {
+        signing_in: signing_in.as_str().to_owned(),
+        options,
+    }))
+}
+
+async fn sign_in_with_passkey(
+    State(accounts): State<AccountsCore>,
+    Json(request): Json<PasskeySignInRequest>,
+) -> Result<Response, Problem> {
+    let (token, signed_in) = accounts
+        .sign_in_with_passkey(&SigningIn::told(&request.signing_in), &request.answer)
+        .await
+        .map_err(problem_of)?;
+
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 async fn begin_answering_with_key(

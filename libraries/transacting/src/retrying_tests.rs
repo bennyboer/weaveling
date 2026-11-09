@@ -101,7 +101,7 @@ async fn after_five_lost_races_the_last_loss_is_the_answer() {
             Err(Refusal::Lost)
         });
 
-    // then: after five tries its last loss is the answer
+    // then: after its last try its last loss is the answer
     assert_eq!((answered, tried), (Err(Refusal::Lost), TRIES));
     // and: nothing it wrote is kept
     assert!(words.written().is_empty());

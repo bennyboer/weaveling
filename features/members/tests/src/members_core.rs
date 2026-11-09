@@ -74,7 +74,8 @@ async fn a_change_of_role_that_lost_a_race_is_tried_again_and_lands() {
 #[tokio::test]
 async fn a_change_of_role_that_lost_every_race_it_may_try_is_a_conflict() {
     // when: a reader is made an author while every race it may try is lost
-    let (changed, role) = making_grace_an_author_while_losing_races(5).await;
+    let (changed, role) =
+        making_grace_an_author_while_losing_races(transacting::retrying::TRIES).await;
 
     // then: it is refused as outdated
     assert!(matches!(

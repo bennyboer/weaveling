@@ -38,10 +38,15 @@ impl Mailer for DroppingMailer {
             to: mail.to.clone(),
             because,
         };
+        let writing = self.into.with_extension("writing");
         fs::create_dir_all(&self.into).map_err(|why| unsent(why.to_string()))?;
+        fs::create_dir_all(&writing).map_err(|why| unsent(why.to_string()))?;
         let written =
             serde_json::to_vec_pretty(&mail).expect("a mail is plain text and serializes");
-        fs::write(self.into.join(self.named()), written).map_err(|why| unsent(why.to_string()))?;
+        let named = self.named();
+        fs::write(writing.join(&named), written).map_err(|why| unsent(why.to_string()))?;
+        fs::rename(writing.join(&named), self.into.join(&named))
+            .map_err(|why| unsent(why.to_string()))?;
 
         LoggingMailer.send(mail).await
     }

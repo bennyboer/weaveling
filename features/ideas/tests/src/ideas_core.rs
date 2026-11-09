@@ -462,9 +462,12 @@ async fn a_retitling_that_lost_a_race_is_tried_again_and_lands() {
 
 #[tokio::test]
 async fn a_retitling_that_lost_every_race_it_may_try_is_a_conflict() {
-    // when: an idea is retitled over a store that loses six races
-    let (retitled, title, left) =
-        an_idea_retitled_while_failing(|store| FailsAppending::losing_races(store, 6), None).await;
+    // when: an idea is retitled over a store that loses more races than it may try
+    let (retitled, title, left) = an_idea_retitled_while_failing(
+        |store| FailsAppending::losing_races(store, transacting::retrying::TRIES + 1),
+        None,
+    )
+    .await;
 
     // then: it is a conflict
     assert!(matches!(

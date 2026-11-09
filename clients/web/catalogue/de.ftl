@@ -689,6 +689,7 @@ refused-key-name-too-long = Der Name eines Schlüssels darf höchstens { $max } 
 refused-too-many-keys = Ein Konto hat höchstens 20 Schlüssel. Entferne zuerst einen.
 refused-password-wrong = Das ist nicht dein Passwort.
 refused-preferred-way-unknown = Zuerst wird der zweite Schritt per App, per Schlüssel oder so abgefragt, wie er zuletzt beantwortet wurde.
+refused-key-role-unknown = Ein Schlüssel meldet allein an, als Passkey, oder beantwortet den zweiten Schritt.
 instance-account-appoint = Zum Verwalter ernennen
 instance-account-dismiss = Als Verwalter abberufen
 instance-appoint-dialog = { $name } zum Verwalter ernennen

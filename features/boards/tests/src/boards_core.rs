@@ -526,8 +526,9 @@ async fn a_pin_that_lost_a_race_is_tried_again_and_lands() {
 
 #[tokio::test]
 async fn a_pin_that_lost_every_race_it_may_try_is_a_conflict() {
-    // when: an idea is pinned while losing five races
-    let (pinned, on_board) = an_idea_pinned_while_losing_races(5, None).await;
+    // when: an idea is pinned while losing every race it may try
+    let (pinned, on_board) =
+        an_idea_pinned_while_losing_races(transacting::retrying::TRIES, None).await;
 
     // then: it is refused as outdated
     assert!(matches!(

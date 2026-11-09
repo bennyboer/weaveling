@@ -352,7 +352,7 @@ async fn a_lock_that_lost_every_race_it_may_try_is_a_conflict() {
 
     // when: the operator locks the account, losing every race it may try
     let refused = wired
-        .losing_races(5)
+        .losing_races(transacting::retrying::TRIES)
         .lock(&grace, &ada, "Sent spam.", None)
         .await;
 

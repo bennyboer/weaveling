@@ -15,7 +15,7 @@ const DEFAULT_URL: &str = "postgres://weaveling:weaveling@127.0.0.1:5432/weaveli
 const PREFIX: &str = "fixture";
 const STALE_AFTER: i64 = 3_600;
 const HEX_LENGTH: usize = 8;
-const HANDFUL: u32 = 5;
+const HANDFUL: u32 = 3;
 const FIXTURES_AT_ONCE: usize = 2;
 
 static RUNNING: LazyLock<Arc<Semaphore>> =

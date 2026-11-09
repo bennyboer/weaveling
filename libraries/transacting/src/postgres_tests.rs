@@ -309,8 +309,11 @@ async fn two_writers_that_each_read_nothing_written_yet_cannot_both_write() {
         1,
         "each read the table empty, so one of them must have lost and read it again"
     );
-    // and: the other tried once more
-    assert_eq!(warp.max(weft), 2, "the one that lost tried once more");
+    // and: one of them tried again
+    assert!(
+        warp.max(weft) >= 2,
+        "the one that lost tried again, more than once where serializable gave up on both"
+    );
     bench.cleanup().await;
 }
 

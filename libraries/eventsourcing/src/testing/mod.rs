@@ -69,12 +69,17 @@ impl<S: EventStore<SampleEvent>> Committing<'_, S> {
         expected: Version,
         events: &[Recorded<SampleEvent>],
     ) -> Result<(), StoreError> {
-        let mut transaction = self.begun(aggregate, kind).await?;
-        self.store
-            .append(&mut transaction, aggregate, kind, expected, events)
-            .await?;
+        transacting::retrying!(self.transactions, |transaction| {
+            self.store
+                .append(transaction, aggregate, kind, expected, events)
+                .await
+                .map_err(transacting::Tried::Refused)?;
 
-        self.finished(transaction, aggregate, kind).await
+            Ok(())
+        })
+        .map_err(|tried: transacting::Tried<_>| {
+            tried.answered(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
+        })
     }
 
     pub async fn prune_through(

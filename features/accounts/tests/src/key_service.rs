@@ -61,6 +61,14 @@ fn made_by(authenticator: &mut SoftPasskey, asked: Value) -> Value {
     serde_json::to_value(made).expect("the answer is plain data")
 }
 
+/// The software passkey keeps no credential on itself, so a passkey's options are eased for it; the server asks for a resident one and never checks it was.
+fn not_resident(mut asked: Value) -> Value {
+    asked["publicKey"]["authenticatorSelection"]["residentKey"] = "discouraged".into();
+    asked["publicKey"]["authenticatorSelection"]["requireResidentKey"] = false.into();
+
+    asked
+}
+
 fn touch_of(authenticator: &mut SoftPasskey, asked: Value) -> Value {
     let asked: RequestChallengeResponse =
         serde_json::from_value(asked).expect("the browser is asked in the WebAuthn shape");
@@ -87,7 +95,7 @@ impl Bench {
     async fn answered_by(&self, authenticator: &mut SoftPasskey, account: &AccountId) -> Value {
         let asked = self
             .accounts
-            .begin_adding_key(account)
+            .begin_adding_key(account, KeyRole::SecondFactor)
             .await
             .expect("adding begins");
 
@@ -275,7 +283,7 @@ async fn an_answer_to_another_accounts_adding_makes_no_key() {
     let session = bench.session_of(ADA).await;
     let _hers = bench
         .accounts
-        .begin_adding_key(&ada)
+        .begin_adding_key(&ada, KeyRole::SecondFactor)
         .await
         .expect("adding begins");
     let theirs = bench.answered(&grace).await;
@@ -337,7 +345,10 @@ async fn without_a_public_url_no_key_is_added() {
     let ada = signed_up(&wired, ADA).await;
 
     // when: adding a key begins
-    let begun = wired.accounts.begin_adding_key(&ada).await;
+    let begun = wired
+        .accounts
+        .begin_adding_key(&ada, KeyRole::SecondFactor)
+        .await;
 
     // then: it is refused
     assert!(
@@ -795,4 +806,195 @@ async fn the_way_that_answered_last_is_asked_first_next_time() {
         .expect("the touch answers");
     // then: the key is asked first again
     assert_eq!(asked_way().await, Some(SecondStepWay::Key));
+}
+
+#[tokio::test]
+async fn a_passkey_is_added_to_sign_in_alone_bringing_no_second_step() {
+    // given: a signed-in account without a second factor
+    let bench = bench();
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+
+    // when: a passkey the authenticator made is added
+    let asked = bench
+        .accounts
+        .begin_adding_key(&ada, KeyRole::Primary)
+        .await
+        .expect("adding begins");
+    let answer = made_by(&mut SoftPasskey::new(true), not_resident(asked));
+    let added = bench
+        .accounts
+        .finish_adding_key(&ada, "MacBook", &answer, &session)
+        .await
+        .expect("the passkey is added");
+
+    // then: the account holds it as signing in alone
+    let account = bench
+        .wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state;
+    assert_eq!(account.keys()[&added.key].role, KeyRole::Primary);
+    // and: it brings no second step, nor recovery codes
+    assert!(account.second_factor().is_none());
+    assert!(added.recovery_codes.is_none());
+    assert_eq!(codes_kept(&bench, &ada).await, 0);
+}
+
+async fn with_a_passkey(bench: &Bench, email: &str) -> (AccountId, SoftPasskey) {
+    let account = signed_up(&bench.wired, email).await;
+    let session = bench.session_of(email).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let asked = bench
+        .accounts
+        .begin_adding_key(&account, KeyRole::Primary)
+        .await
+        .expect("adding begins");
+    let answer = made_by(&mut authenticator, not_resident(asked));
+    bench
+        .accounts
+        .finish_adding_key(&account, "MacBook", &answer, &session)
+        .await
+        .expect("the passkey is added");
+
+    (account, authenticator)
+}
+
+/// The software passkey keeps no credential, so the account's credentials are named to it and its answer is given the user handle, as a passkey kept on a device finds and answers them.
+async fn passkey_touch(
+    bench: &Bench,
+    authenticator: &mut SoftPasskey,
+    account: &AccountId,
+) -> (accounts_core::SigningIn, Value) {
+    let (signing_in, mut asked) = bench
+        .accounts
+        .begin_signing_in_with_passkey()
+        .expect("signing in begins");
+    let held: Vec<Value> = bench
+        .wired
+        .secrets
+        .credentials_of(account)
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .map(|(_, credential)| {
+            let written: Value =
+                serde_json::from_str(&credential.written).expect("a credential is JSON");
+            json!({ "type": "public-key", "id": written["cred_id"] })
+        })
+        .collect();
+    asked["publicKey"]["allowCredentials"] = held.into();
+    let mut touch = touch_of(authenticator, asked);
+    touch["response"]["userHandle"] = base64_url(account.as_uuid().as_bytes()).into();
+
+    (signing_in, touch)
+}
+
+/// The user handle a passkey kept on its device answers with, unsigned: the account's id, as the server gave it when the passkey was made.
+pub(crate) fn base64_url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    bytes
+        .chunks(3)
+        .flat_map(|chunk| {
+            let joined = chunk.iter().enumerate().fold(0_u32, |joined, (at, byte)| {
+                joined | u32::from(*byte) << (16 - 8 * at)
+            });
+            (0..=chunk.len())
+                .map(move |at| ALPHABET[(joined >> (18 - 6 * at) & 63) as usize] as char)
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_passkey_signs_in_alone_owing_no_second_step() {
+    // given: an account with a passkey and a second-step key, nobody signed in
+    let bench = bench();
+    let (ada, mut authenticator) = with_a_passkey(&bench, ADA).await;
+    let session = bench.session_of(ADA).await;
+    bench.added(&ada, "YubiKey blue", &session).await;
+
+    // when: the passkey is touched to sign in, no address typed
+    let (signing_in, touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+    let (token, signed_in) = bench
+        .accounts
+        .sign_in_with_passkey(&signing_in, &touch)
+        .await
+        .expect("the passkey signs in");
+
+    // then: she is signed in all the way, owing no second step though she has one
+    assert_eq!(signed_in.session.account, ada);
+    assert_eq!(signed_in.session.stage, Stage::SignedIn);
+    assert!(bench.is_open(&token).await);
+    // and: the same touch signs in nobody again
+    let again = bench
+        .accounts
+        .sign_in_with_passkey(&signing_in, &touch)
+        .await;
+    assert!(
+        matches!(again, Err(AccountsError::NoKeyBeingAsked)),
+        "{again:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_key_for_the_second_step_signs_in_nobody_alone() {
+    // given: an account whose only key answers the second step
+    let bench = bench();
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let answer = bench.answered_by(&mut authenticator, &ada).await;
+    bench
+        .accounts
+        .finish_adding_key(&ada, "YubiKey blue", &answer, &session)
+        .await
+        .expect("the key is added");
+
+    // when: it is touched to sign in alone
+    let (signing_in, touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+    let refused = bench
+        .accounts
+        .sign_in_with_passkey(&signing_in, &touch)
+        .await;
+
+    // then: it is refused
+    assert!(
+        matches!(refused, Err(AccountsError::KeyRefused)),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_locked_account_is_not_signed_in_by_its_passkey() {
+    // given: an account with a passkey, locked by an operator
+    let bench = bench();
+    let (ada, mut authenticator) = with_a_passkey(&bench, ADA).await;
+    let grace = signed_up(&bench.wired, GRACE).await;
+    let code = bench
+        .accounts
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("nobody operates yet");
+    bench
+        .accounts
+        .become_operator(&grace, code.as_str())
+        .await
+        .expect("the code drawn makes an operator");
+    bench
+        .accounts
+        .lock(&grace, &ada, "Sent spam.", None)
+        .await
+        .expect("the operator locks her");
+
+    // when: its passkey is touched to sign in
+    let (signing_in, touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+    let refused = bench
+        .accounts
+        .sign_in_with_passkey(&signing_in, &touch)
+        .await;
+
+    // then: it is refused as locked
+    assert!(matches!(refused, Err(AccountsError::Locked)), "{refused:?}");
 }

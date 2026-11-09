@@ -1,30 +1,68 @@
 use std::collections::HashMap;
+use std::fmt::{self, Debug, Formatter};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use webauthn_rs::prelude::{
-    Credential, CredentialID, PublicKeyCredential, RegisterPublicKeyCredential, SecurityKey,
-    SecurityKeyAuthentication, SecurityKeyRegistration, Url,
+    Credential, CredentialID, DiscoverableAuthentication, Passkey, PasskeyRegistration,
+    PublicKeyCredential, RegisterPublicKeyCredential, SecurityKey, SecurityKeyAuthentication,
+    SecurityKeyRegistration, Url,
 };
 use webauthn_rs::{Webauthn, WebauthnBuilder};
 
 use crate::id::AccountId;
-use crate::key::KeyId;
+use crate::key::{KeyId, KeyRole};
 use crate::secrets::KeyCredential;
 
 /// Adding keys and passkeys and signing in with them, for this instance: every key is bound to the domain it is served at, so moving it voids every key.
 #[derive(Debug, Clone)]
 pub struct KeyCeremonies {
     webauthn: Webauthn,
-    adding: Arc<UnderWay<SecurityKeyRegistration>>,
-    answering: Arc<UnderWay<SecurityKeyAuthentication>>,
+    adding: Arc<UnderWay<AccountId, Registration>>,
+    answering: Arc<UnderWay<AccountId, SecurityKeyAuthentication>>,
+    signing_in: Arc<UnderWay<SigningIn, DiscoverableAuthentication>>,
 }
 
-/// What the server keeps of each account's ceremony between asking the browser and hearing back: never written down, so a restart only asks for it to begin again.
+/// What the server keeps of a ceremony between asking the browser and hearing back, by the account it is for, or by a drawn id where nobody is known yet: never written down, so a restart only asks for it to begin again.
 #[derive(Debug)]
-struct UnderWay<S>(Mutex<HashMap<AccountId, (S, OffsetDateTime)>>);
+struct UnderWay<K, S>(Mutex<HashMap<K, (S, OffsetDateTime)>>);
+
+/// A sign-in by passkey under way, before anybody is known: the id it is told by, drawn at random so nobody can answer another's.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct SigningIn(String);
+
+impl SigningIn {
+    fn drawn() -> Self {
+        let mut drawn = [0_u8; 16];
+        getrandom::fill(&mut drawn).expect("the system draws random bytes");
+
+        Self(drawn.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+
+    pub fn told(told: &str) -> Self {
+        Self(told.to_owned())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Debug for SigningIn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("SigningIn(…)")
+    }
+}
+
+/// A key being made, as webauthn-rs asked for it: a passkey or a security key.
+#[derive(Debug)]
+enum Registration {
+    Passkey(PasskeyRegistration),
+    SecurityKey(SecurityKeyRegistration),
+}
 
 /// Why the browser's answer does not count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -35,34 +73,34 @@ pub enum CeremonyFailed {
     Refused,
 }
 
-impl<S> Default for UnderWay<S> {
+impl<K, S> Default for UnderWay<K, S> {
     fn default() -> Self {
         Self(Mutex::default())
     }
 }
 
-impl<S> UnderWay<S> {
-    /// Holds a ceremony begun, in place of the account's one before; the oldest gives way when too many are under way.
-    fn hold(&self, account: &AccountId, state: S, now: OffsetDateTime) {
+impl<K: Clone + Eq + Hash, S> UnderWay<K, S> {
+    /// Holds a ceremony begun, in place of the one before by the same; the oldest gives way when too many are under way.
+    fn hold(&self, by: &K, state: S, now: OffsetDateTime) {
         let mut held = self.0.lock().expect("the ceremonies are not poisoned");
         held.retain(|_, (_, begun)| now - *begun < KeyCeremonies::LASTS);
         if held.len() >= KeyCeremonies::MOST_UNDER_WAY
             && let Some(oldest) = held
                 .iter()
                 .min_by_key(|(_, (_, begun))| *begun)
-                .map(|(account, _)| *account)
+                .map(|(by, _)| by.clone())
         {
             held.remove(&oldest);
         }
-        held.insert(*account, (state, now));
+        held.insert(by.clone(), (state, now));
     }
 
-    /// The account's ceremony, once, if it is still in time.
-    fn take(&self, account: &AccountId, now: OffsetDateTime) -> Result<S, CeremonyFailed> {
+    /// The ceremony, once, if it is still in time.
+    fn take(&self, by: &K, now: OffsetDateTime) -> Result<S, CeremonyFailed> {
         self.0
             .lock()
             .expect("the ceremonies are not poisoned")
-            .remove(account)
+            .remove(by)
             .filter(|(_, begun)| now - *begun < KeyCeremonies::LASTS)
             .map(|(state, _)| state)
             .ok_or(CeremonyFailed::NothingUnderWay)
@@ -116,40 +154,68 @@ impl KeyCeremonies {
                 webauthn,
                 adding: Arc::default(),
                 answering: Arc::default(),
+                signing_in: Arc::default(),
             })
             .map_err(|_| InvalidPublicUrl::NoUrl)
     }
 
-    /// Asks the browser to make a key answering the account's second step, none of the keys it holds already; a begun adding replaces the one before. Not asking for credProtect, which browsers refuse for a key that is not resident and only prefers checking its user, and which a second step after the password does not need.
+    /// Asks the browser to make a key in its role, none of the keys the account holds already; a begun adding replaces the one before. A passkey signs in alone, so it must check its user and be kept on the device, found without an address typed. A key for the second step is asked for without credProtect, which browsers refuse for a key that is not resident and only prefers checking its user, and which a second step after the password does not need.
     pub(crate) fn begin_adding(
         &self,
         account: &AccountId,
+        role: KeyRole,
         user_name: &str,
         display_name: &str,
         held: &[KeyCredential],
         now: OffsetDateTime,
     ) -> Value {
-        let exclude = held
+        let exclude: Vec<CredentialID> = held
             .iter()
             .map(|credential| CredentialID::from(credential.id.clone()))
             .collect();
-        let (mut asked, state) = self
-            .webauthn
-            .start_securitykey_registration(
-                account.as_uuid(),
-                user_name,
-                display_name,
-                Some(exclude),
-                None,
-                None,
-            )
-            .expect("a security key registration begins for any account");
-        if let Some(extensions) = asked.public_key.extensions.as_mut() {
-            extensions.cred_protect = None;
-        }
+        let (asked, state) = match role {
+            KeyRole::Primary => {
+                let (asked, state) = self
+                    .webauthn
+                    .start_passkey_registration(
+                        account.as_uuid(),
+                        user_name,
+                        display_name,
+                        Some(exclude),
+                    )
+                    .expect("a passkey registration begins for any account");
+                let mut asked =
+                    serde_json::to_value(asked).expect("what a browser is asked is plain data");
+                asked["publicKey"]["authenticatorSelection"]["residentKey"] = "required".into();
+                asked["publicKey"]["authenticatorSelection"]["requireResidentKey"] = true.into();
+
+                (asked, Registration::Passkey(state))
+            }
+            KeyRole::SecondFactor => {
+                let (mut asked, state) = self
+                    .webauthn
+                    .start_securitykey_registration(
+                        account.as_uuid(),
+                        user_name,
+                        display_name,
+                        Some(exclude),
+                        None,
+                        None,
+                    )
+                    .expect("a security key registration begins for any account");
+                if let Some(extensions) = asked.public_key.extensions.as_mut() {
+                    extensions.cred_protect = None;
+                }
+
+                (
+                    serde_json::to_value(asked).expect("what a browser is asked is plain data"),
+                    Registration::SecurityKey(state),
+                )
+            }
+        };
         self.adding.hold(account, state, now);
 
-        serde_json::to_value(asked).expect("what a browser is asked is plain data")
+        asked
     }
 
     /// Finishes the account's adding with the browser's answer, once: the credential to keep, or why there is none.
@@ -158,20 +224,33 @@ impl KeyCeremonies {
         account: &AccountId,
         answer: &Value,
         now: OffsetDateTime,
-    ) -> Result<KeyCredential, CeremonyFailed> {
+    ) -> Result<(KeyRole, KeyCredential), CeremonyFailed> {
         let state = self.adding.take(account, now)?;
         let answer: RegisterPublicKeyCredential =
             serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
-        let key = self
-            .webauthn
-            .finish_securitykey_registration(&answer, &state)
-            .map_err(|_| CeremonyFailed::Refused)?;
-        let credential = Credential::from(key);
+        let (role, credential) = match state {
+            Registration::Passkey(state) => (
+                KeyRole::Primary,
+                self.webauthn
+                    .finish_passkey_registration(&answer, &state)
+                    .map(Credential::from),
+            ),
+            Registration::SecurityKey(state) => (
+                KeyRole::SecondFactor,
+                self.webauthn
+                    .finish_securitykey_registration(&answer, &state)
+                    .map(Credential::from),
+            ),
+        };
+        let credential = credential.map_err(|_| CeremonyFailed::Refused)?;
 
-        Ok(KeyCredential {
-            id: credential.cred_id.to_vec(),
-            written: serde_json::to_string(&credential).expect("a credential is plain data"),
-        })
+        Ok((
+            role,
+            KeyCredential {
+                id: credential.cred_id.to_vec(),
+                written: serde_json::to_string(&credential).expect("a credential is plain data"),
+            },
+        ))
     }
 
     /// Asks the browser for a touch of one of the keys held, to answer the account's second step.
@@ -222,6 +301,58 @@ impl KeyCeremonies {
             key,
             serde_json::to_string(&Credential::from(renewed)).expect("a credential is plain data"),
         ))
+    }
+}
+
+impl KeyCeremonies {
+    /// Asks the browser for any passkey it holds for this instance, nobody named: the id the sign-in goes by, and what the browser is asked. The options do not ask for the browser's autofill, which webauthn-rs sets, so a button can ask too.
+    pub(crate) fn begin_signing_in(&self, now: OffsetDateTime) -> (SigningIn, Value) {
+        let (asked, state) = self
+            .webauthn
+            .start_discoverable_authentication()
+            .expect("a sign-in by passkey begins for anybody");
+        let mut asked = serde_json::to_value(asked).expect("what a browser is asked is plain data");
+        if let Some(asked) = asked.as_object_mut() {
+            asked.remove("mediation");
+        }
+        let signing_in = SigningIn::drawn();
+        self.signing_in.hold(&signing_in, state, now);
+
+        (signing_in, asked)
+    }
+
+    /// Whose passkey the browser's answer names, and which credential of theirs, before anything is checked.
+    pub(crate) fn named_by(&self, answer: &Value) -> Result<(AccountId, Vec<u8>), CeremonyFailed> {
+        let answer: PublicKeyCredential =
+            serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
+        let (user, credential) = self
+            .webauthn
+            .identify_discoverable_authentication(&answer)
+            .map_err(|_| CeremonyFailed::Refused)?;
+
+        Ok((AccountId::from(user), credential.to_vec()))
+    }
+
+    /// Finishes the sign-in with the browser's answer and the passkey it names, once: its credential as it is now, its counter moved on.
+    pub(crate) fn finish_signing_in(
+        &self,
+        signing_in: &SigningIn,
+        answer: &Value,
+        held: &KeyCredential,
+        now: OffsetDateTime,
+    ) -> Result<String, CeremonyFailed> {
+        let state = self.signing_in.take(signing_in, now)?;
+        let answer: PublicKeyCredential =
+            serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
+        let credential = read(held).ok_or(CeremonyFailed::Refused)?;
+        let answered = self
+            .webauthn
+            .finish_discoverable_authentication_v2(&answer, state, &credential)
+            .map_err(|_| CeremonyFailed::Refused)?;
+        let mut renewed = Passkey::from(credential);
+        renewed.update_credential(&answered);
+
+        Ok(serde_json::to_string(&Credential::from(renewed)).expect("a credential is plain data"))
     }
 }
 
@@ -315,8 +446,14 @@ mod tests {
         let account = AccountId::generate(clock::at(1_000));
 
         // when: adding a key begins
-        let asked =
-            ceremonies.begin_adding(&account, "ada@example.com", "Ada", &[], clock::at(1_000));
+        let asked = ceremonies.begin_adding(
+            &account,
+            KeyRole::SecondFactor,
+            "ada@example.com",
+            "Ada",
+            &[],
+            clock::at(1_000),
+        );
 
         // then: the browser is asked for no credential protection, which it would refuse
         let extensions = &asked["publicKey"]["extensions"];
@@ -330,5 +467,29 @@ mod tests {
                 .is_none(),
             "{extensions}"
         );
+    }
+
+    #[test]
+    fn a_passkey_is_asked_for_kept_on_the_device_and_checking_its_user() {
+        // given: an instance making keys
+        let ceremonies =
+            KeyCeremonies::serving_at("https://weaveling.example.com").expect("ceremonies");
+        let account = AccountId::generate(clock::at(1_000));
+
+        // when: adding a passkey begins
+        let asked = ceremonies.begin_adding(
+            &account,
+            KeyRole::Primary,
+            "ada@example.com",
+            "Ada",
+            &[],
+            clock::at(1_000),
+        );
+
+        // then: the browser is asked for a resident credential that checks its user
+        let selection = &asked["publicKey"]["authenticatorSelection"];
+        assert_eq!(selection["residentKey"], "required", "{selection}");
+        assert_eq!(selection["requireResidentKey"], true, "{selection}");
+        assert_eq!(selection["userVerification"], "required", "{selection}");
     }
 }

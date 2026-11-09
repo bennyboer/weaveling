@@ -689,6 +689,7 @@ refused-key-name-too-long = Le nom d’une clé peut compter au plus { $max } ca
 refused-too-many-keys = Un compte compte au plus 20 clés. Veuillez d’abord en retirer une.
 refused-password-wrong = Ce n’est pas votre mot de passe.
 refused-preferred-way-unknown = La deuxième étape est demandée d’abord par l’application, par une clé, ou comme elle a été répondue la dernière fois.
+refused-key-role-unknown = Une clé connecte seule, comme clé d’accès, ou répond à la deuxième étape.
 instance-account-appoint = Nommer opérateur
 instance-account-dismiss = Retirer le rôle d’opérateur
 instance-appoint-dialog = Nommer { $name } opérateur

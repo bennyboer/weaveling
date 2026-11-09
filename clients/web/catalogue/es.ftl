@@ -689,6 +689,7 @@ refused-key-name-too-long = El nombre de una llave puede tener como máximo { $m
 refused-too-many-keys = Una cuenta tiene como máximo 20 llaves. Quita una primero.
 refused-password-wrong = Esa no es tu contraseña.
 refused-preferred-way-unknown = El segundo paso se pide primero con la aplicación, con una llave o como se respondió la última vez.
+refused-key-role-unknown = Una llave inicia sesión sola, como llave de acceso, o responde al segundo paso.
 instance-account-appoint = Hacer operador
 instance-account-dismiss = Quitar el rol de operador
 instance-appoint-dialog = Hacer de { $name } un operador

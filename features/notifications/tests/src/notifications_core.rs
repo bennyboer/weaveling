@@ -205,8 +205,8 @@ async fn a_dismissal_that_lost_a_race_is_tried_again_and_lands() {
 
 #[tokio::test]
 async fn a_dismissal_that_lost_every_race_it_may_try_is_a_conflict() {
-    // when: a dismissal loses five races
-    let (dismissed, told) = dismissing_while_losing_races(5).await;
+    // when: a dismissal loses every race it may try
+    let (dismissed, told) = dismissing_while_losing_races(transacting::retrying::TRIES).await;
 
     // then: it is a conflict
     assert!(matches!(

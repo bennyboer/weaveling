@@ -483,7 +483,8 @@ async fn a_section_added_after_a_lost_race_is_tried_again_and_lands() {
 #[tokio::test]
 async fn a_section_added_after_losing_every_race_it_may_try_is_a_conflict() {
     // when: a section is added after losing as many races as it may try
-    let (added, sections) = a_section_added_while_losing_races(5, None).await;
+    let (added, sections) =
+        a_section_added_while_losing_races(transacting::retrying::TRIES, None).await;
 
     // then: it is refused as outdated
     assert!(matches!(

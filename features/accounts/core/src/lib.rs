@@ -34,7 +34,7 @@ pub use email::{EmailAddress, InvalidEmailAddress};
 pub use error::AccountsError;
 pub use id::AccountId;
 pub use key::{InvalidKeyName, Key, KeyId, KeyName, KeyRole};
-pub use key_ceremonies::{InvalidPublicUrl, KeyCeremonies};
+pub use key_ceremonies::{InvalidPublicUrl, KeyCeremonies, SigningIn};
 pub use lock::{InvalidLockReason, Lock, LockKind, LockReason};
 pub use name::{AccountName, InvalidAccountName};
 pub use operator::OperatorCode;

@@ -444,8 +444,11 @@ async fn a_rename_that_lost_a_race_is_tried_again_and_lands() {
 #[tokio::test]
 async fn a_rename_that_lost_every_race_it_may_try_is_a_conflict() {
     // when: a project is renamed while it loses more races than it may try
-    let (renamed, name, left) =
-        renaming_a_project_while(|store| FailsAppending::losing_races(store, 6), None).await;
+    let (renamed, name, left) = renaming_a_project_while(
+        |store| FailsAppending::losing_races(store, transacting::retrying::TRIES + 1),
+        None,
+    )
+    .await;
 
     // then: it is refused as outdated
     assert!(matches!(

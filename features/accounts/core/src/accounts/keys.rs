@@ -40,8 +40,12 @@ impl AccountsCore {
         Ok(self.get(account).await?.state.keys().clone())
     }
 
-    /// What the browser is asked to make a key answering the account's second step with.
-    pub async fn begin_adding_key(&self, account: &AccountId) -> Result<Value, AccountsError> {
+    /// What the browser is asked to make a key in its role with: a passkey signing in alone, or a key answering the second step.
+    pub async fn begin_adding_key(
+        &self,
+        account: &AccountId,
+        role: KeyRole,
+    ) -> Result<Value, AccountsError> {
         let ceremonies = self.key_ceremonies()?;
         let holder = self.get(account).await?.state;
         let held: Vec<_> = self
@@ -54,6 +58,7 @@ impl AccountsCore {
 
         Ok(ceremonies.begin_adding(
             account,
+            role,
             holder.email().as_str(),
             holder.name().as_str(),
             &held,
@@ -83,7 +88,7 @@ impl AccountsCore {
                 AccountError::KeyNameTaken,
             )));
         }
-        let credential = ceremonies
+        let (role, credential) = ceremonies
             .finish_adding(account, answer, self.clock.now())
             .map_err(|refused| match refused {
                 CeremonyFailed::NothingUnderWay => AccountsError::NoKeyBeingAdded,
@@ -95,7 +100,7 @@ impl AccountsCore {
 
         let (first, (token, _)) = transacting::retrying!(&*self.transactions, |transaction| {
             let standing = self.get(account).await?;
-            let first = standing.state.second_factor().is_none();
+            let first = role == KeyRole::SecondFactor && standing.state.second_factor().is_none();
             if !self
                 .key_credentials
                 .keep_credential(transaction, account, &key, &credential)
@@ -110,7 +115,7 @@ impl AccountsCore {
                 AccountCommand::AddKey {
                     key,
                     name: name.clone(),
-                    role: KeyRole::SecondFactor,
+                    role,
                 },
                 &account.acting(),
             )
