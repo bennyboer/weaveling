@@ -134,6 +134,7 @@ refused-not-an-owner = Só quem é dono deste projeto pode fazer isso.
 refused-last-owner = Um projeto mantém pelo menos uma pessoa como dona. Torne outra pessoa dona primeiro.
 refused-not-a-member = Essa pessoa não é membro deste projeto.
 refused-role-unknown = Esse papel não existe em um projeto.
+refused-member-leaving = Esta conta será excluída, então seu papel fica como está.
 refused-not-an-author = Só quem escreve neste projeto pode fazer isso.
 refused-board-id-invalid = Isso não é um ID de quadro válido.
 refused-idea-already-pinned = Esta ideia já está no quadro.

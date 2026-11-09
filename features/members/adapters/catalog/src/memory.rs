@@ -4,19 +4,23 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
+use time::OffsetDateTime;
 use transacting::{Failure, Transaction};
 
 type Kept = BTreeMap<String, ProjectMembers>;
 
 type Trash = BTreeMap<String, (Version, bool)>;
 
+type LeavingAccounts = BTreeMap<String, (Version, Option<OffsetDateTime>)>;
+
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
     kept: Arc<RwLock<Kept>>,
     people: Arc<RwLock<BTreeMap<String, Person>>>,
     trash: Arc<RwLock<Trash>>,
+    leaving: Arc<RwLock<LeavingAccounts>>,
 }
 
 impl InMemoryMembershipCatalog {
@@ -48,9 +52,15 @@ impl InMemoryMembershipCatalog {
             .read()
             .expect("membership catalog lock poisoned")
             .clone();
+        let leaving = self
+            .leaving
+            .read()
+            .expect("membership catalog lock poisoned")
+            .clone();
         let into_kept = self.kept.clone();
         let into_people = self.people.clone();
         let into_trash = self.trash.clone();
+        let into_leaving = self.leaving.clone();
 
         transacting::memory::undo_on_rollback(transaction, move || {
             *into_kept.write().expect("membership catalog lock poisoned") = kept;
@@ -60,6 +70,9 @@ impl InMemoryMembershipCatalog {
             *into_trash
                 .write()
                 .expect("membership catalog lock poisoned") = trash;
+            *into_leaving
+                .write()
+                .expect("membership catalog lock poisoned") = leaving;
         })
         .map_err(unreachable)
     }
@@ -190,6 +203,46 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
             .expect("membership catalog lock poisoned")
             .get(project.as_str())
             .is_some_and(|(_, in_the_trash)| *in_the_trash))
+    }
+
+    async fn remember_leaving(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut leaving = self
+            .leaving
+            .write()
+            .expect("membership catalog lock poisoned");
+        if leaving
+            .get(account.as_str())
+            .is_none_or(|(known, _)| *known < version)
+        {
+            leaving.insert(account.to_string(), (version, until));
+        }
+
+        Ok(())
+    }
+
+    async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
+        let known = self
+            .leaving
+            .read()
+            .expect("membership catalog lock poisoned");
+
+        Ok(known
+            .iter()
+            .filter_map(|(account, (_, until))| {
+                let account = AccountId::from(account.as_str());
+                let until = (*until)?;
+                accounts
+                    .contains(&account)
+                    .then_some(Leaving { account, until })
+            })
+            .collect())
     }
 }
 

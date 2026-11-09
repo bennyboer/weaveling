@@ -16,7 +16,7 @@ use members_core::{
     ProjectLink, Role,
 };
 use serde_json::Value;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
@@ -106,6 +106,7 @@ fn a_member(account: &str, named: &str) -> MemberDTO {
         role: named.to_owned(),
         name: person_of(account).map(|(name, _)| name.to_owned()),
         email: person_of(account).map(|(_, email)| email.to_owned()),
+        leaving_until: None,
     }
 }
 
@@ -203,18 +204,21 @@ async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_list
                 role: role::OWNER.to_owned(),
                 name: Some("Ada Lovelace".to_owned()),
                 email: Some("ada@example.com".to_owned()),
+                leaving_until: None,
             },
             MemberDTO {
                 account: "account_grace".to_owned(),
                 role: role::AUTHOR.to_owned(),
                 name: Some("Grace Hopper".to_owned()),
                 email: Some("grace@example.com".to_owned()),
+                leaving_until: None,
             },
             MemberDTO {
                 account: "account_bo".to_owned(),
                 role: role::READER.to_owned(),
                 name: None,
                 email: None,
+                leaving_until: None,
             },
         ],
         "owners invite and manage, so they see whom they deal with"
@@ -699,5 +703,47 @@ async fn leaving_without_if_match_lands_on_whatever_the_members_are_at() {
 
     // then: the leaving lands
     left.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(members.listed().await.len(), 2);
+}
+
+#[tokio::test]
+async fn a_member_leaving_keeps_their_role_is_listed_as_leaving_and_may_still_be_removed() {
+    // given: a project of three, its author asked to be deleted
+    let members = a_project_of_three().await;
+    let until = OffsetDateTime::UNIX_EPOCH + Duration::days(30);
+    members
+        .core
+        .remember_leaving(
+            None,
+            &AccountId::from("account_grace"),
+            Version::of(7),
+            Some(until),
+        )
+        .await
+        .expect("remembering should succeed");
+    let ada = members.as_account("account_ada");
+
+    // then: she is listed as leaving on that day
+    assert_eq!(
+        members.listed().await,
+        vec![
+            a_member("account_ada", role::OWNER),
+            MemberDTO {
+                leaving_until: Some("1970-01-31T00:00:00Z".to_owned()),
+                ..a_member("account_grace", role::AUTHOR)
+            },
+            a_member("account_bo", role::READER),
+        ]
+    );
+    // when: the owner makes her an owner
+    let refused = changing_the_role(&ada, "account_grace", role::OWNER).await;
+    // then: it is refused, her role as it was
+    refused_as(refused, StatusCode::CONFLICT, refused::MEMBER_LEAVING);
+    assert_eq!(members.listed().await[1].role, role::AUTHOR);
+    // when: the owner removes her
+    ada.delete(&format!("/members/{PROJECT}/accounts/account_grace"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    // then: she is gone
     assert_eq!(members.listed().await.len(), 2);
 }

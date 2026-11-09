@@ -33,6 +33,8 @@ pub struct MemberDTO {
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaving_until: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -51,8 +53,15 @@ pub mod refused {
     pub const LAST_OWNER: &str = "last-owner";
     pub const NOT_A_MEMBER: &str = "not-a-member";
     pub const ROLE_UNKNOWN: &str = "role-unknown";
+    pub const MEMBER_LEAVING: &str = "member-leaving";
 
-    pub const EVERY: [&str; 4] = [NOT_AN_OWNER, LAST_OWNER, NOT_A_MEMBER, ROLE_UNKNOWN];
+    pub const EVERY: [&str; 5] = [
+        NOT_AN_OWNER,
+        LAST_OWNER,
+        NOT_A_MEMBER,
+        ROLE_UNKNOWN,
+        MEMBER_LEAVING,
+    ];
 }
 
 pub mod role {

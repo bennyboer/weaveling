@@ -134,6 +134,7 @@ refused-not-an-owner = Solo quien es propietario de este proyecto puede hacer es
 refused-last-owner = Un proyecto necesita al menos a una persona propietaria. Haz propietaria a otra persona primero.
 refused-not-a-member = Esta persona no es miembro de este proyecto.
 refused-role-unknown = Ese rol no existe en un proyecto.
+refused-member-leaving = Esta cuenta se va a eliminar, así que su rol se queda como está.
 refused-not-an-author = Solo quien escribe en este proyecto puede hacer esto.
 refused-board-id-invalid = Eso no es un ID de tablero válido.
 refused-idea-already-pinned = Esta idea ya está en el tablero.

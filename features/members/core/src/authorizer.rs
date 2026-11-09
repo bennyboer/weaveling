@@ -104,11 +104,12 @@ mod tests {
     use std::sync::Mutex;
 
     use eventsourcing::{AccountId, Version};
+    use time::OffsetDateTime;
 
     use super::*;
     use transacting::Transaction;
 
-    use crate::catalog::{Membership, Person, ProjectMembers};
+    use crate::catalog::{Leaving, Membership, Person, ProjectMembers};
 
     struct Kept {
         roles: Mutex<Vec<(String, AccountId, Role)>>,
@@ -154,6 +155,20 @@ mod tests {
             _project: &ProjectLink,
         ) -> Result<(), CatalogError> {
             Ok(())
+        }
+
+        async fn remember_leaving(
+            &self,
+            _transaction: &mut Transaction,
+            _account: &AccountId,
+            _version: Version,
+            _until: Option<OffsetDateTime>,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        async fn leaving(&self, _accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
+            Ok(Vec::new())
         }
 
         async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {

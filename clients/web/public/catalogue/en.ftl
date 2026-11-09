@@ -134,6 +134,7 @@ refused-not-an-owner = Only an owner of this project may do this.
 refused-last-owner = A project keeps at least one owner. Make someone else an owner first.
 refused-not-a-member = This person is not a member of this project.
 refused-role-unknown = There is no such role in a project.
+refused-member-leaving = This account is to be deleted, so its role stays as it is.
 refused-not-an-author = Only an author of this project may do this.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.

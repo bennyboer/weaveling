@@ -24,3 +24,9 @@ CREATE TABLE project_trash (
     version          INTEGER NOT NULL,
     in_the_trash     INTEGER NOT NULL
 );
+
+CREATE TABLE leaving_accounts (
+    account          TEXT    PRIMARY KEY,
+    version          INTEGER NOT NULL,
+    until            TEXT
+);

@@ -3,11 +3,12 @@ use std::error::Error;
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
 use transacting::Transaction;
 use transacting::postgres::connection;
 
@@ -59,6 +60,21 @@ const REMEMBER_TRASH: &str = "
 const FORGET_TRASH: &str = "DELETE FROM project_trash WHERE project = $1";
 
 const IN_THE_TRASH: &str = "SELECT in_the_trash FROM project_trash WHERE project = $1";
+
+const REMEMBER_LEAVING: &str = "
+    INSERT INTO leaving_accounts (account, version, until)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (account) DO UPDATE
+    SET version = EXCLUDED.version, until = EXCLUDED.until
+    WHERE leaving_accounts.version < EXCLUDED.version
+";
+
+const LEAVING: &str = "
+    SELECT account, until
+    FROM leaving_accounts
+    WHERE account = ANY($1) AND until IS NOT NULL
+    ORDER BY account
+";
 
 const LEDGER: &str = "_sqlx_migrations_memberships";
 
@@ -220,6 +236,44 @@ impl MembershipCatalog for PostgresMembershipCatalog {
             .map_err(unreachable)?;
 
         Ok(kept.unwrap_or(false))
+    }
+
+    async fn remember_leaving(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_LEAVING)
+            .bind(account.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(until)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
+        let asked: Vec<&str> = accounts.iter().map(AccountId::as_str).collect();
+        let rows = sqlx::query(LEAVING)
+            .bind(&asked)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let account: String = row.try_get("account").map_err(unreachable)?;
+
+                Ok(Leaving {
+                    account: AccountId::from(account),
+                    until: row.try_get("until").map_err(unreachable)?,
+                })
+            })
+            .collect()
     }
 }
 

@@ -82,6 +82,7 @@ mod tests {
             role: role.to_owned(),
             name: Some("Ada Lovelace".to_owned()),
             email: Some("ada@example.com".to_owned()),
+            leaving_until: None,
         }
     }
 

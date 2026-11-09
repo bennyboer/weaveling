@@ -2,8 +2,10 @@ use std::ops::Deref;
 
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Member, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Member, Membership, MembershipCatalog, Person, ProjectLink,
+    ProjectMembers, Role,
 };
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
@@ -85,6 +87,23 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
                 .forget_trash(transaction, &ProjectLink::from(project))
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn remember_leaving(
+        &self,
+        account: &AccountId,
+        version: u64,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_leaving(transaction, account, Version::of(version), until)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -579,6 +598,100 @@ pub async fn a_deleted_project_s_trash_is_forgotten_whole(
     );
 }
 
+fn on_the_day(seconds: i64) -> OffsetDateTime {
+    OffsetDateTime::from_unix_timestamp(seconds).expect("a plain moment")
+}
+
+async fn leaving(catalog: &impl MembershipCatalog, accounts: &[AccountId]) -> Vec<Leaving> {
+    catalog
+        .leaving(accounts)
+        .await
+        .expect("asking should succeed")
+}
+
+pub async fn an_account_told_leaving_is_known_until_when_and_no_longer_once_kept(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // expect: nobody is leaving before anything is told
+    assert!(
+        leaving(catalog.uncommitted(), &[ada(), grace()])
+            .await
+            .is_empty()
+    );
+
+    // when: two accounts are told leaving, one of them not asked for
+    catalog
+        .remember_leaving(&ada(), 7, Some(on_the_day(1_800_000_000)))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_leaving(&hedy(), 3, Some(on_the_day(1_800_000_500)))
+        .await
+        .expect("remembering should succeed");
+
+    // then: of those asked for, the one leaving is told with its day
+    assert_eq!(
+        leaving(catalog.uncommitted(), &[ada(), grace()]).await,
+        vec![Leaving {
+            account: ada(),
+            until: on_the_day(1_800_000_000),
+        }]
+    );
+    // when: she is kept after all
+    catalog
+        .remember_leaving(&ada(), 8, None)
+        .await
+        .expect("remembering should succeed");
+    // then: she is leaving no longer, the other still is
+    assert!(leaving(catalog.uncommitted(), &[ada()]).await.is_empty());
+    assert_eq!(leaving(catalog.uncommitted(), &[hedy()]).await.len(), 1);
+}
+
+pub async fn an_older_word_on_leaving_heard_late_changes_nothing(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: an account kept after all, at its eighth version
+    catalog
+        .remember_leaving(&ada(), 8, None)
+        .await
+        .expect("remembering should succeed");
+
+    // when: the asking it undid, at its seventh, is heard late
+    catalog
+        .remember_leaving(&ada(), 7, Some(on_the_day(1_800_000_000)))
+        .await
+        .expect("remembering should succeed");
+
+    // then: she is not leaving
+    assert!(
+        leaving(catalog.uncommitted(), &[ada()]).await.is_empty(),
+        "a keeping heard before the asking it undoes must not leave her leaving"
+    );
+}
+
+pub async fn leaving_told_in_a_dropped_transaction_was_never_heard(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: an account told leaving in a transaction
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember_leaving(
+            &mut transaction,
+            &ada(),
+            Version::of(7),
+            Some(on_the_day(1_800_000_000)),
+        )
+        .await
+        .expect("remembering should succeed");
+
+    // when: the transaction is dropped
+    drop(transaction);
+
+    // then: she is not leaving
+    assert!(leaving(catalog.uncommitted(), &[ada()]).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -631,6 +744,18 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_trashing_in_a_dropped_transaction_was_never_heard
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_account_told_leaving_is_known_until_when_and_no_longer_once_kept
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_word_on_leaving_heard_late_changes_nothing
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            leaving_told_in_a_dropped_transaction_was_never_heard
         );
     };
 }

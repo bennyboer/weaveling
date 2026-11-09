@@ -70,6 +70,7 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
     assert_eq!(
         collations,
         vec![
+            ("leaving_accounts.account".to_owned(), Some("C".to_owned())),
             ("memberships.account".to_owned(), Some("C".to_owned())),
             ("memberships.project".to_owned(), Some("C".to_owned())),
             ("people.account".to_owned(), Some("C".to_owned())),

@@ -24,3 +24,9 @@ CREATE TABLE project_trash (
     version          BIGINT           NOT NULL,
     in_the_trash     BOOLEAN          NOT NULL
 );
+
+CREATE TABLE leaving_accounts (
+    account          TEXT COLLATE "C" PRIMARY KEY,
+    version          BIGINT           NOT NULL,
+    until            TIMESTAMPTZ
+);

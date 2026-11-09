@@ -5548,7 +5548,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "sqlx",
+ "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-members-core",
  "weaveling-test-harness",

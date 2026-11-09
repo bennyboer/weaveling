@@ -1,13 +1,15 @@
 use std::error::Error;
 
 use async_trait::async_trait;
+use clock::text;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 use transacting::Transaction;
 use transacting::sqlite::connection;
 
@@ -54,6 +56,20 @@ const REMEMBER_TRASH: &str = "
 const FORGET_TRASH: &str = "DELETE FROM project_trash WHERE project = ?1";
 
 const IN_THE_TRASH: &str = "SELECT in_the_trash FROM project_trash WHERE project = ?1";
+
+const REMEMBER_LEAVING: &str = "
+    INSERT INTO leaving_accounts (account, version, until)
+    VALUES (?1, ?2, ?3)
+    ON CONFLICT (account) DO UPDATE
+    SET version = excluded.version, until = excluded.until
+    WHERE leaving_accounts.version < excluded.version
+";
+
+const LEAVING_ONE: &str = "
+    SELECT account, until
+    FROM leaving_accounts
+    WHERE account = ?1 AND until IS NOT NULL
+";
 
 const LEDGER: &str = "_sqlx_migrations_memberships";
 
@@ -221,6 +237,49 @@ impl MembershipCatalog for SqliteMembershipCatalog {
             .map_err(unreachable)?;
 
         Ok(kept.unwrap_or(false))
+    }
+
+    async fn remember_leaving(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_LEAVING)
+            .bind(account.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(until.map(text::serialize))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
+        let mut found = Vec::new();
+        for account in accounts {
+            let row = sqlx::query(LEAVING_ONE)
+                .bind(account.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(unreachable)?;
+            if let Some(row) = row {
+                let until: String = row.try_get("until").map_err(unreachable)?;
+                found.push(Leaving {
+                    account: account.clone(),
+                    until: text::read(&until).ok_or_else(|| {
+                        CatalogError::Backend(
+                            format!("until holds {until:?}, which is no time").into(),
+                        )
+                    })?,
+                });
+            }
+        }
+        found.sort_by(|one, other| one.account.as_str().cmp(other.account.as_str()));
+
+        Ok(found)
     }
 }
 

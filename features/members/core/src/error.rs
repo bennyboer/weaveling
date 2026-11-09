@@ -18,6 +18,8 @@ pub enum MembersCoreError {
     ProjectNotThere,
     #[error("only an owner of the project may do this")]
     NotAnOwner,
+    #[error("this account is to be deleted, so its role stays as it is")]
+    Leaving,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
 }

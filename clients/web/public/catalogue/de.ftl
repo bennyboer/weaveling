@@ -134,6 +134,7 @@ refused-not-an-owner = Das darf nur, wem dieses Projekt gehört.
 refused-last-owner = Einem Projekt muss immer jemand gehören. Lass es zuerst noch jemand anderem gehören.
 refused-not-a-member = Diese Person gehört nicht zu diesem Projekt.
 refused-role-unknown = Eine solche Rolle gibt es in einem Projekt nicht.
+refused-member-leaving = Dieses Konto wird gelöscht, daher bleibt seine Rolle, wie sie ist.
 refused-not-an-author = Das darf nur, wer an diesem Projekt mitschreibt.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.

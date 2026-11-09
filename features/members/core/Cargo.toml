@@ -7,6 +7,7 @@ edition.workspace = true
 async-trait = { workspace = true }
 indexmap = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
@@ -15,5 +16,4 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [dev-dependencies]
-time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }

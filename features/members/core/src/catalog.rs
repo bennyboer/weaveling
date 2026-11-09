@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use thiserror::Error;
+use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::members::{Member, Members, ProjectLink, Role};
@@ -25,6 +26,13 @@ pub struct Person {
     pub account: AccountId,
     pub name: String,
     pub email: String,
+}
+
+/// An account asked to be deleted, until when it is kept, as accounts last told it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Leaving {
+    pub account: AccountId,
+    pub until: OffsetDateTime,
 }
 
 #[derive(Debug, Error)]
@@ -72,6 +80,18 @@ pub trait MembershipCatalog: Send + Sync {
     ) -> Result<(), CatalogError>;
 
     async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
+
+    /// Remembers until when an account is leaving, none where it is kept after all, by the account's version, so an older word heard late changes nothing.
+    async fn remember_leaving(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), CatalogError>;
+
+    /// Those of the accounts asked for that are leaving, by account.
+    async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError>;
 }
 
 impl ProjectMembers {

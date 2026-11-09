@@ -9,6 +9,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json, Router};
+use clock::text;
 use eventsourcing::{Agent, ServiceError, Standing, StoreError};
 use live::{About, Broadcaster, Gate, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
@@ -124,6 +125,7 @@ fn to_dto(member: &ListedMember) -> MemberDTO {
         role: named(member.role).to_owned(),
         name: member.name.clone(),
         email: member.email.clone(),
+        leaving_until: member.leaving_until.map(text::serialize),
     }
 }
 
@@ -158,6 +160,9 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
         }
         MembersCoreError::NotAnOwner => {
             Problem::forbidden(refused::NOT_AN_OWNER, MembersCoreError::NotAnOwner)
+        }
+        MembersCoreError::Leaving => {
+            Problem::refused(refused::MEMBER_LEAVING, MembersCoreError::Leaving)
         }
         MembersCoreError::Events(ServiceError::Refused(MembersError::LastOwner)) => {
             Problem::refused(refused::LAST_OWNER, MembersError::LastOwner)

@@ -6,7 +6,9 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
+time = { workspace = true }
 
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }

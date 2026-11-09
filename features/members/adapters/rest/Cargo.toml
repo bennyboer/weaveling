@@ -10,6 +10,7 @@ serde = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 live-contract = { version = "0.1.0", path = "../../../../libraries/live-contract", package = "weaveling-live-contract" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
@@ -24,5 +25,4 @@ live = { version = "0.1.0", path = "../../../../libraries/live", package = "weav
 axum-test = { workspace = true, features = ["ws"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
 time = { workspace = true }
-clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 members-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-members-catalog" }

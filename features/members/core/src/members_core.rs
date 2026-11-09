@@ -1,8 +1,10 @@
+use std::slice;
 use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, EventStore, ServiceError, Standing, Version};
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
@@ -16,6 +18,7 @@ pub struct ListedMember {
     pub role: Role,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub leaving_until: Option<OffsetDateTime>,
 }
 
 #[derive(Clone)]
@@ -72,13 +75,19 @@ impl MembersCore {
     ) -> Result<Standing<Vec<ListedMember>>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Manage, &project).await?;
+        let account = AccountId::from(account);
+        if !self
+            .catalog
+            .leaving(slice::from_ref(&account))
+            .await?
+            .is_empty()
+        {
+            return Err(MembersCoreError::Leaving);
+        }
         let members = self
             .written(
                 &project,
-                MembersCommand::ChangeRole {
-                    account: AccountId::from(account),
-                    to,
-                },
+                MembersCommand::ChangeRole { account, to },
                 expected,
                 agent,
             )
@@ -224,6 +233,23 @@ impl MembersCore {
         })
     }
 
+    /// Remembers until when an account is leaving, none where it is kept after all, as accounts tell it by the account's version.
+    pub async fn remember_leaving(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        until: Option<OffsetDateTime>,
+    ) -> Result<(), MembersCoreError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_leaving(transaction, account, version, until)
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn catalogue(
         &self,
         within: Option<&mut Transaction>,
@@ -335,6 +361,7 @@ impl MembersCore {
             .map(|member| member.account.clone())
             .collect();
         let people = self.catalog.people(&accounts).await?;
+        let leaving = self.catalog.leaving(&accounts).await?;
         let owning = self
             .authorizer
             .may(agent, Act::Manage, project.as_str())
@@ -350,6 +377,10 @@ impl MembersCore {
                 ListedMember {
                     name: person.map(|person| person.name.clone()),
                     email: person.filter(|_| owning).map(|person| person.email.clone()),
+                    leaving_until: leaving
+                        .iter()
+                        .find(|gone| gone.account == member.account)
+                        .map(|gone| gone.until),
                     account: member.account,
                     role: member.role,
                 }
