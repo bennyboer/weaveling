@@ -19,7 +19,7 @@ use live_contract::SESSION_ENDED;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, SignUp, Storage};
+use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, ServedClient, SignUp, Storage};
 
 async fn an_app() -> Router {
     weaveling_service_api::app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
@@ -79,6 +79,100 @@ async fn the_projects_feature_is_mounted_under_api() {
     // then: an empty list is answered
     assert_eq!(status, StatusCode::OK, "body was {body}");
     assert_eq!(body, "[]");
+}
+
+fn a_built_client() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "weaveling-app-client-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(dir.join("pkg")).expect("the folder should be made");
+    fs::write(
+        dir.join("page.html"),
+        "<html><head><title>Weaveling</title></head><body></body></html>",
+    )
+    .expect("the page should be written");
+    fs::write(dir.join("pkg/weaveling.js"), "export default 1;").expect("a file should be written");
+
+    dir
+}
+
+async fn handed_out(client: ServedClient, path: &str) -> (StatusCode, String) {
+    let response = weaveling_service_api::serving_the_client(an_app().await, client)
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .body(Body::empty())
+                .expect("should build the request"),
+        )
+        .await
+        .expect("the app should respond");
+    let status = response.status();
+    let body = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the body should be readable");
+
+    (status, String::from_utf8_lossy(&body).into_owned())
+}
+
+#[tokio::test]
+async fn the_client_is_handed_out_beside_the_api_its_page_at_every_address_of_its_own() {
+    // given: a built client, handed out by the server
+    let client = ServedClient {
+        dir: a_built_client(),
+        reloading: None,
+    };
+
+    // expect: its files are handed out as built
+    assert_eq!(
+        handed_out(client.clone(), "/pkg/weaveling.js").await,
+        (StatusCode::OK, "export default 1;".to_owned())
+    );
+    // and: its page at the root and at any address of the client's own, unchanged
+    for address in ["/", "/projects/a-book/write", "/account/security"] {
+        let (status, page) = handed_out(client.clone(), address).await;
+        assert_eq!(status, StatusCode::OK, "{address}");
+        assert!(page.contains("<title>Weaveling</title>"), "{address}");
+        assert!(!page.contains("<script>"), "{address}");
+    }
+    // and: the api still answers, and an address under it that is none stays not found
+    assert_eq!(
+        handed_out(client.clone(), "/api/service/health").await,
+        (StatusCode::OK, "ok".to_owned())
+    );
+    assert_eq!(
+        handed_out(client, "/api/no-such-thing").await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn while_cargo_leptos_watches_the_page_reloads_on_changes() {
+    // given: a built client, handed out while cargo-leptos watches
+    let client = ServedClient {
+        dir: a_built_client(),
+        reloading: Some(3001),
+    };
+
+    // when: the page is asked for
+    let (status, page) = handed_out(client, "/outline").await;
+
+    // then: it listens for changes on the port told
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("(3001);</script>"), "{page}");
+}
+
+#[tokio::test]
+async fn an_address_under_the_api_that_is_none_is_not_found() {
+    // when: an address under the api that answers nothing is asked
+    let (status, _) = get("/api/no-such-thing").await;
+
+    // then: it is not found
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 async fn signing_up(accounts: Accounts) -> StatusCode {

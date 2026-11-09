@@ -113,10 +113,10 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
 ### Prerequisites
 
 - **Rust**, via [rustup](https://rustup.rs). The toolchain, the `rustfmt`/`clippy` components and the `wasm32-unknown-unknown` target are all declared in `rust-toolchain.toml` and installed automatically on first build — nothing to add by hand.
-- **[Trunk](https://trunkrs.dev)**, the WASM bundler for the web client. Cargo can't declare tool dependencies, so this one is manual:
+- **[cargo-leptos](https://github.com/leptos-rs/cargo-leptos)**, which builds the web client and the server that hands it out. Cargo can't declare tool dependencies, so this one is manual:
 
   ```bash
-  cargo install --locked trunk
+  cargo install --locked cargo-leptos
   ```
 
 - **Node**, only for the client's end-to-end tests. Not needed to build or run anything:
@@ -135,34 +135,25 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
 
 ### Running it for development
 
-Two processes, two terminals.
-
-**Terminal 1 — the API** on `http://127.0.0.1:3000`:
+One process: the API serves the client beside `/api`, and [cargo-leptos](https://github.com/leptos-rs/cargo-leptos) builds both and watches them (`cargo install --locked cargo-leptos` once; it needs `node` on the path for the editor's JavaScript, and if a `wasm-bindgen` of your own is installed, it must be the version `Cargo.lock` names).
 
 ```bash
-cargo run -p weaveling-service-api
+cargo leptos watch
 ```
+
+Then **open http://localhost:3000**. A change to the client rebuilds it and reloads the page, a change to the styles swaps them in without a reload, and a change to the server rebuilds and restarts it, then reloads the page. Arguments for the server go after `--`, as in `cargo leptos watch -- --config my.toml`.
 
 `TraceLayer` emits at DEBUG while `tracing_subscriber` defaults to INFO, so you get no request log unless you ask for one:
 
 ```bash
-RUST_LOG=info,tower_http=debug cargo run -p weaveling-service-api
+RUST_LOG=info,tower_http=debug cargo leptos watch
 ```
 
-**Terminal 2 — the web client** on `http://localhost:8080`:
-
-```bash
-cd clients/web
-trunk serve
-```
-
-Then **open http://localhost:8080** — that's the one you want. Trunk rebuilds and reloads on save, and proxies `/api` through to the API, so everything is same-origin and there is no CORS to configure. Hitting `:3000` directly gives you the API but no UI.
-
-Start the API first if you care about the first paint; otherwise the client shows its error banner until the API answers and a reload picks it up. Rust changes on the server need a manual restart (or `cargo watch -x 'run -p weaveling-service-api'`); client changes are live.
+The API alone, without the client, still runs as `cargo run -p weaveling-service-api`. For a release, `cargo leptos build --release` writes the client to `target/site` and the server to `target/release`; start the server with `client_dir` (`WEAVELING_CLIENT_DIR`) naming that folder.
 
 **Settings are read once, at startup:** built-in defaults, then a `weaveling.toml` beside the server (or the file `--config <path>` or `WEAVELING_CONFIG` names), then the variables below, the later winning. [`weaveling.example.toml`](./weaveling.example.toml) names every key, each with the variable of the same meaning. A value the server cannot read stops it, saying which key in which file or which variable holds it. The API listens on `127.0.0.1:3000` unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port, `0.0.0.0:3000` to be reached from other machines.
 
-**For running it by hand**, `node scripts/dev-settings.mjs` writes a `weaveling.toml` of your own and a `weaveling.dev.key` it names, the key that seals two-step sign-in secrets, with `public_url = "http://localhost:8080"`, so open the client at localhost, not 127.0.0.1, for passkeys to work; git ignores both, and the script never overwrites either, since a new key locks out every second factor set up with the old one. The browser tests start the API with `--config clients/web/e2e/weaveling.toml` instead, a key for tests alone, so your own file changes nothing there.
+**For running it by hand**, `node scripts/dev-settings.mjs` writes a `weaveling.toml` of your own and a `weaveling.dev.key` it names, the key that seals two-step sign-in secrets, with `public_url = "http://localhost:3000"`, so open the client at localhost, not 127.0.0.1, for passkeys to work; git ignores both, and the script never overwrites either, since a new key locks out every second factor set up with the old one. The browser tests start the API with `--config clients/web/e2e/weaveling.toml` instead, a key for tests alone, so your own file changes nothing there.
 
 **Where the work is kept is chosen at startup**, and one binary carries every option:
 
@@ -192,7 +183,7 @@ cd clients/web
 npm test
 ```
 
-Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
+Playwright starts the server with `cargo leptos serve` if it isn't running and reuses it if it is, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
 
 `npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3000 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
 
@@ -206,16 +197,16 @@ Two things to know before writing more of these. Selectors are **role plus acces
 
 | Command | Does |
 |---|---|
-| `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — Trunk builds it, for a different target. |
+| `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — cargo-leptos builds it, for a different target. |
 | `cargo test` | Runs the workspace test suite. Nothing here needs a database. |
 | `cargo test --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`. |
 | `cargo fmt --all` | Formats everything. |
 | `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
 | `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
 | — | CI runs all of the above plus the browser suite, against a PostgreSQL service container. See [.github/workflows/check.yml](./.github/workflows/check.yml). |
-| `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without invoking Trunk. |
-| `trunk build --release` | Produces the optimised client bundle in `clients/web/dist`. |
-| `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the API and Trunk itself if they aren't already up, and reuses them if they are. |
+| `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without building it. |
+| `cargo leptos build --release` | Produces the optimised client in `target/site` and the server beside it. |
+| `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the server itself if it isn't already up, and reuses it if it is. |
 
 ### Layout
 

@@ -73,8 +73,8 @@ jobs:
           cache: npm
           cache-dependency-path: clients/web/package-lock.json
 
-      - name: install trunk
-        run: cargo install --locked trunk
+      - name: install cargo-leptos
+        run: cargo install --locked cargo-leptos
 
       - name: install the browser
         working-directory: clients/web
@@ -90,6 +90,10 @@ jobs:
         working-directory: clients/web
         run: npm run test:local
 
+      - name: test in a browser, against the split release build
+        working-directory: clients/web
+        run: npm run test:split
+
       - name: keep the traces of what failed
         if: failure()
         uses: actions/upload-artifact@v4
@@ -98,4 +102,5 @@ jobs:
           path: |
             target/web/e2e
             target/web/e2e-local
+            target/web/e2e-split
           retention-days: 14

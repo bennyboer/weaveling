@@ -212,6 +212,7 @@ test("scenes outside the book are chosen the same way", async ({ page }) => {
   const first = await aLooseScene(page);
   const second = await aLooseScene(page);
   await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await expect(scene(page, first)).toBeVisible();
   await written(page, first, "Loose.");
@@ -563,6 +564,7 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
   const first = await aLooseScene(page);
   await aLooseScene(page);
   await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await written(page, first, "Loose.");
   await page.keyboard.press("Shift+ArrowDown");

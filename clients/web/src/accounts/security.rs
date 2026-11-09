@@ -3,7 +3,7 @@ use std::future::Future;
 use accounts_contract::SettingUpTotpDTO;
 use leptos::prelude::*;
 use leptos::{IntoView, component, ev, html, task, view};
-use leptos_router::components::Redirect;
+use leptos_router::hooks;
 use qrcodegen::{QrCode, QrCodeEcc};
 use serde_json::Value;
 
@@ -56,10 +56,16 @@ pub fn SecurityPage() -> impl IntoView {
     )
 }
 
-/// The page's old address, from before keys joined the second step.
-#[component]
-pub fn MovedToSecurity() -> impl IntoView {
-    view! { <Redirect path=route::SECURITY options=setup::replacing() /> }
+/// Greets one who just signed up, offering a passkey or a second step now, or leaving it for later.
+fn welcome(welcomed: bool) -> impl IntoView {
+    welcomed.then(|| {
+        html::section().class("welcome").role("status").child((
+            html::p().child(speech::said("security-welcome")),
+            html::a()
+                .href(route::WORKSPACE)
+                .child(speech::said("security-welcome-later")),
+        ))
+    })
 }
 
 /// What a key's dialog is about: naming the key the browser just made, or one the account holds.
@@ -68,6 +74,8 @@ enum KeyDialog {
     Naming(Value),
     Renaming(HeldKey),
     Removing(HeldKey),
+    Promoting(HeldKey),
+    Demoting(HeldKey),
 }
 
 const THE_APP: &str = "app";
@@ -84,6 +92,10 @@ fn overview(
     let dialog = RwSignal::new(None::<KeyDialog>);
     let in_dialog = RwSignal::new(None::<ApiError>);
     let said = RwSignal::new(None::<&'static str>);
+    let welcomed = hooks::use_query_map()
+        .read_untracked()
+        .get("welcome")
+        .is_some();
     let clicking_away = window_event_listener(ev::click, move |_| menu.set(None));
     let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
@@ -103,12 +115,12 @@ fn overview(
         in_dialog.set(None);
         dialog.set(None);
     };
-    let adding = Act::new(move |(), _: Here| {
+    let adding = Act::new(move |passkey: bool, _: Here| {
         refused.set(None);
         said.set(None);
 
         async move {
-            let asked = match service::begin_adding_key().await {
+            let asked = match service::begin_adding_key(passkey, None).await {
                 Ok(asked) => asked,
                 Err(failed) => return refused.set(Some(failed)),
             };
@@ -184,6 +196,67 @@ fn overview(
             }
         }
     });
+    let promoting = Act::new(move |password: String, _: Here| {
+        in_dialog.set(None);
+        let promoted = match dialog.get_untracked() {
+            Some(KeyDialog::Promoting(key)) => Some(key.id),
+            _ => None,
+        };
+
+        async move {
+            let Some(id) = promoted else { return };
+            let asked = match service::begin_adding_key(true, Some(&id)).await {
+                Ok(asked) => asked,
+                Err(failed) => return in_dialog.set(Some(failed)),
+            };
+            let answer = match authenticator::made(&asked).await {
+                Ok(answer) => answer,
+                Err(not_made) => {
+                    dialog.set(None);
+                    return said.set(Some(match not_made {
+                        NoKey::Cancelled => "key-not-made",
+                        NoKey::HeldAlready => "key-held-here",
+                        NoKey::Failed => "key-failed",
+                    }));
+                }
+            };
+            match service::promote_key(&id, answer, &password).await {
+                Ok(()) => {
+                    dialog.set(None);
+                    said.set(Some("key-promoted"));
+                    session.look_again();
+                    look();
+                }
+                Err(failed) => in_dialog.set(Some(failed)),
+            }
+        }
+    });
+    let demoting = Act::new(move |password: String, _: Here| {
+        in_dialog.set(None);
+        let demoted = match dialog.get_untracked() {
+            Some(KeyDialog::Demoting(key)) => Some(key.id),
+            _ => None,
+        };
+
+        async move {
+            let Some(id) = demoted else { return };
+            match service::demote_key(&id, &password).await {
+                Ok(codes) => {
+                    dialog.set(None);
+                    session.look_again();
+                    look();
+                    match codes {
+                        Some(codes) => step.set(Step::Keeping {
+                            codes,
+                            notice: "key-demoted-with-codes",
+                        }),
+                        None => said.set(Some("key-demoted")),
+                    }
+                }
+                Err(failed) => in_dialog.set(Some(failed)),
+            }
+        }
+    });
     on_cleanup(move || {
         clicking_away.remove();
         escaping.remove();
@@ -214,7 +287,26 @@ fn overview(
                     })
                 },
                 html::h1().child(speech::said("security-heading")),
+                welcome(welcomed),
                 html::p().class("hint").child(speech::said("security-hint")),
+                move || {
+                    let passkeys: Vec<HeldKey> = keys
+                        .get()
+                        .into_iter()
+                        .filter(|key| key.signs_in_alone)
+                        .collect();
+                    (!passkeys.is_empty()).then(|| {
+                        (
+                            html::h2().child(speech::said("security-signing-in")),
+                            html::ul().class("ways").child(
+                                passkeys
+                                    .into_iter()
+                                    .map(|key| key_row(key, menu, dialog))
+                                    .collect_view(),
+                            ),
+                        )
+                    })
+                },
                 html::h2().child(speech::said("security-second-step")),
                 factor.is_none().then(|| {
                     html::p()
@@ -236,6 +328,7 @@ fn overview(
                     move || {
                         keys.get()
                             .into_iter()
+                            .filter(|key| !key.signs_in_alone)
                             .map(|key| key_row(key, menu, dialog))
                             .collect_view()
                     },
@@ -250,11 +343,18 @@ fn overview(
                 move || refused.get().map(problem::problem),
                 html::div().class("actions").child((
                     (session.keys_offered() && authenticator::supported()).then(|| {
-                        html::button()
-                            .r#type("button")
-                            .attr("aria-busy", move || adding.busy())
-                            .on(ev::click, move |_| adding.start(()))
-                            .child(speech::said("security-add-key"))
+                        (
+                            html::button()
+                                .r#type("button")
+                                .attr("aria-busy", move || adding.busy_on(&true))
+                                .on(ev::click, move |_| adding.start(true))
+                                .child(speech::said("security-add-passkey")),
+                            html::button()
+                                .r#type("button")
+                                .attr("aria-busy", move || adding.busy_on(&false))
+                                .on(ev::click, move |_| adding.start(false))
+                                .child(speech::said("security-add-key")),
+                        )
                     }),
                     (app.is_none() && session.totp_offered()).then(|| {
                         html::button()
@@ -277,9 +377,30 @@ fn overview(
                         KeyDialog::Renaming(key) => {
                             key_dialogs::renaming(key.name, renaming, in_dialog, close).into_any()
                         }
-                        KeyDialog::Removing(key) => {
-                            key_dialogs::removing(&key.name, removing, in_dialog, close).into_any()
-                        }
+                        KeyDialog::Removing(key) => key_dialogs::asking_the_password(
+                            &key_dialogs::REMOVING,
+                            &key.name,
+                            removing,
+                            in_dialog,
+                            close,
+                        )
+                        .into_any(),
+                        KeyDialog::Promoting(key) => key_dialogs::asking_the_password(
+                            &key_dialogs::PROMOTING,
+                            &key.name,
+                            promoting,
+                            in_dialog,
+                            close,
+                        )
+                        .into_any(),
+                        KeyDialog::Demoting(key) => key_dialogs::asking_the_password(
+                            &key_dialogs::DEMOTING,
+                            &key.name,
+                            demoting,
+                            in_dialog,
+                            close,
+                        )
+                        .into_any(),
                     })
                 },
             )
@@ -407,14 +528,26 @@ fn key_row(
 ) -> impl IntoView {
     let renamed = key.clone();
     let removed = key.clone();
+    let changed = key.clone();
+    let (named, changing, change): (&str, &'static str, KeyDialog) = if key.signs_in_alone {
+        (
+            "security-passkey-named",
+            "key-demote",
+            KeyDialog::Demoting(changed),
+        )
+    } else {
+        (
+            "security-key-named",
+            "key-promote",
+            KeyDialog::Promoting(changed),
+        )
+    };
 
     html::li().class("way").child((
         html::div().class("what").child((
-            html::p().class("name").child(speech::say_about(
-                "security-key-named",
-                "name",
-                &key.name,
-            )),
+            html::p()
+                .class("name")
+                .child(speech::say_about(named, "name", &key.name)),
             html::p().class("meta").child(speech::say_about(
                 "security-key-added",
                 "when",
@@ -430,6 +563,11 @@ fn key_row(
                     "key-rename",
                     false,
                     Box::new(move || dialog.set(Some(KeyDialog::Renaming(renamed.clone())))),
+                ),
+                (
+                    changing,
+                    false,
+                    Box::new(move || dialog.set(Some(change.clone()))),
                 ),
                 (
                     "key-remove",

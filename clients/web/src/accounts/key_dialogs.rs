@@ -101,19 +101,49 @@ pub fn renaming(
     )
 }
 
-/// Asks for the password before a key is removed, saying what follows.
-pub fn removing(
+/// The words of a change to a key asked for by the password: its title, what follows, and the button that does it.
+pub struct PasswordAsked {
+    pub heading: &'static str,
+    pub hint: &'static str,
+    pub confirm: &'static str,
+    pub danger: bool,
+}
+
+pub const REMOVING: PasswordAsked = PasswordAsked {
+    heading: "key-remove-heading",
+    hint: "key-remove-hint",
+    confirm: "key-remove-confirm",
+    danger: true,
+};
+
+pub const PROMOTING: PasswordAsked = PasswordAsked {
+    heading: "key-promote-heading",
+    hint: "key-promote-hint",
+    confirm: "key-promote-confirm",
+    danger: false,
+};
+
+pub const DEMOTING: PasswordAsked = PasswordAsked {
+    heading: "key-demote-heading",
+    hint: "key-demote-hint",
+    confirm: "key-demote-confirm",
+    danger: false,
+};
+
+/// Asks for the password before a key is changed, saying what follows.
+pub fn asking_the_password(
+    words: &'static PasswordAsked,
     named: &str,
     done: Act<String>,
     refused: RwSignal<Option<ApiError>>,
     close: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
-    let title = naming("key-remove-heading", named);
+    let title = naming(words.heading, named);
     let password = RwSignal::new(String::new());
 
     dialog::modal(
         Signal::derive(move || title.clone()),
-        "removing-key",
+        "changing-key",
         close,
         html::form()
             .on(ev::submit, move |event| {
@@ -121,9 +151,7 @@ pub fn removing(
                 done.start(password.get_untracked());
             })
             .child((
-                html::p()
-                    .class("hint")
-                    .child(speech::said("key-remove-hint")),
+                html::p().class("hint").child(speech::said(words.hint)),
                 html::label().class("field").child((
                     html::span().child(speech::said("security-password")),
                     html::input()
@@ -143,9 +171,9 @@ pub fn removing(
                         .child(speech::said("two-step-cancel")),
                     html::button()
                         .r#type("submit")
-                        .class("danger")
+                        .class(if words.danger { "danger" } else { "primary" })
                         .attr("aria-busy", move || done.busy())
-                        .child(speech::said("key-remove-confirm")),
+                        .child(speech::said(words.confirm)),
                 )),
             )),
     )

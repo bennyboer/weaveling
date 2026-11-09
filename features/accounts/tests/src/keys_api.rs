@@ -1,13 +1,14 @@
 use accounts_contract::{
     AddKeyRequest, AddedKeyDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
     PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest, PromoteKeyRequest,
-    RenameKeyRequest, SignedInDTO, key_role, refused, stage,
+    RenameKeyRequest, SignedInDTO, WaysInDTO, key_role, refused, stage,
 };
-use accounts_core::KeyCeremonies;
+use accounts_core::{AccountId, KeyCeremonies, KeyCredentials, KeyId, SecondFactors};
 use axum::http::StatusCode;
 use axum::http::header::COOKIE;
 use axum_test::TestResponse;
 use serde_json::{Value, json};
+use time::OffsetDateTime;
 use webauthn_authenticator_rs::WebauthnAuthenticator;
 use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 use webauthn_rs::prelude::{CreationChallengeResponse, RequestChallengeResponse, Url};
@@ -85,6 +86,27 @@ impl Served {
             .json(&RenameKeyRequest {
                 name: name.to_owned(),
             })
+            .await
+    }
+
+    async fn ways_in_seen_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
+        self.server
+            .get(&format!("/instance/accounts/{account}/ways-in"))
+            .add_header(COOKIE, cookie.to_owned())
+            .await
+    }
+
+    async fn key_removed_by(
+        &self,
+        cookie: &str,
+        account: &AccountId,
+        key: &str,
+        seen: u64,
+    ) -> TestResponse {
+        self.server
+            .delete(&format!("/instance/accounts/{account}/keys/{key}"))
+            .add_header(COOKIE, cookie.to_owned())
+            .add_header("if-match", format!("\"{seen}\""))
             .await
     }
 
@@ -518,10 +540,7 @@ async fn a_key_is_promoted_by_a_passkey_made_in_its_place_and_demoted_again_for_
     // when: it is demoted again with her password
     let demoted = served
         .server
-        .post(&format!(
-            "/accounts/current/keys/{}/demote",
-            listed[0].key
-        ))
+        .post(&format!("/accounts/current/keys/{}/demote", listed[0].key))
         .add_header(COOKIE, cookie.clone())
         .json(&PasswordRequest {
             password: HER_PASSWORD.to_owned(),
@@ -538,4 +557,191 @@ async fn a_key_is_promoted_by_a_passkey_made_in_its_place_and_demoted_again_for_
     );
     let cookie = cookie_set_by(&demoted);
     assert_eq!(served.keys(&cookie).await[0].role, key_role::SECOND_FACTOR);
+}
+
+#[tokio::test]
+async fn the_operator_sees_how_an_account_signs_in_and_removes_a_lost_key_ending_its_sessions() {
+    // given: Ada with a key answering her second step, signed in, and Grace the operator
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let answer = served.key_made(&cookie).await;
+    let added = served.add(&cookie, "YubiKey blue", answer).await;
+    let cookie = cookie_set_by(&added);
+    let key = added.json::<AddedKeyDTO>().key;
+    let (grace, operating) = served.grace_the_operator().await;
+
+    // when: Grace looks at how Ada signs in
+    let seen = served.ways_in_seen_by(&operating, &served.ada).await;
+
+    // then: she sees the key by name and role, and the recovery codes left, no app
+    seen.assert_status_ok();
+    let ways = seen.json::<WaysInDTO>();
+    assert_eq!(ways.keys.len(), 1);
+    assert_eq!(ways.keys[0].key, key);
+    assert_eq!(ways.keys[0].name, "YubiKey blue");
+    assert_eq!(ways.keys[0].role, key_role::SECOND_FACTOR);
+    assert_eq!(ways.totp_since, None);
+    assert_eq!(ways.recovery_codes_left, Some(10));
+    // when: she removes the key a minute later, from the version she saw
+    served.at(1_700_000_060);
+    let removed = served
+        .key_removed_by(&operating, &served.ada, &key, ways.version)
+        .await;
+
+    // then: it is gone, and with it the second step and its recovery codes
+    removed.assert_status(StatusCode::NO_CONTENT);
+    let ways = served
+        .ways_in_seen_by(&operating, &served.ada)
+        .await
+        .json::<WaysInDTO>();
+    assert!(ways.keys.is_empty());
+    assert_eq!(ways.recovery_codes_left, None);
+    assert!(
+        served
+            .wired
+            .secrets
+            .credentials_of(&served.ada)
+            .await
+            .expect("reading should succeed")
+            .is_empty()
+    );
+    assert!(
+        served
+            .wired
+            .secrets
+            .recovery_codes_of(&served.ada)
+            .await
+            .expect("reading should succeed")
+            .is_empty()
+    );
+    // and: Ada is signed out, and signs in by her password alone
+    refused_as(
+        &served.current(&cookie).await,
+        StatusCode::UNAUTHORIZED,
+        refused::NOT_SIGNED_IN,
+    );
+    let signed_in = served.signed_in().await;
+    assert_eq!(served.stage_of(&signed_in).await, stage::SIGNED_IN);
+    // and: Grace's own session goes on
+    served
+        .ways_in_seen_by(&operating, &grace)
+        .await
+        .assert_status_ok();
+}
+
+#[tokio::test]
+async fn the_operator_removing_one_of_two_keys_leaves_the_second_step_and_its_codes() {
+    // given: Ada with two keys answering her second step, and Grace the operator
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let answer = served.key_made(&cookie).await;
+    let first = served.add(&cookie, "YubiKey blue", answer).await;
+    let cookie = cookie_set_by(&first);
+    let first = first.json::<AddedKeyDTO>().key;
+    let answer = served.key_made(&cookie).await;
+    served.add(&cookie, "YubiKey green", answer).await;
+    let (_, operating) = served.grace_the_operator().await;
+    let seen = served
+        .ways_in_seen_by(&operating, &served.ada)
+        .await
+        .json::<WaysInDTO>();
+
+    // when: Grace removes the first
+    served
+        .key_removed_by(&operating, &served.ada, &first, seen.version)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: the second still answers the second step, the codes kept
+    let ways = served
+        .ways_in_seen_by(&operating, &served.ada)
+        .await
+        .json::<WaysInDTO>();
+    assert_eq!(
+        ways.keys
+            .iter()
+            .map(|key| key.name.as_str())
+            .collect::<Vec<_>>(),
+        ["YubiKey green"]
+    );
+    assert_eq!(ways.recovery_codes_left, Some(10));
+}
+
+#[tokio::test]
+async fn the_operator_is_refused_a_key_not_held_an_account_unknown_and_a_version_gone_by() {
+    // given: Ada with a key, and Grace the operator who saw her ways in
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let answer = served.key_made(&cookie).await;
+    let added = served.add(&cookie, "YubiKey blue", answer).await;
+    let key = added.json::<AddedKeyDTO>().key;
+    let (_, operating) = served.grace_the_operator().await;
+    let seen = served
+        .ways_in_seen_by(&operating, &served.ada)
+        .await
+        .json::<WaysInDTO>();
+
+    // expect: a key Ada does not hold is not found
+    refused_as(
+        &served
+            .key_removed_by(
+                &operating,
+                &served.ada,
+                &KeyId::generate(OffsetDateTime::UNIX_EPOCH).to_string(),
+                seen.version,
+            )
+            .await,
+        StatusCode::NOT_FOUND,
+        refused::NO_SUCH_KEY,
+    );
+    // and: an account nobody signed up with is not found
+    refused_as(
+        &served
+            .ways_in_seen_by(&operating, &AccountId::generate(OffsetDateTime::UNIX_EPOCH))
+            .await,
+        StatusCode::NOT_FOUND,
+        refused::ACCOUNT_NOT_FOUND,
+    );
+    // and: removing from a version gone by is refused, the key kept
+    refused_as(
+        &served
+            .key_removed_by(&operating, &served.ada, &key, seen.version - 1)
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
+    assert_eq!(
+        served
+            .ways_in_seen_by(&operating, &served.ada)
+            .await
+            .json::<WaysInDTO>()
+            .keys
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn only_an_operator_sees_how_another_account_signs_in_or_removes_its_keys() {
+    // given: Ada with a key, and Grace who is no operator
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let answer = served.key_made(&cookie).await;
+    let added = served.add(&cookie, "YubiKey blue", answer).await;
+    let cookie = cookie_set_by(&added);
+    let key = added.json::<AddedKeyDTO>().key;
+
+    // expect: Ada herself, no operator, is refused both
+    refused_as(
+        &served.ways_in_seen_by(&cookie, &served.ada).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+    refused_as(
+        &served.key_removed_by(&cookie, &served.ada, &key, 1).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+    // and: the key stays
+    assert_eq!(served.keys(&cookie).await.len(), 1);
 }

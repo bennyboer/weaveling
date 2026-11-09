@@ -20,6 +20,24 @@ default-members = [
     "features/*/wiring",
 ]
 
+# cargo-leptos builds the client and starts the server that serves it beside /api:
+# `cargo leptos watch` while developing, `cargo leptos build --release` for a release.
+[[workspace.metadata.leptos]]
+name = "weaveling"
+lib-package = "weaveling-client-web"
+lib-default-features = true
+bin-package = "weaveling-service-api"
+bin-default-features = true
+site-root = "target/site"
+site-pkg-dir = "pkg"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+style-file = "clients/web/scss/main.scss"
+assets-dir = "clients/web/public"
+js-dir = "clients/web/js"
+disable-erase-components = true
+lib-profile-release = "wasm-release"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
@@ -69,3 +87,10 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# The client's release build, sized for the web: cargo-leptos builds the wasm with it.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1

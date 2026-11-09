@@ -1,3 +1,4 @@
+mod client_dir;
 mod file;
 mod listen;
 mod public_url;
@@ -18,6 +19,7 @@ use crate::{
 };
 use file::BESIDE;
 
+pub use client_dir::WEAVELING_CLIENT_DIR;
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
 pub use public_url::{UnreadablePublicUrl, WEAVELING_PUBLIC_URL};
 pub use setting::Setting;
@@ -56,6 +58,8 @@ pub enum Unsettled {
 pub struct Settings {
     listen: Option<Setting>,
     public_url: Option<Setting>,
+    client_dir: Option<Setting>,
+    reload_port: Option<u16>,
     database_url: Option<Setting>,
     data: Option<Setting>,
     accounts: Option<Setting>,
@@ -126,6 +130,7 @@ impl Settings {
         for (name, setting) in [
             (WEAVELING_LISTEN, &mut self.listen),
             (WEAVELING_PUBLIC_URL, &mut self.public_url),
+            (WEAVELING_CLIENT_DIR, &mut self.client_dir),
             (WEAVELING_DATABASE_URL, &mut self.database_url),
             (WEAVELING_DATA, &mut self.data),
             (WEAVELING_ACCOUNTS, &mut self.accounts),
@@ -136,6 +141,13 @@ impl Settings {
             if let Some(given) = set(name) {
                 *setting = Some(given);
             }
+        }
+        if self.client_dir.is_none() {
+            self.client_dir = set(client_dir::LEPTOS_SITE_ROOT);
+        }
+        if variable(client_dir::LEPTOS_WATCH).as_deref() == Some("true") {
+            self.reload_port =
+                variable(client_dir::LEPTOS_RELOAD_PORT).and_then(|port| port.trim().parse().ok());
         }
         if let Some(totp_key) =
             totp_key::secret(set(WEAVELING_TOTP_KEY), set(WEAVELING_TOTP_KEY_FILE))?

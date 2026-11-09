@@ -12,12 +12,13 @@
         }
       } catch (beyondReach) {}
     </script>
-    <link data-trunk rel="rust" />
-    <link data-trunk rel="copy-dir" href="fonts" />
-    <link data-trunk rel="copy-file" href="logo.svg" />
-    <link data-trunk rel="copy-file" href="favicon.svg" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link data-trunk rel="scss" href="scss/main.scss" />
+    <link rel="stylesheet" href="/pkg/weaveling.css" />
+    <link rel="modulepreload" href="/pkg/weaveling.js" />
+    <script type="module">
+      import start from "/pkg/weaveling.js";
+      start({ module_or_path: "/pkg/weaveling.wasm" });
+    </script>
   </head>
   <body></body>
 </html>

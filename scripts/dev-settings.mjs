@@ -15,7 +15,7 @@ if (existsSync(key)) {
 }
 
 if (existsSync(settings)) {
-  console.log("kept weaveling.toml: see that it names totp_key_file = \"weaveling.dev.key\" and public_url = \"http://localhost:8080\"");
+  console.log("kept weaveling.toml: see that it names totp_key_file = \"weaveling.dev.key\" and public_url = \"http://localhost:3000\"");
 } else {
   writeFileSync(
     settings,
@@ -24,7 +24,7 @@ if (existsSync(settings)) {
 
 [server]
 # Open the client at this address, not at 127.0.0.1, or no passkey can be added.
-public_url = "http://localhost:8080"
+public_url = "http://localhost:3000"
 
 [accounts]
 # enabled = true

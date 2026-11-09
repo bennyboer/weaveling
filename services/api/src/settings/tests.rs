@@ -574,3 +574,82 @@ fn a_public_url_keys_cannot_be_bound_to_says_where_it_was_written() {
         "{refusal}"
     );
 }
+
+#[test]
+fn no_client_is_handed_out_unless_one_is_named() {
+    // given: no settings, and not started by cargo-leptos
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: the server hands out no client
+    assert_eq!(settings.client(), None);
+}
+
+#[test]
+fn the_client_is_named_by_the_file_a_variable_or_else_the_site_cargo_leptos_built() {
+    // given: a settings file naming the client's folder
+    let folder = a_folder();
+    a_file(&folder, BESIDE, "[server]\nclient_dir = \"filed/site\"\n");
+
+    // expect: the file's folder wins over the site cargo-leptos names
+    let filed = Settings::read(
+        no_arguments(),
+        variables(&[("LEPTOS_SITE_ROOT", "target/site")]),
+        &folder,
+    )
+    .expect("the file is read");
+    assert_eq!(
+        filed.client().map(|client| client.dir),
+        Some(PathBuf::from("filed/site"))
+    );
+    // and: a variable wins over the file
+    let told = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_CLIENT_DIR, "told/site")]),
+        &folder,
+    )
+    .expect("both are read");
+    assert_eq!(
+        told.client().map(|client| client.dir),
+        Some(PathBuf::from("told/site"))
+    );
+    // and: with nothing else, the site cargo-leptos built is handed out
+    let built = Settings::read(
+        no_arguments(),
+        variables(&[("LEPTOS_SITE_ROOT", "target/site")]),
+        &a_folder(),
+    )
+    .expect("a variable is read");
+    assert_eq!(
+        built.client().map(|client| client.dir),
+        Some(PathBuf::from("target/site"))
+    );
+}
+
+#[test]
+fn the_page_reloads_on_changes_only_while_cargo_leptos_watches() {
+    // given: a client named, and cargo-leptos telling its reload port
+    let folder = a_folder();
+    let reading = |watching: &str| {
+        Settings::read(
+            no_arguments(),
+            variables(&[
+                ("LEPTOS_SITE_ROOT", "target/site"),
+                ("LEPTOS_RELOAD_PORT", "3001"),
+                ("LEPTOS_WATCH", watching),
+            ]),
+            &folder,
+        )
+        .expect("variables are read")
+        .client()
+        .and_then(|client| client.reloading)
+    };
+
+    // expect: while it watches, the port is told to the page
+    assert_eq!(reading("true"), Some(3001));
+    // and: otherwise nothing reloads
+    assert_eq!(reading(""), None);
+}

@@ -13,6 +13,11 @@ pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 
 const SLUG_CHARS: usize = 60;
 
+/// The security page as one who just signed up first sees it, offered a passkey or a second step.
+pub fn welcomed() -> String {
+    format!("{SECURITY}?welcome")
+}
+
 pub fn project(id: &ProjectId, named: &str) -> String {
     let slug = slugify(named);
 

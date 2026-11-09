@@ -68,7 +68,11 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
     let consuming = adapters.consuming();
     let settling = adapters.settling();
     let chores = adapters.chores();
-    let routes = weaveling_service_api::app(adapters);
+    let mut routes = weaveling_service_api::app(adapters);
+    if let Some(client) = settings.client() {
+        tracing::info!("handing out the client built in {}", client.dir.display());
+        routes = weaveling_service_api::serving_the_client(routes, client);
+    }
 
     (
         routes,

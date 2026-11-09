@@ -3,6 +3,9 @@ name = "weaveling-client-web"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 console_error_panic_hook = { workspace = true }
 fluent-bundle = { workspace = true }

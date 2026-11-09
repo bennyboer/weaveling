@@ -8,11 +8,11 @@ mod lock_dialog;
 mod recovery_note;
 mod role_dialog;
 mod roster;
-mod second_factor_dialog;
 pub mod security;
 pub mod service;
 pub mod sign_in;
 pub mod unreachable;
+mod ways_in_dialog;
 
 pub use account_menu::account_in_masthead;
 pub use recovery_note::recovery_note;
@@ -59,12 +59,21 @@ pub enum PreferredWay {
     LastUsed,
 }
 
-/// A key of the account answering its second step, as its Security page lists it.
+/// A key of the account, a passkey signing in alone or a key answering the second step, as its Security page lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeldKey {
     pub id: String,
     pub name: String,
     pub since: OffsetDateTime,
+    pub signs_in_alone: bool,
+}
+
+/// How an account signs in, as the operator sees it: the password, always kept, goes without saying.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaysIn {
+    pub keys: Vec<HeldKey>,
+    pub totp_since: Option<OffsetDateTime>,
+    pub recovery_codes_left: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -19,6 +19,12 @@
 # key added before stops working. https, or http only at localhost; no path.
 # WEAVELING_PUBLIC_URL
 # public_url = "https://weaveling.example.com"
+#
+# The built client the server hands out beside /api, the folder
+# `cargo leptos build --release` makes. Left out, the server hands out no
+# client, unless cargo-leptos started it, which names the folder it built.
+# WEAVELING_CLIENT_DIR
+# client_dir = "target/site"
 
 [storage]
 # Where the work is kept. Leave both out to keep it in memory, which a restart

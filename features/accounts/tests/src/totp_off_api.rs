@@ -49,7 +49,7 @@ impl Served {
             .second_factor
     }
 
-    async fn grace_the_operator(&self) -> (AccountId, String) {
+    pub(crate) async fn grace_the_operator(&self) -> (AccountId, String) {
         let accounts = &self.wired.accounts;
         accounts
             .sign_up(GRACE, "Grace", HER_PASSWORD)

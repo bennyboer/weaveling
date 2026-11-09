@@ -5,13 +5,13 @@ use accounts_contract::{
     PasswordRequest, PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest,
     RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
     SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused,
-    second_step_way, stage,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, WaysInDTO, key_role, lock_kind,
+    refused, second_step_way, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, AddedKey,
     InvalidAccountName, InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword,
-    KeyId, KeyRole, LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn,
+    Key, KeyId, KeyRole, LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn,
     SigningIn, Stage,
 };
 use acting::Acting;
@@ -129,6 +129,14 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/instance/accounts/{account}/totp",
             routing::delete(remove_totp),
+        )
+        .route(
+            "/instance/accounts/{account}/ways-in",
+            routing::get(ways_in),
+        )
+        .route(
+            "/instance/accounts/{account}/keys/{key}",
+            routing::delete(remove_key_of),
         )
         .route(
             "/instance/accounts/{account}/lock",
@@ -412,19 +420,62 @@ async fn list_keys(
     let keys = accounts.keys_of(&account).await.map_err(problem_of)?;
 
     Ok(Json(
-        keys.iter()
-            .map(|(key, held)| KeyDTO {
-                key: key.to_string(),
-                name: held.name.to_string(),
-                role: match held.role {
-                    KeyRole::Primary => key_role::PRIMARY,
-                    KeyRole::SecondFactor => key_role::SECOND_FACTOR,
-                }
-                .to_owned(),
-                since: text::serialize(held.since),
-            })
-            .collect(),
+        keys.iter().map(|(key, held)| key_told(key, held)).collect(),
     ))
+}
+
+fn key_told(key: &KeyId, held: &Key) -> KeyDTO {
+    KeyDTO {
+        key: key.to_string(),
+        name: held.name.to_string(),
+        role: match held.role {
+            KeyRole::Primary => key_role::PRIMARY,
+            KeyRole::SecondFactor => key_role::SECOND_FACTOR,
+        }
+        .to_owned(),
+        since: text::serialize(held.since),
+    }
+}
+
+async fn ways_in(
+    State(accounts): State<AccountsCore>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+) -> Result<Json<WaysInDTO>, Problem> {
+    let ways = accounts
+        .ways_in(&by, &account_named(&account)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(WaysInDTO {
+        version: ways.version.count(),
+        keys: ways
+            .keys
+            .iter()
+            .map(|(key, held)| key_told(key, held))
+            .collect(),
+        totp_since: ways.totp.map(|totp| text::serialize(totp.since)),
+        recovery_codes_left: ways.recovery_codes_left,
+    }))
+}
+
+async fn remove_key_of(
+    State(accounts): State<AccountsCore>,
+    Extension(by): Extension<AccountId>,
+    Path((account, key)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .remove_key_of(
+            &by,
+            &account_named(&account)?,
+            &key_named(&key)?,
+            serving::demanded(&headers)?,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn begin_adding_key(

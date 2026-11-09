@@ -1,5 +1,6 @@
 mod accounts;
 mod backend;
+mod client;
 mod flaky;
 mod mail;
 mod refusals;
@@ -14,6 +15,7 @@ use accounts_core::{AccountsCore, AccountsError, KeyCeremonies, OperatorCode, To
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use authorizing::{AllowingEverything, Authorizer};
+use axum::http::StatusCode;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use boards_wiring::BoardFeature;
@@ -38,13 +40,14 @@ use crate::refusals::{RefusalChanges, TellingDeliveries};
 pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use chores::{Chore, Chores};
+pub use client::{ServedClient, serving_the_client};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
 pub use settings::{
     Setting, Settings, Unlistenable, UnreadablePublicUrl, UnreadableTotpKey, Unsettled,
-    WEAVELING_CONFIG, WEAVELING_LISTEN, WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY,
-    WEAVELING_TOTP_KEY_FILE,
+    WEAVELING_CLIENT_DIR, WEAVELING_CONFIG, WEAVELING_LISTEN, WEAVELING_PUBLIC_URL,
+    WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
 };
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};
@@ -303,8 +306,12 @@ pub fn app(adapters: Adapters) -> Router {
     };
 
     Router::new()
-        .nest("/api", api)
+        .nest("/api", api.fallback(no_such_route))
         .layer(TraceLayer::new_for_http())
+}
+
+async fn no_such_route() -> StatusCode {
+    StatusCode::NOT_FOUND
 }
 
 async fn health() -> &'static str {

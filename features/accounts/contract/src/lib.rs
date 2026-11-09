@@ -157,6 +157,15 @@ pub struct KeyDTO {
     pub since: String,
 }
 
+/// An account's ways in as the operator sees them; the password, always kept, goes without saying.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct WaysInDTO {
+    pub version: u64,
+    pub keys: Vec<KeyDTO>,
+    pub totp_since: Option<String>,
+    pub recovery_codes_left: Option<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct KeyChallengeDTO {
     pub options: serde_json::Value,

@@ -21,6 +21,7 @@ pub(super) enum Intent {
     Appoint,
     Dismiss,
     TurnOffSecondFactor,
+    RemoveKey(String),
 }
 
 #[derive(Clone, Copy)]
@@ -31,7 +32,7 @@ pub(super) struct Roster {
     pub(super) refused: RwSignal<Option<ApiError>>,
     pub(super) locking: RwSignal<Option<ListedAccount>>,
     pub(super) changing_role: RwSignal<Option<ListedAccount>>,
-    pub(super) turning_off: RwSignal<Option<ListedAccount>>,
+    pub(super) seeing_ways_in: RwSignal<Option<ListedAccount>>,
     pub(super) menu: RwSignal<Option<String>>,
 }
 
@@ -48,6 +49,7 @@ impl Roster {
                     Intent::Appoint => service::appoint_operator(&id, on.version).await?,
                     Intent::Dismiss => service::dismiss_operator(&id, on.version).await?,
                     Intent::TurnOffSecondFactor => service::remove_totp(&id, on.version).await?,
+                    Intent::RemoveKey(key) => service::remove_key_of(&id, key, on.version).await?,
                 }
 
                 Ok(answered(
@@ -66,7 +68,7 @@ impl Roster {
             refused,
             locking: RwSignal::new(None),
             changing_role: RwSignal::new(None),
-            turning_off: RwSignal::new(None),
+            seeing_ways_in: RwSignal::new(None),
             menu: RwSignal::new(None),
         };
         roster.load(None);
@@ -150,12 +152,17 @@ impl working_copy::Intent<ListedAccount> for Intent {
             Self::Unlock => account.lock = None,
             Self::Appoint => account.operator = true,
             Self::Dismiss => account.operator = false,
-            Self::TurnOffSecondFactor => account.second_factor = false,
+            Self::TurnOffSecondFactor | Self::RemoveKey(_) => {}
         }
     }
 
     fn merged_after(&self, earlier: &Self) -> Option<Self> {
-        (mem::discriminant(self) == mem::discriminant(earlier)).then(|| self.clone())
+        match (self, earlier) {
+            (Self::RemoveKey(key), Self::RemoveKey(before)) => {
+                (key == before).then(|| self.clone())
+            }
+            _ => (mem::discriminant(self) == mem::discriminant(earlier)).then(|| self.clone()),
+        }
     }
 }
 
@@ -246,9 +253,16 @@ mod tests {
     }
 
     #[test]
-    fn a_second_factor_turned_off_shows_off_at_once() {
-        // expect: turning it off shows the account without one
-        assert!(!shown(grace(false, None), &Intent::TurnOffSecondFactor).second_factor);
+    fn a_way_in_removed_leaves_the_second_step_shown_until_the_account_is_read_again() {
+        // given: an account with a second step
+        let stepping = ListedAccount {
+            second_factor: true,
+            ..grace(false, None)
+        };
+
+        // expect: turning the app off or removing a key, another way may still answer it
+        assert!(shown(stepping.clone(), &Intent::TurnOffSecondFactor).second_factor);
+        assert!(shown(stepping, &Intent::RemoveKey("key_blue".to_owned())).second_factor);
     }
 
     #[test]
@@ -261,6 +275,13 @@ mod tests {
         // and: a change of another kind waits its own turn
         assert_eq!(Intent::Unlock.merged_after(&a_lock_for("First.")), None);
         assert_eq!(Intent::Dismiss.merged_after(&Intent::Appoint), None);
+        // and: removing one key never stands in for removing another
+        let blue = Intent::RemoveKey("key_blue".to_owned());
+        assert_eq!(
+            Intent::RemoveKey("key_green".to_owned()).merged_after(&blue),
+            None
+        );
+        assert_eq!(blue.merged_after(&blue), Some(blue.clone()));
     }
 
     #[test]

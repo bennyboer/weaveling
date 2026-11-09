@@ -1,7 +1,7 @@
 use accounts_contract::refused;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::{IntoView, component, ev, html};
+use leptos::{IntoView, component, ev, html, task};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks;
 
@@ -55,6 +55,7 @@ struct Page {
     notice: RwSignal<Option<&'static str>>,
     invitation: RwSignal<Option<String>>,
     operator_code: RwSignal<Option<String>>,
+    confirmed: RwSignal<bool>,
 }
 
 impl Page {
@@ -97,6 +98,7 @@ pub fn SignInPage() -> impl IntoView {
         notice: RwSignal::new(None),
         invitation: RwSignal::new(invitation),
         operator_code: RwSignal::new(None),
+        confirmed: RwSignal::new(false),
     };
 
     (
@@ -148,6 +150,11 @@ fn sign_in_form(page: Page) -> impl IntoView {
                 if here.still() {
                     navigate(route::INSTANCE_ACCOUNTS, NavigateOptions::default());
                 }
+            } else if page.confirmed.get_untracked()
+                && (session.keys_offered() || session.totp_offered())
+                && here.still()
+            {
+                navigate(&route::welcomed(), NavigateOptions::default());
             }
             session.signed_in(account);
 
@@ -162,13 +169,14 @@ fn sign_in_form(page: Page) -> impl IntoView {
     (
         html::h1().child(speech::said("sign-in-heading")),
         notice(page),
+        passkey_offered(session),
         form(
             move || signing_in.start(()),
             (
                 field(
                     speech::said("sign-in-email"),
                     "email",
-                    "username",
+                    "username webauthn",
                     page.email,
                 ),
                 field(
@@ -402,7 +410,10 @@ fn code_form(page: Page) -> impl IntoView {
                     if verified.is_err() {
                         code.set(String::new());
                     }
-                    verified.map(|()| page.turn_to(Form::SignIn, Some("code-confirmed")))
+                    verified.map(|()| {
+                        page.confirmed.set(true);
+                        page.turn_to(Form::SignIn, Some("code-confirmed"))
+                    })
                 }
                 CodeAsk::SendAgain => service::send_code_again(&email).await.map(|()| {
                     code.set(String::new());
@@ -575,6 +586,96 @@ fn second_step_form(page: Page) -> impl IntoView {
         ),
         another_way(page),
     )
+}
+
+/// Signs in by a passkey alone, where this Weaveling instance and the browser both know keys; the browser shows whichever passkeys of this site it holds.
+fn passkey_offered(session: CurrentSession) -> impl IntoView {
+    let refused = RwSignal::new(None::<ApiError>);
+    let said = RwSignal::new(None::<&'static str>);
+    let signing_in = Act::new(move |(), _: Here| {
+        said.set(None);
+
+        let attempt = asked(refused, async move {
+            let (signing_in, asked) = service::begin_signing_in_with_passkey().await?;
+            let touch = match authenticator::touched(&asked).await {
+                Ok(touch) => touch,
+                Err(NoKey::Cancelled | NoKey::HeldAlready) => {
+                    said.set(Some("passkey-not-touched"));
+                    return Ok(());
+                }
+                Err(NoKey::Failed) => {
+                    said.set(Some("passkey-failed"));
+                    return Ok(());
+                }
+            };
+            let account = service::sign_in_with_passkey(signing_in, touch).await?;
+            session.signed_in(account);
+
+            Ok(())
+        });
+
+        async move {
+            attempt.await;
+            if !matches!(session.state(), SignInState::SignedIn(_)) {
+                offering_in_the_address(session, refused);
+            }
+        }
+    });
+    let offered = StoredValue::new(false);
+    Effect::new(move || {
+        if session.keys_offered() && authenticator::supported() && !offered.get_value() {
+            offered.set_value(true);
+            offering_in_the_address(session, refused);
+        }
+    });
+    on_cleanup(authenticator::stop_offering);
+
+    move || {
+        (session.keys_offered() && authenticator::supported()).then(|| {
+            html::section().class("passkey-offered").child((
+                html::button()
+                    .r#type("button")
+                    .class("primary")
+                    .attr("aria-busy", move || signing_in.busy())
+                    .on(ev::click, move |_| signing_in.start(()))
+                    .child((
+                        icons::mark(Icon::Key),
+                        html::span().child(speech::said("passkey-sign-in")),
+                    )),
+                move || {
+                    said.get().map(|message| {
+                        html::p()
+                            .class("hint")
+                            .role("status")
+                            .child(speech::said(message))
+                    })
+                },
+                move || refused.get().map(problem::problem),
+                html::p()
+                    .class("divider")
+                    .child(speech::said("passkey-or-password")),
+            ))
+        })
+    }
+}
+
+/// Offers the browser's passkeys for this site where it fills in the address, signing in once one is picked; a browser holding none shows nothing.
+fn offering_in_the_address(session: CurrentSession, refused: RwSignal<Option<ApiError>>) {
+    task::spawn_local(async move {
+        if !authenticator::offerable().await {
+            return;
+        }
+        let Ok((signing_in, asked)) = service::begin_signing_in_with_passkey().await else {
+            return;
+        };
+        let Ok(touch) = authenticator::offered(&asked).await else {
+            return;
+        };
+        match service::sign_in_with_passkey(signing_in, touch).await {
+            Ok(account) => session.signed_in(account),
+            Err(failed) => refused.set(Some(failed)),
+        }
+    });
 }
 
 /// Asks for a touch of one of the account's keys; the browser's own dialog opens only once asked for, so one who meant another way is not interrupted.

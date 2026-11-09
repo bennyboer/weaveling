@@ -1,23 +1,43 @@
 import * as Y from "yjs";
-import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  Selection,
+  TextSelection,
+} from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
 import { addListNodes } from "prosemirror-schema-list";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
-import { redo, undo, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
+import {
+  redo,
+  undo,
+  yCursorPlugin,
+  ySyncPlugin,
+  yUndoPlugin,
+} from "y-prosemirror";
 
 import { SceneSync } from "./sync.js";
 
 export { SyncConnection } from "./sync.js";
 export { LiveSubscription } from "./live.js";
 export { whenSessionEnded } from "./reconnecting.js";
-export { keysSupported, makeKey, touchKey } from "./keys.js";
+export {
+  keysSupported,
+  makeKey,
+  offerPasskeys,
+  passkeysOfferable,
+  stopOfferingPasskeys,
+  touchKey,
+} from "./keys.js";
 
 const FRAGMENT = "prose";
 
-const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ctrl";
+const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
+  ? "Alt"
+  : "Ctrl";
 
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
@@ -28,10 +48,16 @@ const schema = new Schema({
       parseDOM: [
         {
           tag: "span.quote",
-          getAttrs: (dom) => ({ side: dom.dataset.side === "closing" ? "closing" : "opening" }),
+          getAttrs: (dom) => ({
+            side: dom.dataset.side === "closing" ? "closing" : "opening",
+          }),
         },
       ],
-      toDOM: (mark) => ["span", { class: "quote", "data-side": mark.attrs.side }, 0],
+      toDOM: (mark) => [
+        "span",
+        { class: "quote", "data-side": mark.attrs.side },
+        0,
+      ],
     })
     .addToEnd("speech", { toDOM: () => ["span", 0] }),
 });
@@ -53,7 +79,9 @@ function quoteRuns(doc) {
         run.to = from + child.nodeSize;
         return;
       }
-      run = quote ? { from, to: from + child.nodeSize, side: quote.attrs.side } : null;
+      run = quote
+        ? { from, to: from + child.nodeSize, side: quote.attrs.side }
+        : null;
       if (run) {
         runs.push(run);
       }
@@ -91,7 +119,9 @@ function markingWhereWritten() {
         }
 
         return DecorationSet.create(state.doc, [
-          Decoration.node($head.before(1), $head.after(1), { class: "where-written" }),
+          Decoration.node($head.before(1), $head.after(1), {
+            class: "where-written",
+          }),
         ]);
       },
     },
@@ -157,7 +187,8 @@ export class ProseEditor {
               handleDOMEvents: {
                 focus: (view) => this.focusedWhereTheBrowserPutIt(view),
               },
-              handleTextInput: (view, from, to, text) => this.typedMark(view, from, to, text),
+              handleTextInput: (view, from, to, text) =>
+                this.typedMark(view, from, to, text),
               clipboardTextSerializer: (slice) => writtenText(slice.content),
             },
           }),
@@ -173,12 +204,18 @@ export class ProseEditor {
           }),
           keymap({
             Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
-            ArrowUp: (state, _, view) => this.leave(state, view, "before", "up"),
-            ArrowLeft: (state, _, view) => this.leave(state, view, "before", "left"),
-            ArrowDown: (state, _, view) => this.leave(state, view, "after", "down"),
-            ArrowRight: (state, _, view) => this.leave(state, view, "after", "right"),
-            "Shift-ArrowUp": (state, _, view) => this.selectBeyond(state, view, "before", "up"),
-            "Shift-ArrowDown": (state, _, view) => this.selectBeyond(state, view, "after", "down"),
+            ArrowUp: (state, _, view) =>
+              this.leave(state, view, "before", "up"),
+            ArrowLeft: (state, _, view) =>
+              this.leave(state, view, "before", "left"),
+            ArrowDown: (state, _, view) =>
+              this.leave(state, view, "after", "down"),
+            ArrowRight: (state, _, view) =>
+              this.leave(state, view, "after", "right"),
+            "Shift-ArrowUp": (state, _, view) =>
+              this.selectBeyond(state, view, "before", "up"),
+            "Shift-ArrowDown": (state, _, view) =>
+              this.selectBeyond(state, view, "after", "down"),
             "Mod-a": (state) => this.selectAllOnceMore(state),
             ...this.jumping("Mod"),
             ...this.jumping("Alt"),
@@ -246,7 +283,11 @@ export class ProseEditor {
         : this.leave(state, view, towards, after ? "right" : "left");
     }
     const anchor = extending ? selection.anchor : to;
-    dispatch?.(state.tr.setSelection(TextSelection.create(doc, anchor, to)).scrollIntoView());
+    dispatch?.(
+      state.tr
+        .setSelection(TextSelection.create(doc, anchor, to))
+        .scrollIntoView(),
+    );
 
     return true;
   }
@@ -301,7 +342,8 @@ export class ProseEditor {
 
       this.focusAt(TextSelection.near(doc.resolve(caret)));
       const { node } = this.view.domAtPos(this.view.state.selection.head);
-      const line = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      const line =
+        node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
       line?.scrollIntoView({ block: "center" });
     };
 
@@ -316,7 +358,8 @@ export class ProseEditor {
         this.focusStart();
       }
       const { node } = this.view.domAtPos(this.view.state.selection.head);
-      const line = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      const line =
+        node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
       line?.scrollIntoView({ block: "nearest" });
     });
   }
@@ -335,9 +378,15 @@ export class ProseEditor {
 
   inserted(tr, at, side, marks) {
     const written = this.quotationMarks[side];
-    const quoted = schema.marks.quote.create({ side }).addToSet(
-      marks.filter((mark) => mark.type !== schema.marks.quote && mark.type !== schema.marks.speech),
-    );
+    const quoted = schema.marks.quote
+      .create({ side })
+      .addToSet(
+        marks.filter(
+          (mark) =>
+            mark.type !== schema.marks.quote &&
+            mark.type !== schema.marks.speech,
+        ),
+      );
     tr.insert(at, schema.text(written, quoted));
 
     return written.length;
@@ -352,30 +401,61 @@ export class ProseEditor {
     const tr = state.tr;
 
     if (empty) {
-      const before = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+      const before = $from.parent.textBetween(
+        0,
+        $from.parentOffset,
+        undefined,
+        "\ufffc",
+      );
       const opensHere = before === "" || OPENS_AFTER.test(before);
-      const length = this.inserted(tr, from, opensHere ? "opening" : "closing", state.storedMarks ?? $from.marks());
-      dispatch?.(tr.setSelection(TextSelection.create(tr.doc, from + length)).scrollIntoView());
+      const length = this.inserted(
+        tr,
+        from,
+        opensHere ? "opening" : "closing",
+        state.storedMarks ?? $from.marks(),
+      );
+      dispatch?.(
+        tr
+          .setSelection(TextSelection.create(tr.doc, from + length))
+          .scrollIntoView(),
+      );
 
       return true;
     }
 
     const runs = quoteRuns(state.doc);
-    const opening = runs.find((run) => run.side === "opening" && run.to === from);
-    const closing = runs.find((run) => run.side === "closing" && run.from === to);
+    const opening = runs.find(
+      (run) => run.side === "opening" && run.to === from,
+    );
+    const closing = runs.find(
+      (run) => run.side === "closing" && run.from === to,
+    );
     if (opening && closing) {
       tr.delete(closing.from, closing.to);
       tr.delete(opening.from, opening.to);
       dispatch?.(
-        tr.setSelection(TextSelection.create(tr.doc, opening.from, opening.from + (to - from))),
+        tr.setSelection(
+          TextSelection.create(
+            tr.doc,
+            opening.from,
+            opening.from + (to - from),
+          ),
+        ),
       );
 
       return true;
     }
 
     this.inserted(tr, to, "closing", state.doc.resolve(to).marks());
-    const shift = this.inserted(tr, from, "opening", state.doc.resolve(from).marks());
-    dispatch?.(tr.setSelection(TextSelection.create(tr.doc, from + shift, to + shift)));
+    const shift = this.inserted(
+      tr,
+      from,
+      "opening",
+      state.doc.resolve(from).marks(),
+    );
+    dispatch?.(
+      tr.setSelection(TextSelection.create(tr.doc, from + shift, to + shift)),
+    );
 
     return true;
   }
@@ -401,9 +481,13 @@ export class ProseEditor {
     const { doc, selection } = state;
     const atEdge =
       view.endOfTextblock(moving) &&
-      doc.resolve(selection.head).index(0) === (towards === "before" ? 0 : doc.childCount - 1);
+      doc.resolve(selection.head).index(0) ===
+        (towards === "before" ? 0 : doc.childCount - 1);
 
-    return atEdge && this.selecting(this.wholly(state) ? `beyond-${towards}` : towards);
+    return (
+      atEdge &&
+      this.selecting(this.wholly(state) ? `beyond-${towards}` : towards)
+    );
   }
 
   wholly(state) {
@@ -419,7 +503,8 @@ export class ProseEditor {
   selectAllOnceMore(state) {
     const { doc, selection } = state;
     const everything =
-      selection.from <= Selection.atStart(doc).from && selection.to >= Selection.atEnd(doc).to;
+      selection.from <= Selection.atStart(doc).from &&
+      selection.to >= Selection.atEnd(doc).to;
 
     return everything && this.selecting("all");
   }
@@ -432,12 +517,14 @@ export class ProseEditor {
       return false;
     }
 
-    const edge = towards === "before" ? Selection.atStart(doc) : Selection.atEnd(doc);
+    const edge =
+      towards === "before" ? Selection.atStart(doc) : Selection.atEnd(doc);
     const sideways = moving === "left" || moving === "right";
     const atEdge = sideways
       ? at === edge.from
       : view.endOfTextblock(moving) &&
-        doc.resolve(at).index(0) === (towards === "before" ? 0 : doc.childCount - 1);
+        doc.resolve(at).index(0) ===
+          (towards === "before" ? 0 : doc.childCount - 1);
 
     return atEdge && this.leaving(towards);
   }
@@ -449,7 +536,10 @@ export class ProseEditor {
     if (!view || !view.hasFocus() || !shown || shown.rangeCount === 0) {
       return null;
     }
-    if (!view.dom.contains(shown.anchorNode) || !view.dom.contains(shown.focusNode)) {
+    if (
+      !view.dom.contains(shown.anchorNode) ||
+      !view.dom.contains(shown.focusNode)
+    ) {
       return null;
     }
 
@@ -467,7 +557,9 @@ export class ProseEditor {
     const shown = view.root.getSelection();
 
     if (shown && shown.rangeCount > 0 && view.dom.contains(shown.focusNode)) {
-      return shown.isCollapsed ? view.posAtDOM(shown.focusNode, shown.focusOffset) : null;
+      return shown.isCollapsed
+        ? view.posAtDOM(shown.focusNode, shown.focusOffset)
+        : null;
     }
 
     return state.selection.empty ? state.selection.from : null;
@@ -476,7 +568,9 @@ export class ProseEditor {
   seed(text) {
     const { state } = this.view;
 
-    this.view.dispatch(state.tr.insertText(text, Selection.atEnd(state.doc).from));
+    this.view.dispatch(
+      state.tr.insertText(text, Selection.atEnd(state.doc).from),
+    );
     this.focusEnd();
   }
 
@@ -491,7 +585,9 @@ export class ProseEditor {
   focusAt(selection) {
     const { state } = this.view;
 
-    this.view.dispatch(state.tr.setSelection(TextSelection.near(selection.$from)));
+    this.view.dispatch(
+      state.tr.setSelection(TextSelection.near(selection.$from)),
+    );
     this.view.focus();
     this.view.input.lastFocus = 0;
   }

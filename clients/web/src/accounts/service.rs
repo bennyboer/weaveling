@@ -1,16 +1,17 @@
 use accounts_contract::{
     AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
-    KeyAnswerRequest, KeyChallengeDTO, KeyDTO, LockRequest, NewPasswordRequest, PasswordRequest,
-    PasswordResetRequest, PreferredWayRequest, RecoveryCodesDTO, RenameKeyRequest, SendCodeRequest,
-    ServiceModeDTO, SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest,
-    SignedInDTO, TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, refused,
-    second_step_way, stage,
+    KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO, LockRequest,
+    NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest,
+    PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest, RecoveryCodesDTO,
+    RenameKeyRequest, SendCodeRequest, ServiceModeDTO, SettingUpTotpDTO, SignInRequest,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    TotpCodeRequest, VerifyEmailRequest, WaysInDTO, key_role, refused, second_step_way, stage,
 };
 use gloo_net::http::Request;
 
 use crate::accounts::listed::{AccountPage, ListedAccount, moment};
 use crate::accounts::{
-    HeldKey, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState, SignedInAccount,
+    HeldKey, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState, SignedInAccount, WaysIn,
 };
 use crate::asking;
 use crate::http;
@@ -36,6 +37,8 @@ const PREFERRED_WAY: &str = "/api/accounts/current/second-step/preferred";
 const KEY_CHALLENGE: &str = "/api/accounts/current/keys/challenge";
 const ANSWERED_BY_KEY: &str = "/api/sessions/current/key";
 const KEY_ASKED: &str = "/api/sessions/current/key/challenge";
+const PASSKEY_ASKED: &str = "/api/sessions/passkey/challenge";
+const SIGNED_IN_BY_PASSKEY: &str = "/api/sessions/passkey";
 const TOTP_SETUP: &str = "/api/accounts/current/totp/setup";
 const RECOVERY_CODES: &str = "/api/accounts/current/recovery-codes";
 const ANSWERED_BY_TOTP: &str = "/api/sessions/current/totp";
@@ -371,6 +374,24 @@ pub async fn answer_with_key(answer: serde_json::Value) -> Result<SignedInAccoun
     as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
+/// What the browser is asked to show any passkey of this site with, and the sign-in it belongs to.
+pub async fn begin_signing_in_with_passkey() -> Result<(String, serde_json::Value), ApiError> {
+    let asked: PasskeyChallengeDTO =
+        http::parsed(http::sent(Request::post(PASSKEY_ASKED)).await?, SUBJECT).await?;
+
+    Ok((asked.signing_in, asked.options))
+}
+
+pub async fn sign_in_with_passkey(
+    signing_in: String,
+    answer: serde_json::Value,
+) -> Result<SignedInAccount, ApiError> {
+    let payload = PasskeySignInRequest { signing_in, answer };
+    let response = http::sent_with(Request::post(SIGNED_IN_BY_PASSKEY), &payload).await?;
+
+    as_signed_in_account(http::parsed(response, SUBJECT).await?)
+}
+
 pub async fn answer_with_recovery_code(code: &str) -> Result<SignedInAccount, ApiError> {
     second_factor_answered(ANSWERED_BY_RECOVERY_CODE, code).await
 }
@@ -401,6 +422,38 @@ pub async fn remove_totp(id: &str, on: u64) -> Result<(), ApiError> {
     http::checked(
         http::sent(http::made_on(
             Request::delete(&format!("{INSTANCE_ACCOUNTS}/{id}/totp")),
+            on,
+        ))
+        .await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// How an account signs in, as the operator sees it.
+pub async fn ways_in(id: &str) -> Result<WaysIn, ApiError> {
+    let told: WaysInDTO = http::parsed(
+        http::sent(Request::get(&format!("{INSTANCE_ACCOUNTS}/{id}/ways-in"))).await?,
+        ACCOUNT,
+    )
+    .await?;
+
+    Ok(WaysIn {
+        keys: told
+            .keys
+            .into_iter()
+            .map(held_key)
+            .collect::<Result<_, _>>()?,
+        totp_since: told.totp_since.as_deref().map(moment).transpose()?,
+        recovery_codes_left: told.recovery_codes_left,
+    })
+}
+
+pub async fn remove_key_of(id: &str, key: &str, on: u64) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(http::made_on(
+            Request::delete(&format!("{INSTANCE_ACCOUNTS}/{id}/keys/{key}")),
             on,
         ))
         .await?,
@@ -461,24 +514,71 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
 pub async fn keys() -> Result<Vec<HeldKey>, ApiError> {
     let listed: Vec<KeyDTO> = http::parsed(http::sent(Request::get(KEYS)).await?, SUBJECT).await?;
 
-    listed
-        .into_iter()
-        .filter(|key| key.role == key_role::SECOND_FACTOR)
-        .map(|key| {
-            Ok(HeldKey {
-                since: moment(&key.since)?,
-                id: key.key,
-                name: key.name,
-            })
-        })
-        .collect()
+    listed.into_iter().map(held_key).collect()
 }
 
-pub async fn begin_adding_key() -> Result<serde_json::Value, ApiError> {
-    let asked: KeyChallengeDTO =
-        http::parsed(http::sent(Request::post(KEY_CHALLENGE)).await?, SUBJECT).await?;
+fn held_key(key: KeyDTO) -> Result<HeldKey, ApiError> {
+    Ok(HeldKey {
+        since: moment(&key.since)?,
+        signs_in_alone: key.role == key_role::PRIMARY,
+        id: key.key,
+        name: key.name,
+    })
+}
+
+/// What the browser is asked to make a passkey or a security key with, in place of the key named where one is replaced.
+pub async fn begin_adding_key(
+    passkey: bool,
+    replacing: Option<&str>,
+) -> Result<serde_json::Value, ApiError> {
+    let payload = KeyChallengeRequest {
+        role: if passkey {
+            key_role::PRIMARY
+        } else {
+            key_role::SECOND_FACTOR
+        }
+        .to_owned(),
+        replacing: replacing.map(ToOwned::to_owned),
+    };
+    let asked: KeyChallengeDTO = http::parsed(
+        http::sent_with(Request::post(KEY_CHALLENGE), &payload).await?,
+        SUBJECT,
+    )
+    .await?;
 
     Ok(asked.options)
+}
+
+pub async fn promote_key(
+    id: &str,
+    answer: serde_json::Value,
+    password: &str,
+) -> Result<(), ApiError> {
+    let payload = PromoteKeyRequest {
+        answer,
+        password: password.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::post(&format!("{KEYS}/{id}/promote")), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Lets a passkey answer the second step: the recovery codes, where it is the first second step.
+pub async fn demote_key(id: &str, password: &str) -> Result<Option<Vec<String>>, ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
+    };
+    let demoted: AddedKeyDTO = http::parsed(
+        http::sent_with(Request::post(&format!("{KEYS}/{id}/demote")), &payload).await?,
+        SUBJECT,
+    )
+    .await?;
+
+    Ok(demoted.recovery_codes)
 }
 
 /// Adds the key the browser made, under its name: the recovery codes, where it is the first second step.

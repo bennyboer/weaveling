@@ -26,7 +26,7 @@ mod totp_key;
 mod account_tests;
 
 pub use account::{Account, AccountCommand, AccountError, AccountEvent, KIND};
-pub use accounts::{AccountsCore, AddedKey, SettingUpTotp, SignedIn};
+pub use accounts::{AccountsCore, AddedKey, SettingUpTotp, SignedIn, WaysIn};
 pub use catalog::{AccountCatalog, AccountSummary, CatalogError};
 pub use code::{CodePurpose, PendingVerification, VerificationCode};
 pub use decline::DeclineReason;

@@ -5,9 +5,7 @@ use leptos::{IntoView, ev, html};
 use crate::accounts::listed::ListedAccount;
 use crate::accounts::roster;
 use crate::accounts::roster::{Intent, Roster};
-use crate::accounts::{
-    CurrentSession, SignInState, lock_dialog, role_dialog, second_factor_dialog,
-};
+use crate::accounts::{CurrentSession, SignInState, lock_dialog, role_dialog, ways_in_dialog};
 use crate::icons;
 use crate::icons::Icon;
 use crate::moment;
@@ -65,19 +63,11 @@ pub fn accounts_listing() -> impl IntoView {
             })
         },
         move || {
-            roster.turning_off.get().map(|account| {
-                let id = account.id.clone();
-                let turned = id.clone();
-                second_factor_dialog::second_factor_dialog(
-                    account,
-                    move || roster.intended(&id, Intent::TurnOffSecondFactor),
-                    move || roster.changing(&turned),
-                    roster.refused,
-                    move || {
-                        roster.refused.set(None);
-                        roster.turning_off.set(None);
-                    },
-                )
+            roster.seeing_ways_in.get().map(|account| {
+                ways_in_dialog::ways_in_dialog(account, roster, move || {
+                    roster.refused.set(None);
+                    roster.seeing_ways_in.set(None);
+                })
             })
         },
         move || {
@@ -208,14 +198,14 @@ fn menu_items(roster: Roster, account: ListedAccount, may_change_role: bool) -> 
             Box::new(move || roster.changing_role.set(Some(chosen.clone()))),
         )
     });
-    let turning_off = account.second_factor.then(|| {
+    let ways_in = {
         let chosen = account.clone();
         item(
-            "instance-account-two-step-off",
-            true,
-            Box::new(move || roster.turning_off.set(Some(chosen.clone()))),
+            "instance-account-ways-in",
+            false,
+            Box::new(move || roster.seeing_ways_in.set(Some(chosen.clone()))),
         )
-    });
+    };
     let locking = (!account.operator).then(|| {
         let chosen = account.clone();
         if account.lock.is_some() {
@@ -233,7 +223,7 @@ fn menu_items(roster: Roster, account: ListedAccount, may_change_role: bool) -> 
         }
     });
 
-    (role, turning_off, locking)
+    (role, ways_in, locking)
 }
 
 fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {

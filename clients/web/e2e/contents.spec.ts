@@ -290,6 +290,7 @@ test("the scenes not in the book have no contents", async ({ page }) => {
   await expect(tab(page)).toBeVisible();
 
   // when: the scenes not in the book are opened
+  await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
 
   // then: they offer no contents

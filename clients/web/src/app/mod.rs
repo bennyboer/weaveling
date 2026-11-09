@@ -1,6 +1,8 @@
 mod board;
 mod idea;
 mod ideas;
+/// The views loaded only once they are opened: a build split by `cargo leptos build --split` fetches each one's code as its own chunk, so opening Weaveling waits for none of them.
+mod lazy;
 mod members;
 mod missing;
 mod outline;
@@ -12,23 +14,20 @@ mod write;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::{Route, Router, Routes};
-use leptos_router::path;
+use leptos_router::{Lazy, path};
 
 use crate::accounts::invitation::InvitationPage;
-use crate::accounts::security::{MovedToSecurity, SecurityPage};
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::{CurrentSession, Screen, SignInState};
-use crate::app::board::BoardPage;
-use crate::app::idea::IdeaPage;
-use crate::app::ideas::IdeasPage;
-use crate::app::members::{MembersInvitedPage, MembersPage};
+use crate::app::lazy::{
+    BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
+    InstanceRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute, OutlineRoute, ProjectRoute,
+    SecurityRoute, WriteRoute,
+};
 use crate::app::missing::MissingPage;
-use crate::app::outline::OutlinePage;
 use crate::app::trash::{TrashPage, TrashPageProps};
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
-use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
-use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
 use crate::members::roles::Roles;
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
@@ -85,20 +84,19 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/trash") view=move || TrashPage(TrashPageProps { workspace }) />
             <Route path=path!("/invitation") view=InvitationPage />
             <Route path=path!("/setup") view=SetUpPage />
-            <Route path=path!("/account/security") view=SecurityPage />
-            <Route path=path!("/account/two-step-sign-in") view=MovedToSecurity />
-            <Route path=path!("/instance") view=InstancePage />
-            <Route path=path!("/instance/accounts") view=InstanceAccountsPage />
-            <Route path=path!("/instance/invitations") view=InstanceInvitationsPage />
-            <Route path=path!("/projects/:project") view=ProjectPage />
-            <Route path=path!("/projects/:project/board") view=BoardPage />
-            <Route path=path!("/projects/:project/outline") view=OutlinePage />
-            <Route path=path!("/projects/:project/ideas") view=IdeasPage />
-            <Route path=path!("/projects/:project/members") view=MembersPage />
-            <Route path=path!("/projects/:project/members/invited") view=MembersInvitedPage />
-            <Route path=path!("/projects/:project/write") view=WritePage />
-            <Route path=path!("/projects/:project/write/loose") view=LooseScenesPage />
-            <Route path=path!("/projects/:project/ideas/:idea") view=IdeaPage />
+            <Route path=path!("/account/security") view={Lazy::<SecurityRoute>::new()} />
+            <Route path=path!("/instance") view={Lazy::<InstanceRoute>::new()} />
+            <Route path=path!("/instance/accounts") view={Lazy::<InstanceAccountsRoute>::new()} />
+            <Route path=path!("/instance/invitations") view={Lazy::<InstanceInvitationsRoute>::new()} />
+            <Route path=path!("/projects/:project") view={Lazy::<ProjectRoute>::new()} />
+            <Route path=path!("/projects/:project/board") view={Lazy::<BoardRoute>::new()} />
+            <Route path=path!("/projects/:project/outline") view={Lazy::<OutlineRoute>::new()} />
+            <Route path=path!("/projects/:project/ideas") view={Lazy::<IdeasRoute>::new()} />
+            <Route path=path!("/projects/:project/members") view={Lazy::<MembersRoute>::new()} />
+            <Route path=path!("/projects/:project/members/invited") view={Lazy::<MembersInvitedRoute>::new()} />
+            <Route path=path!("/projects/:project/write") view={Lazy::<WriteRoute>::new()} />
+            <Route path=path!("/projects/:project/write/loose") view={Lazy::<LooseScenesRoute>::new()} />
+            <Route path=path!("/projects/:project/ideas/:idea") view={Lazy::<IdeaRoute>::new()} />
         </Routes>
     }
 }

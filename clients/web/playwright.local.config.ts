@@ -5,7 +5,7 @@ import served from "./playwright.config";
 
 const data = resolve(__dirname, "../../target/web/local-data", `${Date.now()}`);
 
-const [api, client] = [served.webServer].flat();
+const [server] = [served.webServer].flat();
 
 const inherited = Object.fromEntries(
   Object.entries(process.env).filter(
@@ -16,12 +16,9 @@ const inherited = Object.fromEntries(
 export default defineConfig({
   ...served,
   outputDir: "../../target/web/e2e-local",
-  webServer: [
-    {
-      ...api,
-      env: { ...inherited, WEAVELING_DATA: data },
-      reuseExistingServer: false,
-    },
-    client,
-  ],
+  webServer: {
+    ...server,
+    env: { ...inherited, WEAVELING_DATA: data },
+    reuseExistingServer: false,
+  },
 });

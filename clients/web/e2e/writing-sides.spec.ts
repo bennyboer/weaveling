@@ -180,6 +180,7 @@ test("with every scene in the book, the switch stays out of the way and the othe
   await expect(sides(page)).toHaveCount(0);
 
   // when: the other side is opened
+  await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
 
   // then: it says every scene is in the book

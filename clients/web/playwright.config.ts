@@ -8,25 +8,16 @@ export default defineConfig({
   retries: 1,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:8080",
+    baseURL: "http://127.0.0.1:3000",
     locale: "en-US",
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: [
-    {
-      command: "cargo run -p weaveling-service-api -- --config clients/web/e2e/weaveling.toml",
-      cwd: "../..",
-      url: "http://127.0.0.1:3000/api/service/health",
-      reuseExistingServer: true,
-      timeout: 180_000,
-    },
-    {
-      command:
-        "node js/build.mjs && node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && trunk serve --no-autoreload",
-      url: "http://127.0.0.1:8080",
-      reuseExistingServer: true,
-      timeout: 180_000,
-    },
-  ],
+  webServer: {
+    command: "cargo leptos serve -- --config clients/web/e2e/weaveling.toml",
+    cwd: "../..",
+    url: "http://127.0.0.1:3000/api/service/health",
+    reuseExistingServer: true,
+    timeout: 300_000,
+  },
 });

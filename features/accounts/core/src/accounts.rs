@@ -35,6 +35,7 @@ use crate::totp_key::TotpKey;
 use email::EmailAddress;
 
 pub use keys::AddedKey;
+pub use operating::WaysIn;
 pub use sessions::SignedIn;
 pub use totp::SettingUpTotp;
 

@@ -142,6 +142,7 @@ test("scenes outside the book have no grip, having no place to be moved to", asy
   // given: a scene outside the book, shown
   await aBookInTheWritingView(page, "NoGrip", { "Part One": 1 });
   const loose = await aLooseScene(page);
+  await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await expect(scene(page, loose)).toBeVisible();
 

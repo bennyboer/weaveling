@@ -146,8 +146,7 @@ test("the password turns it off, and it says so", async ({ page }) => {
     answered_by_totp: true,
     answered_by_key: false,
   };
-  await page.goto("/account/two-step-sign-in");
-  await expect(page).toHaveURL(/\/account\/security$/);
+  await page.goto("/account/security");
 
   // when: they turn it off with a password that is not theirs
   await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
