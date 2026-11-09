@@ -11,7 +11,7 @@ import {
   type Server,
 } from "./support/accounts";
 
-test.use({ baseURL: "http://localhost:3000" });
+test.use({ baseURL: "http://localhost:3100" });
 
 async function aSecurityKey(page: Page) {
   const devtools = await page.context().newCDPSession(page);

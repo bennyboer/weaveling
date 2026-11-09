@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 
 import { followingLive } from "./live";
 
-export const API = "http://127.0.0.1:3000/api";
+export const API = "http://127.0.0.1:3100/api";
 
 const aName = (of: string) =>
   `Project ${of} ${crypto.randomUUID().slice(0, 8)}`;

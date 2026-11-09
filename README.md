@@ -199,9 +199,9 @@ cd clients/web
 npm test
 ```
 
-Playwright starts the server with `cargo leptos serve --split` if it isn't running and reuses it if it is, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
+Playwright starts a server of the tests' own with `cargo leptos serve --split`, at :3100 and from `target/site-tests`, so a `cargo dev` of yours at :3000 is neither reused nor overwritten; a test server already at :3100 is reused. The suite takes a few minutes.
 
-`npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3000 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
+`npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3100 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
 
 **Editing a migration needs a nudge.** `sqlx::migrate!` bakes the SQL into the binary at compile time and, on stable Rust, cannot tell cargo that the `.sql` files are build inputs — so changing one alone may not trigger a rebuild, and the old schema stays in the binary. Touch any `.rs` in the crate, or run `cargo clean -p weaveling-eventsourcing`. A test asserts the expected indexes exist, so a migration that failed to land fails the suite rather than going unnoticed.
 

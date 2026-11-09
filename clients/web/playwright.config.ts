@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+process.env.LEPTOS_SITE_ROOT = "target/site-tests";
+process.env.LEPTOS_SITE_ADDR = "127.0.0.1:3100";
+
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "../../target/web/e2e",
@@ -8,7 +11,7 @@ export default defineConfig({
   retries: 1,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3100",
     locale: "en-US",
     trace: "retain-on-failure",
   },
@@ -16,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: "cargo leptos serve --split -- --config clients/web/e2e/weaveling.toml",
     cwd: "../..",
-    url: "http://127.0.0.1:3000/api/service/health",
+    url: "http://127.0.0.1:3100/api/service/health",
     reuseExistingServer: true,
     timeout: 300_000,
   },

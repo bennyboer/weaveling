@@ -2,6 +2,10 @@
 # so a weaveling.toml of your own beside the server changes nothing here.
 # The variables each test config sets still win over this file.
 
+[server]
+# A port of the tests' own, beside a `cargo dev` at 3000.
+listen = "127.0.0.1:3100"
+
 [accounts]
 # A key for tests alone, written here for anyone to read: never for an
 # instance with real accounts.
