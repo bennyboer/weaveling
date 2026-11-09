@@ -4,6 +4,7 @@ pub mod picker;
 
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
+use leptos::task;
 
 use crate::kept;
 use crate::speech::language::Language;
@@ -15,11 +16,20 @@ pub struct Speech {
     spoken: RwSignal<Language>,
 }
 
+/// Fetches the catalogue of the language the page will be spoken in, before anything is shown in it.
+pub async fn readied() {
+    catalogue::fetched(first_spoken()).await;
+}
+
+fn first_spoken() -> Language {
+    kept::recall(SPOKEN)
+        .and_then(|tag| Language::told(&tag))
+        .unwrap_or_else(crate::speech::language::the_reader_s)
+}
+
 impl Speech {
     pub fn heard() -> Self {
-        let spoken = kept::recall(SPOKEN)
-            .and_then(|tag| Language::told(&tag))
-            .unwrap_or_else(crate::speech::language::the_reader_s);
+        let spoken = first_spoken();
         mark_the_page(spoken);
 
         Self {
@@ -31,10 +41,16 @@ impl Speech {
         self.spoken.get()
     }
 
+    /// Speaks the language once its catalogue is fetched; where it cannot be, the one spoken stays.
     pub fn speak(self, language: Language) {
-        self.spoken.set(language);
-        kept::keep(SPOKEN, language.tag());
-        mark_the_page(language);
+        task::spawn_local(async move {
+            if !catalogue::fetched(language).await {
+                return;
+            }
+            self.spoken.set(language);
+            kept::keep(SPOKEN, language.tag());
+            mark_the_page(language);
+        });
     }
 
     pub fn say(self, message: &str) -> String {

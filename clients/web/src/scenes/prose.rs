@@ -1,9 +1,14 @@
+use leptos::logging::warn;
+use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use web_sys::HtmlElement;
 
-#[wasm_bindgen(module = "/js/editor.bundle.js")]
+#[wasm_bindgen(raw_module = "/js/prose.js")]
 extern "C" {
+    #[wasm_bindgen(js_name = editorLoaded, catch)]
+    async fn editor_fetched() -> Result<JsValue, JsValue>;
+
     pub type SyncConnection;
 
     #[wasm_bindgen(constructor)]
@@ -69,4 +74,11 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onSelecting)]
     pub fn on_selecting(this: &ProseEditor, selecting: &Closure<dyn Fn(String) -> bool>);
 
+}
+
+/// Fetches the editor, ProseMirror and Yjs, which only the writing view needs, before anything makes a `ProseEditor` or a `SyncConnection`.
+pub async fn editor_loaded() {
+    if let Err(failed) = editor_fetched().await {
+        warn!("the editor could not be fetched: {failed:?}");
+    }
 }

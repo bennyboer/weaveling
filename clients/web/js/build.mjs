@@ -1,26 +1,39 @@
 import { build } from "esbuild";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const bundle = join(here, "editor.bundle.js");
+const out = join(here, "..", "public", "js");
 
 const result = await build({
-  entryPoints: [join(here, "editor.src.js")],
+  entryPoints: {
+    shell: join(here, "shell.src.js"),
+    prose: join(here, "prose.src.js"),
+  },
   bundle: true,
+  splitting: true,
   format: "esm",
   minify: true,
   target: "es2022",
+  outdir: out,
+  chunkNames: "[name]-[hash]",
   write: false,
 });
 
-const [built] = result.outputFiles;
-const unchanged = existsSync(bundle) && readFileSync(bundle).equals(Buffer.from(built.contents));
-
-if (unchanged) {
-  console.log(`editor.bundle.js  ${built.contents.length} bytes (unchanged)`);
-} else {
-  writeFileSync(bundle, built.contents);
-  console.log(`editor.bundle.js  ${built.contents.length} bytes (written)`);
+mkdirSync(out, { recursive: true });
+const built = new Set();
+for (const file of result.outputFiles) {
+  const name = basename(file.path);
+  built.add(name);
+  const unchanged = existsSync(file.path) && readFileSync(file.path).equals(Buffer.from(file.contents));
+  if (!unchanged) {
+    writeFileSync(file.path, file.contents);
+  }
+  console.log(`${name}  ${file.contents.length} bytes${unchanged ? " (unchanged)" : " (written)"}`);
+}
+for (const name of readdirSync(out)) {
+  if (!built.has(name)) {
+    rmSync(join(out, name));
+  }
 }

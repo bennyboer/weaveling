@@ -3,7 +3,7 @@ target/
 node_modules/
 dist/
 
-clients/web/js/editor.bundle.js
+clients/web/public/js/
 clients/web/stress/seeded-*.json
 
 /weaveling.toml

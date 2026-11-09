@@ -2,7 +2,7 @@ use serde_json::Value;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[wasm_bindgen(module = "/js/editor.bundle.js")]
+#[wasm_bindgen(raw_module = "/js/shell.js")]
 extern "C" {
     #[wasm_bindgen(js_name = keysSupported)]
     fn keys_supported() -> bool;

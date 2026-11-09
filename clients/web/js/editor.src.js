@@ -22,16 +22,6 @@ import {
 import { SceneSync } from "./sync.js";
 
 export { SyncConnection } from "./sync.js";
-export { LiveSubscription } from "./live.js";
-export { whenSessionEnded } from "./reconnecting.js";
-export {
-  keysSupported,
-  makeKey,
-  offerPasskeys,
-  passkeysOfferable,
-  stopOfferingPasskeys,
-  touchKey,
-} from "./keys.js";
 
 const FRAGMENT = "prose";
 

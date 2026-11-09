@@ -24,32 +24,44 @@ impl LazyRoute for ProjectRoute {
     }
 }
 
-/// The writing view.
-pub struct WriteRoute;
+/// The writing view, shown once the editor is fetched too, which begins beside its own code.
+pub struct WriteRoute {
+    editor: LocalResource<()>,
+}
 
 #[lazy_route]
 impl LazyRoute for WriteRoute {
     fn data() -> Self {
-        Self
+        Self {
+            editor: with_the_editor(),
+        }
     }
 
-    fn view(_: Self) -> AnyView {
-        WritePage().into_any()
+    fn view(this: Self) -> AnyView {
+        (move || this.editor.get().map(|()| WritePage())).into_any()
     }
 }
 
-/// The scenes not in the book.
-pub struct LooseScenesRoute;
+/// The scenes not in the book, shown once the editor is fetched too.
+pub struct LooseScenesRoute {
+    editor: LocalResource<()>,
+}
 
 #[lazy_route]
 impl LazyRoute for LooseScenesRoute {
     fn data() -> Self {
-        Self
+        Self {
+            editor: with_the_editor(),
+        }
     }
 
-    fn view(_: Self) -> AnyView {
-        LooseScenesPage().into_any()
+    fn view(this: Self) -> AnyView {
+        (move || this.editor.get().map(|()| LooseScenesPage())).into_any()
     }
+}
+
+fn with_the_editor() -> LocalResource<()> {
+    LocalResource::new(crate::scenes::prose::editor_loaded)
 }
 
 /// The board.

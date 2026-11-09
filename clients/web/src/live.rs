@@ -4,7 +4,7 @@ use live_contract::FrameDTO;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[wasm_bindgen(module = "/js/editor.bundle.js")]
+#[wasm_bindgen(raw_module = "/js/shell.js")]
 extern "C" {
     type LiveSubscription;
 

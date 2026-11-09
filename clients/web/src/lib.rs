@@ -45,5 +45,8 @@ use crate::app::App;
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    mount_to_body(App);
+    wasm_bindgen_futures::spawn_local(async {
+        crate::speech::readied().await;
+        mount_to_body(App);
+    });
 }

@@ -1,6 +1,7 @@
 use std::cell::OnceCell;
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+use gloo_net::http::Request;
 use leptos::logging::warn;
 use unic_langid::LanguageIdentifier;
 
@@ -35,34 +36,58 @@ pub fn knows(language: Language, message: &str) -> bool {
     in_the_catalogue_of(language, |catalogue| catalogue.has_message(message))
 }
 
+/// Fetches a language's catalogue, once, from where the client is handed out; English is built in. False where it cannot be had, English then speaking for it.
+pub async fn fetched(language: Language) -> bool {
+    if language == Language::English
+        || CATALOGUES.with(|catalogues| catalogues[language as usize].get().is_some())
+    {
+        return true;
+    }
+    let source = match Request::get(&format!("/catalogue/{}.ftl", language.tag()))
+        .send()
+        .await
+    {
+        Ok(answer) if answer.ok() => answer.text().await.ok(),
+        _ => None,
+    };
+    let Some(source) = source else {
+        warn!("the catalogue of {language:?} could not be fetched");
+        return false;
+    };
+    taken_in(language, source);
+
+    true
+}
+
+fn taken_in(language: Language, source: String) {
+    CATALOGUES.with(|catalogues| {
+        _ = catalogues[language as usize].set(catalogue_of(language, source));
+    });
+}
+
 fn in_the_catalogue_of<T>(
     language: Language,
     read: impl FnOnce(&FluentBundle<FluentResource>) -> T,
 ) -> T {
-    CATALOGUES.with(|catalogues| {
-        read(catalogues[language as usize].get_or_init(|| catalogue_of(language)))
+    CATALOGUES.with(|catalogues| match catalogues[language as usize].get() {
+        Some(catalogue) => read(catalogue),
+        None => read(
+            catalogues[Language::English as usize]
+                .get_or_init(|| catalogue_of(Language::English, ENGLISH.to_owned())),
+        ),
     })
 }
 
-fn catalogue_of(language: Language) -> FluentBundle<FluentResource> {
+const ENGLISH: &str = include_str!("../../public/catalogue/en.ftl");
+
+fn catalogue_of(language: Language, source: String) -> FluentBundle<FluentResource> {
     let tag: LanguageIdentifier = language.tag().parse().unwrap_or_default();
     let mut catalogue = FluentBundle::new(vec![tag]);
     catalogue.set_use_isolating(false);
-    let source = FluentResource::try_new(source_of(language).to_owned())
-        .unwrap_or_else(|(partly, _)| partly);
+    let source = FluentResource::try_new(source).unwrap_or_else(|(partly, _)| partly);
     _ = catalogue.add_resource(source);
 
     catalogue
-}
-
-fn source_of(language: Language) -> &'static str {
-    match language {
-        Language::English => include_str!("../../catalogue/en.ftl"),
-        Language::German => include_str!("../../catalogue/de.ftl"),
-        Language::Spanish => include_str!("../../catalogue/es.ftl"),
-        Language::French => include_str!("../../catalogue/fr.ftl"),
-        Language::Portuguese => include_str!("../../catalogue/pt-BR.ftl"),
-    }
 }
 
 #[cfg(test)]
@@ -73,6 +98,20 @@ mod tests {
     use fluent_syntax::parser;
 
     use super::*;
+
+    fn source_of(language: Language) -> &'static str {
+        match language {
+            Language::English => ENGLISH,
+            Language::German => include_str!("../../public/catalogue/de.ftl"),
+            Language::Spanish => include_str!("../../public/catalogue/es.ftl"),
+            Language::French => include_str!("../../public/catalogue/fr.ftl"),
+            Language::Portuguese => include_str!("../../public/catalogue/pt-BR.ftl"),
+        }
+    }
+
+    fn fetched(language: Language) {
+        taken_in(language, source_of(language).to_owned());
+    }
 
     fn messages_of(language: Language) -> Vec<(String, BTreeSet<String>)> {
         let parsed = parser::parse(source_of(language))
@@ -178,6 +217,9 @@ mod tests {
 
     #[test]
     fn a_message_is_worded_in_the_language_asked_for() {
+        // given: german's catalogue fetched
+        fetched(Language::German);
+
         // expect: one message worded in german and in english
         assert_eq!(
             worded(Language::German, "workspace-heading", None),
@@ -191,9 +233,10 @@ mod tests {
 
     #[test]
     fn a_name_is_set_into_its_message_without_marks_around_it() {
-        // given: a name
+        // given: a name, and german's catalogue fetched
         let mut args = FluentArgs::new();
         args.set("name", "The loom");
+        fetched(Language::German);
 
         // then: the message asking for it carries it with no marks set around it
         assert_eq!(
@@ -203,16 +246,17 @@ mod tests {
     }
 
     #[test]
-    fn only_the_language_spoken_is_read() {
-        // when: a message is worded in german
-        worded(Language::German, "workspace-heading", None);
+    fn a_language_not_fetched_yet_is_spoken_in_english() {
+        // when: a message is worded in german before its catalogue is fetched
+        let worded = worded(Language::German, "workspace-heading", None);
 
-        // then: only german's catalogue has been read
+        // then: it is worded in english, the one catalogue built in and read
+        assert_eq!(worded, "Your projects");
         CATALOGUES.with(|catalogues| {
             for language in Language::EVERY {
                 assert_eq!(
                     catalogues[language as usize].get().is_some(),
-                    language == Language::German,
+                    language == Language::English,
                     "{language:?}"
                 );
             }
@@ -222,6 +266,7 @@ mod tests {
     #[test]
     fn a_count_takes_the_form_its_language_gives_it() {
         // given: a message about a count in german
+        fetched(Language::German);
         let rewriting = |done: u32, total: u32| {
             let mut args = FluentArgs::new();
             args.set("done", done);
@@ -243,7 +288,8 @@ mod tests {
 
     #[test]
     fn the_trash_is_named_with_how_many_projects_it_holds() {
-        // given: the trash's name for a count
+        // given: the trash's name for a count, and german's catalogue fetched
+        fetched(Language::German);
         let named = |language: Language, count: u32| {
             let mut args = FluentArgs::new();
             args.set("count", count);
@@ -282,6 +328,9 @@ mod tests {
 
     #[test]
     fn a_message_no_catalogue_has_is_not_known() {
+        // given: german's catalogue fetched
+        fetched(Language::German);
+
         // expect: a message worded is known and one never worded is not
         assert!(knows(Language::German, "workspace-heading"));
         assert!(!knows(Language::German, "nowhere-worded"));
@@ -297,6 +346,9 @@ mod tests {
         args.set("hour", "09");
         args.set("minute", "01");
         let told = |language| worded(language, "moment", Some(&args));
+        for language in Language::EVERY {
+            fetched(language);
+        }
 
         // then: each language tells it in its own order and marks
         assert_eq!(told(Language::English), "10 Oct 2026, 09:01");
