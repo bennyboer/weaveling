@@ -2,6 +2,9 @@
 mod abandoned_claims;
 
 #[cfg(test)]
+mod account_deletion;
+
+#[cfg(test)]
 mod account_cataloguing;
 
 #[cfg(test)]

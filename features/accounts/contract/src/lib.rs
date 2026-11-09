@@ -240,6 +240,8 @@ pub const KEY_ADDED: &str = "account.key.added";
 pub const KEY_RENAMED: &str = "account.key.renamed";
 pub const KEY_REMOVED: &str = "account.key.removed";
 pub const KEY_DEMOTED: &str = "account.key.demoted";
+pub const DELETION_ASKED: &str = "account.deletion.asked";
+pub const DELETION_CALLED_OFF: &str = "account.deletion.called.off";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -285,6 +287,15 @@ pub enum AccountEventDTO {
     KeyRemoved { key: String },
     #[serde(rename = "KEY_DEMOTED")]
     KeyDemoted { key: String },
+    #[serde(rename = "DELETION_ASKED")]
+    DeletionAsked { until: String, by: String },
+    #[serde(rename = "DELETION_CALLED_OFF")]
+    DeletionCalledOff,
+}
+
+pub mod deletion_asked_by {
+    pub const HOLDER: &str = "holder";
+    pub const OPERATOR: &str = "operator";
 }
 
 pub mod sign_up {

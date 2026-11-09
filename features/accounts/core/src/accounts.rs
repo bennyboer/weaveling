@@ -1,4 +1,5 @@
 mod codes;
+mod deleting;
 mod invitations;
 mod keys;
 mod operating;

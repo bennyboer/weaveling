@@ -1,5 +1,10 @@
-use accounts_contract::{AccountEventDTO, PersonalDTO, decline_reason, key_role, lock_kind};
-use accounts_core::{AccountEvent, AccountName, DeclineReason, EmailAddress, KeyRole, LockKind};
+use accounts_contract::{
+    AccountEventDTO, PersonalDTO, decline_reason, deletion_asked_by, key_role, lock_kind,
+};
+use accounts_core::{
+    AccountEvent, AccountName, DeclineReason, DeletionAskedBy, EmailAddress, KeyRole, LockKind,
+};
+use clock::text;
 use eventsourcing::Recorded;
 use messaging::Message;
 
@@ -51,6 +56,15 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::KeyDemoted { key } => AccountEventDTO::KeyDemoted {
             key: key.to_string(),
         },
+        AccountEvent::DeletionAsked { until, by } => AccountEventDTO::DeletionAsked {
+            until: text::serialize(*until),
+            by: match by {
+                DeletionAskedBy::Holder => deletion_asked_by::HOLDER,
+                DeletionAskedBy::Operator => deletion_asked_by::OPERATOR,
+            }
+            .to_owned(),
+        },
+        AccountEvent::DeletionCalledOff => AccountEventDTO::DeletionCalledOff,
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
         | AccountEvent::PreferredWayChosen { .. }
@@ -90,9 +104,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use accounts_contract::{
-        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
-        KEY_ADDED, KEY_DEMOTED, KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP,
-        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
+        BECAME_OPERATOR, DELETION_ASKED, DELETION_CALLED_OFF, EMAIL_VERIFIED, EVERY_ACCOUNT,
+        INVITATION_DECLINED, INVITATION_TAKEN_UP, KEY_ADDED, KEY_DEMOTED, KEY_REMOVED, KEY_RENAMED,
+        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
+        TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
     };
     use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
@@ -192,6 +207,14 @@ mod tests {
             ),
             (AccountEvent::KeyRemoved { key: a_key() }, KEY_REMOVED),
             (AccountEvent::KeyDemoted { key: a_key() }, KEY_DEMOTED),
+            (
+                AccountEvent::DeletionAsked {
+                    until: clock::at(9_000),
+                    by: accounts_core::DeletionAskedBy::Holder,
+                },
+                DELETION_ASKED,
+            ),
+            (AccountEvent::DeletionCalledOff, DELETION_CALLED_OFF),
         ]
     }
 
@@ -398,6 +421,7 @@ mod tests {
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
             preferred_way: accounts_core::PreferredWay::LastUsed,
+            pending_deletion: None,
         };
 
         // expect: no message is made of it

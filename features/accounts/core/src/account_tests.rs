@@ -8,6 +8,7 @@ use email::EmailAddress;
 use std::collections::BTreeMap;
 
 use crate::decline::DeclineReason;
+use crate::deletion::{DeletionAskedBy, PendingDeletion};
 use crate::key::{KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
@@ -266,6 +267,10 @@ fn a_snapshot_holds_everything_the_account_is() {
         },
         &stamped(10, clock::at(2_960)),
     );
+    account.apply(
+        &deletion_asked_by(DeletionAskedBy::Operator),
+        &stamped(11, clock::at(2_970)),
+    );
 
     // when: an account is born of its snapshot
     let restored = Account::from_first(&account.snapshot(), &stamped(9, clock::at(3_000)))
@@ -295,6 +300,10 @@ fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
     further.apply(
         &a_key_added("MacBook", KeyRole::Primary),
         &stamped(9, clock::at(2_950)),
+    );
+    further.apply(
+        &deletion_asked_by(DeletionAskedBy::Holder),
+        &stamped(10, clock::at(2_970)),
     );
     // and: an account that is only signed up
     let mut behind = a_signed_up_account();
@@ -1283,4 +1292,172 @@ fn a_passkey_demoted_beside_a_second_factor_draws_no_codes() {
 
     // then: only its role changes
     assert_eq!(demoted, vec![AccountEvent::KeyDemoted { key }]);
+}
+
+fn deletion_asked_by(by: DeletionAskedBy) -> AccountEvent {
+    AccountEvent::DeletionAsked {
+        until: clock::at(9_000),
+        by,
+    }
+}
+
+fn asked_to_be_deleted_by(by: DeletionAskedBy) -> Account {
+    let mut account = a_verified_account();
+    account.apply(&deletion_asked_by(by), &stamped(3, clock::at(3_000)));
+
+    account
+}
+
+#[test]
+fn an_account_asked_to_be_deleted_is_kept_until_then_its_sessions_ended_and_signing_in_kept_from_it()
+ {
+    // given: a verified account
+    let account = a_verified_account();
+
+    // when: its holder asks for it to be deleted
+    let asked = account
+        .decide(
+            AccountCommand::AskDeletion {
+                until: clock::at(9_000),
+                by: DeletionAskedBy::Holder,
+            },
+            &herself(),
+        )
+        .expect("an account may ask to be deleted");
+
+    // then: the deletion is asked, until when it is kept and by whom
+    assert_eq!(asked, vec![deletion_asked_by(DeletionAskedBy::Holder)]);
+    // when: it is applied
+    let account = asked_to_be_deleted_by(DeletionAskedBy::Holder);
+    // then: the account is kept until then, locked, and no session begun before counts
+    assert_eq!(
+        account.pending_deletion(),
+        Some(PendingDeletion {
+            until: clock::at(9_000),
+            asked_by: DeletionAskedBy::Holder,
+        })
+    );
+    assert!(account.is_locked());
+    assert!(!account.counts_session_begun(clock::at(2_999)));
+    // and: asking again changes nothing, not even the day
+    assert_eq!(
+        account.decide(
+            AccountCommand::AskDeletion {
+                until: clock::at(99_000),
+                by: DeletionAskedBy::Operator,
+            },
+            &herself()
+        ),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn an_operator_asking_to_be_deleted_stops_being_one_in_the_same_step() {
+    // given: an operator
+    let mut account = a_verified_account();
+    account.apply(&AccountEvent::BecameOperator, &stamped(3, clock::at(3_000)));
+
+    // when: they ask for their account to be deleted
+    let asked = account
+        .decide(
+            AccountCommand::AskDeletion {
+                until: clock::at(9_000),
+                by: DeletionAskedBy::Holder,
+            },
+            &herself(),
+        )
+        .expect("an operator may ask to be deleted");
+
+    // then: they stop being an operator, then the deletion is asked
+    assert_eq!(
+        asked,
+        vec![
+            AccountEvent::StoppedBeingOperator,
+            deletion_asked_by(DeletionAskedBy::Holder),
+        ]
+    );
+}
+
+#[test]
+fn the_holder_keeps_an_account_they_asked_to_delete_but_not_one_the_operator_marked() {
+    // given: an account its holder asked to delete, and one the operator marked
+    let asked_by_holder = asked_to_be_deleted_by(DeletionAskedBy::Holder);
+    let marked = asked_to_be_deleted_by(DeletionAskedBy::Operator);
+    let calling_off = |by| AccountCommand::CallOffDeletion { by };
+
+    // expect: the holder calls off their own asking
+    assert_eq!(
+        asked_by_holder.decide(calling_off(DeletionAskedBy::Holder), &herself()),
+        Ok(vec![AccountEvent::DeletionCalledOff])
+    );
+    // and: not the operator's
+    assert_eq!(
+        marked.decide(calling_off(DeletionAskedBy::Holder), &herself()),
+        Err(AccountError::DeletionAskedByTheOperator)
+    );
+    // and: the operator calls off either
+    for account in [&asked_by_holder, &marked] {
+        assert_eq!(
+            account.decide(calling_off(DeletionAskedBy::Operator), &herself()),
+            Ok(vec![AccountEvent::DeletionCalledOff])
+        );
+    }
+    // and: calling off where nothing is asked changes nothing
+    assert_eq!(
+        a_verified_account().decide(calling_off(DeletionAskedBy::Holder), &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn an_account_kept_after_all_is_no_longer_locked_nor_asked_to_be_deleted() {
+    // given: an account asked to be deleted
+    let mut account = asked_to_be_deleted_by(DeletionAskedBy::Holder);
+
+    // when: the deletion is called off
+    account.apply(
+        &AccountEvent::DeletionCalledOff,
+        &stamped(4, clock::at(4_000)),
+    );
+
+    // then: it is as before, signing in open to it again
+    assert_eq!(account.pending_deletion(), None);
+    assert!(!account.is_locked());
+}
+
+#[test]
+fn an_account_asked_to_be_deleted_cannot_become_an_operator() {
+    // given: an account asked to be deleted
+    let account = asked_to_be_deleted_by(DeletionAskedBy::Holder);
+
+    // expect: it cannot become an operator
+    assert_eq!(
+        account.decide(AccountCommand::BecomeOperator, &herself()),
+        Err(AccountError::LockedCannotBecomeOperator)
+    );
+}
+
+#[test]
+fn nobody_asks_for_an_account_to_be_deleted_before_signing_up() {
+    // expect: neither asking nor calling off can come first
+    assert_eq!(
+        Account::begin(
+            AccountCommand::AskDeletion {
+                until: clock::at(9_000),
+                by: DeletionAskedBy::Holder,
+            },
+            &herself()
+        ),
+        Err(AccountError::NotSignedUpYet)
+    );
+    assert_eq!(
+        Account::begin(
+            AccountCommand::CallOffDeletion {
+                by: DeletionAskedBy::Holder
+            },
+            &herself()
+        ),
+        Err(AccountError::NotSignedUpYet)
+    );
 }

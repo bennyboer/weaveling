@@ -259,7 +259,7 @@ impl AccountsCore {
         )
     }
 
-    async fn still_operating(
+    pub(super) async fn still_operating(
         &self,
         transaction: &mut Transaction,
         by: &AccountId,

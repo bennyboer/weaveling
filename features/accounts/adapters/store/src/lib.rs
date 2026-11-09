@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use accounts_core::{
-    AccountEvent, AccountName, DeclineReason, EmailAddress, Key, KeyId, KeyName, KeyRole, Lock,
-    LockKind, LockReason, PreferredWay, SecondStepWay, Totp,
+    AccountEvent, AccountName, DeclineReason, DeletionAskedBy, EmailAddress, Key, KeyId, KeyName,
+    KeyRole, Lock, LockKind, LockReason, PendingDeletion, PreferredWay, SecondStepWay, Totp,
 };
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
@@ -58,6 +58,12 @@ enum StoredAccountEvent {
     PreferredWayChosen {
         way: StoredPreferredWay,
     },
+    DeletionAsked {
+        #[serde(with = "time::serde::rfc3339")]
+        until: OffsetDateTime,
+        by: StoredDeletionAskedBy,
+    },
+    DeletionCalledOff,
     Snapshotted {
         email: String,
         name: String,
@@ -76,7 +82,59 @@ enum StoredAccountEvent {
         recovery_codes_left: usize,
         #[serde(default)]
         preferred_way: StoredPreferredWay,
+        #[serde(default)]
+        pending_deletion: Option<StoredPendingDeletion>,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredDeletionAskedBy {
+    Holder,
+    Operator,
+}
+
+impl From<DeletionAskedBy> for StoredDeletionAskedBy {
+    fn from(by: DeletionAskedBy) -> Self {
+        match by {
+            DeletionAskedBy::Holder => Self::Holder,
+            DeletionAskedBy::Operator => Self::Operator,
+        }
+    }
+}
+
+impl From<StoredDeletionAskedBy> for DeletionAskedBy {
+    fn from(by: StoredDeletionAskedBy) -> Self {
+        match by {
+            StoredDeletionAskedBy::Holder => Self::Holder,
+            StoredDeletionAskedBy::Operator => Self::Operator,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+struct StoredPendingDeletion {
+    #[serde(with = "time::serde::rfc3339")]
+    until: OffsetDateTime,
+    asked_by: StoredDeletionAskedBy,
+}
+
+impl From<PendingDeletion> for StoredPendingDeletion {
+    fn from(pending: PendingDeletion) -> Self {
+        Self {
+            until: pending.until,
+            asked_by: pending.asked_by.into(),
+        }
+    }
+}
+
+impl From<StoredPendingDeletion> for PendingDeletion {
+    fn from(pending: StoredPendingDeletion) -> Self {
+        Self {
+            until: pending.until,
+            asked_by: pending.asked_by.into(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Default)]
@@ -280,6 +338,11 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::PreferredWayChosen { way } => {
                 Self::PreferredWayChosen { way: (*way).into() }
             }
+            AccountEvent::DeletionAsked { until, by } => Self::DeletionAsked {
+                until: *until,
+                by: (*by).into(),
+            },
+            AccountEvent::DeletionCalledOff => Self::DeletionCalledOff,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -292,6 +355,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                pending_deletion,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
@@ -319,6 +383,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                     .collect(),
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: (*preferred_way).into(),
+                pending_deletion: pending_deletion.map(Into::into),
             },
         }
     }
@@ -404,6 +469,11 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::PreferredWayChosen { way } => {
                 Self::PreferredWayChosen { way: way.into() }
             }
+            StoredAccountEvent::DeletionAsked { until, by } => Self::DeletionAsked {
+                until,
+                by: by.into(),
+            },
+            StoredAccountEvent::DeletionCalledOff => Self::DeletionCalledOff,
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -416,6 +486,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                pending_deletion,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 let keys = keys
@@ -469,6 +540,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     keys,
                     recovery_codes_left,
                     preferred_way: preferred_way.into(),
+                    pending_deletion: pending_deletion.map(Into::into),
                 }
             }
         })
@@ -557,6 +629,15 @@ mod tests {
             AccountEvent::PreferredWayChosen {
                 way: PreferredWay::LastUsed,
             },
+            AccountEvent::DeletionAsked {
+                until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
+                by: DeletionAskedBy::Holder,
+            },
+            AccountEvent::DeletionAsked {
+                until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
+                by: DeletionAskedBy::Operator,
+            },
+            AccountEvent::DeletionCalledOff,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -584,6 +665,10 @@ mod tests {
                 )]),
                 recovery_codes_left: 7,
                 preferred_way: PreferredWay::Chosen(SecondStepWay::Key),
+                pending_deletion: Some(PendingDeletion {
+                    until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
+                    asked_by: DeletionAskedBy::Operator,
+                }),
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -640,6 +725,7 @@ mod tests {
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
             preferred_way: PreferredWay::LastUsed,
+            pending_deletion: None,
         });
 
         // then: its moment of signing up is stored as a readable date

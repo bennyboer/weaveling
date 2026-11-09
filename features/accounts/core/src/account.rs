@@ -5,6 +5,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::decline::DeclineReason;
+use crate::deletion::{DeletionAskedBy, PendingDeletion};
 use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
@@ -33,6 +34,8 @@ const KEY_RENAMED: EventName = EventName::of("KEY_RENAMED");
 const KEY_REMOVED: EventName = EventName::of("KEY_REMOVED");
 const KEY_DEMOTED: EventName = EventName::of("KEY_DEMOTED");
 const PREFERRED_WAY_CHOSEN: EventName = EventName::of("PREFERRED_WAY_CHOSEN");
+const DELETION_ASKED: EventName = EventName::of("DELETION_ASKED");
+const DELETION_CALLED_OFF: EventName = EventName::of("DELETION_CALLED_OFF");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +79,13 @@ pub enum AccountCommand {
         key: KeyId,
     },
     ChoosePreferredWay(PreferredWay),
+    AskDeletion {
+        until: OffsetDateTime,
+        by: DeletionAskedBy,
+    },
+    CallOffDeletion {
+        by: DeletionAskedBy,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,6 +138,11 @@ pub enum AccountEvent {
     PreferredWayChosen {
         way: PreferredWay,
     },
+    DeletionAsked {
+        until: OffsetDateTime,
+        by: DeletionAskedBy,
+    },
+    DeletionCalledOff,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -140,6 +155,7 @@ pub enum AccountEvent {
         keys: BTreeMap<KeyId, Key>,
         recovery_codes_left: usize,
         preferred_way: PreferredWay,
+        pending_deletion: Option<PendingDeletion>,
     },
 }
 
@@ -156,6 +172,7 @@ pub struct Account {
     keys: BTreeMap<KeyId, Key>,
     recovery_codes_left: usize,
     preferred_way: PreferredWay,
+    pending_deletion: Option<PendingDeletion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -182,6 +199,10 @@ pub enum AccountError {
     KeyNameTaken,
     #[error("an account holds at most {} keys", Account::MOST_KEYS)]
     TooManyKeys,
+    #[error(
+        "the operator asked for this account to be deleted, and only the operator calls it off"
+    )]
+    DeletionAskedByTheOperator,
 }
 
 impl Account {
@@ -276,8 +297,13 @@ impl Account {
         self.totp
     }
 
+    /// Whether the account is kept from signing in: locked by the operator, or asked to be deleted.
     pub fn is_locked(&self) -> bool {
-        !self.locks.is_empty()
+        !self.locks.is_empty() || self.pending_deletion.is_some()
+    }
+
+    pub fn pending_deletion(&self) -> Option<PendingDeletion> {
+        self.pending_deletion
     }
 
     pub fn signed_up_at(&self) -> OffsetDateTime {
@@ -311,6 +337,8 @@ impl Event for AccountEvent {
             Self::KeyRemoved { .. } => KEY_REMOVED,
             Self::KeyDemoted { .. } => KEY_DEMOTED,
             Self::PreferredWayChosen { .. } => PREFERRED_WAY_CHOSEN,
+            Self::DeletionAsked { .. } => DELETION_ASKED,
+            Self::DeletionCalledOff => DELETION_CALLED_OFF,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -358,7 +386,9 @@ impl Aggregate for Account {
             | AccountCommand::RenameKey { .. }
             | AccountCommand::RemoveKey { .. }
             | AccountCommand::DemoteKey { .. }
-            | AccountCommand::ChoosePreferredWay(_) => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::ChoosePreferredWay(_)
+            | AccountCommand::AskDeletion { .. }
+            | AccountCommand::CallOffDeletion { .. } => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -376,6 +406,7 @@ impl Aggregate for Account {
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
+                pending_deletion: None,
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
@@ -389,6 +420,7 @@ impl Aggregate for Account {
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
+                pending_deletion: None,
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -402,6 +434,7 @@ impl Aggregate for Account {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                pending_deletion,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -414,6 +447,7 @@ impl Aggregate for Account {
                 keys: keys.clone(),
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: *preferred_way,
+                pending_deletion: *pending_deletion,
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
@@ -431,7 +465,9 @@ impl Aggregate for Account {
             | AccountEvent::KeyRenamed { .. }
             | AccountEvent::KeyRemoved { .. }
             | AccountEvent::KeyDemoted { .. }
-            | AccountEvent::PreferredWayChosen { .. } => None,
+            | AccountEvent::PreferredWayChosen { .. }
+            | AccountEvent::DeletionAsked { .. }
+            | AccountEvent::DeletionCalledOff => None,
         }
     }
 
@@ -453,7 +489,7 @@ impl Aggregate for Account {
             ]),
             AccountCommand::BecomeOperator if !self.verified => Err(AccountError::NotVerifiedYet),
             AccountCommand::BecomeOperator if self.operator => Ok(vec![]),
-            AccountCommand::BecomeOperator if !self.locks.is_empty() => {
+            AccountCommand::BecomeOperator if self.is_locked() => {
                 Err(AccountError::LockedCannotBecomeOperator)
             }
             AccountCommand::BecomeOperator => Ok(vec![AccountEvent::BecameOperator]),
@@ -534,6 +570,24 @@ impl Aggregate for Account {
             AccountCommand::ChoosePreferredWay(way) => {
                 Ok(vec![AccountEvent::PreferredWayChosen { way }])
             }
+            AccountCommand::AskDeletion { .. } if self.pending_deletion.is_some() => Ok(vec![]),
+            AccountCommand::AskDeletion { until, by } if self.operator => Ok(vec![
+                AccountEvent::StoppedBeingOperator,
+                AccountEvent::DeletionAsked { until, by },
+            ]),
+            AccountCommand::AskDeletion { until, by } => {
+                Ok(vec![AccountEvent::DeletionAsked { until, by }])
+            }
+            AccountCommand::CallOffDeletion { by } => match self.pending_deletion {
+                None => Ok(vec![]),
+                Some(pending)
+                    if pending.asked_by == DeletionAskedBy::Operator
+                        && by == DeletionAskedBy::Holder =>
+                {
+                    Err(AccountError::DeletionAskedByTheOperator)
+                }
+                Some(_) => Ok(vec![AccountEvent::DeletionCalledOff]),
+            },
         }
     }
 
@@ -601,6 +655,14 @@ impl Aggregate for Account {
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::PreferredWayChosen { way } => self.preferred_way = *way,
+            AccountEvent::DeletionAsked { until, by } => {
+                self.pending_deletion = Some(PendingDeletion {
+                    until: *until,
+                    asked_by: *by,
+                });
+                self.sessions_since = Some(metadata.occurred_at);
+            }
+            AccountEvent::DeletionCalledOff => self.pending_deletion = None,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -613,6 +675,7 @@ impl Aggregate for Account {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                pending_deletion,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -625,6 +688,7 @@ impl Aggregate for Account {
                 self.keys = keys.clone();
                 self.recovery_codes_left = *recovery_codes_left;
                 self.preferred_way = *preferred_way;
+                self.pending_deletion = *pending_deletion;
             }
         }
     }
@@ -642,6 +706,7 @@ impl Aggregate for Account {
             keys: self.keys.clone(),
             recovery_codes_left: self.recovery_codes_left,
             preferred_way: self.preferred_way,
+            pending_deletion: self.pending_deletion,
         }
     }
 }
