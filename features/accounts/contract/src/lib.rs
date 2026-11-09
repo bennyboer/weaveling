@@ -177,6 +177,14 @@ pub struct PasskeySignInRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct KeyChallengeRequest {
     pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacing: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PromoteKeyRequest {
+    pub answer: serde_json::Value,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -222,6 +230,7 @@ pub const TOTP_REMOVED: &str = "account.totp.removed";
 pub const KEY_ADDED: &str = "account.key.added";
 pub const KEY_RENAMED: &str = "account.key.renamed";
 pub const KEY_REMOVED: &str = "account.key.removed";
+pub const KEY_DEMOTED: &str = "account.key.demoted";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -265,6 +274,8 @@ pub enum AccountEventDTO {
     KeyRenamed { key: String },
     #[serde(rename = "KEY_REMOVED")]
     KeyRemoved { key: String },
+    #[serde(rename = "KEY_DEMOTED")]
+    KeyDemoted { key: String },
 }
 
 pub mod sign_up {

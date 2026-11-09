@@ -1220,3 +1220,67 @@ fn a_way_that_no_longer_answers_is_not_asked_first() {
     // and: an account without a second step is asked nothing first
     assert_eq!(a_verified_account().asked_way(None), None);
 }
+
+#[test]
+fn a_passkey_demoted_as_the_first_second_factor_comes_with_recovery_codes_and_ends_every_session() {
+    // given: an account whose only key is a passkey
+    let mut account = a_verified_account();
+    let key = a_key();
+    adding(&mut account, key, "MacBook", KeyRole::Primary, 3_000);
+
+    // when: the passkey is demoted to answer the second step
+    let demoted = account
+        .decide(AccountCommand::DemoteKey { key }, &herself())
+        .expect("its passkey");
+    for event in &demoted {
+        account.apply(event, &stamped(11, clock::at(4_000)));
+    }
+
+    // then: it answers the second step, with ten recovery codes, as the first second factor
+    assert_eq!(
+        demoted,
+        vec![
+            AccountEvent::KeyDemoted { key },
+            AccountEvent::RecoveryCodesDrawn
+        ]
+    );
+    assert_eq!(account.keys()[&key].role, KeyRole::SecondFactor);
+    assert_eq!(
+        account
+            .second_factor()
+            .map(|factor| factor.recovery_codes_left),
+        Some(10)
+    );
+    // and: a session begun before no longer counts
+    assert!(!account.counts_session_begun(clock::at(3_999)));
+    // and: demoting it again changes nothing, and a key not held is refused
+    assert_eq!(
+        account.decide(AccountCommand::DemoteKey { key }, &herself()),
+        Ok(vec![])
+    );
+    assert_eq!(
+        account.decide(
+            AccountCommand::DemoteKey {
+                key: KeyId::generate(clock::at(5_002))
+            },
+            &herself()
+        ),
+        Err(AccountError::NoSuchKey)
+    );
+}
+
+#[test]
+fn a_passkey_demoted_beside_a_second_factor_draws_no_codes() {
+    // given: an account with TOTP and a passkey
+    let mut account = with_a_second_factor_since(3_000);
+    let key = a_key();
+    adding(&mut account, key, "MacBook", KeyRole::Primary, 4_000);
+
+    // when: the passkey is demoted
+    let demoted = account
+        .decide(AccountCommand::DemoteKey { key }, &herself())
+        .expect("its passkey");
+
+    // then: only its role changes
+    assert_eq!(demoted, vec![AccountEvent::KeyDemoted { key }]);
+}

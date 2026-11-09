@@ -1,7 +1,7 @@
 use accounts_contract::{
     AddKeyRequest, AddedKeyDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
-    PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest, RenameKeyRequest, SignedInDTO,
-    key_role, refused, stage,
+    PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest, PromoteKeyRequest,
+    RenameKeyRequest, SignedInDTO, key_role, refused, stage,
 };
 use accounts_core::KeyCeremonies;
 use axum::http::StatusCode;
@@ -358,6 +358,7 @@ impl Served {
             .add_header(COOKIE, cookie.to_owned())
             .json(&KeyChallengeRequest {
                 role: role.to_owned(),
+                replacing: None,
             })
             .await
     }
@@ -471,4 +472,70 @@ async fn a_passkey_signs_in_alone_under_a_new_cookie_with_no_address_typed() {
         StatusCode::CONFLICT,
         refused::NO_KEY_BEING_ASKED,
     );
+}
+
+#[tokio::test]
+async fn a_key_is_promoted_by_a_passkey_made_in_its_place_and_demoted_again_for_the_password() {
+    // given: an author with a key answering the second step
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+    let made = served.key_made(&cookie).await;
+    let added = served.add(&cookie, "YubiKey blue", made).await;
+    let cookie = cookie_set_by(&added);
+    let key = added.json::<AddedKeyDTO>().key;
+
+    // when: a passkey is asked for in its place and made
+    let mut asked = served
+        .server
+        .post("/accounts/current/keys/challenge")
+        .add_header(COOKIE, cookie.clone())
+        .json(&KeyChallengeRequest {
+            role: key_role::PRIMARY.to_owned(),
+            replacing: Some(key.clone()),
+        })
+        .await
+        .json::<KeyChallengeDTO>()
+        .options;
+    asked["publicKey"]["authenticatorSelection"]["residentKey"] = "discouraged".into();
+    asked["publicKey"]["authenticatorSelection"]["requireResidentKey"] = false.into();
+    let promoted = served
+        .server
+        .post(&format!("/accounts/current/keys/{key}/promote"))
+        .add_header(COOKIE, cookie.clone())
+        .json(&PromoteKeyRequest {
+            answer: made_for(asked),
+            password: HER_PASSWORD.to_owned(),
+        })
+        .await;
+
+    // then: one key is listed, under the old name, signing in alone
+    promoted.assert_status_ok();
+    let cookie = cookie_set_by(&promoted);
+    let listed = served.keys(&cookie).await;
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "YubiKey blue");
+    assert_eq!(listed[0].role, key_role::PRIMARY);
+    // when: it is demoted again with her password
+    let demoted = served
+        .server
+        .post(&format!(
+            "/accounts/current/keys/{}/demote",
+            listed[0].key
+        ))
+        .add_header(COOKIE, cookie.clone())
+        .json(&PasswordRequest {
+            password: HER_PASSWORD.to_owned(),
+        })
+        .await;
+    // then: it answers the second step, the first second factor once more, with ten codes
+    demoted.assert_status_ok();
+    assert_eq!(
+        demoted
+            .json::<AddedKeyDTO>()
+            .recovery_codes
+            .map(|codes| codes.len()),
+        Some(10)
+    );
+    let cookie = cookie_set_by(&demoted);
+    assert_eq!(served.keys(&cookie).await[0].role, key_role::SECOND_FACTOR);
 }

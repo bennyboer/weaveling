@@ -52,6 +52,9 @@ enum StoredAccountEvent {
     KeyRemoved {
         key: String,
     },
+    KeyDemoted {
+        key: String,
+    },
     PreferredWayChosen {
         way: StoredPreferredWay,
     },
@@ -271,6 +274,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::KeyRemoved { key } => Self::KeyRemoved {
                 key: key.to_string(),
             },
+            AccountEvent::KeyDemoted { key } => Self::KeyDemoted {
+                key: key.to_string(),
+            },
             AccountEvent::PreferredWayChosen { way } => {
                 Self::PreferredWayChosen { way: (*way).into() }
             }
@@ -390,6 +396,9 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 Self::KeyRenamed { key, name }
             }
             StoredAccountEvent::KeyRemoved { key } => Self::KeyRemoved {
+                key: key.parse().map_err(|_| UnreadableAccountEvent)?,
+            },
+            StoredAccountEvent::KeyDemoted { key } => Self::KeyDemoted {
                 key: key.parse().map_err(|_| UnreadableAccountEvent)?,
             },
             StoredAccountEvent::PreferredWayChosen { way } => {
@@ -537,6 +546,9 @@ mod tests {
                 name: KeyName::new("Keyring").expect("a plain name"),
             },
             AccountEvent::KeyRemoved {
+                key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
+            },
+            AccountEvent::KeyDemoted {
                 key: KeyId::generate(OffsetDateTime::UNIX_EPOCH + Duration::seconds(5_000)),
             },
             AccountEvent::PreferredWayChosen {

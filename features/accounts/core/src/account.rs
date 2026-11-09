@@ -31,6 +31,7 @@ const TOTP_REMOVED: EventName = EventName::of("TOTP_REMOVED");
 const KEY_ADDED: EventName = EventName::of("KEY_ADDED");
 const KEY_RENAMED: EventName = EventName::of("KEY_RENAMED");
 const KEY_REMOVED: EventName = EventName::of("KEY_REMOVED");
+const KEY_DEMOTED: EventName = EventName::of("KEY_DEMOTED");
 const PREFERRED_WAY_CHOSEN: EventName = EventName::of("PREFERRED_WAY_CHOSEN");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -69,6 +70,9 @@ pub enum AccountCommand {
         name: KeyName,
     },
     RemoveKey {
+        key: KeyId,
+    },
+    DemoteKey {
         key: KeyId,
     },
     ChoosePreferredWay(PreferredWay),
@@ -116,6 +120,9 @@ pub enum AccountEvent {
         name: KeyName,
     },
     KeyRemoved {
+        key: KeyId,
+    },
+    KeyDemoted {
         key: KeyId,
     },
     PreferredWayChosen {
@@ -302,6 +309,7 @@ impl Event for AccountEvent {
             Self::KeyAdded { .. } => KEY_ADDED,
             Self::KeyRenamed { .. } => KEY_RENAMED,
             Self::KeyRemoved { .. } => KEY_REMOVED,
+            Self::KeyDemoted { .. } => KEY_DEMOTED,
             Self::PreferredWayChosen { .. } => PREFERRED_WAY_CHOSEN,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -349,6 +357,7 @@ impl Aggregate for Account {
             | AccountCommand::AddKey { .. }
             | AccountCommand::RenameKey { .. }
             | AccountCommand::RemoveKey { .. }
+            | AccountCommand::DemoteKey { .. }
             | AccountCommand::ChoosePreferredWay(_) => Err(AccountError::NotSignedUpYet),
         }
     }
@@ -421,6 +430,7 @@ impl Aggregate for Account {
             | AccountEvent::KeyAdded { .. }
             | AccountEvent::KeyRenamed { .. }
             | AccountEvent::KeyRemoved { .. }
+            | AccountEvent::KeyDemoted { .. }
             | AccountEvent::PreferredWayChosen { .. } => None,
         }
     }
@@ -511,6 +521,15 @@ impl Aggregate for Account {
             }
             AccountCommand::RemoveKey { key } if !self.keys.contains_key(&key) => Ok(vec![]),
             AccountCommand::RemoveKey { key } => Ok(vec![AccountEvent::KeyRemoved { key }]),
+            AccountCommand::DemoteKey { key } => match self.keys.get(&key) {
+                None => Err(AccountError::NoSuchKey),
+                Some(held) if held.role == KeyRole::SecondFactor => Ok(vec![]),
+                Some(_) if self.second_factor().is_none() => Ok(vec![
+                    AccountEvent::KeyDemoted { key },
+                    AccountEvent::RecoveryCodesDrawn,
+                ]),
+                Some(_) => Ok(vec![AccountEvent::KeyDemoted { key }]),
+            },
             AccountCommand::ChoosePreferredWay(way) if way == self.preferred_way => Ok(vec![]),
             AccountCommand::ChoosePreferredWay(way) => {
                 Ok(vec![AccountEvent::PreferredWayChosen { way }])
@@ -573,6 +592,12 @@ impl Aggregate for Account {
             }
             AccountEvent::KeyRemoved { key } => {
                 self.keys.remove(key);
+                self.sessions_since = Some(metadata.occurred_at);
+            }
+            AccountEvent::KeyDemoted { key } => {
+                if let Some(held) = self.keys.get_mut(key) {
+                    held.role = KeyRole::SecondFactor;
+                }
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::PreferredWayChosen { way } => self.preferred_way = *way,

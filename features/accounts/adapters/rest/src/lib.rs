@@ -2,15 +2,17 @@ use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
     DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
     LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
-    PasswordRequest, PasswordResetRequest, PreferredWayRequest, RecoveryCodesDTO, RenameKeyRequest,
-    SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO, SignInRequest,
-    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused, second_step_way, stage,
+    PasswordRequest, PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest,
+    RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
+    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, key_role, lock_kind, refused,
+    second_step_way, stage,
 };
 use accounts_core::{
-    AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
-    InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword, KeyId, KeyRole,
-    LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn, SigningIn, Stage,
+    AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, AddedKey,
+    InvalidAccountName, InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword,
+    KeyId, KeyRole, LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn,
+    SigningIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -114,6 +116,14 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/accounts/current/keys/{key}",
             routing::patch(rename_key).delete(remove_key),
+        )
+        .route(
+            "/accounts/current/keys/{key}/promote",
+            routing::post(promote_key),
+        )
+        .route(
+            "/accounts/current/keys/{key}/demote",
+            routing::post(demote_key),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
@@ -432,8 +442,13 @@ async fn begin_adding_key(
             ));
         }
     };
+    let replacing = asked
+        .as_ref()
+        .and_then(|Json(asked)| asked.replacing.as_deref())
+        .map(key_named)
+        .transpose()?;
     let options = accounts
-        .begin_adding_key(&account, role)
+        .begin_adding_key(&account, role, replacing.as_ref())
         .await
         .map_err(problem_of)?;
 
@@ -465,6 +480,62 @@ async fn finish_adding_key(
         }),
     )
         .into_response())
+}
+
+async fn promote_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<PromoteKeyRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let promoted = accounts
+        .replace_key_by_passkey(
+            &account,
+            &key_named(&key)?,
+            &request.answer,
+            &request.password,
+            &session,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok(changed_key(&promoted))
+}
+
+async fn demote_key(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(key): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<PasswordRequest>,
+) -> Result<Response, Problem> {
+    let Some(session) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let demoted = accounts
+        .demote_key(&account, &key_named(&key)?, &request.password, &session)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(changed_key(&demoted))
+}
+
+fn changed_key(changed: &AddedKey) -> Response {
+    (
+        [(SET_COOKIE, holding(&changed.session))],
+        Json(AddedKeyDTO {
+            key: changed.key.to_string(),
+            recovery_codes: changed
+                .recovery_codes
+                .as_ref()
+                .map(|codes| codes.iter().map(ToString::to_string).collect()),
+        }),
+    )
+        .into_response()
 }
 
 async fn rename_key(

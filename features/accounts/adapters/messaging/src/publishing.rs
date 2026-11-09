@@ -48,6 +48,9 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::KeyRemoved { key } => AccountEventDTO::KeyRemoved {
             key: key.to_string(),
         },
+        AccountEvent::KeyDemoted { key } => AccountEventDTO::KeyDemoted {
+            key: key.to_string(),
+        },
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
         | AccountEvent::PreferredWayChosen { .. }
@@ -88,7 +91,7 @@ mod tests {
 
     use accounts_contract::{
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
-        KEY_ADDED, KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP,
+        KEY_ADDED, KEY_DEMOTED, KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP,
         SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
     };
     use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason};
@@ -188,6 +191,7 @@ mod tests {
                 KEY_RENAMED,
             ),
             (AccountEvent::KeyRemoved { key: a_key() }, KEY_REMOVED),
+            (AccountEvent::KeyDemoted { key: a_key() }, KEY_DEMOTED),
         ]
     }
 

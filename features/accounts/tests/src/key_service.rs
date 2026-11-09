@@ -95,7 +95,7 @@ impl Bench {
     async fn answered_by(&self, authenticator: &mut SoftPasskey, account: &AccountId) -> Value {
         let asked = self
             .accounts
-            .begin_adding_key(account, KeyRole::SecondFactor)
+            .begin_adding_key(account, KeyRole::SecondFactor, None)
             .await
             .expect("adding begins");
 
@@ -283,7 +283,7 @@ async fn an_answer_to_another_accounts_adding_makes_no_key() {
     let session = bench.session_of(ADA).await;
     let _hers = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::SecondFactor)
+        .begin_adding_key(&ada, KeyRole::SecondFactor, None)
         .await
         .expect("adding begins");
     let theirs = bench.answered(&grace).await;
@@ -347,7 +347,7 @@ async fn without_a_public_url_no_key_is_added() {
     // when: adding a key begins
     let begun = wired
         .accounts
-        .begin_adding_key(&ada, KeyRole::SecondFactor)
+        .begin_adding_key(&ada, KeyRole::SecondFactor, None)
         .await;
 
     // then: it is refused
@@ -818,7 +818,7 @@ async fn a_passkey_is_added_to_sign_in_alone_bringing_no_second_step() {
     // when: a passkey the authenticator made is added
     let asked = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::Primary)
+        .begin_adding_key(&ada, KeyRole::Primary, None)
         .await
         .expect("adding begins");
     let answer = made_by(&mut SoftPasskey::new(true), not_resident(asked));
@@ -848,7 +848,7 @@ async fn with_a_passkey(bench: &Bench, email: &str) -> (AccountId, SoftPasskey) 
     let mut authenticator = SoftPasskey::new(true);
     let asked = bench
         .accounts
-        .begin_adding_key(&account, KeyRole::Primary)
+        .begin_adding_key(&account, KeyRole::Primary, None)
         .await
         .expect("adding begins");
     let answer = made_by(&mut authenticator, not_resident(asked));
@@ -997,4 +997,145 @@ async fn a_locked_account_is_not_signed_in_by_its_passkey() {
 
     // then: it is refused as locked
     assert!(matches!(refused, Err(AccountsError::Locked)), "{refused:?}");
+}
+
+#[tokio::test]
+async fn a_passkey_demoted_for_the_password_answers_the_second_step_with_recovery_codes() {
+    // given: an account whose only key is a passkey
+    let bench = bench();
+    let (ada, _) = with_a_passkey(&bench, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let key = *bench
+        .wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state
+        .keys()
+        .keys()
+        .next()
+        .expect("her passkey");
+
+    // when: demoting it is asked with a wrong password
+    let wrong = bench
+        .accounts
+        .demote_key(&ada, &key, "not her password", &session)
+        .await;
+
+    // then: it is refused
+    assert!(
+        matches!(wrong, Err(AccountsError::PasswordWrong)),
+        "{wrong:?}"
+    );
+    // when: it is asked with her password
+    let demoted = bench
+        .accounts
+        .demote_key(&ada, &key, HER_PASSWORD, &session)
+        .await
+        .expect("her password demotes it");
+    // then: it answers the second step, the first second factor, with ten recovery codes kept
+    let account = bench
+        .wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state;
+    assert_eq!(account.keys()[&key].role, KeyRole::SecondFactor);
+    assert_eq!(demoted.recovery_codes.map(|codes| codes.len()), Some(10));
+    assert_eq!(codes_kept(&bench, &ada).await, 10);
+    assert!(bench.is_open(&demoted.session).await);
+}
+
+#[tokio::test]
+async fn a_second_step_key_is_promoted_by_a_passkey_made_in_its_place_and_its_second_step_ends() {
+    // given: an account whose only second factor is a key, its codes kept
+    let bench = bench();
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let first = bench.answered_by(&mut authenticator, &ada).await;
+    let added = bench
+        .accounts
+        .finish_adding_key(&ada, "YubiKey blue", &first, &session)
+        .await
+        .expect("the key is added");
+    let old_credential = bench
+        .wired
+        .secrets
+        .credentials_of(&ada)
+        .await
+        .expect("reading should succeed")[0]
+        .1
+        .id
+        .clone();
+
+    // when: a passkey is made in its place, the old key not excluded
+    let asked = bench
+        .accounts
+        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key))
+        .await
+        .expect("adding begins");
+    assert_eq!(
+        asked["publicKey"]["excludeCredentials"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "the key replaced may be made anew on the same device"
+    );
+    let answer = made_by(&mut authenticator, not_resident(asked));
+    let promoted = bench
+        .accounts
+        .replace_key_by_passkey(&ada, &added.key, &answer, HER_PASSWORD, &added.session)
+        .await
+        .expect("her password promotes it");
+
+    // then: the passkey holds the old key's name, signing in alone, and the old key is gone
+    let account = bench
+        .wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state;
+    assert_eq!(account.keys().len(), 1);
+    let held = &account.keys()[&promoted.key];
+    assert_eq!(held.name.as_str(), "YubiKey blue");
+    assert_eq!(held.role, KeyRole::Primary);
+    let credentials = bench
+        .wired
+        .secrets
+        .credentials_of(&ada)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(credentials.len(), 1);
+    assert_ne!(credentials[0].1.id, old_credential);
+    // and: the second step ended, its recovery codes with it
+    assert!(account.second_factor().is_none());
+    assert_eq!(codes_kept(&bench, &ada).await, 0);
+    assert!(bench.is_open(&promoted.session).await);
+}
+
+#[tokio::test]
+async fn a_key_promoted_beside_totp_keeps_the_recovery_codes() {
+    // given: an account with TOTP and a second-step key
+    let bench = with_totp_too(bench());
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let session = totp_set_up(&bench, &ada, &session).await;
+    let added = bench.added(&ada, "YubiKey blue", &session).await;
+
+    // when: the key is promoted
+    let asked = bench
+        .accounts
+        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key))
+        .await
+        .expect("adding begins");
+    let answer = made_by(&mut SoftPasskey::new(true), not_resident(asked));
+    bench
+        .accounts
+        .replace_key_by_passkey(&ada, &added.key, &answer, HER_PASSWORD, &added.session)
+        .await
+        .expect("her password promotes it");
+
+    // then: TOTP still answers the second step, its codes kept
+    assert_eq!(codes_kept(&bench, &ada).await, 10);
 }
