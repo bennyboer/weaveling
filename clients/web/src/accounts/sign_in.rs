@@ -635,7 +635,7 @@ fn passkey_offered(session: CurrentSession) -> impl IntoView {
             html::section().class("passkey-offered").child((
                 html::button()
                     .r#type("button")
-                    .class("primary")
+                    .class("passkey")
                     .attr("aria-busy", move || signing_in.busy())
                     .on(ev::click, move |_| signing_in.start(()))
                     .child((
