@@ -1,7 +1,9 @@
+mod holdings;
 mod publishing;
 mod ticketing;
 mod trashing;
 
+pub use holdings::RememberProjectMembersListener;
 pub use publishing::message_for;
 pub use ticketing::KeepInvitationTicketsListener;
 pub use trashing::RememberTrashedProjectsListener;

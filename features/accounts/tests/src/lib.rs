@@ -53,6 +53,9 @@ mod operators_api;
 mod password_reset;
 
 #[cfg(test)]
+mod projects_to_hand_over;
+
+#[cfg(test)]
 mod totp_bench;
 
 #[cfg(test)]

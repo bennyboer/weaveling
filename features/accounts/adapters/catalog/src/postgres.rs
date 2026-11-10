@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress,
+    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, InProject,
 };
 use async_trait::async_trait;
 use eventsourcing::Version;
@@ -36,6 +36,41 @@ const LISTED_AFTER: &str = "
     WHERE $1::TEXT IS NULL OR account < $1
     ORDER BY account DESC
     LIMIT $2
+";
+
+const OWNER: &str = "owner";
+const MEMBER: &str = "member";
+
+const REMEMBER_HOLDING: &str = "
+    INSERT INTO project_holdings (project, account, version, held)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (project, account) DO UPDATE
+    SET version = EXCLUDED.version, held = EXCLUDED.held
+    WHERE project_holdings.version < EXCLUDED.version
+";
+
+const REMEMBER_DISBANDED: &str = "
+    INSERT INTO disbanded_projects (project, version)
+    VALUES ($1, $2)
+    ON CONFLICT (project) DO NOTHING
+";
+
+const PROJECTS_TO_HAND_OVER: &str = "
+    SELECT mine.project
+    FROM project_holdings mine
+    WHERE mine.account = $1 AND mine.held = 'owner'
+      AND NOT EXISTS (SELECT 1 FROM disbanded_projects gone WHERE gone.project = mine.project)
+      AND NOT EXISTS (
+          SELECT 1 FROM project_holdings other
+          WHERE other.project = mine.project AND other.account <> mine.account
+            AND other.held = 'owner'
+      )
+      AND EXISTS (
+          SELECT 1 FROM project_holdings other
+          WHERE other.project = mine.project AND other.account <> mine.account
+            AND other.held IS NOT NULL
+      )
+    ORDER BY mine.project
 ";
 
 const LEDGER: &str = "_sqlx_migrations_account_summaries";
@@ -120,6 +155,60 @@ impl AccountCatalog for PostgresAccountCatalog {
 
         found.iter().map(to_summary).collect()
     }
+
+    async fn remember_holding(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        held: Option<InProject>,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_HOLDING)
+            .bind(project)
+            .bind(account.to_string())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(held_named(held))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn remember_disbanded(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_DISBANDED)
+            .bind(project)
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn projects_to_hand_over(
+        &self,
+        account: &AccountId,
+    ) -> Result<Vec<String>, CatalogError> {
+        sqlx::query_scalar(PROJECTS_TO_HAND_OVER)
+            .bind(account.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)
+    }
+}
+
+fn held_named(held: Option<InProject>) -> Option<&'static str> {
+    held.map(|held| match held {
+        InProject::Owner => OWNER,
+        InProject::Member => MEMBER,
+    })
 }
 
 #[cfg(test)]

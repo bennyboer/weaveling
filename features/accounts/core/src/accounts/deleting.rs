@@ -4,6 +4,7 @@ use transacting::Transaction;
 
 use super::AccountsCore;
 use crate::account::AccountCommand;
+use crate::catalog::InProject;
 use crate::deletion::{DeletionAskedBy, KEPT_BEFORE_DELETION};
 use crate::error::AccountsError;
 use crate::id::AccountId;
@@ -17,6 +18,7 @@ impl AccountsCore {
         password: &str,
     ) -> Result<OffsetDateTime, AccountsError> {
         self.password_confirmed(account, password).await?;
+        self.nothing_to_hand_over(account).await?;
         let until = self.clock.now() + KEPT_BEFORE_DELETION;
 
         transacting::retrying!(&*self.transactions, |transaction| {
@@ -42,6 +44,7 @@ impl AccountsCore {
         account: &AccountId,
         expected: Option<Version>,
     ) -> Result<OffsetDateTime, AccountsError> {
+        self.nothing_to_hand_over(account).await?;
         let until = self.clock.now() + KEPT_BEFORE_DELETION;
 
         transacting::retrying!(
@@ -105,6 +108,63 @@ impl AccountsCore {
                 .await
             }
         )
+    }
+
+    /// Remembers what an account is in a project, none where it is gone, as the project's members tell it.
+    pub async fn remember_holding(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        held: Option<InProject>,
+    ) -> Result<(), AccountsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_holding(transaction, project, account, version, held)
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, as its members tell it once the project is deleted.
+    pub async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), AccountsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_disbanded(transaction, project, version)
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    async fn nothing_to_hand_over(&self, account: &AccountId) -> Result<(), AccountsError> {
+        let held = self.catalog.projects_to_hand_over(account).await?;
+        let due = transacting::retrying!(&*self.transactions, |transaction| {
+            let mut due = Vec::new();
+            for project in &held {
+                if !self
+                    .invitation_tickets
+                    .is_in_the_trash(transaction, project)
+                    .await?
+                {
+                    due.push(project.clone());
+                }
+            }
+
+            Ok::<_, AccountsError>(due)
+        })?;
+        if due.is_empty() {
+            Ok(())
+        } else {
+            Err(AccountsError::ProjectsToHandOver(due))
+        }
     }
 
     async fn deletion_asked_in(

@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use transacting::{Transaction, Transactions, Tried};
 
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, Lock,
-    LockKind, LockReason,
+    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, InProject,
+    Lock, LockKind, LockReason,
 };
 use eventsourcing::Version;
 
@@ -39,6 +39,38 @@ fn unreachable(failure: transacting::Failure) -> CatalogError {
 }
 
 impl<C: AccountCatalog> Committing<'_, C> {
+    pub async fn holding(
+        &self,
+        project: &str,
+        account: &AccountId,
+        version: u64,
+        held: Option<InProject>,
+    ) {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_holding(transaction, project, account, Version::of(version), held)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("remembering should succeed");
+    }
+
+    pub async fn disbanded(&self, project: &str, version: u64) {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_disbanded(transaction, project, Version::of(version))
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("remembering should succeed");
+    }
+
     pub async fn begun(&self) -> Transaction {
         self.transactions
             .begin()
@@ -276,6 +308,142 @@ pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
     assert!(listed(catalog).await.is_empty());
 }
 
+async fn to_hand_over(catalog: &impl AccountCatalog, account: &AccountId) -> Vec<String> {
+    catalog
+        .projects_to_hand_over(account)
+        .await
+        .expect("asking should succeed")
+}
+
+pub async fn only_projects_others_are_in_that_the_account_alone_owns_are_to_hand_over(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: ada and grace in projects of every kind
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_shared", &grace, 2, Some(InProject::Member))
+        .await;
+    catalog
+        .holding("project_alone", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_co_owned", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_co_owned", &grace, 2, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_of_grace", &grace, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_of_grace", &ada, 2, Some(InProject::Member))
+        .await;
+    catalog
+        .holding("project_left", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_left", &grace, 2, Some(InProject::Member))
+        .await;
+    catalog.holding("project_left", &grace, 3, None).await;
+
+    // expect: ada hands over only the project others are in that she alone owns
+    assert_eq!(
+        to_hand_over(catalog.uncommitted(), &ada).await,
+        vec!["project_shared".to_owned()]
+    );
+    // and: grace the one she alone owns with ada in it
+    assert_eq!(
+        to_hand_over(catalog.uncommitted(), &grace).await,
+        vec!["project_of_grace".to_owned()]
+    );
+}
+
+pub async fn changes_heard_out_of_order_end_as_if_heard_in_order(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: projects ada alone owns at first
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    catalog
+        .holding("project_promoted", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_removed", &ada, 1, Some(InProject::Owner))
+        .await;
+
+    // when: grace is made an owner of one, heard before her joining it as an author
+    catalog
+        .holding("project_promoted", &grace, 5, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_promoted", &grace, 3, Some(InProject::Member))
+        .await;
+    // and: removed from the other, heard before her joining it
+    catalog.holding("project_removed", &grace, 7, None).await;
+    catalog
+        .holding("project_removed", &grace, 3, Some(InProject::Member))
+        .await;
+
+    // then: she owns the first beside ada, and is gone from the second, so ada hands over neither
+    assert!(
+        to_hand_over(catalog.uncommitted(), &ada).await.is_empty(),
+        "a change heard late must not undo a newer one"
+    );
+}
+
+pub async fn a_project_disbanded_is_nothing_to_hand_over(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: a project others are in that ada alone owns
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_shared", &grace, 2, Some(InProject::Member))
+        .await;
+
+    // when: its members are disbanded, the project deleted
+    catalog.disbanded("project_shared", 3).await;
+
+    // then: ada has nothing to hand over
+    assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
+}
+
+pub async fn a_holding_in_a_dropped_transaction_was_never_heard(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: a project ada alone owns
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+
+    // when: grace joining it is told in a transaction that is dropped
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember_holding(
+            &mut transaction,
+            "project_shared",
+            &grace,
+            Version::of(2),
+            Some(InProject::Member),
+        )
+        .await
+        .expect("remembering should succeed");
+    drop(transaction);
+
+    // then: ada is alone in it, with nothing to hand over
+    assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -308,6 +476,19 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_page_holds_at_most_what_was_asked_and_the_next_goes_on_after_it
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            only_projects_others_are_in_that_the_account_alone_owns_are_to_hand_over
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            changes_heard_out_of_order_end_as_if_heard_in_order
+        );
+        $crate::catalog_conformance_case!($workbench, a_project_disbanded_is_nothing_to_hand_over);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_holding_in_a_dropped_transaction_was_never_heard
         );
     };
 }

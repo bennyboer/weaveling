@@ -26,6 +26,13 @@ pub struct AccountSummary {
     pub second_factor: bool,
 }
 
+/// What an account is in a project, as the project's members last told it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InProject {
+    Owner,
+    Member,
+}
+
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("the catalog of accounts could not be reached")]
@@ -45,6 +52,28 @@ pub trait AccountCatalog: Send + Sync {
         after: Option<&AccountId>,
         at_most: usize,
     ) -> Result<Vec<AccountSummary>, CatalogError>;
+
+    /// Remembers what an account is in a project, none where it is gone, by the members' version, so an older word heard late changes nothing, a join after the removal it preceded among them.
+    async fn remember_holding(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        held: Option<InProject>,
+    ) -> Result<(), CatalogError>;
+
+    /// Remembers a project's members disbanded, its project deleted: nobody holds anything in it any more.
+    async fn remember_disbanded(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+    ) -> Result<(), CatalogError>;
+
+    /// The projects others are in that the account is the last owner of, by project.
+    async fn projects_to_hand_over(&self, account: &AccountId)
+    -> Result<Vec<String>, CatalogError>;
 }
 
 impl AccountSummary {

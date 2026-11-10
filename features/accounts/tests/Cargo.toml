@@ -34,6 +34,7 @@ accounts-catalog = { version = "0.1.0", path = "../adapters/catalog", package = 
 accounts-contract = { version = "0.1.0", path = "../contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
 accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-accounts-messaging" }
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
 accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }
 accounts-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-accounts-wiring" }

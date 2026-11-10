@@ -5,7 +5,8 @@ use accounts_core::{
     AccountCatalog, AccountEvent, AccountsCore, KeyCeremonies, SecretStores, SigningUp, TotpKey,
 };
 use accounts_messaging::{
-    CatalogueAccountsListener, KeepInvitationTicketsListener, RememberTrashedProjectsListener,
+    CatalogueAccountsListener, KeepInvitationTicketsListener, RememberProjectMembersListener,
+    RememberTrashedProjectsListener,
 };
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
@@ -52,6 +53,7 @@ fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
         Arc::new(hearing.inboxed(CatalogueAccountsListener::new(core(ports, context)))),
         Arc::new(hearing.inboxed(KeepInvitationTicketsListener::new(core(ports, context)))),
         Arc::new(hearing.inboxed(RememberTrashedProjectsListener::new(core(ports, context)))),
+        Arc::new(hearing.inboxed(RememberProjectMembersListener::new(core(ports, context)))),
     ]
 }
 
