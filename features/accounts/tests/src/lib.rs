@@ -5,6 +5,9 @@ mod abandoned_claims;
 mod account_deletion;
 
 #[cfg(test)]
+mod deletion_api;
+
+#[cfg(test)]
 mod account_cataloguing;
 
 #[cfg(test)]

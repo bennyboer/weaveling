@@ -1,18 +1,18 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
-    DeclineInvitationRequest, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO,
-    LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
+    DeclineInvitationRequest, DeletionDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest,
+    KeyDTO, LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
     PasswordRequest, PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest,
     RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
     SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, WaysInDTO, key_role, lock_kind,
-    refused, second_step_way, stage,
+    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, WaysInDTO, deletion_asked_by,
+    key_role, lock_kind, refused, second_step_way, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, AddedKey,
-    InvalidAccountName, InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword,
-    Key, KeyId, KeyRole, LockKind, PreferredWay, SecondStepWay, Session, SessionToken, SignedIn,
-    SigningIn, Stage,
+    DeletionAskedBy, InvalidAccountName, InvalidEmailAddress, InvalidKeyName, InvalidLockReason,
+    InvalidPassword, Key, KeyId, KeyRole, LockKind, PendingDeletion, PreferredWay, SecondStepWay,
+    Session, SessionToken, SignedIn, SigningIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -58,6 +58,7 @@ pub fn router(accounts: AccountsCore) -> Router {
             routing::post(begin_signing_in_with_passkey),
         )
         .route("/sessions/passkey", routing::post(sign_in_with_passkey))
+        .route("/accounts/current/deletion", routing::delete(keep_account))
         .route(
             "/sessions/current/key/challenge",
             routing::post(begin_answering_with_key),
@@ -88,6 +89,7 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             "/accounts/current/invitations/{invitation}/decline",
             routing::post(decline_invitation_by_id),
         )
+        .route("/accounts/current/deletion", routing::post(ask_deletion))
         .route("/accounts/current/totp", routing::delete(turn_off_totp))
         .route(
             "/accounts/current/totp/setup",
@@ -912,6 +914,7 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
+        deletion: signed_in.account.pending_deletion().map(deletion_told),
         second_factor: signed_in.account.second_factor().zip(asked_way).map(
             |(factor, asked_way)| SecondFactorDTO {
                 since: text::serialize(factor.since),
@@ -927,6 +930,46 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
             },
         ),
     })
+}
+
+fn deletion_told(pending: PendingDeletion) -> DeletionDTO {
+    DeletionDTO {
+        until: text::serialize(pending.until),
+        by: match pending.asked_by {
+            DeletionAskedBy::Holder => deletion_asked_by::HOLDER,
+            DeletionAskedBy::Operator => deletion_asked_by::OPERATOR,
+        }
+        .to_owned(),
+    }
+}
+
+async fn ask_deletion(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<PasswordRequest>,
+) -> Result<Response, Problem> {
+    let pending = accounts
+        .ask_deletion(&account, &request.password)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, letting_go())], Json(deletion_told(pending))).into_response())
+}
+
+async fn keep_account(
+    State(accounts): State<AccountsCore>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    let Some(pending) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+    let (token, signed_in) = accounts.keep_account(&pending).await.map_err(problem_of)?;
+
+    Ok((
+        [(SET_COOKIE, holding(&token))],
+        Json(told(&accounts, &signed_in).await?),
+    )
+        .into_response())
 }
 
 fn way_named(way: SecondStepWay) -> &'static str {
@@ -1030,6 +1073,14 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),
         AccountsError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
         AccountsError::LastOperator => Problem::refused(refused::LAST_OPERATOR, refusal),
+        AccountsError::ProjectsToHandOver(ref projects) => {
+            let projects = projects.clone();
+            Problem::refused(refused::PROJECTS_TO_HAND_OVER, refusal).with("projects", projects)
+        }
+        AccountsError::NoDeletionPending => Problem::refused(refused::NO_DELETION_PENDING, refusal),
+        AccountsError::Events(ServiceError::Refused(AccountError::DeletionAskedByTheOperator)) => {
+            Problem::forbidden(refused::DELETION_ASKED_BY_THE_OPERATOR, refusal)
+        }
         AccountsError::Events(ServiceError::Refused(AccountError::NotVerifiedYet)) => {
             Problem::refused(refused::OPERATOR_ADDRESS_NOT_VERIFIED, refusal)
         }

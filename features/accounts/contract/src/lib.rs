@@ -102,6 +102,14 @@ pub struct SignedInDTO {
     pub operator: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second_factor: Option<SecondFactorDTO>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion: Option<DeletionDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DeletionDTO {
+    pub until: String,
+    pub by: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -386,8 +394,11 @@ pub mod refused {
     pub const PASSWORD_WRONG: &str = "password-wrong";
     pub const PREFERRED_WAY_UNKNOWN: &str = "preferred-way-unknown";
     pub const KEY_ROLE_UNKNOWN: &str = "key-role-unknown";
+    pub const PROJECTS_TO_HAND_OVER: &str = "projects-to-hand-over";
+    pub const NO_DELETION_PENDING: &str = "no-deletion-pending";
+    pub const DELETION_ASKED_BY_THE_OPERATOR: &str = "deletion-asked-by-the-operator";
 
-    pub const EVERY: [&str; 53] = [
+    pub const EVERY: [&str; 56] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -441,5 +452,8 @@ pub mod refused {
         PASSWORD_WRONG,
         PREFERRED_WAY_UNKNOWN,
         KEY_ROLE_UNKNOWN,
+        PROJECTS_TO_HAND_OVER,
+        NO_DELETION_PENDING,
+        DELETION_ASKED_BY_THE_OPERATOR,
     ];
 }

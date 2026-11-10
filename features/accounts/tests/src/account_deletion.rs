@@ -110,7 +110,8 @@ async fn the_holder_asks_for_their_account_to_be_deleted_for_its_password_and_is
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
-        .expect("her password asks for it");
+        .expect("her password asks for it")
+        .until;
     // then: it is kept thirty days from now, asked by her
     assert_eq!(until, clock::at(A_MINUTE_LATER) + KEPT_BEFORE_DELETION);
     assert_eq!(
@@ -175,7 +176,8 @@ async fn the_operator_marks_an_account_for_deletion_and_only_the_operator_calls_
         .accounts
         .mark_for_deletion(&grace, &ada, None)
         .await
-        .expect("an operator marks an account");
+        .expect("an operator marks an account")
+        .until;
 
     // then: it is to be deleted, as the operator asked
     assert_eq!(
@@ -395,15 +397,19 @@ async fn an_account_asked_to_be_deleted_is_due_on_its_day_and_asking_again_moves
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
-        .expect("her password asks for it");
+        .expect("her password asks for it")
+        .until;
     wired.clock.set(clock::at(SIGNED_UP_AT) + Duration::days(1));
-    wired
+    let again = wired
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
         .expect("asking again changes nothing");
 
-    // then: it is due on the first day asked, not a moment before
+    // then: asking again answers the day first asked
+    assert_eq!(again.until, until);
+
+    // and: it is due on the first day asked, not a moment before
     assert!(
         due_at(&wired, until - Duration::seconds(1))
             .await
@@ -423,7 +429,8 @@ async fn an_account_kept_by_its_holder_or_the_operator_is_due_no_more() {
             .accounts
             .ask_deletion(&ada, HER_PASSWORD)
             .await
-            .expect("her password asks for it");
+            .expect("her password asks for it")
+            .until;
 
         // when: it is kept, by her signing in or by the operator
         if by_the_operator {
@@ -463,7 +470,8 @@ async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
-        .expect("her password asks for it");
+        .expect("her password asks for it")
+        .until;
     let hedy = a_verified_account(&wired, "hedy@example.com").await;
     wired
         .clock
@@ -472,7 +480,8 @@ async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
         .accounts
         .mark_for_deletion(&grace, &hedy, None)
         .await
-        .expect("the operator marks another account");
+        .expect("the operator marks another account")
+        .until;
 
     // when: the sweep runs on ada's day
     wired.clock.set(until);
@@ -495,7 +504,8 @@ async fn an_account_swept_keeps_nothing_of_its_holder_and_is_listed_no_more() {
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
-        .expect("her password asks for it");
+        .expect("her password asks for it")
+        .until;
     wired.settle().await;
     assert!(listed(&wired).await.contains(&ada));
 
@@ -553,7 +563,8 @@ async fn an_account_swept_holds_no_secret_and_its_address_may_sign_up_anew() {
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
-        .expect("her password asks for it");
+        .expect("her password asks for it")
+        .until;
     let (owing, _) = wired
         .accounts
         .begin_session(ADA, HER_PASSWORD)

@@ -5,24 +5,24 @@ use transacting::Transaction;
 use super::{AccountsCore, SignedIn};
 use crate::account::{AccountCommand, KIND};
 use crate::catalog::InProject;
-use crate::deletion::{DeletionAskedBy, KEPT_BEFORE_DELETION};
+use crate::deletion::{DeletionAskedBy, KEPT_BEFORE_DELETION, PendingDeletion};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::secrets::Dismissal;
 use crate::session::{SessionToken, Stage};
 
 impl AccountsCore {
-    /// Asks for one's own account to be deleted, for its password: it is kept until the answer, to be kept after all, every session of it ending at once; an operator stops being one, unless the last.
+    /// Asks for one's own account to be deleted, for its password: it is kept until the answer, to be kept after all, every session of it ending at once; an operator stops being one, unless the last. Asked again, the deletion stands as first asked.
     pub async fn ask_deletion(
         &self,
         account: &AccountId,
         password: &str,
-    ) -> Result<OffsetDateTime, AccountsError> {
+    ) -> Result<PendingDeletion, AccountsError> {
         self.password_confirmed(account, password).await?;
         self.nothing_to_hand_over(account).await?;
         let until = self.clock.now() + KEPT_BEFORE_DELETION;
 
-        transacting::retrying!(&*self.transactions, |transaction| {
+        let pending = transacting::retrying!(&*self.transactions, |transaction| {
             self.deletion_asked_in(
                 transaction,
                 account,
@@ -35,7 +35,7 @@ impl AccountsCore {
         })?;
         self.check_sessions();
 
-        Ok(until)
+        Ok(pending)
     }
 
     /// Marks another account for deletion, as the operator: the same thirty days, and only the operator calls it off.
@@ -44,11 +44,11 @@ impl AccountsCore {
         by: &AccountId,
         account: &AccountId,
         expected: Option<Version>,
-    ) -> Result<OffsetDateTime, AccountsError> {
+    ) -> Result<PendingDeletion, AccountsError> {
         self.nothing_to_hand_over(account).await?;
         let until = self.clock.now() + KEPT_BEFORE_DELETION;
 
-        transacting::retrying!(
+        let pending = transacting::retrying!(
             &*self.transactions,
             eventsourcing::tries_for(expected),
             |transaction| {
@@ -66,7 +66,7 @@ impl AccountsCore {
         )?;
         self.check_sessions();
 
-        Ok(until)
+        Ok(pending)
     }
 
     /// Keeps one's own account after all, from the session signing in opened while its deletion was pending, where its holder asked for it: the session goes on signed in, under a new token; the operator's role, given up in asking, does not come back.
@@ -219,9 +219,9 @@ impl AccountsCore {
         until: OffsetDateTime,
         asked_by: DeletionAskedBy,
         agent: &Agent,
-    ) -> Result<(), AccountsError> {
-        if self.get(account).await?.state.pending_deletion().is_some() {
-            return Ok(());
+    ) -> Result<PendingDeletion, AccountsError> {
+        if let Some(pending) = self.get(account).await?.state.pending_deletion() {
+            return Ok(pending);
         }
         if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
             return Err(AccountsError::LastOperator);
@@ -239,10 +239,11 @@ impl AccountsCore {
         )
         .await?;
 
-        Ok(self
-            .trash
+        self.trash
             .put_into(transaction, KIND.as_str(), &account.to_string(), until)
-            .await?)
+            .await?;
+
+        Ok(PendingDeletion { until, asked_by })
     }
 
     /// Sweeps an account whose thirty days are over, for good.
