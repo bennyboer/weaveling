@@ -4683,6 +4683,7 @@ dependencies = [
  "weaveling-mailing",
  "weaveling-throttling",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-words",
  "webauthn-rs",
 ]
@@ -4768,6 +4769,7 @@ dependencies = [
  "weaveling-accounts-wiring",
  "weaveling-acting",
  "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-ending",
  "weaveling-eventpublishing",
@@ -4781,6 +4783,7 @@ dependencies = [
  "weaveling-projects-contract",
  "weaveling-throttling",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-wiring",
  "webauthn-authenticator-rs",
  "webauthn-rs",
@@ -4790,6 +4793,7 @@ dependencies = [
 name = "weaveling-accounts-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "sqlx",
  "weaveling-accounts-catalog",
@@ -4806,6 +4810,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-throttling",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-wiring",
 ]
 

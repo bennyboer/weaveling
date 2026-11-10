@@ -26,3 +26,4 @@ email = { version = "0.1.0", path = "../../../libraries/email", package = "weave
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
+trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }

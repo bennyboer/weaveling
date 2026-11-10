@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 use transacting::Transaction;
 
 use super::{AccountsCore, SignedIn};
-use crate::account::AccountCommand;
+use crate::account::{AccountCommand, KIND};
 use crate::catalog::InProject;
 use crate::deletion::{DeletionAskedBy, KEPT_BEFORE_DELETION};
 use crate::error::AccountsError;
@@ -92,6 +92,9 @@ impl AccountsCore {
                 &account.acting(),
             )
             .await?;
+            self.trash
+                .take_out(transaction, KIND.as_str(), &account.to_string())
+                .await?;
             self.sessions.end(transaction, &pending.digest()).await?;
             let holder = self.get(&account).await?.state;
 
@@ -130,7 +133,14 @@ impl AccountsCore {
                     },
                     &by.acting(),
                 )
-                .await
+                .await?;
+
+                Ok::<_, AccountsError>(
+                    self.trash
+                        .take_out(transaction, KIND.as_str(), &account.to_string())
+                        .await
+                        .map(|_| ())?,
+                )
             }
         )
     }
@@ -187,6 +197,9 @@ impl AccountsCore {
         asked_by: DeletionAskedBy,
         agent: &Agent,
     ) -> Result<(), AccountsError> {
+        if self.get(account).await?.state.pending_deletion().is_some() {
+            return Ok(());
+        }
         if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
             return Err(AccountsError::LastOperator);
         }
@@ -201,6 +214,23 @@ impl AccountsCore {
             },
             agent,
         )
-        .await
+        .await?;
+
+        Ok(self
+            .trash
+            .put_into(transaction, KIND.as_str(), &account.to_string(), until)
+            .await?)
+    }
+
+    /// Sweeps an account whose thirty days are over, for good.
+    pub async fn sweep(&self, account: &AccountId) -> Result<(), AccountsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            // TODO 9d-2: collapse the account, forget its secrets and release its address
+            self.trash
+                .take_out(transaction, KIND.as_str(), &account.to_string())
+                .await?;
+
+            Ok::<_, AccountsError>(())
+        })
     }
 }

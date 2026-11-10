@@ -188,6 +188,7 @@ async fn a_session_that_cannot_be_asked_about_is_not_taken_for_ended() {
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

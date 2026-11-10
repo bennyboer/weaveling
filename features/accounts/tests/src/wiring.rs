@@ -11,6 +11,7 @@ use accounts_wiring::Ports;
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use axum::Router;
+use chores::Chore;
 use clock::FixedClock;
 use eventsourcing::{
     AggregateId, EventSourcingService, EventStore, FailsAppending, InMemoryEventStore,
@@ -23,6 +24,7 @@ use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction, Transactions};
+use trash::InMemoryTrash;
 use wiring::Context;
 
 pub const ADA: &str = "ada@example.com";
@@ -38,6 +40,8 @@ pub struct Wired {
     pub mailbox: Arc<FakeMailbox>,
     pub clock: Arc<FixedClock>,
     pub catalog: Arc<InMemoryAccountCatalog>,
+    pub trash: Arc<InMemoryTrash>,
+    pub chores: Vec<Arc<dyn Chore>>,
     pub consuming: DeliveryConsumer,
     pub publisher: Arc<InProcessDispatcher>,
 }
@@ -66,11 +70,13 @@ pub fn wired() -> Wired {
     let throttles = Arc::new(InMemoryThrottles::default());
     let mailbox = Arc::new(FakeMailbox::default());
     let catalog = Arc::new(InMemoryAccountCatalog::new());
+    let trash = Arc::new(InMemoryTrash::new());
     let ports = Ports {
         events: store.clone(),
         transactions: Arc::new(InMemoryTransactions::new()),
         secrets: SecretStores::kept_by(secrets.clone(), throttles.clone()),
         catalog: catalog.clone(),
+        trash: trash.clone(),
         inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         mailer: mailbox.clone(),
         outbox: told.clone(),
@@ -97,6 +103,8 @@ pub fn wired() -> Wired {
         publisher: dispatcher,
         clock,
         catalog,
+        trash,
+        chores: wired.chores,
     }
 }
 
@@ -114,6 +122,7 @@ impl Wired {
                 ..SecretStores::kept_by(self.secrets.clone(), self.throttles.clone())
             },
             self.catalog.clone(),
+            self.trash.clone(),
             self.mailbox.clone(),
             self.clock.clone(),
         )
@@ -132,6 +141,7 @@ impl Wired {
             Arc::new(InMemoryTransactions::new()),
             SecretStores::kept_by(self.secrets.clone(), self.throttles.clone()),
             self.catalog.clone(),
+            self.trash.clone(),
             self.mailbox.clone(),
             self.clock.clone(),
         )

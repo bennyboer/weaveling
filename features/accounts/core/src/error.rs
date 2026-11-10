@@ -4,6 +4,7 @@ use thiserror::Error;
 use throttling::ThrottlesError;
 use time::Duration;
 use transacting::{Failure, LostRace};
+use trash::TrashError;
 
 use crate::account::AccountError;
 use crate::catalog::CatalogError;
@@ -42,6 +43,8 @@ pub enum AccountsError {
     NotAnOperator,
     #[error("the last operator keeps the role")]
     LastOperator,
+    #[error(transparent)]
+    Trash(#[from] TrashError),
     #[error("this session was opened for no account whose deletion is pending")]
     NoDeletionPending,
     #[error("the account is the last owner of projects others are in, to hand over first: {0:?}")]

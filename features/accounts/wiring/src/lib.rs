@@ -1,5 +1,8 @@
+mod purging;
+
 use std::sync::Arc;
 
+use crate::purging::AccountsPurge;
 use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{
     AccountCatalog, AccountEvent, AccountsCore, KeyCeremonies, SecretStores, SigningUp, TotpKey,
@@ -18,6 +21,7 @@ use messaging::Listener;
 use outbox::Outbox;
 use throttling::InMemoryThrottles;
 use transacting::Transactions;
+use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
@@ -25,6 +29,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub secrets: SecretStores,
     pub catalog: Arc<dyn AccountCatalog>,
+    pub trash: Arc<dyn Trash>,
     pub inbox: Arc<dyn Inbox>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
@@ -36,6 +41,7 @@ pub fn core(ports: &Ports, context: &Context) -> AccountsCore {
         ports.transactions.clone(),
         ports.secrets.clone(),
         ports.catalog.clone(),
+        ports.trash.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
     )
@@ -59,10 +65,15 @@ fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
 
 fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
-    vec![Arc::new(hearing.forgetting(
-        "forget-old-account-hearings",
-        context.clock.clone(),
-    ))]
+    vec![
+        Arc::new(hearing.forgetting("forget-old-account-hearings", context.clock.clone())),
+        Arc::new(PurgeTheTrash::new(
+            "sweep-deleted-accounts",
+            ports.trash.clone(),
+            Arc::new(AccountsPurge::of(core(ports, context))),
+            context.clock.clone(),
+        )),
+    ]
 }
 
 pub struct AssembledAccounts {
@@ -157,6 +168,7 @@ impl Feature for AccountFeature {
             transactions,
             secrets: SecretStores::kept_by(secrets, Arc::new(InMemoryThrottles::default())),
             catalog: Arc::new(InMemoryAccountCatalog::new()),
+            trash: Arc::new(InMemoryTrash::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -182,7 +194,8 @@ impl Feature for AccountFeature {
             events,
             transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
-            catalog: Arc::new(accounts_catalog::PostgresAccountCatalog::new(pool)),
+            catalog: Arc::new(accounts_catalog::PostgresAccountCatalog::new(pool.clone())),
+            trash: Arc::new(trash::PostgresTrash::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -198,6 +211,7 @@ impl Feature for AccountFeature {
             accounts_catalog::postgres::migrations(),
             throttling::postgres::migrations(),
             inbox::postgres::migrations(),
+            trash::postgres::migrations(),
         ]
     }
 
@@ -220,7 +234,8 @@ impl Feature for AccountFeature {
             events,
             transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
-            catalog: Arc::new(accounts_catalog::SqliteAccountCatalog::new(pool)),
+            catalog: Arc::new(accounts_catalog::SqliteAccountCatalog::new(pool.clone())),
+            trash: Arc::new(trash::SqliteTrash::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -236,6 +251,7 @@ impl Feature for AccountFeature {
             accounts_catalog::sqlite::migrations(),
             throttling::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            trash::sqlite::migrations(),
         ]
     }
 

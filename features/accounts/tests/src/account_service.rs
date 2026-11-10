@@ -501,6 +501,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
         Arc::new(InMemoryTransactions::new()),
         SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

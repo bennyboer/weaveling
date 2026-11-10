@@ -325,6 +325,7 @@ async fn a_reset_whose_new_password_cannot_be_kept_changes_nothing_and_the_same_
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -467,6 +468,7 @@ async fn a_reset_whose_new_password_cannot_be_kept_ends_no_session_until_it_is_f
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -578,6 +580,7 @@ async fn one_reset_code_resets_once_however_many_use_it_at_the_same_time() {
         transactions.clone(),
         SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -680,6 +683,7 @@ async fn a_session_begun_while_the_password_is_reset_does_not_outlive_the_reset(
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

@@ -20,6 +20,7 @@ use throttling::{Admission, Throttles};
 use time::Duration;
 use tokio::sync::watch;
 use transacting::{Transaction, Transactions};
+use trash::Trash;
 
 use crate::account::{Account, AccountCommand, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary};
@@ -58,6 +59,7 @@ pub struct AccountsCore {
     key_credentials: Arc<dyn KeyCredentials>,
     key_ceremonies: Option<KeyCeremonies>,
     catalog: Arc<dyn AccountCatalog>,
+    trash: Arc<dyn Trash>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
     signing_up: SigningUp,
@@ -70,6 +72,7 @@ impl AccountsCore {
         transactions: Arc<dyn Transactions>,
         secrets: SecretStores,
         catalog: Arc<dyn AccountCatalog>,
+        trash: Arc<dyn Trash>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -100,6 +103,7 @@ impl AccountsCore {
             totp_key: None,
             key_ceremonies: None,
             catalog,
+            trash,
             mailer,
             clock,
             signing_up: SigningUp::Open,

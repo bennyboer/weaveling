@@ -276,6 +276,7 @@ async fn an_appointment_that_fails_records_nothing_and_leaves_the_code_to_be_use
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
+        wired.trash.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

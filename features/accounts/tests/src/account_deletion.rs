@@ -1,9 +1,14 @@
+use std::sync::Arc;
+
 use accounts_contract::stage;
 use accounts_core::{
     AccountError, AccountId, AccountsError, DeletionAskedBy, EmailAddress, EmailAddresses,
     KEPT_BEFORE_DELETION, PendingDeletion, Stage,
 };
+use chores::Chore;
 use eventsourcing::ServiceError;
+use time::{Duration, OffsetDateTime};
+use trash::Trash;
 
 use crate::totp_bench;
 use crate::wiring;
@@ -356,4 +361,125 @@ async fn a_session_signed_in_the_moment_deletion_is_asked_ends_with_the_others()
             .expect("asking should succeed"),
         None
     );
+}
+
+async fn due_at(wired: &Wired, moment: OffsetDateTime) -> Vec<String> {
+    wired
+        .trash
+        .due(moment, 10)
+        .await
+        .expect("asking should succeed")
+        .into_iter()
+        .map(|trashed| trashed.id)
+        .collect()
+}
+
+fn sweeping(wired: &Wired) -> &Arc<dyn Chore> {
+    wired
+        .chores
+        .iter()
+        .find(|chore| chore.named() == "sweep-deleted-accounts")
+        .expect("accounts sweep those deleted")
+}
+
+#[tokio::test]
+async fn an_account_asked_to_be_deleted_is_due_on_its_day_and_asking_again_moves_nothing() {
+    // given: an account
+    let wired = wiring::wired();
+    let ada = a_verified_account(&wired, ADA).await;
+
+    // when: it is asked to be deleted, and asked again a day later
+    let until = wired
+        .accounts
+        .ask_deletion(&ada, HER_PASSWORD)
+        .await
+        .expect("her password asks for it");
+    wired.clock.set(clock::at(SIGNED_UP_AT) + Duration::days(1));
+    wired
+        .accounts
+        .ask_deletion(&ada, HER_PASSWORD)
+        .await
+        .expect("asking again changes nothing");
+
+    // then: it is due on the first day asked, not a moment before
+    assert!(
+        due_at(&wired, until - Duration::seconds(1))
+            .await
+            .is_empty()
+    );
+    assert_eq!(due_at(&wired, until).await, vec![ada.to_string()]);
+}
+
+#[tokio::test]
+async fn an_account_kept_by_its_holder_or_the_operator_is_due_no_more() {
+    for by_the_operator in [false, true] {
+        // given: an account asked to be deleted, and an operator
+        let wired = wiring::wired();
+        let ada = a_verified_account(&wired, ADA).await;
+        let grace = the_operator(&wired, GRACE).await;
+        let until = wired
+            .accounts
+            .ask_deletion(&ada, HER_PASSWORD)
+            .await
+            .expect("her password asks for it");
+
+        // when: it is kept, by her signing in or by the operator
+        if by_the_operator {
+            wired
+                .accounts
+                .keep_account_of(&grace, &ada, None)
+                .await
+                .expect("the operator keeps it");
+        } else {
+            let (pending_session, _) = wired
+                .accounts
+                .begin_session(ADA, HER_PASSWORD)
+                .await
+                .expect("she signs in");
+            wired
+                .accounts
+                .keep_account(&pending_session)
+                .await
+                .expect("she keeps it");
+        }
+
+        // then: it is due no more
+        assert!(
+            due_at(&wired, until).await.is_empty(),
+            "kept by the operator: {by_the_operator}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
+    // given: an account asked to be deleted, and the operator who marked another
+    let wired = wiring::wired();
+    let ada = a_verified_account(&wired, ADA).await;
+    let grace = the_operator(&wired, GRACE).await;
+    let until = wired
+        .accounts
+        .ask_deletion(&ada, HER_PASSWORD)
+        .await
+        .expect("her password asks for it");
+    let hedy = a_verified_account(&wired, "hedy@example.com").await;
+    wired
+        .clock
+        .set(clock::at(SIGNED_UP_AT) + Duration::days(10));
+    let later = wired
+        .accounts
+        .mark_for_deletion(&grace, &hedy, None)
+        .await
+        .expect("the operator marks another account");
+
+    // when: the sweep runs on ada's day
+    wired.clock.set(until);
+    let swept = sweeping(&wired)
+        .carry_out()
+        .await
+        .expect("sweeping should succeed");
+
+    // then: only ada is swept, and hedy waits for her own day
+    assert_eq!(swept, 1);
+    assert_eq!(due_at(&wired, later).await, vec![hedy.to_string()]);
 }
