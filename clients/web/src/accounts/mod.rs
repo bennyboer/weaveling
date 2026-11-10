@@ -1,5 +1,6 @@
 mod account_menu;
 mod authenticator;
+pub mod deletion_pending;
 pub mod invitation;
 mod key_dialogs;
 mod listed;
@@ -33,6 +34,14 @@ pub struct SignedInAccount {
     pub operator: bool,
     pub second_factor: Option<SecondFactorInUse>,
     pub owes_second_factor: bool,
+    pub deletion: Option<PendingDeletion>,
+}
+
+/// An account to be deleted on its day, as its session signed in while it is pending tells it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingDeletion {
+    pub until: OffsetDateTime,
+    pub by_the_operator: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +92,7 @@ pub enum SignInState {
     NoAccounts,
     SignedOut,
     OwingSecondFactor(SignedInAccount),
+    DeletionPending(SignedInAccount),
     SignedIn(SignedInAccount),
 }
 
@@ -107,6 +117,7 @@ pub enum Screen {
     Blank,
     Unreachable,
     SignIn,
+    DeletionPending,
     Work,
 }
 
@@ -197,6 +208,10 @@ impl CurrentSession {
     }
 
     pub fn signed_in(self, account: SignedInAccount) {
+        if account.deletion.is_some() {
+            self.state.set(SignInState::DeletionPending(account));
+            return;
+        }
         if account.operator {
             self.operator_wanted.set(false);
         }
@@ -239,6 +254,7 @@ fn screen_for(state: &SignInState) -> Screen {
         SignInState::Unknown => Screen::Blank,
         SignInState::Unreachable => Screen::Unreachable,
         SignInState::SignedOut | SignInState::OwingSecondFactor(_) => Screen::SignIn,
+        SignInState::DeletionPending(_) => Screen::DeletionPending,
         SignInState::NoAccounts | SignInState::SignedIn(_) => Screen::Work,
     }
 }
@@ -282,8 +298,29 @@ mod tests {
                 operator: false,
                 second_factor: None,
                 owes_second_factor: false,
+                deletion: None,
             })),
             Screen::Work
+        );
+    }
+
+    #[test]
+    fn a_session_signed_in_while_deletion_is_pending_shows_only_the_deletion() {
+        // expect: an account to be deleted shows its deletion, not the work
+        assert_eq!(
+            screen_for(&SignInState::DeletionPending(SignedInAccount {
+                account: "account_1".to_owned(),
+                name: "Ada".to_owned(),
+                email: "ada@example.com".to_owned(),
+                operator: false,
+                second_factor: None,
+                owes_second_factor: false,
+                deletion: Some(PendingDeletion {
+                    until: time::macros::datetime!(2026-12-09 10:00 UTC),
+                    by_the_operator: false,
+                }),
+            })),
+            Screen::DeletionPending
         );
     }
 

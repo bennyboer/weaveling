@@ -9,6 +9,18 @@ pub fn human_time(moment: OffsetDateTime) -> String {
     told(moment.to_offset(here))
 }
 
+/// The day a moment falls on, where the page is read.
+pub fn human_day(moment: OffsetDateTime) -> String {
+    let here = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    let moment = moment.to_offset(here);
+    let mut args = FluentArgs::new();
+    args.set("day", moment.day());
+    args.set("month", u8::from(moment.month()));
+    args.set("year", moment.year().to_string());
+
+    speech::say_with("day", &args)
+}
+
 fn told(moment: OffsetDateTime) -> String {
     let mut args = FluentArgs::new();
     args.set("day", moment.day());

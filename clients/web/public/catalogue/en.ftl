@@ -431,6 +431,30 @@ moment =
        *[12] Dec
     } { $year }, { $hour }:{ $minute }
 
+day =
+    { $day } { $month ->
+        [1] Jan
+        [2] Feb
+        [3] Mar
+        [4] Apr
+        [5] May
+        [6] Jun
+        [7] Jul
+        [8] Aug
+        [9] Sep
+        [10] Oct
+        [11] Nov
+       *[12] Dec
+    } { $year }
+
+deletion-pending-heading = Your account is to be deleted
+deletion-pending-asked = You asked for it on { $asked }. On { $until } your account and the projects only you are in are gone for good.
+deletion-pending-nothing-lost = Until then nothing is lost. Keep your account, and you are signed in as before, every project where you left it.
+deletion-pending-keep = Keep my account
+deletion-pending-let-go = Sign out, and let it be deleted
+deletion-pending-by-the-operator = Whoever operates this Weaveling instance marked your account to be deleted on { $until }. Ask them if it should stay.
+deletion-pending-sign-out = Sign out
+
 sign-in-heading = Sign in
 sign-in-email = Email address
 sign-in-password = Password

@@ -357,7 +357,10 @@ async fn only_an_operator_marks_or_keeps_and_not_the_last_owner_of_a_shared_proj
         .kept_by(&grace_s, &served.ada)
         .await
         .assert_status(StatusCode::NO_CONTENT);
-    assert_eq!(served.listed_for(&grace_s, &served.ada).await.deletion, None);
+    assert_eq!(
+        served.listed_for(&grace_s, &served.ada).await.deletion,
+        None
+    );
     // and: nor mark ada while the last owner of a project another is in
     served
         .holding("project_shared", &served.ada, 1, InProject::Owner)

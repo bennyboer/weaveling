@@ -16,6 +16,7 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::{Lazy, path};
 
+use crate::accounts::deletion_pending::DeletionPendingPage;
 use crate::accounts::invitation::InvitationPage;
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
@@ -62,6 +63,7 @@ pub fn App() -> impl IntoView {
                 Screen::Blank => ().into_any(),
                 Screen::Unreachable => view! { <UnreachablePage /> }.into_any(),
                 Screen::SignIn => view! { <SignInPage /> }.into_any(),
+                Screen::DeletionPending => view! { <DeletionPendingPage /> }.into_any(),
                 Screen::Work => work(overlays, session).into_any(),
             }}
             {shell::status_bar()}

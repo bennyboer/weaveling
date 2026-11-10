@@ -104,6 +104,21 @@
   margin-bottom: 1.25rem;
 }
 
+.signing-in.deletion-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  h1 {
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.6;
+  }
+}
+
 .operating .sections {
   display: flex;
   gap: 0.25rem;

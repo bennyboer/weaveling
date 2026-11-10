@@ -174,6 +174,9 @@ export type Server = {
   addingRole: "primary" | "second-factor";
   replacing: string | null;
   answeredLastBy: "totp" | "key" | null;
+  deletion: { until: string; by: "holder" | "operator" } | null;
+  deletionPending: boolean;
+  keptAccount: number;
 };
 
 export type HeldKey = {
@@ -204,6 +207,13 @@ const refusing = (
   });
 
 const at = (path: string) => (url: URL) => url.pathname === path;
+
+const deletionPendingTold = (server: Server) => ({
+  ...ADA,
+  stage: "deletion-pending",
+  operator: false,
+  deletion: server.deletion,
+});
 
 export async function aServerWithAccounts(
   page: Page,
@@ -252,6 +262,9 @@ export async function aServerWithAccounts(
     addingRole: "second-factor",
     replacing: null,
     answeredLastBy: null,
+    deletion: null,
+    deletionPending: false,
+    keptAccount: 0,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -269,6 +282,7 @@ export async function aServerWithAccounts(
   await page.route(at("/api/sessions/current"), async (route) => {
     if (route.request().method() === "DELETE") {
       server.owing = false;
+      server.deletionPending = false;
       server.signedIn = false;
       server.signedOut += 1;
       return route.fulfill({ status: 204 });
@@ -285,6 +299,9 @@ export async function aServerWithAccounts(
           second_factor: secondFactorTold(server),
         },
       });
+    }
+    if (server.deletionPending) {
+      return route.fulfill({ json: deletionPendingTold(server) });
     }
     return server.signedIn
       ? route.fulfill({
@@ -317,8 +334,28 @@ export async function aServerWithAccounts(
         },
       });
     }
+    if (server.deletion) {
+      server.deletionPending = true;
+      return route.fulfill({ json: deletionPendingTold(server) });
+    }
     server.signedIn = true;
     return route.fulfill({ json: { ...ADA, operator: server.operator } });
+  });
+  await page.route(at("/api/accounts/current/deletion"), async (route) => {
+    if (route.request().method() === "DELETE") {
+      if (!server.deletionPending) {
+        return refusing(route, 409, "no-deletion-pending");
+      }
+      if (server.deletion?.by === "operator") {
+        return refusing(route, 403, "deletion-asked-by-the-operator");
+      }
+      server.deletion = null;
+      server.deletionPending = false;
+      server.signedIn = true;
+      server.keptAccount += 1;
+      return route.fulfill({ json: { ...ADA, operator: server.operator } });
+    }
+    return route.fallback();
   });
   await page.route(at("/api/invitations/decline"), async (route) => {
     const { token } = route.request().postDataJSON();

@@ -431,6 +431,30 @@ moment =
        *[12] dez.
     } de { $year }, { $hour }:{ $minute }
 
+day =
+    { $day } de { $month ->
+        [1] jan.
+        [2] fev.
+        [3] mar.
+        [4] abr.
+        [5] mai.
+        [6] jun.
+        [7] jul.
+        [8] ago.
+        [9] set.
+        [10] out.
+        [11] nov.
+       *[12] dez.
+    } de { $year }
+
+deletion-pending-heading = Sua conta será excluída
+deletion-pending-asked = Você pediu isso em { $asked }. Em { $until }, sua conta e os projetos em que só você está somem de vez.
+deletion-pending-nothing-lost = Até lá nada se perde. Mantenha sua conta e você volta a estar conectado como antes, cada projeto onde você o deixou.
+deletion-pending-keep = Manter minha conta
+deletion-pending-let-go = Sair e deixar que seja excluída
+deletion-pending-by-the-operator = Quem opera esta instância do Weaveling marcou sua conta para ser excluída em { $until }. Pergunte se ela deve ficar.
+deletion-pending-sign-out = Sair
+
 sign-in-heading = Entrar
 sign-in-email = E-mail
 sign-in-password = Senha

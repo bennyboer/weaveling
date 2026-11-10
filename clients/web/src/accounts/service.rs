@@ -5,13 +5,15 @@ use accounts_contract::{
     PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest, RecoveryCodesDTO,
     RenameKeyRequest, SendCodeRequest, ServiceModeDTO, SettingUpTotpDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
-    TotpCodeRequest, VerifyEmailRequest, WaysInDTO, key_role, refused, second_step_way, stage,
+    TotpCodeRequest, VerifyEmailRequest, WaysInDTO, deletion_asked_by, key_role, refused,
+    second_step_way, stage,
 };
 use gloo_net::http::Request;
 
 use crate::accounts::listed::{AccountPage, ListedAccount, moment};
 use crate::accounts::{
-    HeldKey, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState, SignedInAccount, WaysIn,
+    HeldKey, PendingDeletion, PreferredWay, SecondFactorInUse, SecondStepWay, SignInState,
+    SignedInAccount, WaysIn,
 };
 use crate::asking;
 use crate::http;
@@ -26,6 +28,7 @@ const PASSWORD_RESET: &str = "/api/accounts/password-reset";
 const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
+const DELETION: &str = "/api/accounts/current/deletion";
 const TAKEN_UP: &str = "/api/accounts/current/invitations/accept";
 const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
 const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
@@ -58,6 +61,7 @@ pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
         401 => SignInState::SignedOut,
         _ => match as_signed_in_account(http::parsed(response, SUBJECT).await?)? {
             account if account.owes_second_factor => SignInState::OwingSecondFactor(account),
+            account if account.deletion.is_some() => SignInState::DeletionPending(account),
             account => SignInState::SignedIn(account),
         },
     };
@@ -476,6 +480,11 @@ pub async fn draw_recovery_codes(password: &str) -> Result<Vec<String>, ApiError
     Ok(drawn.codes)
 }
 
+/// Keeps the account its deletion is pending for, from the session signing in opened meanwhile, signed in anew.
+pub async fn keep_account() -> Result<SignedInAccount, ApiError> {
+    as_signed_in_account(http::parsed(http::sent(Request::delete(DELETION)).await?, ACCOUNT).await?)
+}
+
 pub async fn sign_out() -> Result<(), ApiError> {
     http::checked(http::sent(Request::delete(CURRENT)).await?, SUBJECT)
         .await
@@ -507,6 +516,13 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
         operator: signed_in.operator,
         second_factor,
         owes_second_factor: signed_in.stage == stage::SECOND_FACTOR_OWED,
+        deletion: match (signed_in.stage.as_str(), signed_in.deletion) {
+            (stage::DELETION_PENDING, Some(deletion)) => Some(PendingDeletion {
+                until: moment(&deletion.until)?,
+                by_the_operator: deletion.by == deletion_asked_by::OPERATOR,
+            }),
+            _ => None,
+        },
     })
 }
 

@@ -431,6 +431,30 @@ moment =
        *[12] Dez.
     } { $year }, { $hour }:{ $minute }
 
+day =
+    { $day }. { $month ->
+        [1] Jan.
+        [2] Feb.
+        [3] März
+        [4] Apr.
+        [5] Mai
+        [6] Juni
+        [7] Juli
+        [8] Aug.
+        [9] Sept.
+        [10] Okt.
+        [11] Nov.
+       *[12] Dez.
+    } { $year }
+
+deletion-pending-heading = Dein Konto wird gelöscht
+deletion-pending-asked = Du hast es am { $asked } veranlasst. Am { $until } sind dein Konto und die Projekte, in denen nur du bist, endgültig weg.
+deletion-pending-nothing-lost = Bis dahin geht nichts verloren. Behalte dein Konto, und du bist angemeldet wie zuvor, jedes Projekt so, wie du es verlassen hast.
+deletion-pending-keep = Mein Konto behalten
+deletion-pending-let-go = Abmelden und löschen lassen
+deletion-pending-by-the-operator = Wer diese Weaveling-Instanz verwaltet, hat dein Konto zur Löschung am { $until } vorgemerkt. Frag nach, wenn es bleiben soll.
+deletion-pending-sign-out = Abmelden
+
 sign-in-heading = Anmelden
 sign-in-email = E-Mail-Adresse
 sign-in-password = Passwort
