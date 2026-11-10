@@ -7,7 +7,9 @@ CREATE TABLE account_summaries (
     operator      BOOLEAN          NOT NULL,
     signed_up_at  TIMESTAMPTZ      NOT NULL,
     locks         JSONB            NOT NULL,
-    second_factor BOOLEAN          NOT NULL DEFAULT FALSE
+    second_factor BOOLEAN          NOT NULL DEFAULT FALSE,
+    deletion_until    TIMESTAMPTZ,
+    deletion_asked_by TEXT
 );
 
 CREATE TABLE project_holdings (

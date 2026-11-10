@@ -148,6 +148,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             "/instance/accounts/{account}/operator",
             routing::put(appoint_operator).delete(dismiss_operator),
         )
+        .route(
+            "/instance/accounts/{account}/deletion",
+            routing::put(mark_for_deletion).delete(keep_account_of),
+        )
         .with_state(accounts)
 }
 
@@ -832,6 +836,34 @@ async fn dismiss_operator(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn mark_for_deletion(
+    State(accounts): State<AccountsCore>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<DeletionDTO>, Problem> {
+    let pending = accounts
+        .mark_for_deletion(&by, &account_named(&account)?, serving::demanded(&headers)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(deletion_told(pending)))
+}
+
+async fn keep_account_of(
+    State(accounts): State<AccountsCore>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .keep_account_of(&by, &account_named(&account)?, serving::demanded(&headers)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn account_named(given: &str) -> Result<AccountId, Problem> {
     given
         .parse()
@@ -846,6 +878,7 @@ fn key_named(given: &str) -> Result<KeyId, Problem> {
 
 fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
     AccountSummaryDTO {
+        deletion: summary.deletion.map(deletion_told),
         second_factor: summary.second_factor,
         id: summary.id.to_string(),
         version: summary.version.count(),
@@ -1080,6 +1113,9 @@ fn problem_of(refusal: AccountsError) -> Problem {
         AccountsError::NoDeletionPending => Problem::refused(refused::NO_DELETION_PENDING, refusal),
         AccountsError::Events(ServiceError::Refused(AccountError::DeletionAskedByTheOperator)) => {
             Problem::forbidden(refused::DELETION_ASKED_BY_THE_OPERATOR, refusal)
+        }
+        AccountsError::Events(ServiceError::Refused(AccountError::Gone)) => {
+            Problem::not_found(refused::ACCOUNT_NOT_FOUND, "there is no such account")
         }
         AccountsError::Events(ServiceError::Refused(AccountError::NotVerifiedYet)) => {
             Problem::refused(refused::OPERATOR_ADDRESS_NOT_VERIFIED, refusal)

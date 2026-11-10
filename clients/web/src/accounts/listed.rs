@@ -90,6 +90,7 @@ mod tests {
             operator: false,
             signed_up_at: "2026-10-23T08:00:00Z".to_owned(),
             locks,
+            deletion: None,
         }
     }
 

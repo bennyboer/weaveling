@@ -7,7 +7,9 @@ CREATE TABLE account_summaries (
     operator      INTEGER NOT NULL,
     signed_up_at  TEXT    NOT NULL,
     locks         TEXT    NOT NULL,
-    second_factor INTEGER NOT NULL DEFAULT 0
+    second_factor INTEGER NOT NULL DEFAULT 0,
+    deletion_until    TEXT,
+    deletion_asked_by TEXT
 );
 
 CREATE TABLE project_holdings (

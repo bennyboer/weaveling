@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use transacting::{Transaction, Transactions, Tried};
 
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, InProject,
-    Lock, LockKind, LockReason,
+    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, DeletionAskedBy,
+    EmailAddress, InProject, Lock, LockKind, LockReason, PendingDeletion,
 };
 use eventsourcing::Version;
 use time::OffsetDateTime;
@@ -193,6 +193,7 @@ pub fn a_summary(id: AccountId, email: &str) -> AccountSummary {
         signed_up_at: clock::at(1_000),
         locks: BTreeMap::new(),
         second_factor: false,
+        deletion: None,
     }
 }
 
@@ -210,12 +211,16 @@ async fn listed(catalog: &Committing<'_, impl AccountCatalog>) -> Vec<AccountSum
 pub async fn a_remembered_account_is_listed_as_it_was(
     catalog: &Committing<'_, impl AccountCatalog>,
 ) {
-    // given: a summary of a locked operator with a second factor
+    // given: a summary of a locked operator with a second factor, the operator asking for it to be deleted
     let summary = AccountSummary {
         version: Version::of(4),
         verified: false,
         operator: true,
         second_factor: true,
+        deletion: Some(PendingDeletion {
+            until: clock::at(1_702_592_000),
+            asked_by: DeletionAskedBy::Operator,
+        }),
         signed_up_at: clock::at(1_700_000_000),
         locks: BTreeMap::from([(
             LockKind::Operator,
@@ -263,6 +268,29 @@ pub async fn a_newer_summary_replaces_the_older(catalog: &Committing<'_, impl Ac
 
     // then: only the newer is listed
     assert_eq!(listed(catalog).await, vec![newer]);
+
+    // when: its deletion is asked by its holder, and then called off
+    for deletion in [
+        Some(PendingDeletion {
+            until: clock::at(2_593_000),
+            asked_by: DeletionAskedBy::Holder,
+        }),
+        None,
+    ] {
+        let asked = AccountSummary {
+            version: Version::of(if deletion.is_some() { 3 } else { 4 }),
+            verified: true,
+            deletion,
+            ..a_summary(id, "ada@example.com")
+        };
+        catalog
+            .remember(&asked)
+            .await
+            .expect("remembering should succeed");
+
+        // then: it is listed so
+        assert_eq!(listed(catalog).await, vec![asked]);
+    }
 }
 
 pub async fn an_older_summary_arriving_late_changes_nothing(

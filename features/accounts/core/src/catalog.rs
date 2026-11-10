@@ -8,6 +8,7 @@ use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::account::Account;
+use crate::deletion::PendingDeletion;
 use crate::id::AccountId;
 use crate::lock::{Lock, LockKind};
 use crate::name::AccountName;
@@ -24,6 +25,7 @@ pub struct AccountSummary {
     pub signed_up_at: OffsetDateTime,
     pub locks: BTreeMap<LockKind, Lock>,
     pub second_factor: bool,
+    pub deletion: Option<PendingDeletion>,
 }
 
 /// What an account is in a project, as the project's members last told it.
@@ -123,6 +125,7 @@ impl AccountSummary {
             signed_up_at: account.signed_up_at(),
             locks: account.locks().clone(),
             second_factor: account.second_factor().is_some(),
+            deletion: account.pending_deletion(),
         }
     }
 }
@@ -190,6 +193,7 @@ mod tests {
                     }
                 )]),
                 second_factor: false,
+                deletion: None,
             }
         );
 

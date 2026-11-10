@@ -1,7 +1,8 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, InProject,
+    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, DeletionAskedBy,
+    EmailAddress, InProject, PendingDeletion,
 };
 use async_trait::async_trait;
 use eventsourcing::Version;
@@ -16,8 +17,9 @@ use crate::locks;
 
 const REMEMBER: &str = "
     INSERT INTO account_summaries
-        (account, version, name, email, verified, operator, signed_up_at, locks, second_factor)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9)
+        (account, version, name, email, verified, operator, signed_up_at, locks, second_factor,
+         deletion_until, deletion_asked_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::JSONB, $9, $10, $11)
     ON CONFLICT (account) DO UPDATE
     SET version      = EXCLUDED.version,
         name         = EXCLUDED.name,
@@ -26,12 +28,15 @@ const REMEMBER: &str = "
         operator     = EXCLUDED.operator,
         signed_up_at = EXCLUDED.signed_up_at,
         locks        = EXCLUDED.locks,
-        second_factor = EXCLUDED.second_factor
+        second_factor = EXCLUDED.second_factor,
+        deletion_until = EXCLUDED.deletion_until,
+        deletion_asked_by = EXCLUDED.deletion_asked_by
     WHERE account_summaries.version < EXCLUDED.version
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT account, version, name, email, verified, operator, signed_up_at, second_factor, locks::TEXT AS locks
+    SELECT account, version, name, email, verified, operator, signed_up_at, second_factor,
+           deletion_until, deletion_asked_by, locks::TEXT AS locks
     FROM account_summaries
     WHERE $1::TEXT IS NULL OR account < $1
     ORDER BY account DESC
@@ -43,6 +48,8 @@ const FORGET_SUMMARY: &str = "DELETE FROM account_summaries WHERE account = $1";
 const FORGET_HOLDINGS: &str = "DELETE FROM project_holdings WHERE account = $1";
 
 const OWNER: &str = "owner";
+const HOLDER: &str = "holder";
+const OPERATOR: &str = "operator";
 const MEMBER: &str = "member";
 
 const REMEMBER_HOLDING: &str = "
@@ -156,6 +163,10 @@ fn to_summary(row: &PgRow) -> Result<AccountSummary, CatalogError> {
     let email: String = row.try_get("email").map_err(unreachable)?;
     let signed_up_at: OffsetDateTime = row.try_get("signed_up_at").map_err(unreachable)?;
     let kept_locks: String = row.try_get("locks").map_err(unreachable)?;
+    let deletion_until: Option<OffsetDateTime> =
+        row.try_get("deletion_until").map_err(unreachable)?;
+    let deletion_asked_by: Option<String> =
+        row.try_get("deletion_asked_by").map_err(unreachable)?;
 
     Ok(AccountSummary {
         id: account.parse().map_err(unreachable)?,
@@ -167,7 +178,33 @@ fn to_summary(row: &PgRow) -> Result<AccountSummary, CatalogError> {
         second_factor: row.try_get("second_factor").map_err(unreachable)?,
         signed_up_at,
         locks: locks::read(&kept_locks)?,
+        deletion: deletion_until
+            .zip(deletion_asked_by)
+            .map(|(until, asked_by)| {
+                Ok::<_, CatalogError>(PendingDeletion {
+                    until,
+                    asked_by: asked_by_read(&asked_by)?,
+                })
+            })
+            .transpose()?,
     })
+}
+
+fn asked_by_named(asked_by: DeletionAskedBy) -> &'static str {
+    match asked_by {
+        DeletionAskedBy::Holder => HOLDER,
+        DeletionAskedBy::Operator => OPERATOR,
+    }
+}
+
+fn asked_by_read(named: &str) -> Result<DeletionAskedBy, CatalogError> {
+    match named {
+        HOLDER => Ok(DeletionAskedBy::Holder),
+        OPERATOR => Ok(DeletionAskedBy::Operator),
+        other => Err(CatalogError::Backend(
+            format!("deletion_asked_by holds {other:?}, which names nobody who asks").into(),
+        )),
+    }
 }
 
 #[async_trait]
@@ -187,6 +224,12 @@ impl AccountCatalog for PostgresAccountCatalog {
             .bind(summary.signed_up_at)
             .bind(locks::written(&summary.locks))
             .bind(summary.second_factor)
+            .bind(summary.deletion.map(|pending| pending.until))
+            .bind(
+                summary
+                    .deletion
+                    .map(|pending| asked_by_named(pending.asked_by)),
+            )
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

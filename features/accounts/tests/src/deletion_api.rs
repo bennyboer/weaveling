@@ -1,5 +1,6 @@
 use accounts_contract::{
-    DeletionDTO, PasswordRequest, SignInRequest, SignedInDTO, deletion_asked_by, refused, stage,
+    AccountPageDTO, AccountSummaryDTO, DeletionDTO, PasswordRequest, SignInRequest, SignedInDTO,
+    deletion_asked_by, refused, stage,
 };
 use accounts_core::{AccountId, InProject, KEPT_BEFORE_DELETION};
 use axum::http::StatusCode;
@@ -37,6 +38,35 @@ impl Served {
                 password: HER_PASSWORD.to_owned(),
             })
             .await
+    }
+
+    async fn marked_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
+        self.server
+            .put(&format!("/instance/accounts/{account}/deletion"))
+            .add_header(COOKIE, cookie.to_owned())
+            .await
+    }
+
+    async fn kept_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
+        self.server
+            .delete(&format!("/instance/accounts/{account}/deletion"))
+            .add_header(COOKIE, cookie.to_owned())
+            .await
+    }
+
+    async fn listed_for(&self, cookie: &str, account: &AccountId) -> AccountSummaryDTO {
+        self.wired.settle().await;
+        let page: AccountPageDTO = self
+            .server
+            .get("/instance/accounts")
+            .add_header(COOKIE, cookie.to_owned())
+            .await
+            .json();
+
+        page.accounts
+            .into_iter()
+            .find(|listed| listed.id == account.to_string())
+            .expect("the account is listed")
     }
 
     async fn holding(&self, project: &str, account: &AccountId, version: u64, held: InProject) {
@@ -224,5 +254,183 @@ async fn the_holder_cannot_keep_an_account_the_operator_marked() {
         &served.keep(&pending).await,
         StatusCode::FORBIDDEN,
         refused::DELETION_ASKED_BY_THE_OPERATOR,
+    );
+}
+
+#[tokio::test]
+async fn the_operator_marks_an_account_which_is_listed_so_until_she_calls_it_off() {
+    // given: ada signed in, and grace the operator
+    let served = served(|wired| wired.accounts.clone()).await;
+    let ada_s = served.signed_in().await;
+    let (_, grace_s) = served.grace_the_operator().await;
+
+    // when: grace marks ada's account for deletion
+    let marked = served.marked_by(&grace_s, &served.ada).await;
+
+    // then: she is told until when it is kept, asked by the operator
+    marked.assert_status_ok();
+    let deletion: DeletionDTO = marked.json();
+    assert_eq!(deletion.by, deletion_asked_by::OPERATOR);
+    // and: the list tells it so
+    assert_eq!(
+        served.listed_for(&grace_s, &served.ada).await.deletion,
+        Some(deletion.clone())
+    );
+    // and: ada is signed out
+    refused_as(
+        &served.current(&ada_s).await,
+        StatusCode::UNAUTHORIZED,
+        refused::NOT_SIGNED_IN,
+    );
+    // and: marking again answers the same day
+    assert_eq!(
+        served
+            .marked_by(&grace_s, &served.ada)
+            .await
+            .json::<DeletionDTO>(),
+        deletion
+    );
+
+    // when: grace calls it off
+    let kept = served.kept_by(&grace_s, &served.ada).await;
+
+    // then: it is kept, and listed with no deletion
+    kept.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(
+        served.listed_for(&grace_s, &served.ada).await.deletion,
+        None
+    );
+}
+
+#[tokio::test]
+async fn the_operator_calls_off_what_the_holder_asked_too() {
+    // given: ada's account asked to be deleted by her
+    let served = served(|wired| wired.accounts.clone()).await;
+    let (_, grace_s) = served.grace_the_operator().await;
+    let ada_s = served.signed_in().await;
+    served
+        .ask_deletion(&ada_s, HER_PASSWORD)
+        .await
+        .assert_status_ok();
+    // and: listed so, asked by her
+    assert_eq!(
+        served
+            .listed_for(&grace_s, &served.ada)
+            .await
+            .deletion
+            .map(|deletion| deletion.by),
+        Some(deletion_asked_by::HOLDER.to_owned())
+    );
+
+    // when: grace calls it off
+    served
+        .kept_by(&grace_s, &served.ada)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: ada signs in all the way again
+    let anew = cookie_set_by(&served.pending_session().await);
+    let current: SignedInDTO = served.current(&anew).await.json();
+    assert_eq!(current.stage, stage::SIGNED_IN);
+}
+
+#[tokio::test]
+async fn only_an_operator_marks_or_keeps_and_not_the_last_owner_of_a_shared_project() {
+    // given: ada signed in, and grace the operator
+    let served = served(|wired| wired.accounts.clone()).await;
+    let ada_s = served.signed_in().await;
+    let (grace, grace_s) = served.grace_the_operator().await;
+
+    // expect: ada may neither mark nor keep grace's account
+    refused_as(
+        &served.marked_by(&ada_s, &grace).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+    refused_as(
+        &served.kept_by(&ada_s, &grace).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+    // and: grace keeping an account nobody asked to delete is no failure, and changes nothing
+    served
+        .kept_by(&grace_s, &served.ada)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(served.listed_for(&grace_s, &served.ada).await.deletion, None);
+    // and: nor mark ada while the last owner of a project another is in
+    served
+        .holding("project_shared", &served.ada, 1, InProject::Owner)
+        .await;
+    served
+        .holding("project_shared", &grace, 2, InProject::Member)
+        .await;
+    refused_as(
+        &served.marked_by(&grace_s, &served.ada).await,
+        StatusCode::CONFLICT,
+        refused::PROJECTS_TO_HAND_OVER,
+    );
+}
+
+#[tokio::test]
+async fn marking_or_keeping_from_a_version_the_account_moved_past_is_refused() {
+    // given: grace the operator, and ada's account moved on since it stood at its first version
+    let served = served(|wired| wired.accounts.clone()).await;
+    let (_, grace_s) = served.grace_the_operator().await;
+
+    // expect: marking it from its first version is refused as outdated
+    refused_as(
+        &served
+            .server
+            .put(&format!("/instance/accounts/{}/deletion", served.ada))
+            .add_header(COOKIE, grace_s.clone())
+            .add_header("if-match", "\"1\"")
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
+    // and: once marked, keeping it from its first version too
+    served
+        .marked_by(&grace_s, &served.ada)
+        .await
+        .assert_status_ok();
+    refused_as(
+        &served
+            .server
+            .delete(&format!("/instance/accounts/{}/deletion", served.ada))
+            .add_header(COOKIE, grace_s.clone())
+            .add_header("if-match", "\"1\"")
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
+}
+
+#[tokio::test]
+async fn an_account_swept_is_there_no_more_to_mark() {
+    // given: ada's account asked to be deleted and swept on its day
+    let served = served(|wired| wired.accounts.clone()).await;
+    let (_, grace_s) = served.grace_the_operator().await;
+    let ada_s = served.signed_in().await;
+    let deletion: DeletionDTO = served.ask_deletion(&ada_s, HER_PASSWORD).await.json();
+    served
+        .wired
+        .clock
+        .set(text::read(&deletion.until).expect("a day the server told"));
+    served
+        .wired
+        .chores
+        .iter()
+        .find(|chore| chore.named() == "sweep-deleted-accounts")
+        .expect("accounts sweep those deleted")
+        .carry_out()
+        .await
+        .expect("sweeping should succeed");
+
+    // expect: marking it again finds no such account
+    refused_as(
+        &served.marked_by(&grace_s, &served.ada).await,
+        StatusCode::NOT_FOUND,
+        refused::ACCOUNT_NOT_FOUND,
     );
 }

@@ -85,6 +85,8 @@ pub struct AccountSummaryDTO {
     pub locks: Vec<LockDTO>,
     #[serde(default)]
     pub second_factor: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletion: Option<DeletionDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
