@@ -45,12 +45,6 @@ CREATE TABLE account_invitation_tickets (
     ended       BOOLEAN          NOT NULL DEFAULT FALSE
 );
 
-CREATE TABLE account_trashed_projects (
-    project       TEXT COLLATE "C" PRIMARY KEY,
-    version       BIGINT  NOT NULL,
-    in_the_trash  BOOLEAN NOT NULL
-);
-
 CREATE TABLE account_totps (
     account              TEXT COLLATE "C" PRIMARY KEY,
     secret_in_use        BYTEA,

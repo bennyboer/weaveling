@@ -145,21 +145,7 @@ impl AccountsCore {
     }
 
     async fn nothing_to_hand_over(&self, account: &AccountId) -> Result<(), AccountsError> {
-        let held = self.catalog.projects_to_hand_over(account).await?;
-        let due = transacting::retrying!(&*self.transactions, |transaction| {
-            let mut due = Vec::new();
-            for project in &held {
-                if !self
-                    .invitation_tickets
-                    .is_in_the_trash(transaction, project)
-                    .await?
-                {
-                    due.push(project.clone());
-                }
-            }
-
-            Ok::<_, AccountsError>(due)
-        })?;
+        let due = self.catalog.projects_to_hand_over(account).await?;
         if due.is_empty() {
             Ok(())
         } else {

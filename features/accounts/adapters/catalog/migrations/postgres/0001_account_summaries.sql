@@ -24,3 +24,9 @@ CREATE TABLE disbanded_projects (
     project       TEXT COLLATE "C" PRIMARY KEY,
     version       BIGINT           NOT NULL
 );
+
+CREATE TABLE trashed_projects (
+    project       TEXT COLLATE "C" PRIMARY KEY,
+    version       BIGINT           NOT NULL,
+    in_the_trash  BOOLEAN          NOT NULL
+);

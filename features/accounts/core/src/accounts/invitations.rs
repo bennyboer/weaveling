@@ -1,4 +1,4 @@
-use eventsourcing::{Agent, AggregateId};
+use eventsourcing::{Agent, AggregateId, Version};
 use transacting::Transaction;
 
 use super::AccountsCore;
@@ -109,7 +109,7 @@ impl AccountsCore {
             return Err(AccountsError::InvitationInvalid);
         }
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.not_paused(transaction, &found.scope).await?;
+            self.not_paused(&found.scope).await?;
             let ticket = self.claimed_ticket(transaction, digest).await?;
             self.events
                 .execute(
@@ -189,19 +189,11 @@ impl AccountsCore {
         Ok(())
     }
 
-    pub(super) async fn not_paused(
-        &self,
-        transaction: &mut Transaction,
-        scope: &InvitationScope,
-    ) -> Result<(), AccountsError> {
+    pub(super) async fn not_paused(&self, scope: &InvitationScope) -> Result<(), AccountsError> {
         let InvitationScope::Project { project } = scope else {
             return Ok(());
         };
-        if self
-            .invitation_tickets
-            .is_in_the_trash(transaction, project)
-            .await?
-        {
+        if self.catalog.is_in_the_trash(project).await? {
             return Err(AccountsError::InvitationPaused);
         }
 
@@ -216,8 +208,8 @@ impl AccountsCore {
         in_the_trash: bool,
     ) -> Result<(), AccountsError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
-            self.invitation_tickets
-                .remember_trash(transaction, project, version, in_the_trash)
+            self.catalog
+                .remember_trash(transaction, project, Version::of(version), in_the_trash)
                 .await?;
 
             Ok(())
@@ -230,9 +222,7 @@ impl AccountsCore {
         project: &str,
     ) -> Result<(), AccountsError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
-            self.invitation_tickets
-                .forget_trash(transaction, project)
-                .await?;
+            self.catalog.forget_trash(transaction, project).await?;
 
             Ok(())
         })

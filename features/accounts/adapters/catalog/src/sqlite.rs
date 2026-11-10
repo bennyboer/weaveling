@@ -61,6 +61,9 @@ const PROJECTS_TO_HAND_OVER: &str = "
     WHERE mine.account = ?1 AND mine.held = 'owner'
       AND NOT EXISTS (SELECT 1 FROM disbanded_projects gone WHERE gone.project = mine.project)
       AND NOT EXISTS (
+          SELECT 1 FROM trashed_projects t WHERE t.project = mine.project AND t.in_the_trash = 1
+      )
+      AND NOT EXISTS (
           SELECT 1 FROM project_holdings other
           WHERE other.project = mine.project AND other.account <> mine.account
             AND other.held = 'owner'
@@ -72,6 +75,18 @@ const PROJECTS_TO_HAND_OVER: &str = "
       )
     ORDER BY mine.project
 ";
+
+const REMEMBER_TRASH: &str = "
+    INSERT INTO trashed_projects (project, version, in_the_trash)
+    VALUES (?1, ?2, ?3)
+    ON CONFLICT (project) DO UPDATE
+    SET version = excluded.version, in_the_trash = excluded.in_the_trash
+    WHERE trashed_projects.version < excluded.version
+";
+
+const FORGET_TRASH: &str = "DELETE FROM trashed_projects WHERE project = ?1";
+
+const IN_THE_TRASH: &str = "SELECT in_the_trash FROM trashed_projects WHERE project = ?1";
 
 const LEDGER: &str = "_sqlx_migrations_account_summaries";
 
@@ -194,6 +209,48 @@ impl AccountCatalog for SqliteAccountCatalog {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_TRASH)
+            .bind(project)
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(in_the_trash)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(FORGET_TRASH)
+            .bind(project)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &str) -> Result<bool, CatalogError> {
+        let kept: Option<bool> = sqlx::query_scalar(IN_THE_TRASH)
+            .bind(project)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.unwrap_or(false))
     }
 
     async fn projects_to_hand_over(

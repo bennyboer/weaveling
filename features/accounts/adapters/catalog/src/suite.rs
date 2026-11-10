@@ -58,6 +58,32 @@ impl<C: AccountCatalog> Committing<'_, C> {
         .expect("remembering should succeed");
     }
 
+    pub async fn trash(&self, project: &str, version: u64, in_the_trash: bool) {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_trash(transaction, project, Version::of(version), in_the_trash)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("remembering should succeed");
+    }
+
+    pub async fn forget_trash(&self, project: &str) {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_trash(transaction, project)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("forgetting should succeed");
+    }
+
     pub async fn disbanded(&self, project: &str, version: u64) {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
@@ -444,6 +470,119 @@ pub async fn a_holding_in_a_dropped_transaction_was_never_heard(
     assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
 }
 
+async fn in_the_trash(catalog: &impl AccountCatalog, project: &str) -> bool {
+    catalog
+        .is_in_the_trash(project)
+        .await
+        .expect("asking should succeed")
+}
+
+pub async fn a_project_is_in_the_trash_once_told_so_and_out_once_restored(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // expect: a project is not in the trash at first
+    assert!(!in_the_trash(catalog.uncommitted(), "project_loom").await);
+
+    // when: it is trashed
+    catalog.trash("project_loom", 5, true).await;
+    let trashed = in_the_trash(catalog.uncommitted(), "project_loom").await;
+    // and: then restored
+    catalog.trash("project_loom", 6, false).await;
+
+    // then: it was in the trash in between
+    assert!(trashed);
+    // and: it is out of it now
+    assert!(!in_the_trash(catalog.uncommitted(), "project_loom").await);
+    // and: no other project is in the trash
+    assert!(
+        !in_the_trash(catalog.uncommitted(), "project_quilt").await,
+        "each project for itself"
+    );
+}
+
+pub async fn an_older_trashing_heard_after_a_newer_restoring_changes_nothing(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: a restored project
+    catalog.trash("project_loom", 6, false).await;
+
+    // when: an older trashing of it is heard
+    catalog.trash("project_loom", 5, true).await;
+
+    // then: it is not in the trash
+    assert!(!in_the_trash(catalog.uncommitted(), "project_loom").await);
+}
+
+pub async fn a_deleted_project_s_trash_is_forgotten_whole(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: two trashed projects
+    catalog.trash("project_loom", 5, true).await;
+    catalog.trash("project_quilt", 5, true).await;
+
+    // when: one of them is forgotten
+    catalog.forget_trash("project_loom").await;
+
+    // then: it is not in the trash
+    assert!(!in_the_trash(catalog.uncommitted(), "project_loom").await);
+    // and: the other still is
+    assert!(
+        in_the_trash(catalog.uncommitted(), "project_quilt").await,
+        "each project for itself"
+    );
+    // when: the forgotten one is trashed again from its first version
+    catalog.trash("project_loom", 1, true).await;
+    // then: it is in the trash
+    assert!(
+        in_the_trash(catalog.uncommitted(), "project_loom").await,
+        "nothing of it is left, not even the version it reached"
+    );
+}
+
+pub async fn a_trashing_in_a_dropped_transaction_leaves_nothing(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: a project trashed in a transaction
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember_trash(&mut transaction, "project_loom", Version::of(5), true)
+        .await
+        .expect("remembering should succeed");
+
+    // when: the transaction is dropped
+    drop(transaction);
+
+    // then: it is not in the trash
+    assert!(!in_the_trash(catalog.uncommitted(), "project_loom").await);
+}
+
+pub async fn a_project_in_the_trash_is_nothing_to_hand_over(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: a project others are in that ada alone owns
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_shared", &grace, 2, Some(InProject::Member))
+        .await;
+
+    // when: it is put in the trash
+    catalog.trash("project_shared", 4, true).await;
+    // then: ada has nothing to hand over
+    assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
+    // when: it is restored
+    catalog.trash("project_shared", 5, false).await;
+    // then: it is hers to hand over again
+    assert_eq!(
+        to_hand_over(catalog.uncommitted(), &ada).await,
+        vec!["project_shared".to_owned()]
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -489,6 +628,23 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_holding_in_a_dropped_transaction_was_never_heard
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_is_in_the_trash_once_told_so_and_out_once_restored
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_trashing_heard_after_a_newer_restoring_changes_nothing
+        );
+        $crate::catalog_conformance_case!($workbench, a_deleted_project_s_trash_is_forgotten_whole);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_trashing_in_a_dropped_transaction_leaves_nothing
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_in_the_trash_is_nothing_to_hand_over
         );
     };
 }

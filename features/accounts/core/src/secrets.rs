@@ -232,26 +232,6 @@ pub trait InvitationTickets: Send + Sync {
         transaction: &mut Transaction,
         invitation: &str,
     ) -> Result<(), SecretsError>;
-
-    async fn remember_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-        version: u64,
-        in_the_trash: bool,
-    ) -> Result<(), SecretsError>;
-
-    async fn forget_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<(), SecretsError>;
-
-    async fn is_in_the_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<bool, SecretsError>;
 }
 
 /// TOTP as it is kept: its sealed secret, and the step of the last code it accepted.

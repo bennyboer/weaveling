@@ -23,7 +23,6 @@ struct Kept {
     operators: HashSet<AccountId>,
     invitation_tickets: HashMap<String, (TokenDigest, InvitationTicket)>,
     ended_invitations: HashSet<String>,
-    trashed_projects: HashMap<String, (u64, bool)>,
     totps: HashMap<AccountId, KeptTotpSecrets>,
     recovery_codes: HashMap<AccountId, Vec<RecoveryCodeHash>>,
     key_credentials: HashMap<AccountId, BTreeMap<KeyId, KeyCredential>>,
@@ -542,62 +541,6 @@ impl InvitationTickets for InMemorySecrets {
         kept.ended_invitations.remove(invitation);
 
         Ok(())
-    }
-
-    async fn remember_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-        version: u64,
-        in_the_trash: bool,
-    ) -> Result<(), SecretsError> {
-        let mut kept = self.kept();
-        let before = kept.trashed_projects.get(project).copied();
-        if before.is_some_and(|(known, _)| known >= version) {
-            return Ok(());
-        }
-        let restored = project.to_owned();
-        self.undo_on_rollback(transaction, move |kept| match before {
-            Some(before) => {
-                kept.trashed_projects.insert(restored, before);
-            }
-            None => {
-                kept.trashed_projects.remove(&restored);
-            }
-        })?;
-        kept.trashed_projects
-            .insert(project.to_owned(), (version, in_the_trash));
-
-        Ok(())
-    }
-
-    async fn forget_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<(), SecretsError> {
-        let mut kept = self.kept();
-        let Some(before) = kept.trashed_projects.remove(project) else {
-            return Ok(());
-        };
-        let restored = project.to_owned();
-        self.undo_on_rollback(transaction, move |kept| {
-            kept.trashed_projects.insert(restored, before);
-        })?;
-
-        Ok(())
-    }
-
-    async fn is_in_the_trash(
-        &self,
-        _transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<bool, SecretsError> {
-        Ok(self
-            .kept()
-            .trashed_projects
-            .get(project)
-            .is_some_and(|(_, in_the_trash)| *in_the_trash))
     }
 }
 

@@ -71,7 +71,25 @@ pub trait AccountCatalog: Send + Sync {
         version: Version,
     ) -> Result<(), CatalogError>;
 
-    /// The projects others are in that the account is the last owner of, by project.
+    /// Remembers whether a project is in the trash, by the project's version, so an older word heard late changes nothing.
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets a deleted project's place in the trash whole, so it holds only what is in the trash.
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+    ) -> Result<(), CatalogError>;
+
+    async fn is_in_the_trash(&self, project: &str) -> Result<bool, CatalogError>;
+
+    /// The projects others are in that the account is the last owner of, out of the trash, by project.
     async fn projects_to_hand_over(&self, account: &AccountId)
     -> Result<Vec<String>, CatalogError>;
 }

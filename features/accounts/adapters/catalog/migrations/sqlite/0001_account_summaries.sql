@@ -24,3 +24,9 @@ CREATE TABLE disbanded_projects (
     project       TEXT    PRIMARY KEY,
     version       INTEGER NOT NULL
 );
+
+CREATE TABLE trashed_projects (
+    project       TEXT    PRIMARY KEY,
+    version       INTEGER NOT NULL,
+    in_the_trash  INTEGER NOT NULL
+);

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use accounts_core::{
-    AccountId, AccountsError, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
-    InvitationTickets, InvitationToken,
+    AccountCatalog, AccountId, AccountsError, EmailAddress, EmailAddresses, InvitationScope,
+    InvitationTicket, InvitationTickets, InvitationToken,
 };
 use accounts_messaging::RememberTrashedProjectsListener;
 use eventsourcing::Agent;
@@ -11,7 +11,7 @@ use messaging::{Listener, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, RESTORED, TRASHED};
 use serde_json::json;
 use time::Duration;
-use transacting::{InMemoryTransactions, Transactions};
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -99,15 +99,9 @@ async fn still_there(wired: &Wired) -> Option<InvitationTicket> {
 }
 
 async fn in_the_trash(wired: &Wired) -> bool {
-    let transactions = InMemoryTransactions::new();
-    let mut transaction = transactions
-        .begin()
-        .await
-        .expect("beginning should succeed");
-
     wired
-        .secrets
-        .is_in_the_trash(&mut transaction, PROJECT)
+        .catalog
+        .is_in_the_trash(PROJECT)
         .await
         .expect("asking should succeed")
 }

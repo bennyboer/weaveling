@@ -113,7 +113,7 @@ impl AccountsCore {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.not_paused(transaction, &found.scope).await?;
+            self.not_paused(&found.scope).await?;
             let Some(ticket) = self
                 .invitation_tickets
                 .take_ticket(transaction, &digest)

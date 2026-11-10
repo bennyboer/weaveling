@@ -15,6 +15,7 @@ pub struct InMemoryAccountCatalog {
     listed: Arc<RwLock<Listed>>,
     holdings: Arc<RwLock<Holdings>>,
     disbanded: Arc<RwLock<BTreeMap<String, Version>>>,
+    trash: Arc<RwLock<BTreeMap<String, (Version, bool)>>>,
 }
 
 impl InMemoryAccountCatalog {
@@ -46,6 +47,12 @@ impl InMemoryAccountCatalog {
             .read()
             .expect("account catalog lock poisoned")
             .clone();
+        let trash = self
+            .trash
+            .read()
+            .expect("account catalog lock poisoned")
+            .clone();
+        let into_trash = self.trash.clone();
         let into_listed = self.listed.clone();
         let into_holdings = self.holdings.clone();
         let into_disbanded = self.disbanded.clone();
@@ -58,6 +65,7 @@ impl InMemoryAccountCatalog {
             *into_disbanded
                 .write()
                 .expect("account catalog lock poisoned") = disbanded;
+            *into_trash.write().expect("account catalog lock poisoned") = trash;
         })
         .map_err(unreachable)
     }
@@ -138,6 +146,45 @@ impl AccountCatalog for InMemoryAccountCatalog {
         Ok(())
     }
 
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut trash = self.trash.write().expect("account catalog lock poisoned");
+        if trash.get(project).is_none_or(|(known, _)| *known < version) {
+            trash.insert(project.to_owned(), (version, in_the_trash));
+        }
+
+        Ok(())
+    }
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.trash
+            .write()
+            .expect("account catalog lock poisoned")
+            .remove(project);
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &str) -> Result<bool, CatalogError> {
+        Ok(self
+            .trash
+            .read()
+            .expect("account catalog lock poisoned")
+            .get(project)
+            .is_some_and(|(_, in_the_trash)| *in_the_trash))
+    }
+
     async fn projects_to_hand_over(
         &self,
         account: &AccountId,
@@ -147,6 +194,7 @@ impl AccountCatalog for InMemoryAccountCatalog {
             .disbanded
             .read()
             .expect("account catalog lock poisoned");
+        let trash = self.trash.read().expect("account catalog lock poisoned");
         let me = account.to_string();
         let mut others: BTreeMap<&str, Vec<InProject>> = BTreeMap::new();
         for ((project, by), (_, held)) in holdings.iter() {
@@ -163,6 +211,9 @@ impl AccountCatalog for InMemoryAccountCatalog {
                 *by == me
                     && *held == Some(InProject::Owner)
                     && !disbanded.contains_key(project)
+                    && !trash
+                        .get(project)
+                        .is_some_and(|(_, in_the_trash)| *in_the_trash)
                     && others
                         .get(project.as_str())
                         .is_some_and(|others| others.iter().all(|other| *other != InProject::Owner))

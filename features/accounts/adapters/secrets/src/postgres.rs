@@ -124,18 +124,6 @@ const DIGEST_OF_TICKET: &str =
 
 const DROP_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = $1";
 
-const REMEMBER_TRASH: &str = "
-    INSERT INTO account_trashed_projects (project, version, in_the_trash)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (project) DO UPDATE
-    SET version = excluded.version, in_the_trash = excluded.in_the_trash
-    WHERE account_trashed_projects.version < excluded.version
-";
-
-const FORGET_TRASH: &str = "DELETE FROM account_trashed_projects WHERE project = $1";
-
-const IN_THE_TRASH: &str = "SELECT in_the_trash FROM account_trashed_projects WHERE project = $1";
-
 const FORGET_TICKET: &str = "
     INSERT INTO account_invitation_tickets (invitation, ended)
     VALUES ($1, TRUE)
@@ -688,52 +676,6 @@ impl InvitationTickets for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(())
-    }
-
-    async fn remember_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-        version: u64,
-        in_the_trash: bool,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(REMEMBER_TRASH)
-            .bind(project)
-            .bind(i64::try_from(version).map_err(unreachable)?)
-            .bind(in_the_trash)
-            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
-            .await
-            .map_err(unreachable)?;
-
-        Ok(())
-    }
-
-    async fn forget_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(FORGET_TRASH)
-            .bind(project)
-            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
-            .await
-            .map_err(unreachable)?;
-
-        Ok(())
-    }
-
-    async fn is_in_the_trash(
-        &self,
-        transaction: &mut Transaction,
-        project: &str,
-    ) -> Result<bool, SecretsError> {
-        let kept: Option<bool> = sqlx::query_scalar(IN_THE_TRASH)
-            .bind(project)
-            .fetch_optional(transacting::postgres::connection(transaction).map_err(unreachable)?)
-            .await
-            .map_err(unreachable)?;
-
-        Ok(kept.unwrap_or(false))
     }
 }
 
