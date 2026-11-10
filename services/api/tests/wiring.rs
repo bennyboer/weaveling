@@ -1026,6 +1026,10 @@ async fn the_server_does_the_invitations_and_notifications_chores_only_where_the
         assert_eq!(named.contains(&"forget-old-account-hearings"), retiring);
         assert_eq!(named.contains(&"sweep-deleted-accounts"), retiring);
         assert_eq!(named.contains(&"forget-old-account-tombstones"), retiring);
+        assert_eq!(named.contains(&"forget-old-account-tries"), retiring);
+        assert_eq!(named.contains(&"forget-old-invitation-tries"), retiring);
+        // and: it forgets what dead letters told either way
+        assert!(named.contains(&"forget-old-dead-letters"));
         // and: it forgets appearance tombstones either way
         assert!(
             named.contains(&"forget-old-appearance-tombstones"),

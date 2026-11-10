@@ -1,3 +1,4 @@
+mod dead_letters;
 mod tombstones;
 
 use std::error::Error;
@@ -8,6 +9,7 @@ use async_trait::async_trait;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
+pub use dead_letters::ForgetOldDeadLetters;
 pub use tombstones::{ForgetOldTombstones, TOMBSTONES_KEPT_FOR, Tombstones, tombstones_by};
 
 #[async_trait]

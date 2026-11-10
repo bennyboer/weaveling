@@ -77,6 +77,22 @@ impl Workbench for OnSqlite {
         .expect("reading the outbox should succeed")
     }
 
+    async fn publish_waiting(&self) {
+        sqlx::query("UPDATE outbox SET published_at = '2026-11-10T00:00:00.000000000Z' WHERE published_at IS NULL")
+            .execute(&self.pool)
+            .await
+            .expect("publishing by hand should succeed");
+    }
+
+    async fn kept_published(&self) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .expect("reading the outbox should succeed")
+    }
+
     async fn cleanup(self) {
         self.fixture.cleanup().await;
     }

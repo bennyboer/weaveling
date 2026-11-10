@@ -103,6 +103,13 @@ pub trait Deliveries: Send + Sync {
 
     async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError>;
 
+    /// Forgets, at most so many of each, the dead letters whose message happened before then, as one too old to be tried again serves nothing but to keep what it named: one acknowledged whole, its alarm heard, and of one not yet acknowledged what it told, its payload, the letter kept for whoever reads why it was refused.
+    async fn forget_old_dead_letters(
+        &self,
+        before: OffsetDateTime,
+        at_most: i64,
+    ) -> Result<u64, DeliveryError>;
+
     async fn waiting(&self) -> Result<usize, DeliveryError>;
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, DeliveryError>;

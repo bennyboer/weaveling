@@ -106,6 +106,15 @@ impl<E: Send + Sync> EventStore<E> for RefusesAppending<E> {
     ) -> Result<(), StoreError> {
         self.0.forget(transaction, aggregate, kind).await
     }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.0.forget_published(transaction, aggregate, kind).await
+    }
 }
 
 pub struct FailsAppending<E> {
@@ -245,5 +254,16 @@ impl<E: Send + Sync> EventStore<E> for FailsAppending<E> {
         kind: AggregateType,
     ) -> Result<(), StoreError> {
         self.store.forget(transaction, aggregate, kind).await
+    }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.store
+            .forget_published(transaction, aggregate, kind)
+            .await
     }
 }

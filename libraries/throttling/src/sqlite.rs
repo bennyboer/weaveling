@@ -25,6 +25,15 @@ const NEXT: &str = "
 
 const CLEAR: &str = "DELETE FROM throttles WHERE guarded = ?1 AND about = ?2";
 
+const FORGET_OLD: &str = "
+    DELETE FROM throttles WHERE (guarded, about) IN (
+        SELECT guarded, about FROM throttles
+        WHERE last < ?1
+        ORDER BY last, guarded, about
+        LIMIT ?2
+    )
+";
+
 const LEDGER: &str = "_sqlx_migrations_throttles";
 
 pub fn migrations() -> Migrator {
@@ -122,6 +131,20 @@ impl Throttles for SqliteThrottles {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_tried_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ThrottlesError> {
+        Ok(sqlx::query(FORGET_OLD)
+            .bind(text::written(before))
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 }
 

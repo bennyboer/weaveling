@@ -18,6 +18,7 @@ const SIGNING_IN: &str = "signing-in";
 const SENDING_CODES: &str = "sending-codes";
 const ADA: &str = "ada@example.com";
 const BEA: &str = "bea@example.com";
+const CY: &str = "cy@example.com";
 const FIVE_FREE: Rule = Rule { free: 5 };
 
 pub async fn nothing_counted_is_no_tries<S: Throttles>(throttles: &S) {
@@ -122,6 +123,54 @@ pub async fn tries_a_day_old_are_forgotten_when_the_next_is_admitted<S: Throttle
         counted(BEA).await,
         Some(1),
         "a try a day after the last starts the count over"
+    );
+}
+
+pub async fn counts_last_tried_before_then_are_forgotten_oldest_first_and_no_more_than_asked<
+    S: Throttles,
+>(
+    throttles: &S,
+) {
+    // given: three counts last tried at different moments
+    admitted(throttles, SIGNING_IN, ADA, 1_000).await;
+    admitted(throttles, SIGNING_IN, BEA, 2_000).await;
+    admitted(throttles, SIGNING_IN, CY, 3_000).await;
+    let still_there = |about| async move {
+        throttles
+            .tries(SIGNING_IN, about)
+            .await
+            .expect("reading should succeed")
+            .is_some()
+    };
+
+    // when: one of those tried before the last is forgotten
+    let forgotten = throttles
+        .forget_tried_before(clock::at(3_000), 1)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: the oldest alone is gone
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        (
+            still_there(ADA).await,
+            still_there(BEA).await,
+            still_there(CY).await
+        ),
+        (false, true, true)
+    );
+    // when: all tried before the last are forgotten
+    assert_eq!(
+        throttles
+            .forget_tried_before(clock::at(3_000), 10)
+            .await
+            .expect("forgetting should succeed"),
+        1
+    );
+    // then: the last tried is kept
+    assert!(
+        still_there(CY).await,
+        "a count tried at the moment itself is kept"
     );
 }
 
@@ -253,6 +302,10 @@ macro_rules! conformance_tests {
             tries_a_day_old_are_forgotten_when_the_next_is_admitted
         );
         $crate::throttles_conformance_case!($workbench, clearing_the_tries_starts_them_over);
+        $crate::throttles_conformance_case!(
+            $workbench,
+            counts_last_tried_before_then_are_forgotten_oldest_first_and_no_more_than_asked
+        );
         $crate::throttles_conformance_case!($workbench, clearing_one_count_leaves_the_others);
         $crate::throttles_conformance_case!(
             $workbench,

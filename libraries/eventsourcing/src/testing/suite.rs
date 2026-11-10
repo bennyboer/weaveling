@@ -664,6 +664,55 @@ pub async fn an_event_that_publishes_nothing_leaves_nothing_waiting(bench: &impl
     );
 }
 
+pub async fn what_a_stream_published_is_forgotten_and_what_waits_and_others_told_are_kept(
+    bench: &impl Workbench,
+) {
+    // given: two streams that told their creation, both published
+    let forgotten = AggregateId::from("sample_forgotten");
+    let other = AggregateId::from("sample_other");
+    a_stream(&bench.committing(), &forgotten, vec![a_creation()]).await;
+    a_stream(&bench.committing(), &other, vec![a_creation()]).await;
+    bench.publish_waiting().await;
+    // and: the first told a retitling since, still waiting
+    bench
+        .committing()
+        .append(
+            &forgotten,
+            SAMPLE,
+            Version::of(1),
+            &[at(&forgotten, 2, retitled("Second"))],
+        )
+        .await
+        .expect("appending should succeed");
+
+    // when: what the first published is forgotten
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .forget_published(&mut transaction, &forgotten, SAMPLE)
+        .await
+        .expect("forgetting should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("committing should succeed");
+
+    // then: only the other's creation is kept as published
+    assert_eq!(bench.kept_published().await, ["sample.created"]);
+    // when: what waits is published
+    bench.publish_waiting().await;
+    // then: the retitling went out after all
+    assert_eq!(
+        bench.kept_published().await,
+        ["sample.created", "sample.title_updated"],
+        "what has not gone out yet still goes out"
+    );
+}
+
 pub async fn a_refused_append_leaves_no_message_waiting(bench: &impl Workbench) {
     // when: an append at a version never reached is made
     let aggregate = AggregateId::from("sample_refused");
@@ -1192,6 +1241,10 @@ macro_rules! conformance_tests {
             a_dropped_prune_keeps_what_it_would_have_discarded
         );
         $crate::bench_case!($workbench, a_dropped_forget_keeps_the_stream);
+        $crate::bench_case!(
+            $workbench,
+            what_a_stream_published_is_forgotten_and_what_waits_and_others_told_are_kept
+        );
     };
 }
 

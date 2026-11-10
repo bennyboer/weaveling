@@ -10,6 +10,7 @@ sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 
+chores = { version = "0.1.0", path = "../chores", package = "weaveling-chores" }
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting", optional = true }
 

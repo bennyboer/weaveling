@@ -17,7 +17,7 @@ use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
-use throttling::{InMemoryThrottles, Throttles};
+use throttling::{ForgetOldTries, InMemoryThrottles, Throttles};
 use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
@@ -236,6 +236,11 @@ impl Feature for InvitationFeature {
                 Arc::new(
                     hearing.forgetting("forget-old-invitation-hearings", context.clock.clone()),
                 ),
+                Arc::new(ForgetOldTries::new(
+                    "forget-old-invitation-tries",
+                    ports.throttles.clone(),
+                    context.clock.clone(),
+                )),
             ])
     }
 }
@@ -355,7 +360,8 @@ mod tests {
             [
                 "retire-due-invitations",
                 "forget-old-invitation-tombstones",
-                "forget-old-invitation-hearings"
+                "forget-old-invitation-hearings",
+                "forget-old-invitation-tries"
             ]
         );
     }

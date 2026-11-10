@@ -36,6 +36,10 @@ pub trait Workbench: Sized {
 
     async fn waiting(&self) -> Vec<String>;
 
+    async fn publish_waiting(&self);
+
+    async fn kept_published(&self) -> Vec<String>;
+
     async fn cleanup(self);
 }
 

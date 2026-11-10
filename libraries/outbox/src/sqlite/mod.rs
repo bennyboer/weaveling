@@ -5,7 +5,7 @@ mod schema;
 #[cfg(test)]
 mod tests;
 
-pub use enqueuing::enqueue;
+pub use enqueuing::{enqueue, forget_published};
 pub use outbox::SqliteOutbox;
 pub use schema::migrations;
 

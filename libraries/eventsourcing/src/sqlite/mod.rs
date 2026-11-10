@@ -132,4 +132,15 @@ where
     ) -> Result<(), StoreError> {
         self.forget_stream(transaction, aggregate, kind).await
     }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        outbox::sqlite::forget_published(transaction, aggregate.as_str(), kind.as_str())
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
+    }
 }

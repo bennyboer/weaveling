@@ -1124,6 +1124,17 @@ impl EventStore<SampleEvent> for BalksOnce {
     ) -> Result<(), StoreError> {
         self.inner.forget(transaction, aggregate, kind).await
     }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner
+            .forget_published(transaction, aggregate, kind)
+            .await
+    }
 }
 
 struct RefusesSnapshots {
@@ -1260,6 +1271,17 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
         kind: AggregateType,
     ) -> Result<(), StoreError> {
         self.inner.forget(transaction, aggregate, kind).await
+    }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner
+            .forget_published(transaction, aggregate, kind)
+            .await
     }
 }
 
@@ -1823,6 +1845,17 @@ impl EventStore<SampleEvent> for Yielding {
         kind: AggregateType,
     ) -> Result<(), StoreError> {
         self.inner.forget(transaction, aggregate, kind).await
+    }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner
+            .forget_published(transaction, aggregate, kind)
+            .await
     }
 }
 

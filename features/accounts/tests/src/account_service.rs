@@ -490,6 +490,15 @@ impl EventStore<AccountEvent> for Refusing {
     ) -> Result<(), StoreError> {
         Ok(())
     }
+
+    async fn forget_published(
+        &self,
+        _transaction: &mut Transaction,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 #[tokio::test]

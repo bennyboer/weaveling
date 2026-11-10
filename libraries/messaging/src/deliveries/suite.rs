@@ -1,3 +1,4 @@
+use serde_json::Value;
 use time::Duration;
 
 use crate::delivering;
@@ -319,6 +320,103 @@ pub async fn an_acknowledged_dead_letter_is_kept_and_marked(deliveries: &impl De
     assert_eq!(deliveries.waiting().await.expect("counting"), 0);
 }
 
+pub async fn a_dead_letter_too_old_to_try_again_is_forgotten_whole_once_acknowledged_and_else_what_it_told(
+    deliveries: &impl Deliveries,
+) {
+    // given: two dead letters whose message happened long ago, one of them acknowledged, and one whose message happened lately
+    for (routing, occurred) in [
+        ("account.signed.up", 1_000),
+        ("account.email.verified", 1_500),
+        ("idea.captured", 5_000),
+    ] {
+        deliveries
+            .enqueue(
+                &a_listener("catalogue-idea"),
+                &Message::opening(
+                    RoutingKey::parse(routing).expect("a plain key is fine"),
+                    serde_json::json!({ "name": "Ada", "email": "ada@example.com" }),
+                    clock::at(occurred),
+                ),
+            )
+            .await
+            .expect("enqueuing should succeed");
+    }
+    let claimed = deliveries
+        .claim_due(clock::at(6_000), 16)
+        .await
+        .expect("claiming should succeed");
+    for queued in &claimed {
+        deliveries
+            .give_up(queued, "it refused five times", clock::at(6_001))
+            .await
+            .expect("dead-lettering should succeed");
+    }
+    let acknowledged = deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed")
+        .into_iter()
+        .find(|dead| dead.message.routing.to_string() == "account.email.verified")
+        .expect("the message given up on is a dead letter");
+    deliveries
+        .acknowledge(acknowledged.id, clock::at(6_002))
+        .await
+        .expect("acknowledging should succeed");
+    let before = deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed");
+
+    // when: those whose message happened before a moment between are forgotten, twice
+    let forgotten = [
+        deliveries
+            .forget_old_dead_letters(clock::at(3_000), 10)
+            .await
+            .expect("forgetting should succeed"),
+        deliveries
+            .forget_old_dead_letters(clock::at(3_000), 10)
+            .await
+            .expect("forgetting should succeed"),
+    ];
+
+    // then: the old ones are forgotten, once
+    assert_eq!(forgotten, [2, 0]);
+    let after = deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed");
+    let told = |dead: &[DeadLetter], routing: &str| {
+        dead.iter()
+            .find(|letter| letter.message.routing.to_string() == routing)
+            .cloned()
+            .expect("the letter is kept")
+    };
+    let old = told(&before, "account.signed.up");
+    assert_eq!(
+        told(&after, "account.signed.up"),
+        DeadLetter {
+            message: Message {
+                payload: Value::Null,
+                ..old.message
+            },
+            ..old
+        },
+        "the letter is kept, to read why it was refused, but no longer what it told"
+    );
+    // and: the one acknowledged is gone whole
+    assert!(
+        after
+            .iter()
+            .all(|dead| dead.message.routing.to_string() != "account.email.verified"),
+        "an alarm heard and too old to act on has nothing left to tell"
+    );
+    // and: the young one is as it was
+    assert_eq!(
+        told(&after, "idea.captured"),
+        told(&before, "idea.captured")
+    );
+}
+
 pub async fn acknowledging_again_keeps_the_first_moment(deliveries: &impl Deliveries) {
     // given: a dead letter
     let dead = a_dead_letter(deliveries, "idea.captured").await;
@@ -627,6 +725,10 @@ macro_rules! conformance_tests {
             a_delivery_given_up_on_becomes_a_dead_letter
         );
         $crate::delivery_conformance_case!($workbench, a_retried_dead_letter_is_delivered_afresh);
+        $crate::delivery_conformance_case!(
+            $workbench,
+            a_dead_letter_too_old_to_try_again_is_forgotten_whole_once_acknowledged_and_else_what_it_told
+        );
         $crate::delivery_conformance_case!(
             $workbench,
             a_retried_dead_letter_wakes_whoever_is_waiting

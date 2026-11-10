@@ -149,8 +149,10 @@ impl InvitationService {
             agent,
         )
         .await?;
+        let aggregate = AggregateId::from(invitation);
+        self.events.compact(transaction, &aggregate, agent).await?;
         self.events
-            .compact(transaction, &AggregateId::from(invitation), agent)
+            .forget_published(transaction, &aggregate)
             .await?;
 
         Ok(())

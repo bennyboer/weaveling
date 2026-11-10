@@ -80,6 +80,27 @@ const ACKNOWLEDGE: &str = "
     WHERE dead_letter = ?1
 ";
 
+const FORGET_OLD_ACKNOWLEDGED: &str = "
+    DELETE FROM dead_letters
+    WHERE dead_letter IN (
+        SELECT dead_letter FROM dead_letters
+        WHERE occurred_at < ?1 AND acknowledged_at IS NOT NULL
+        ORDER BY dead_letter
+        LIMIT ?2
+    )
+";
+
+const FORGET_WHAT_OLD_UNACKNOWLEDGED_TOLD: &str = "
+    UPDATE dead_letters
+    SET payload = 'null'
+    WHERE dead_letter IN (
+        SELECT dead_letter FROM dead_letters
+        WHERE occurred_at < ?1 AND acknowledged_at IS NULL AND payload <> 'null'
+        ORDER BY dead_letter
+        LIMIT ?2
+    )
+";
+
 const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const WAITING: &str = "SELECT count(*) FROM deliveries";
@@ -357,6 +378,25 @@ impl Deliveries for SqliteDeliveries {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_old_dead_letters(
+        &self,
+        before: OffsetDateTime,
+        at_most: i64,
+    ) -> Result<u64, DeliveryError> {
+        let mut forgotten = 0;
+        for forgetting in [FORGET_OLD_ACKNOWLEDGED, FORGET_WHAT_OLD_UNACKNOWLEDGED_TOLD] {
+            forgotten += sqlx::query(forgetting)
+                .bind(text::written(before))
+                .bind(at_most)
+                .execute(&self.pool)
+                .await
+                .map_err(unreachable)?
+                .rows_affected();
+        }
+
+        Ok(forgotten)
     }
 
     async fn waiting(&self) -> Result<usize, DeliveryError> {

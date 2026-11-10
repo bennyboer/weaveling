@@ -250,6 +250,18 @@ where
         }))
     }
 
+    /// Forgets every message the aggregate told that is published already.
+    pub async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+    ) -> Result<(), ServiceError<A::Error>> {
+        Ok(self
+            .store
+            .forget_published(transaction, aggregate, A::KIND)
+            .await?)
+    }
+
     pub async fn compact(
         &self,
         transaction: &mut Transaction,

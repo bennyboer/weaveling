@@ -13,6 +13,7 @@ use crate::outbox::{CLAIM_FOR, Delivered, Origin, Outbox, OutboxError};
 
 struct Entry {
     entry: i64,
+    origin: Option<(String, String)>,
     message: Message,
     claimed_until: Option<OffsetDateTime>,
     published_at: Option<OffsetDateTime>,
@@ -44,13 +45,54 @@ impl InMemoryOutbox {
     }
 
     pub fn enqueue(&self, message: Message) {
-        put(&self.entries, &self.waiting, message);
+        put(&self.entries, &self.waiting, None, message);
     }
 
     pub fn enqueue_after_commit(&self, transaction: &mut Transaction, message: Message) {
         let (entries, waiting) = (self.entries.clone(), self.waiting.clone());
 
-        transaction.after_commit(async move { put(&entries, &waiting, message) });
+        transaction.after_commit(async move { put(&entries, &waiting, None, message) });
+    }
+
+    pub fn enqueue_after_commit_from(
+        &self,
+        transaction: &mut Transaction,
+        origin: Origin<'_>,
+        message: Message,
+    ) {
+        let (entries, waiting) = (self.entries.clone(), self.waiting.clone());
+        let origin = Some((origin.aggregate.to_owned(), origin.kind.to_owned()));
+
+        transaction.after_commit(async move { put(&entries, &waiting, origin, message) });
+    }
+
+    /// Forgets, once the transaction commits, what an aggregate told that is published by then; what still waits goes out as before.
+    pub fn forget_published_after_commit(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &str,
+        kind: &str,
+    ) {
+        let entries = self.entries.clone();
+        let origin = Some((aggregate.to_owned(), kind.to_owned()));
+
+        transaction.after_commit(async move {
+            entries
+                .lock()
+                .expect("outbox lock poisoned")
+                .held
+                .retain(|entry| entry.published_at.is_none() || entry.origin != origin);
+        });
+    }
+
+    /// The routing keys of what was published and is kept still, in the order it was told.
+    pub fn kept_published(&self) -> Vec<String> {
+        self.held()
+            .held
+            .iter()
+            .filter(|entry| entry.published_at.is_some())
+            .map(|entry| entry.message.routing.to_string())
+            .collect()
     }
 
     pub fn waiting_to_be_published(&self) -> usize {
@@ -95,13 +137,19 @@ impl InMemoryOutbox {
     }
 }
 
-fn put(entries: &Mutex<Entries>, waiting: &Notify, message: Message) {
+fn put(
+    entries: &Mutex<Entries>,
+    waiting: &Notify,
+    origin: Option<(String, String)>,
+    message: Message,
+) {
     let mut entries = entries.lock().expect("outbox lock poisoned");
     entries.last += 1;
     let entry = entries.last;
 
     entries.held.push(Entry {
         entry,
+        origin,
         message,
         claimed_until: None,
         published_at: None,
@@ -116,10 +164,10 @@ impl Outbox for InMemoryOutbox {
     async fn enqueue_within(
         &self,
         transaction: &mut Transaction,
-        _origin: Origin<'_>,
+        origin: Origin<'_>,
         message: &Message,
     ) -> Result<(), OutboxError> {
-        self.enqueue_after_commit(transaction, message.clone());
+        self.enqueue_after_commit_from(transaction, origin, message.clone());
 
         Ok(())
     }

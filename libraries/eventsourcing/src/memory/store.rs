@@ -9,7 +9,7 @@ use crate::event::Recorded;
 use crate::message_mapping::MessageMapping;
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
-use outbox::InMemoryOutbox;
+use outbox::{InMemoryOutbox, Origin};
 
 type Streams<E> = HashMap<(AggregateId, AggregateType), Vec<Recorded<E>>>;
 
@@ -45,7 +45,15 @@ impl<E> InMemoryEventStore<E> {
 
         for happened in events {
             if let Some(message) = (enqueuing.message_for)(happened) {
-                enqueuing.outbox.enqueue_after_commit(transaction, message);
+                enqueuing.outbox.enqueue_after_commit_from(
+                    transaction,
+                    Origin {
+                        aggregate: happened.metadata.aggregate.as_str(),
+                        kind: happened.metadata.kind.as_str(),
+                        version: Some(happened.metadata.version.count()),
+                    },
+                    message,
+                );
             }
         }
     }
@@ -259,6 +267,23 @@ where
 
         Ok(())
     }
+
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        if let Some(enqueuing) = &self.enqueuing {
+            enqueuing.outbox.forget_published_after_commit(
+                transaction,
+                aggregate.as_str(),
+                kind.as_str(),
+            );
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -319,6 +344,17 @@ mod tests {
                 .iter()
                 .map(|message| message.routing.to_string())
                 .collect()
+        }
+
+        async fn publish_waiting(&self) {
+            self.outbox
+                .deliver(1_000)
+                .await
+                .expect("an outbox in memory always delivers");
+        }
+
+        async fn kept_published(&self) -> Vec<String> {
+            self.outbox.kept_published()
         }
 
         async fn cleanup(self) {}

@@ -247,6 +247,15 @@ mod tests {
         ) -> Result<(), StoreError> {
             Err(down(aggregate, kind))
         }
+
+        async fn forget_published(
+            &self,
+            _transaction: &mut Transaction,
+            aggregate: &AggregateId,
+            kind: AggregateType,
+        ) -> Result<(), StoreError> {
+            Err(down(aggregate, kind))
+        }
     }
 
     #[tokio::test]

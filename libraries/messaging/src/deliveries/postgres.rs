@@ -87,6 +87,27 @@ const ACKNOWLEDGE: &str = "
     WHERE dead_letter = $1
 ";
 
+const FORGET_OLD_ACKNOWLEDGED: &str = "
+    DELETE FROM dead_letters
+    WHERE dead_letter IN (
+        SELECT dead_letter FROM dead_letters
+        WHERE occurred_at < $1 AND acknowledged_at IS NOT NULL
+        ORDER BY dead_letter
+        LIMIT $2
+    )
+";
+
+const FORGET_WHAT_OLD_UNACKNOWLEDGED_TOLD: &str = "
+    UPDATE dead_letters
+    SET payload = 'null'::jsonb
+    WHERE dead_letter IN (
+        SELECT dead_letter FROM dead_letters
+        WHERE occurred_at < $1 AND acknowledged_at IS NULL AND payload <> 'null'::jsonb
+        ORDER BY dead_letter
+        LIMIT $2
+    )
+";
+
 const WAITING: &str = "SELECT count(*) FROM deliveries";
 
 const CHANNEL: &str = "deliveries_waiting_";
@@ -308,6 +329,27 @@ impl Deliveries for PostgresDeliveries {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_old_dead_letters(
+        &self,
+        before: OffsetDateTime,
+        at_most: i64,
+    ) -> Result<u64, DeliveryError> {
+        let mut forgotten = 0;
+        for forgetting in [FORGET_OLD_ACKNOWLEDGED, FORGET_WHAT_OLD_UNACKNOWLEDGED_TOLD] {
+            forgotten += transacting::postgres::retried(|| {
+                sqlx::query(forgetting)
+                    .bind(before)
+                    .bind(at_most)
+                    .execute(&self.pool)
+            })
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+        }
+
+        Ok(forgotten)
     }
 
     async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {

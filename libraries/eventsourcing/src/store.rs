@@ -112,4 +112,12 @@ pub trait EventStore<E>: Send + Sync {
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<(), StoreError>;
+
+    /// Forgets every message a stream told that is published already, so what it told lives on only in what the stream keeps; what still waits goes out as before.
+    async fn forget_published(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError>;
 }

@@ -62,13 +62,24 @@ jobs:
         run: cargo nextest run --workspace --all-features
 
   browser:
+    name: browser (${{ matrix.suite.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - { name: served, run: test, traces: e2e }
+          - { name: local, run: "test:local", traces: e2e-local }
+          - { name: accounts, run: "test:accounts", traces: e2e-accounts }
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: browser
 
       - uses: actions/setup-node@v4
         with:
@@ -92,18 +103,12 @@ jobs:
 
       - name: test in a browser
         working-directory: clients/web
-        run: npm test
-
-      - name: test in a browser, in local mode
-        working-directory: clients/web
-        run: npm run test:local
+        run: npm run ${{ matrix.suite.run }}
 
       - name: keep the traces of what failed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces
-          path: |
-            target/web/e2e
-            target/web/e2e-local
+          name: playwright-traces-${{ matrix.suite.name }}
+          path: target/web/${{ matrix.suite.traces }}
           retention-days: 14

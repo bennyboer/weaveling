@@ -13,6 +13,25 @@ const ENQUEUE: &str = "
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ";
 
+const FORGET_PUBLISHED: &str =
+    "DELETE FROM outbox WHERE aggregate = $1 AND kind = $2 AND published_at IS NOT NULL";
+
+/// Forgets what an aggregate told that is published already; what still waits goes out as before.
+pub async fn forget_published(
+    transaction: &mut Transaction,
+    aggregate: &str,
+    kind: &str,
+) -> Result<(), OutboxError> {
+    sqlx::query(FORGET_PUBLISHED)
+        .bind(aggregate)
+        .bind(kind)
+        .execute(transacting::postgres::connection(transaction)?)
+        .await
+        .map_err(unreachable)?;
+
+    Ok(())
+}
+
 pub async fn enqueue(
     transaction: &mut Transaction,
     origin: Origin<'_>,

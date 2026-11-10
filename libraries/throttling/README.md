@@ -2,7 +2,7 @@
 
 How often something may be tried before it has to wait, kept the same wherever something is guarded.
 
-**The rule.** A `Rule` says how many tries are free. Past them each try must wait, a minute after the first one over, then two, four, eight, doubling up to an hour and no further, since a wait without end would lock out whoever owns an address, which anyone typing that address could do. The wait is counted from the last try and shrinks as time passes; tries a day old are forgotten. `Tries::wait_before_next(rule, now)` says how long, or nothing.
+**The rule.** A `Rule` says how many tries are free. Past them each try must wait, a minute after the first one over, then two, four, eight, doubling up to an hour and no further, since a wait without end would lock out whoever owns an address, which anyone typing that address could do. The wait is counted from the last try and shrinks as time passes; tries a day old are forgotten. `Tries::wait_before_next(rule, now)` says how long, or nothing. **And forgotten for good:** `Throttles::forget_tried_before(before, at_most)` deletes the counts last tried before then, oldest first, and the chore `ForgetOldTries`, which a feature names and wires over its throttles, does it every hour for those a day old (`Tries::FORGOTTEN_AFTER`), as they count for nothing any more and name an address or an account: accounts wire `forget-old-account-tries`, invitations `forget-old-invitation-tries`.
 
 The invitations let three go free to an address, then make the next wait:
 

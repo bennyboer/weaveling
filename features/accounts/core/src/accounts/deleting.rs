@@ -267,6 +267,9 @@ impl AccountsCore {
             self.events
                 .compact(transaction, &aggregate, &Agent::System)
                 .await?;
+            self.events
+                .forget_published(transaction, &aggregate)
+                .await?;
             self.email_addresses
                 .release(transaction, &email, account)
                 .await?;

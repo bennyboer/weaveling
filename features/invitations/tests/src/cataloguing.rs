@@ -12,6 +12,7 @@ use invitations_core::{
 };
 use invitations_messaging::CatalogueInvitationsListener;
 use messaging::{Listener, Message, RoutingKey};
+use outbox::Outbox;
 use serde_json::json;
 use throttling::InMemoryThrottles;
 use time::Duration;
@@ -221,6 +222,15 @@ async fn a_retired_invitation_is_collapsed_to_a_snapshot_that_keeps_no_address()
             + Duration::SECOND,
     );
 
+    // and: its issue published
+    listing
+        .wired
+        .events
+        .deliver(100)
+        .await
+        .expect("an outbox in memory always delivers");
+    assert_eq!(listing.wired.events.kept_published(), ["invitation.issued"]);
+
     // when: it retires
     listing
         .invitations
@@ -245,6 +255,12 @@ async fn a_retired_invitation_is_collapsed_to_a_snapshot_that_keeps_no_address()
         !format!("{:?}", stream[0].event).contains(ADA),
         "the address goes with the retiring"
     );
+    // and: nothing it told is kept, its retiring waiting to be told
+    assert!(
+        listing.wired.events.kept_published().is_empty(),
+        "the issue named her address"
+    );
+    assert_eq!(listing.wired.events.waiting_to_be_published(), 1);
 }
 
 #[tokio::test]

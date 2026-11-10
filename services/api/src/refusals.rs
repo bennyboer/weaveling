@@ -138,6 +138,14 @@ impl Deliveries for TellingDeliveries {
         self.told(self.kept.acknowledge(dead_letter, at).await)
     }
 
+    async fn forget_old_dead_letters(
+        &self,
+        before: OffsetDateTime,
+        at_most: i64,
+    ) -> Result<u64, DeliveryError> {
+        self.kept.forget_old_dead_letters(before, at_most).await
+    }
+
     async fn waiting(&self) -> Result<usize, DeliveryError> {
         self.kept.waiting().await
     }

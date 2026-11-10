@@ -8,6 +8,7 @@ use accounts_core::{
 };
 use chores::Chore;
 use eventsourcing::{AggregateId, Event, EventStore, ServiceError, Version};
+use outbox::Outbox;
 use time::{Duration, OffsetDateTime};
 use trash::Trash;
 
@@ -559,6 +560,19 @@ async fn an_account_swept_holds_no_secret_and_its_address_may_sign_up_anew() {
         .await
         .expect("she signs in");
 
+    // and: all she told published
+    wired
+        .told
+        .deliver(1_000)
+        .await
+        .expect("an outbox in memory always delivers");
+    assert!(
+        wired
+            .told
+            .kept_published()
+            .contains(&"account.signed.up".to_owned())
+    );
+
     // when: the sweep runs on its day
     wired.clock.set(until);
     sweeping(wired)
@@ -566,7 +580,13 @@ async fn an_account_swept_holds_no_secret_and_its_address_may_sign_up_anew() {
         .await
         .expect("sweeping should succeed");
 
-    // then: no secret of hers is held
+    // then: nothing she told is kept, her name and address with it, and her deletion waits to be told
+    assert!(
+        wired.told.kept_published().is_empty(),
+        "what an account told goes with it"
+    );
+    assert_eq!(wired.told.waiting_to_be_published(), 1);
+    // and: no secret of hers is held
     let secrets = &wired.secrets;
     let read = "reading should succeed";
     assert_eq!(Passwords::of(&**secrets, &ada).await.expect(read), None);

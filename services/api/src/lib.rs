@@ -39,6 +39,7 @@ use crate::refusals::{RefusalChanges, TellingDeliveries};
 
 pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
+use chores::ForgetOldDeadLetters;
 pub use chores::{Chore, Chores};
 pub use client::{ServedClient, serving_the_client};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
@@ -203,6 +204,10 @@ impl Adapters {
                     .iter()
                     .flat_map(|accounts| accounts.chores.clone()),
             )
+            .chain([Arc::new(ForgetOldDeadLetters::new(
+                self.deliveries.clone(),
+                self.clock.clone(),
+            )) as Arc<dyn Chore>])
             .collect()
     }
 

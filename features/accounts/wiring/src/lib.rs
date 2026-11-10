@@ -19,7 +19,7 @@ use inbox::{Hearing, InMemoryInbox, Inbox};
 use mailing::{LoggingMailer, Mailer};
 use messaging::Listener;
 use outbox::Outbox;
-use throttling::InMemoryThrottles;
+use throttling::{ForgetOldTries, InMemoryThrottles};
 use transacting::Transactions;
 use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Storage, Unprepared, Wired};
@@ -67,6 +67,11 @@ fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     vec![
         Arc::new(hearing.forgetting("forget-old-account-hearings", context.clock.clone())),
+        Arc::new(ForgetOldTries::new(
+            "forget-old-account-tries",
+            ports.secrets.throttles.clone(),
+            context.clock.clone(),
+        )),
         Arc::new(ForgetOldTombstones::new(
             "forget-old-account-tombstones",
             chores::tombstones_by({

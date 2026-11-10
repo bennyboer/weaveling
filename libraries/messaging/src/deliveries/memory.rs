@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
+use serde_json::Value;
 use time::OffsetDateTime;
 
 use crate::delivering::{CLAIM_FOR, Claim, DeadLetter, Deliveries, DeliveryError, Queued};
@@ -213,6 +214,40 @@ impl Deliveries for InMemoryDeliveries {
         }
 
         Ok(())
+    }
+
+    async fn forget_old_dead_letters(
+        &self,
+        before: OffsetDateTime,
+        at_most: i64,
+    ) -> Result<u64, DeliveryError> {
+        let at_most = at_most.max(0) as u64;
+        let mut queues = self.queues();
+        let mut deleted = 0;
+        queues.dead_letters.retain(|dead| {
+            let gone = dead.message.occurred_at < before
+                && dead.acknowledged_at.is_some()
+                && deleted < at_most;
+            if gone {
+                deleted += 1;
+            }
+
+            !gone
+        });
+        let mut blanked = 0;
+        for dead in queues.dead_letters.iter_mut().filter(|dead| {
+            dead.message.occurred_at < before
+                && dead.acknowledged_at.is_none()
+                && !dead.message.payload.is_null()
+        }) {
+            if blanked >= at_most {
+                break;
+            }
+            dead.message.payload = Value::Null;
+            blanked += 1;
+        }
+
+        Ok(deleted + blanked)
     }
 
     async fn waiting(&self) -> Result<usize, DeliveryError> {

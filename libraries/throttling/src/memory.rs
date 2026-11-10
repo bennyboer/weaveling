@@ -53,6 +53,26 @@ impl Throttles for InMemoryThrottles {
 
         Ok(())
     }
+
+    async fn forget_tried_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ThrottlesError> {
+        let mut counted = self.counted();
+        let mut old: Vec<(OffsetDateTime, (String, String))> = counted
+            .iter()
+            .filter(|(_, tries)| tries.last < before)
+            .map(|(key, tries)| (tries.last, key.clone()))
+            .collect();
+        old.sort();
+        old.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, key) in &old {
+            counted.remove(key);
+        }
+
+        Ok(u64::try_from(old.len()).unwrap_or(u64::MAX))
+    }
 }
 
 #[cfg(test)]
