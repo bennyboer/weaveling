@@ -112,6 +112,18 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
+    pub async fn forget_person(&self, account: &AccountId) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_person(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
     pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
@@ -276,6 +288,32 @@ pub async fn a_person_told_again_is_known_as_last_told(
     assert_eq!(
         people(catalog, &[ada()]).await,
         vec![a_person(ada(), "Ada Lovelace", "lovelace@example.com")]
+    );
+}
+
+pub async fn a_person_forgotten_is_known_no_more_and_no_other_with_them(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: two people known
+    known(catalog, &a_person(ada(), "Ada Lovelace", "ada@example.com")).await;
+    known(
+        catalog,
+        &a_person(grace(), "Grace Hopper", "grace@example.com"),
+    )
+    .await;
+
+    // when: one is forgotten, twice
+    for _ in 0..2 {
+        catalog
+            .forget_person(&ada())
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    // then: only the other is known
+    assert_eq!(
+        people(catalog, &[ada(), grace()]).await,
+        vec![a_person(grace(), "Grace Hopper", "grace@example.com")]
     );
 }
 
@@ -732,6 +770,10 @@ macro_rules! conformance_tests {
             the_people_asked_for_are_told_by_account_and_no_others
         );
         $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_person_forgotten_is_known_no_more_and_no_other_with_them
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             a_project_is_in_the_trash_once_told_so_and_out_once_told_restored

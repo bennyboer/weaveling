@@ -273,7 +273,7 @@ impl Sieve for NamingTheFollower {
             | MembersEventDTO::RoleChanged { account, .. }
             | MembersEventDTO::Left { account }
             | MembersEventDTO::Removed { account } => account,
-            MembersEventDTO::Disbanded => return Ok(false),
+            MembersEventDTO::Disbanded | MembersEventDTO::Abandoned => return Ok(false),
         };
 
         Ok(self.members.may_hear(&self.agent, &named))

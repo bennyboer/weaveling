@@ -19,6 +19,7 @@ const ROLE_CHANGED: EventName = EventName::of("ROLE_CHANGED");
 const LEFT: EventName = EventName::of("LEFT");
 const REMOVED: EventName = EventName::of("REMOVED");
 const DISBANDED: EventName = EventName::of("DISBANDED");
+const ABANDONED: EventName = EventName::of("ABANDONED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -44,6 +45,7 @@ pub enum MembersCommand {
     ChangeRole { account: AccountId, to: Role },
     Leave { account: AccountId },
     Remove { account: AccountId },
+    LetGo { account: AccountId },
     Disband,
 }
 
@@ -67,6 +69,7 @@ pub enum MembersEvent {
         account: AccountId,
     },
     Disbanded,
+    Abandoned,
     Snapshotted {
         members: Vec<Member>,
         disbanded: bool,
@@ -158,6 +161,28 @@ impl Members {
         }
     }
 
+    /// Whether nobody is left in the project, the last member gone with their account, so the project is to be deleted.
+    fn is_abandoned(&self) -> bool {
+        self.roles.is_empty() && !self.disbanded
+    }
+
+    /// Lets a deleted account go, the longest-standing other member made owner first where it was the last, and the project abandoned where nobody else is in it.
+    fn letting_go(&self, account: AccountId) -> Vec<MembersEvent> {
+        let Some(successor) = self.roles.keys().find(|other| **other != account) else {
+            return vec![MembersEvent::Removed { account }, MembersEvent::Abandoned];
+        };
+        let mut events = Vec::new();
+        if self.is_last_owner(&account) {
+            events.push(MembersEvent::RoleChanged {
+                account: successor.clone(),
+                to: Role::Owner,
+            });
+        }
+        events.push(MembersEvent::Removed { account });
+
+        events
+    }
+
     fn is_last_owner(&self, account: &AccountId) -> bool {
         self.role_of(account) == Some(Role::Owner)
             && self
@@ -189,6 +214,7 @@ impl Event for MembersEvent {
             Self::Left { .. } => LEFT,
             Self::Removed { .. } => REMOVED,
             Self::Disbanded => DISBANDED,
+            Self::Abandoned => ABANDONED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -220,7 +246,8 @@ impl Aggregate for Members {
             MembersCommand::Join { .. }
             | MembersCommand::ChangeRole { .. }
             | MembersCommand::Leave { .. }
-            | MembersCommand::Remove { .. } => Err(MembersError::NotFoundedYet),
+            | MembersCommand::Remove { .. }
+            | MembersCommand::LetGo { .. } => Err(MembersError::NotFoundedYet),
         }
     }
 
@@ -243,7 +270,8 @@ impl Aggregate for Members {
             MembersEvent::Joined { .. }
             | MembersEvent::RoleChanged { .. }
             | MembersEvent::Left { .. }
-            | MembersEvent::Removed { .. } => None,
+            | MembersEvent::Removed { .. }
+            | MembersEvent::Abandoned => None,
         }
     }
 
@@ -258,11 +286,21 @@ impl Aggregate for Members {
                 _ => Err(MembersError::Disbanded),
             };
         }
+        if self.is_abandoned() {
+            return match command {
+                MembersCommand::Disband => Ok(vec![MembersEvent::Disbanded]),
+                MembersCommand::LetGo { .. } => Ok(vec![]),
+                _ => Err(MembersError::Disbanded),
+            };
+        }
 
         match command {
             MembersCommand::ChangeRole { .. } | MembersCommand::Remove { .. }
                 if !self.managed_by(agent) =>
             {
+                Err(MembersError::NotAnOwner)
+            }
+            MembersCommand::LetGo { .. } if !matches!(agent, Agent::System) => {
                 Err(MembersError::NotAnOwner)
             }
             MembersCommand::Found { .. } => Err(MembersError::AlreadyFounded),
@@ -288,12 +326,16 @@ impl Aggregate for Members {
                 Some(_) if self.is_last_owner(&account) => Err(MembersError::LastOwner),
                 Some(_) => Ok(vec![MembersEvent::Removed { account }]),
             },
+            MembersCommand::LetGo { account } => match self.role_of(&account) {
+                None => Ok(vec![]),
+                Some(_) => Ok(self.letting_go(account)),
+            },
         }
     }
 
     fn apply(&mut self, event: &MembersEvent, _metadata: &EventMetadata) {
         match event {
-            MembersEvent::Founded { .. } => {}
+            MembersEvent::Founded { .. } | MembersEvent::Abandoned => {}
             MembersEvent::Joined { account, role } => {
                 self.roles.insert(account.clone(), *role);
             }

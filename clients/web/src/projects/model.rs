@@ -195,7 +195,9 @@ pub fn membership_in(frame: FrameDTO) -> Option<Membership> {
         MembersEventDTO::Left { .. } | MembersEventDTO::Removed { .. } => {
             Some(Membership::Ended(project))
         }
-        MembersEventDTO::RoleChanged { .. } | MembersEventDTO::Disbanded => None,
+        MembersEventDTO::RoleChanged { .. }
+        | MembersEventDTO::Disbanded
+        | MembersEventDTO::Abandoned => None,
     }
 }
 

@@ -292,4 +292,11 @@ impl Sessions for RefusesOpening {
     ) -> Result<(), SecretsError> {
         self.0.end(transaction, digest).await
     }
+    async fn end_every_session_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        self.0.end_every_session_of(transaction, account).await
+    }
 }

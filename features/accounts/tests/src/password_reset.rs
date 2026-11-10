@@ -307,6 +307,13 @@ impl Passwords for FailingOnce {
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
         self.kept.of(account).await
     }
+    async fn forget_password_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        self.kept.forget_password_of(transaction, account).await
+    }
 }
 
 #[tokio::test]
@@ -662,6 +669,13 @@ impl Passwords for ReadWhileReset {
         }
 
         kept
+    }
+    async fn forget_password_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        self.kept.forget_password_of(transaction, account).await
     }
 }
 

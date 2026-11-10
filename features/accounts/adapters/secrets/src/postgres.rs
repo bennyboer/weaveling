@@ -178,6 +178,16 @@ const NOTE_ANSWERED_BY: &str = "
 const ANSWERED_LAST_BY: &str =
     "SELECT answered_last_by FROM account_second_steps WHERE account = $1";
 
+const FORGET_PASSWORD: &str = "DELETE FROM account_passwords WHERE account = $1";
+
+const END_EVERY_SESSION: &str = "DELETE FROM account_sessions WHERE account = $1";
+
+const FORGET_CODES: &str = "DELETE FROM account_codes WHERE account = $1";
+
+const FORGET_ANSWERED_BY: &str = "DELETE FROM account_second_steps WHERE account = $1";
+
+const FORGET_CREDENTIALS: &str = "DELETE FROM account_key_credentials WHERE account = $1";
+
 const KEEP_CREDENTIAL: &str = "
     INSERT INTO account_key_credentials (account, key, credential_id, written)
     VALUES ($1, $2, $3, $4)
@@ -368,6 +378,13 @@ impl Passwords for PostgresSecrets {
 
         Ok(kept.map(PasswordHash::kept))
     }
+    async fn forget_password_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        forgotten(transaction, account, &[FORGET_PASSWORD]).await
+    }
 }
 
 #[async_trait]
@@ -414,6 +431,13 @@ impl Sessions for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+    async fn end_every_session_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        forgotten(transaction, account, &[END_EVERY_SESSION]).await
     }
 }
 
@@ -486,6 +510,13 @@ impl Verifications for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(closed.rows_affected() > 0)
+    }
+    async fn forget_codes_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        forgotten(transaction, account, &[FORGET_CODES]).await
     }
 }
 
@@ -883,6 +914,18 @@ impl SecondFactors for PostgresSecrets {
 
         Ok(())
     }
+    async fn forget_second_factors_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        forgotten(
+            transaction,
+            account,
+            &[FORGET_TOTP, FORGET_RECOVERY_CODES, FORGET_ANSWERED_BY],
+        )
+        .await
+    }
 }
 
 fn to_credential(row: &PgRow) -> Result<(KeyId, KeyCredential), SecretsError> {
@@ -965,6 +1008,13 @@ impl KeyCredentials for PostgresSecrets {
 
         Ok(())
     }
+    async fn forget_credentials_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        forgotten(transaction, account, &[FORGET_CREDENTIALS]).await
+    }
 }
 
 fn written_way(way: SecondStepWay) -> &'static str {
@@ -980,4 +1030,20 @@ fn read_way(written: &str) -> Option<SecondStepWay> {
         "key" => Some(SecondStepWay::Key),
         _ => None,
     }
+}
+
+async fn forgotten(
+    transaction: &mut Transaction,
+    account: &AccountId,
+    forgetting: &[&'static str],
+) -> Result<(), SecretsError> {
+    for query in forgetting.iter().copied() {
+        sqlx::query(query)
+            .bind(account.to_string())
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+    }
+
+    Ok(())
 }

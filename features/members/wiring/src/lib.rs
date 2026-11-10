@@ -11,7 +11,8 @@ use members_core::{MembersAuthorizer, MembersCore, MembersEvent, MembershipCatal
 use members_messaging::{
     CatalogueMembersListener, DisbandMembersOfDeletedProjectListener,
     FoundMembersOfStartedProjectListener, JoinByAcceptedInvitationListener,
-    RememberTrashedProjectsListener, RememberWhoIsLeavingListener, RememberWhoSignedUpListener,
+    LetGoOfDeletedAccountListener, RememberTrashedProjectsListener, RememberWhoIsLeavingListener,
+    RememberWhoSignedUpListener,
 };
 use messaging::Publisher;
 use outbox::Outbox;
@@ -188,6 +189,7 @@ impl Feature for MembersFeature {
                 Arc::new(hearing.inboxed(JoinByAcceptedInvitationListener::new(members.clone()))),
                 Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(members.clone()))),
                 Arc::new(hearing.inboxed(RememberWhoIsLeavingListener::new(members.clone()))),
+                Arc::new(hearing.inboxed(LetGoOfDeletedAccountListener::new(members.clone()))),
                 Arc::new(
                     hearing.inboxed(DisbandMembersOfDeletedProjectListener::new(members.clone())),
                 ),
@@ -287,6 +289,7 @@ mod tests {
                 "join-by-accepted-invitation",
                 "remember-who-signed-up",
                 "remember-who-is-leaving",
+                "let-go-of-deleted-account",
                 "disband-members-of-deleted-project",
                 "members-remember-trashed-projects",
                 "catalogue-members",

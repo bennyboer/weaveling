@@ -3,7 +3,8 @@ use std::sync::Arc;
 use accounts_contract::stage;
 use accounts_core::{
     AccountCatalog, AccountError, AccountId, AccountsError, DeletionAskedBy, EmailAddress,
-    EmailAddresses, KEPT_BEFORE_DELETION, KIND, PendingDeletion, Stage,
+    EmailAddresses, KEPT_BEFORE_DELETION, KIND, Passwords, PendingDeletion, SecondFactors,
+    Sessions, Stage,
 };
 use chores::Chore;
 use eventsourcing::{AggregateId, Event, EventStore, ServiceError, Version};
@@ -539,4 +540,55 @@ async fn listed(wired: &Wired) -> Vec<AccountId> {
         .into_iter()
         .map(|summary| summary.id)
         .collect()
+}
+
+#[tokio::test]
+async fn an_account_swept_holds_no_secret_and_its_address_may_sign_up_anew() {
+    // given: ada with TOTP, her account asked to be deleted, and a session she began since
+    let set_up = totp_bench::with_a_second_factor_set_up_at(1_700_000_060).await;
+    let wired = &set_up.served.wired;
+    let ada = set_up.served.ada;
+    let until = wired
+        .accounts
+        .ask_deletion(&ada, HER_PASSWORD)
+        .await
+        .expect("her password asks for it");
+    let (owing, _) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in");
+
+    // when: the sweep runs on its day
+    wired.clock.set(until);
+    sweeping(wired)
+        .carry_out()
+        .await
+        .expect("sweeping should succeed");
+
+    // then: no secret of hers is held
+    let secrets = &wired.secrets;
+    let read = "reading should succeed";
+    assert_eq!(Passwords::of(&**secrets, &ada).await.expect(read), None);
+    assert_eq!(secrets.find(&owing.digest()).await.expect(read), None);
+    assert_eq!(secrets.totp_of(&ada).await.expect(read), None);
+    assert!(
+        secrets
+            .recovery_codes_of(&ada)
+            .await
+            .expect(read)
+            .is_empty()
+    );
+    // and: her address is free, and signs up an account anew
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    let anew = secrets
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
+        .await
+        .expect(read)
+        .expect("the address should be held");
+    assert_ne!(anew, ada);
 }

@@ -250,6 +250,47 @@ impl MembersCore {
         })
     }
 
+    /// Lets a deleted account go from every project it is in, as of its version, and forgets who it was; where it was the last owner, the longest-standing other member is made owner, and a project it was alone in is abandoned.
+    pub async fn let_go_of(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+    ) -> Result<(), MembersCoreError> {
+        let memberships = self.catalog.memberships_of(account).await?;
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            for membership in &memberships {
+                match self
+                    .service
+                    .carry_out(
+                        transaction,
+                        &membership.project,
+                        MembersCommand::LetGo {
+                            account: account.clone(),
+                        },
+                        None,
+                        &Agent::System,
+                    )
+                    .await
+                {
+                    Err(MembersCoreError::Events(ServiceError::Refused(
+                        MembersError::Disbanded,
+                    ))) => {}
+                    let_go => {
+                        let_go?;
+                    }
+                }
+            }
+            self.catalog.forget_person(transaction, account).await?;
+            self.catalog
+                .remember_leaving(transaction, account, version, None)
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn catalogue(
         &self,
         within: Option<&mut Transaction>,

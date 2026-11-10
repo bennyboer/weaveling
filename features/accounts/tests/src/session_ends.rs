@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use accounts_core::{
-    AccountsCore, SecretStores, SecretsError, Session, SessionToken, Sessions, TokenDigest,
+    AccountId, AccountsCore, SecretStores, SecretsError, Session, SessionToken, Sessions,
+    TokenDigest,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
@@ -168,6 +169,13 @@ impl Sessions for Unreachable {
         digest: &TokenDigest,
     ) -> Result<(), SecretsError> {
         self.kept.end(transaction, digest).await
+    }
+    async fn end_every_session_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        self.kept.end_every_session_of(transaction, account).await
     }
 }
 

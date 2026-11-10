@@ -114,6 +114,12 @@ pub trait Passwords: Send + Sync {
     ) -> Result<(), SecretsError>;
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
+    /// Forgets the account's password, for good.
+    async fn forget_password_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
@@ -131,6 +137,12 @@ pub trait Sessions: Send + Sync {
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
+    ) -> Result<(), SecretsError>;
+    /// Ends every session of the account, at whatever stage.
+    async fn end_every_session_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
     ) -> Result<(), SecretsError>;
 }
 
@@ -159,6 +171,12 @@ pub trait Verifications: Send + Sync {
         purpose: CodePurpose,
         code: &VerificationCode,
     ) -> Result<bool, SecretsError>;
+    /// Forgets every code issued to the account, for whatever purpose.
+    async fn forget_codes_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
@@ -317,6 +335,12 @@ pub trait SecondFactors: Send + Sync {
         &self,
         account: &AccountId,
     ) -> Result<Option<SecondStepWay>, SecretsError>;
+    /// Forgets the account's second step whole: its TOTP in use and any being set up, its recovery codes and the way that answered last.
+    async fn forget_second_factors_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,5 +389,11 @@ pub trait KeyCredentials: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
         key: &KeyId,
+    ) -> Result<(), SecretsError>;
+    /// Forgets the credentials of every key of the account.
+    async fn forget_credentials_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
     ) -> Result<(), SecretsError>;
 }

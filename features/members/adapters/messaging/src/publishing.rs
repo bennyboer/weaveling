@@ -27,6 +27,7 @@ fn body(event: &MembersEvent) -> Option<MembersEventDTO> {
             account: account.to_string(),
         },
         MembersEvent::Disbanded => MembersEventDTO::Disbanded,
+        MembersEvent::Abandoned => MembersEventDTO::Abandoned,
         MembersEvent::Snapshotted { .. } => return None,
     })
 }
@@ -45,7 +46,7 @@ mod tests {
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
     use members_contract::{
-        DISBANDED, EVERY_MEMBERS, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED,
+        ABANDONED, DISBANDED, EVERY_MEMBERS, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED,
     };
     use members_core::{KIND, Member, ProjectLink};
     use messaging::Subscription;
@@ -132,6 +133,11 @@ mod tests {
                 MembersEvent::Disbanded,
                 DISBANDED,
                 MembersEventDTO::Disbanded,
+            ),
+            (
+                MembersEvent::Abandoned,
+                ABANDONED,
+                MembersEventDTO::Abandoned,
             ),
         ]
     }

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::Hash;
+use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
@@ -207,6 +208,17 @@ impl Passwords for InMemorySecrets {
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
         Ok(self.kept().passwords.get(account).cloned())
     }
+    async fn forget_password_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let forgotten = self.kept().passwords.remove(account);
+        let holder = *account;
+        self.undo_on_rollback(transaction, move |kept| {
+            restore(&mut kept.passwords, holder, forgotten);
+        })
+    }
 }
 
 #[async_trait]
@@ -245,6 +257,18 @@ impl Sessions for InMemorySecrets {
                 kept.sessions.insert(digest, session);
             }
         })
+    }
+    async fn end_every_session_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        let (ended, open): (HashMap<_, _>, HashMap<_, _>) = mem::take(&mut kept.sessions)
+            .into_iter()
+            .partition(|(_, session)| session.account == *account);
+        kept.sessions = open;
+        self.undo_on_rollback(transaction, move |kept| kept.sessions.extend(ended))
     }
 }
 
@@ -324,6 +348,18 @@ impl Verifications for InMemorySecrets {
         })?;
 
         Ok(taken)
+    }
+    async fn forget_codes_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        let (forgotten, pending): (HashMap<_, _>, HashMap<_, _>) = mem::take(&mut kept.pending)
+            .into_iter()
+            .partition(|((holder, _), _)| holder == account);
+        kept.pending = pending;
+        self.undo_on_rollback(transaction, move |kept| kept.pending.extend(forgotten))
     }
 }
 
@@ -729,6 +765,23 @@ impl SecondFactors for InMemorySecrets {
     ) -> Result<Option<SecondStepWay>, SecretsError> {
         Ok(self.kept().answered_last_by.get(account).copied())
     }
+    async fn forget_second_factors_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_totp_on_rollback(transaction, &kept, account)?;
+        let holder = *account;
+        let answered = kept.answered_last_by.remove(account);
+        self.undo_on_rollback(transaction, move |kept| {
+            restore(&mut kept.answered_last_by, holder, answered);
+        })?;
+        kept.totps.remove(account);
+        kept.recovery_codes.remove(account);
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -812,6 +865,17 @@ impl KeyCredentials for InMemorySecrets {
         if let Some(held) = kept.key_credentials.get_mut(account) {
             held.remove(key);
         }
+
+        Ok(())
+    }
+    async fn forget_credentials_of(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        self.undo_credentials_on_rollback(transaction, &kept, account)?;
+        kept.key_credentials.remove(account);
 
         Ok(())
     }

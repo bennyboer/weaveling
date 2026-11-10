@@ -10,9 +10,11 @@ use futures_util::future;
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions, Tried};
 
+mod forgetting;
 mod key_credentials;
 mod second_factors;
 
+pub use forgetting::*;
 pub use key_credentials::*;
 pub use second_factors::*;
 
@@ -2781,6 +2783,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             the_way_that_answered_last_is_noted_for_each_account_in_place_of_the_one_before
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_forgotten_account_holds_no_secret_and_others_keep_theirs
         );
     };
 }

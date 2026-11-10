@@ -225,6 +225,14 @@ impl AccountsCore {
     /// Sweeps an account whose thirty days are over, for good.
     pub async fn sweep(&self, account: &AccountId) -> Result<(), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
+            let aggregate = AggregateId::from(account);
+            let email = self
+                .events
+                .latest_within(transaction, &aggregate)
+                .await?
+                .state
+                .email()
+                .clone();
             self.commanded_in(
                 transaction,
                 account,
@@ -234,9 +242,26 @@ impl AccountsCore {
             )
             .await?;
             self.events
-                .compact(transaction, &AggregateId::from(account), &Agent::System)
+                .compact(transaction, &aggregate, &Agent::System)
                 .await?;
-            // TODO 9d-2b: forget its secrets and release its address
+            self.email_addresses
+                .release(transaction, &email, account)
+                .await?;
+            self.passwords
+                .forget_password_of(transaction, account)
+                .await?;
+            self.sessions
+                .end_every_session_of(transaction, account)
+                .await?;
+            self.verifications
+                .forget_codes_of(transaction, account)
+                .await?;
+            self.second_factors
+                .forget_second_factors_of(transaction, account)
+                .await?;
+            self.key_credentials
+                .forget_credentials_of(transaction, account)
+                .await?;
             self.trash
                 .take_out(transaction, KIND.as_str(), &account.to_string())
                 .await?;

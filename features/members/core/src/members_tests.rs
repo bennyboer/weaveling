@@ -437,6 +437,7 @@ fn every_event_is_named_and_only_the_snapshot_is_one() {
         MembersEvent::Left { account: grace() },
         MembersEvent::Removed { account: grace() },
         MembersEvent::Disbanded,
+        MembersEvent::Abandoned,
         MembersEvent::Snapshotted {
             members: vec![],
             disbanded: false,
@@ -456,6 +457,7 @@ fn every_event_is_named_and_only_the_snapshot_is_one() {
             ("LEFT".to_owned(), false),
             ("REMOVED".to_owned(), false),
             ("DISBANDED".to_owned(), false),
+            ("ABANDONED".to_owned(), false),
             ("SNAPSHOTTED".to_owned(), true),
         ]
     );
@@ -586,4 +588,106 @@ fn a_snapshot_of_members_disbanded_keeps_them_disbanded() {
     );
     // and: members it is applied to are the disbanded ones
     assert_eq!(after(founded_by_ada(), &[snapshot]), disbanded);
+}
+
+#[test]
+fn a_deleted_account_is_let_go_by_the_system_only_and_a_member_never_in_changes_nothing() {
+    // given: members, ada the owner and grace an author
+    let members = members_with(&[(grace(), Role::Author)]);
+
+    // expect: an account cannot let another go
+    assert_eq!(
+        deciding(&members, MembersCommand::LetGo { account: grace() }),
+        Err(MembersError::NotAnOwner)
+    );
+    // and: letting go an account never in changes nothing
+    assert_eq!(
+        members.decide(MembersCommand::LetGo { account: ken() }, &Agent::System),
+        Ok(vec![])
+    );
+    // and: a member who is not the last owner is only removed
+    assert_eq!(
+        members.decide(MembersCommand::LetGo { account: grace() }, &Agent::System),
+        Ok(vec![MembersEvent::Removed { account: grace() }])
+    );
+}
+
+#[test]
+fn the_last_owner_let_go_leaves_the_longest_standing_other_member_owner() {
+    // given: ada the only owner, then grace a reader, hedy an author and ken made an author since
+    let members = after(
+        members_with(&[
+            (grace(), Role::Reader),
+            (hedy(), Role::Author),
+            (ken(), Role::Reader),
+        ]),
+        &[MembersEvent::RoleChanged {
+            account: grace(),
+            to: Role::Author,
+        }],
+    );
+
+    // when: ada is let go
+    let letting_go = members.decide(MembersCommand::LetGo { account: ada() }, &Agent::System);
+
+    // then: grace, there the longest, becomes owner before ada is removed
+    assert_eq!(
+        letting_go,
+        Ok(vec![
+            MembersEvent::RoleChanged {
+                account: grace(),
+                to: Role::Owner,
+            },
+            MembersEvent::Removed { account: ada() },
+        ])
+    );
+    let after_letting_go = after(members, &letting_go.expect("decided"));
+    assert_eq!(after_letting_go.role_of(&grace()), Some(Role::Owner));
+    assert_eq!(after_letting_go.role_of(&ada()), None);
+}
+
+#[test]
+fn the_only_member_let_go_abandons_the_project_and_nobody_joins_it_any_more() {
+    // given: members with ada alone
+    let members = founded_by_ada();
+
+    // when: ada is let go
+    let letting_go = members.decide(MembersCommand::LetGo { account: ada() }, &Agent::System);
+
+    // then: she is removed and the project abandoned
+    assert_eq!(
+        letting_go,
+        Ok(vec![
+            MembersEvent::Removed { account: ada() },
+            MembersEvent::Abandoned,
+        ])
+    );
+    let abandoned = after(members, &letting_go.expect("decided"));
+    assert!(abandoned.members().is_empty());
+    // and: nobody joins it, and nothing changes in it but its disbanding
+    assert_eq!(
+        deciding(
+            &abandoned,
+            MembersCommand::Join {
+                account: ken(),
+                role: Role::Reader,
+            }
+        ),
+        Err(MembersError::Disbanded)
+    );
+    assert_eq!(
+        abandoned.decide(MembersCommand::LetGo { account: ada() }, &Agent::System),
+        Ok(vec![])
+    );
+    assert_eq!(
+        abandoned.decide(MembersCommand::Disband, &Agent::System),
+        Ok(vec![MembersEvent::Disbanded])
+    );
+    // and: a snapshot of it is abandoned alike
+    let read_back =
+        Members::from_first(&abandoned.snapshot(), &stamped(4)).expect("a snapshot gives birth");
+    assert_eq!(
+        read_back.decide(MembersCommand::LetGo { account: ada() }, &Agent::System),
+        Ok(vec![])
+    );
 }

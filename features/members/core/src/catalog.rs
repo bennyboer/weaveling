@@ -65,6 +65,13 @@ pub trait MembershipCatalog: Send + Sync {
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 
+    /// Forgets a deleted account's person, its name and address.
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError>;
+
     async fn remember_trash(
         &self,
         transaction: &mut Transaction,

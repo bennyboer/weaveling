@@ -22,6 +22,7 @@ enum StoredMembersEvent {
         account: String,
     },
     Disbanded,
+    Abandoned,
     Snapshotted {
         members: Vec<StoredMember>,
         #[serde(default)]
@@ -98,6 +99,7 @@ impl From<&MembersEvent> for StoredMembersEvent {
                 account: account.to_string(),
             },
             MembersEvent::Disbanded => Self::Disbanded,
+            MembersEvent::Abandoned => Self::Abandoned,
             MembersEvent::Snapshotted { members, disbanded } => Self::Snapshotted {
                 members: members
                     .iter()
@@ -133,6 +135,7 @@ impl From<StoredMembersEvent> for MembersEvent {
                 account: AccountId::from(account),
             },
             StoredMembersEvent::Disbanded => Self::Disbanded,
+            StoredMembersEvent::Abandoned => Self::Abandoned,
             StoredMembersEvent::Snapshotted { members, disbanded } => Self::Snapshotted {
                 members: members
                     .into_iter()
@@ -180,6 +183,7 @@ mod tests {
                 MembersEvent::Left { account: grace() },
                 MembersEvent::Removed { account: grace() },
                 MembersEvent::Disbanded,
+                MembersEvent::Abandoned,
                 MembersEvent::Snapshotted {
                     members: vec![],
                     disbanded: true,

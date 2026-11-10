@@ -40,6 +40,9 @@ impl KeptHandler for RememberProjectMembersListener {
             MembersEventDTO::Left { account } | MembersEventDTO::Removed { account } => {
                 (account, None)
             }
+            MembersEventDTO::Abandoned => {
+                return Err("an abandoning names nobody, as the removal before it did".into());
+            }
             MembersEventDTO::Disbanded => {
                 return Ok(self
                     .accounts

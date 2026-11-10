@@ -139,6 +139,14 @@ mod tests {
             Ok(Vec::new())
         }
 
+        async fn forget_person(
+            &self,
+            _transaction: &mut Transaction,
+            _account: &AccountId,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
         async fn remember_trash(
             &self,
             _transaction: &mut Transaction,
