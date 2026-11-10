@@ -42,6 +42,8 @@ pub enum AccountsError {
     NotAnOperator,
     #[error("the last operator keeps the role")]
     LastOperator,
+    #[error("this session was opened for no account whose deletion is pending")]
+    NoDeletionPending,
     #[error("the account is the last owner of projects others are in, to hand over first: {0:?}")]
     ProjectsToHandOver(Vec<String>),
     #[error("this is not the code that makes an operator")]

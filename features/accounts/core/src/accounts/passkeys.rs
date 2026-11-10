@@ -4,7 +4,7 @@ use super::{AccountsCore, SignedIn};
 use crate::error::AccountsError;
 use crate::key::KeyRole;
 use crate::key_ceremonies::{CeremonyFailed, SigningIn};
-use crate::session::{SessionToken, Stage};
+use crate::session::SessionToken;
 
 impl AccountsCore {
     /// What the browser is asked for any passkey it holds for this instance, nobody named yet, and the id the sign-in goes by.
@@ -48,7 +48,7 @@ impl AccountsCore {
                 CeremonyFailed::NothingUnderWay => AccountsError::NoKeyBeingAsked,
                 CeremonyFailed::Refused => AccountsError::KeyRefused,
             })?;
-        if holder.is_locked() {
+        if holder.is_locked_by_the_operator() {
             return Err(AccountsError::Locked);
         }
         if !holder.is_verified() {
@@ -65,8 +65,14 @@ impl AccountsCore {
                 return Err(AccountsError::KeyRefused);
             }
 
-            self.session_opened_within(transaction, account, holder.clone(), Stage::SignedIn, began)
-                .await
+            self.session_opened_within(
+                transaction,
+                account,
+                holder.clone(),
+                holder.signs_in_to(),
+                began,
+            )
+            .await
         })
     }
 }

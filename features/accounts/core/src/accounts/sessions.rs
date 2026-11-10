@@ -43,7 +43,7 @@ impl AccountsCore {
         self.throttles
             .clear(Guarded::SigningIn.as_str(), email.as_str())
             .await?;
-        if account.is_locked() {
+        if account.is_locked_by_the_operator() {
             return Err(AccountsError::Locked);
         }
         if !account.is_verified() {
@@ -61,7 +61,7 @@ impl AccountsCore {
         let (id, account, began) = self.signed_in_as(email, password).await?;
         let stage = match account.second_factor() {
             Some(_) => Stage::SecondFactorOwed,
-            None => Stage::SignedIn,
+            None => account.signs_in_to(),
         };
 
         transacting::retrying!(&*self.transactions, |transaction| {
@@ -97,7 +97,12 @@ impl AccountsCore {
             return Ok(None);
         }
         let account = self.get(&session.account).await?.state;
-        if account.is_locked() || !account.counts_session_begun(session.begun) {
+        let gone_meanwhile =
+            session.stage == Stage::SignedIn && account.pending_deletion().is_some();
+        if account.is_locked_by_the_operator()
+            || gone_meanwhile
+            || !account.counts_session_begun(session.begun)
+        {
             self.ended(&digest).await?;
             return Ok(None);
         }

@@ -14,6 +14,7 @@ pub struct TokenDigest(String);
 pub enum Stage {
     SecondFactorOwed,
     SignedIn,
+    DeletionPending,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,7 +84,7 @@ impl Session {
             until: now
                 + match stage {
                     Stage::SignedIn => Self::LASTS,
-                    Stage::SecondFactorOwed => Self::OWING_LASTS,
+                    Stage::SecondFactorOwed | Stage::DeletionPending => Self::OWING_LASTS,
                 },
         }
     }

@@ -97,6 +97,7 @@ const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = $1";
 
 const SIGNED_IN: &str = "signed-in";
 const SECOND_FACTOR_OWED: &str = "second-factor-owed";
+const DELETION_PENDING: &str = "deletion-pending";
 
 const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2 AND code = $3";
 
@@ -213,6 +214,7 @@ fn written(stage: Stage) -> &'static str {
     match stage {
         Stage::SignedIn => SIGNED_IN,
         Stage::SecondFactorOwed => SECOND_FACTOR_OWED,
+        Stage::DeletionPending => DELETION_PENDING,
     }
 }
 
@@ -227,6 +229,7 @@ fn to_session(row: &PgRow) -> Result<Session, SecretsError> {
         stage: match stage.as_str() {
             SIGNED_IN => Stage::SignedIn,
             SECOND_FACTOR_OWED => Stage::SecondFactorOwed,
+            DELETION_PENDING => Stage::DeletionPending,
             _ => {
                 return Err(SecretsError::Backend(
                     format!("stage holds {stage:?}, which is no stage").into(),

@@ -908,6 +908,7 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
         stage: match signed_in.session.stage {
             Stage::SignedIn => stage::SIGNED_IN,
             Stage::SecondFactorOwed => stage::SECOND_FACTOR_OWED,
+            Stage::DeletionPending => stage::DELETION_PENDING,
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),

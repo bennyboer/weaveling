@@ -11,6 +11,7 @@ use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use crate::recovery_code::RecoveryCode;
 use crate::second_factor::{PreferredWay, SecondFactor, SecondStepWay, Totp};
+use crate::session::Stage;
 use email::EmailAddress;
 
 pub const KIND: AggregateType = AggregateType::of("account");
@@ -304,6 +305,20 @@ impl Account {
 
     pub fn pending_deletion(&self) -> Option<PendingDeletion> {
         self.pending_deletion
+    }
+
+    /// Whether the operator locked the account, which nobody signs in to at all, unlike an account asked to be deleted, signed in to only to be kept.
+    pub fn is_locked_by_the_operator(&self) -> bool {
+        !self.locks.is_empty()
+    }
+
+    /// The stage a session opens at once whatever signing in asks is answered: signed in, or, for an account asked to be deleted, only to keep it or sign out.
+    pub fn signs_in_to(&self) -> Stage {
+        if self.pending_deletion.is_some() {
+            Stage::DeletionPending
+        } else {
+            Stage::SignedIn
+        }
     }
 
     pub fn signed_up_at(&self) -> OffsetDateTime {

@@ -1,9 +1,11 @@
+use accounts_contract::stage;
 use accounts_core::{
     AccountError, AccountId, AccountsError, DeletionAskedBy, EmailAddress, EmailAddresses,
-    KEPT_BEFORE_DELETION, PendingDeletion,
+    KEPT_BEFORE_DELETION, PendingDeletion, Stage,
 };
 use eventsourcing::ServiceError;
 
+use crate::totp_bench;
 use crate::wiring;
 use crate::wiring::{HER_PASSWORD, Wired};
 
@@ -176,8 +178,13 @@ async fn the_operator_marks_an_account_for_deletion_and_only_the_operator_calls_
             asked_by: DeletionAskedBy::Operator,
         })
     );
-    // when: the holder tries to keep it
-    let refused = wired.accounts.keep_account(&ada).await;
+    // when: the holder signs in and tries to keep it
+    let (pending_session, _) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in, only to see what became of her account");
+    let refused = wired.accounts.keep_account(&pending_session).await;
     // then: it is refused, as only the operator calls it off
     assert!(matches!(
         refused,
@@ -212,15 +219,60 @@ async fn the_holder_keeps_the_account_they_asked_to_delete() {
         .await
         .expect("her password asks for it");
 
-    // when: she keeps it
-    wired
+    // when: she signs in
+    let (pending_session, signed_in) = wired
         .accounts
-        .keep_account(&ada)
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in, only to keep her account or sign out");
+
+    // then: the session may do nothing but keep the account or sign out
+    assert_eq!(signed_in.session.stage, Stage::DeletionPending);
+    assert!(!signed_in.session.may_act());
+    // when: she keeps it
+    let (kept_session, kept) = wired
+        .accounts
+        .keep_account(&pending_session)
         .await
         .expect("she calls off what she asked");
-
-    // then: it is no longer to be deleted
+    // then: it is no longer to be deleted, and she is signed in as before
     assert_eq!(pending(&wired, &ada).await, None);
+    assert_eq!(kept.session.stage, Stage::SignedIn);
+    assert!(
+        wired
+            .accounts
+            .signed_in(&kept_session)
+            .await
+            .expect("asking should succeed")
+            .is_some_and(|signed_in| signed_in.session.may_act())
+    );
+    // and: the session she kept it from is over
+    assert_eq!(
+        wired
+            .accounts
+            .signed_in(&pending_session)
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn only_a_session_opened_for_a_pending_deletion_keeps_an_account() {
+    // given: an account signed in as ever
+    let wired = wiring::wired();
+    a_verified_account(&wired, ADA).await;
+    let (signed_in, _) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in");
+
+    // expect: keeping an account from it is refused, there being nothing to keep
+    assert!(matches!(
+        wired.accounts.keep_account(&signed_in).await,
+        Err(AccountsError::NoDeletionPending)
+    ));
 }
 
 #[tokio::test]
@@ -250,19 +302,58 @@ async fn only_an_operator_marks_another_account_or_keeps_it() {
 }
 
 #[tokio::test]
-async fn an_account_asked_to_be_deleted_is_refused_at_signing_in() {
-    // given: an account its holder asked to delete
+async fn an_account_with_a_second_step_answers_it_before_it_is_offered_to_be_kept() {
+    // given: ada with TOTP, her account asked to be deleted
+    let set_up = totp_bench::with_a_second_factor_set_up_at(1_700_000_060).await;
+    let served = &set_up.served;
+    let now = served.at(1_700_000_120);
+    served
+        .wired
+        .accounts
+        .ask_deletion(&served.ada, HER_PASSWORD)
+        .await
+        .expect("her password asks for it");
+
+    // when: she signs in with her password
+    let owing = served.signed_in().await;
+
+    // then: her second step is asked first
+    assert_eq!(served.stage_of(&owing).await, stage::SECOND_FACTOR_OWED);
+    // when: she answers it
+    let answered = served
+        .answer(&owing, &totp_bench::code_of(&set_up.secret, now + 30))
+        .await;
+    // then: the session opens only to keep her account or sign out
+    answered.assert_status_ok();
+    let pending = totp_bench::cookie_set_by(&answered);
+    assert_eq!(served.stage_of(&pending).await, stage::DELETION_PENDING);
+}
+
+#[tokio::test]
+async fn a_session_signed_in_the_moment_deletion_is_asked_ends_with_the_others() {
+    // given: an account signed in, the clock not moving on
     let wired = wiring::wired();
     let ada = a_verified_account(&wired, ADA).await;
+    let (token, _) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in");
+
+    // when: her account is asked to be deleted at that very moment
     wired
         .accounts
         .ask_deletion(&ada, HER_PASSWORD)
         .await
         .expect("her password asks for it");
 
-    // when: she signs in
-    let refused = wired.accounts.begin_session(ADA, HER_PASSWORD).await;
-
-    // then: it is refused, as a locked account is, until signing in learns to offer keeping it
-    assert!(matches!(refused, Err(AccountsError::Locked)));
+    // then: the session signed in is over all the same
+    assert_eq!(
+        wired
+            .accounts
+            .signed_in(&token)
+            .await
+            .expect("asking should succeed"),
+        None
+    );
 }

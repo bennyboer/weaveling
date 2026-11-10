@@ -233,13 +233,9 @@ impl AccountsCore {
             .await?
             .state;
 
-        self.session_opened_within(
-            transaction,
-            *account,
-            holder,
-            Stage::SignedIn,
-            self.clock.now(),
-        )
-        .await
+        let stage = holder.signs_in_to();
+
+        self.session_opened_within(transaction, *account, holder, stage, self.clock.now())
+            .await
     }
 }

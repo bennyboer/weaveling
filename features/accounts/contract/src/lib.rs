@@ -326,6 +326,7 @@ pub mod lock_kind {
 pub mod stage {
     pub const SIGNED_IN: &str = "signed-in";
     pub const SECOND_FACTOR_OWED: &str = "second-factor-owed";
+    pub const DELETION_PENDING: &str = "deletion-pending";
 }
 
 pub mod refused {

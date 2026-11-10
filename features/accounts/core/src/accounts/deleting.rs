@@ -2,13 +2,14 @@ use eventsourcing::{Agent, Version};
 use time::OffsetDateTime;
 use transacting::Transaction;
 
-use super::AccountsCore;
+use super::{AccountsCore, SignedIn};
 use crate::account::AccountCommand;
 use crate::catalog::InProject;
 use crate::deletion::{DeletionAskedBy, KEPT_BEFORE_DELETION};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::secrets::Dismissal;
+use crate::session::{SessionToken, Stage};
 
 impl AccountsCore {
     /// Asks for one's own account to be deleted, for its password: it is kept until the answer, to be kept after all, every session of it ending at once; an operator stops being one, unless the last.
@@ -68,20 +69,44 @@ impl AccountsCore {
         Ok(until)
     }
 
-    /// Keeps one's own account after all, where its holder asked for it to be deleted; the operator's role, given up in asking, does not come back.
-    pub async fn keep_account(&self, account: &AccountId) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
+    /// Keeps one's own account after all, from the session signing in opened while its deletion was pending, where its holder asked for it: the session goes on signed in, under a new token; the operator's role, given up in asking, does not come back.
+    pub async fn keep_account(
+        &self,
+        pending: &SessionToken,
+    ) -> Result<(SessionToken, SignedIn), AccountsError> {
+        let account = match self.signed_in(pending).await? {
+            Some(signed_in) if signed_in.session.stage == Stage::DeletionPending => {
+                signed_in.session.account
+            }
+            _ => return Err(AccountsError::NoDeletionPending),
+        };
+
+        let opened = transacting::retrying!(&*self.transactions, |transaction| {
             self.commanded_in(
                 transaction,
-                account,
+                &account,
                 None,
                 AccountCommand::CallOffDeletion {
                     by: DeletionAskedBy::Holder,
                 },
                 &account.acting(),
             )
+            .await?;
+            self.sessions.end(transaction, &pending.digest()).await?;
+            let holder = self.get(&account).await?.state;
+
+            self.session_opened_within(
+                transaction,
+                account,
+                holder,
+                Stage::SignedIn,
+                self.clock.now(),
+            )
             .await
-        })
+        })?;
+        self.check_sessions();
+
+        Ok(opened)
     }
 
     /// Keeps an account asked to be deleted, as the operator, whoever asked.
