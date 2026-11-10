@@ -480,6 +480,20 @@ pub async fn draw_recovery_codes(password: &str) -> Result<Vec<String>, ApiError
     Ok(drawn.codes)
 }
 
+/// Asks for one's own account to be deleted, for its password; every session of it ends with it.
+pub async fn ask_deletion(password: &str) -> Result<(), ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::post(DELETION), &payload).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// Keeps the account its deletion is pending for, from the session signing in opened meanwhile, signed in anew.
 pub async fn keep_account() -> Result<SignedInAccount, ApiError> {
     as_signed_in_account(http::parsed(http::sent(Request::delete(DELETION)).await?, ACCOUNT).await?)

@@ -20,6 +20,7 @@ use crate::accounts::deletion_pending::DeletionPendingPage;
 use crate::accounts::invitation::InvitationPage;
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
+use crate::accounts::your_account::YourAccountPage;
 use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::lazy::{
     BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
@@ -86,6 +87,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/trash") view=move || TrashPage(TrashPageProps { workspace }) />
             <Route path=path!("/invitation") view=InvitationPage />
             <Route path=path!("/setup") view=SetUpPage />
+            <Route path=path!("/account") view=YourAccountPage />
             <Route path=path!("/account/security") view={Lazy::<SecurityRoute>::new()} />
             <Route path=path!("/instance") view={Lazy::<InstanceRoute>::new()} />
             <Route path=path!("/instance/accounts") view={Lazy::<InstanceAccountsRoute>::new()} />

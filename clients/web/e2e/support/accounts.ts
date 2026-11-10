@@ -177,6 +177,7 @@ export type Server = {
   deletion: { until: string; by: "holder" | "operator" } | null;
   deletionPending: boolean;
   keptAccount: number;
+  toHandOver: string[];
 };
 
 export type HeldKey = {
@@ -265,6 +266,7 @@ export async function aServerWithAccounts(
     deletion: null,
     deletionPending: false,
     keptAccount: 0,
+    toHandOver: [],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -355,7 +357,28 @@ export async function aServerWithAccounts(
       server.keptAccount += 1;
       return route.fulfill({ json: { ...ADA, operator: server.operator } });
     }
-    return route.fallback();
+    const { password } = route.request().postDataJSON();
+    if (password !== server.password) {
+      return refusing(route, 422, "password-wrong");
+    }
+    if (server.toHandOver.length > 0) {
+      return route.fulfill({
+        status: 409,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          type: "projects-to-hand-over",
+          status: 409,
+          detail: "projects-to-hand-over",
+          projects: server.toHandOver,
+        }),
+      });
+    }
+    server.deletion = {
+      until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      by: "holder",
+    };
+    server.signedIn = false;
+    return route.fulfill({ json: server.deletion });
   });
   await page.route(at("/api/invitations/decline"), async (route) => {
     const { token } = route.request().postDataJSON();

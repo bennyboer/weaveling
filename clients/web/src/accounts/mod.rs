@@ -14,6 +14,7 @@ pub mod service;
 pub mod sign_in;
 pub mod unreachable;
 mod ways_in_dialog;
+pub mod your_account;
 
 pub use account_menu::account_in_masthead;
 pub use recovery_note::recovery_note;

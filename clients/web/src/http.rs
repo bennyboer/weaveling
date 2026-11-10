@@ -50,6 +50,7 @@ pub struct Refusal {
 pub enum Particular {
     Count(i64),
     Text(String),
+    Texts(Vec<String>),
 }
 
 pub(crate) fn made_on(request: RequestBuilder, version: u64) -> RequestBuilder {
@@ -141,6 +142,12 @@ fn refusal_from(mut told: Map<String, Value>) -> Option<Refusal> {
             let particular = match value {
                 Value::Number(count) => Particular::Count(count.as_i64()?),
                 Value::String(text) => Particular::Text(text),
+                Value::Array(listed) => Particular::Texts(
+                    listed
+                        .into_iter()
+                        .map(|each| each.as_str().map(str::to_owned))
+                        .collect::<Option<_>>()?,
+                ),
                 _ => return None,
             };
 

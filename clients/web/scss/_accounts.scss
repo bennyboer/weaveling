@@ -104,6 +104,64 @@
   margin-bottom: 1.25rem;
 }
 
+.your-account {
+  .who-you-are {
+    margin: 1.5rem 0 0.75rem;
+
+    > div {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      border-top: 1px solid var(--line);
+
+      &:last-child {
+        border-bottom: 1px solid var(--line);
+      }
+    }
+
+    dt {
+      flex: 1;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+
+  .deleting {
+    margin-top: 2rem;
+
+    h2 {
+      margin-bottom: 0.25rem;
+    }
+  }
+}
+
+.dialog.handing-over .to-hand-over {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+
+  li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.75rem 0.9rem;
+
+    + li {
+      border-top: 1px solid var(--line);
+    }
+
+    span {
+      flex: 1;
+    }
+  }
+}
+
 .signing-in.deletion-pending {
   display: flex;
   flex-direction: column;

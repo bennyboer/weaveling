@@ -66,6 +66,11 @@ fn account_menu(
                             .class("account-email")
                             .child(account.email.clone()),
                         html::hr(),
+                        view! {
+                            <A href=route::ACCOUNT attr:role="menuitem">
+                                {speech::said("your-account-heading")}
+                            </A>
+                        },
                         (session.totp_offered()
                             || session.keys_offered()
                             || account.second_factor.is_some())

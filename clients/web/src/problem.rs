@@ -62,6 +62,7 @@ fn refused(refusal: &Refusal, speech: Speech) -> String {
         match particular {
             Particular::Count(count) => args.set(name.clone(), *count),
             Particular::Text(text) => args.set(name.clone(), text.clone()),
+            Particular::Texts(texts) => args.set(name.clone(), texts.join(", ")),
         }
     }
 
