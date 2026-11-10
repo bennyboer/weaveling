@@ -1,5 +1,6 @@
 mod account_menu;
 mod authenticator;
+mod deletion_dialog;
 pub mod deletion_pending;
 pub mod invitation;
 mod key_dialogs;

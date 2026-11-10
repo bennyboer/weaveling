@@ -48,6 +48,8 @@ export type Listed = {
   second_factor?: boolean;
   ways?: WaysIn;
   version?: number;
+  deletion?: { until: string; by: "holder" | "operator" };
+  toHandOver?: string[];
 };
 
 export type WaysIn = {
@@ -977,6 +979,39 @@ export async function aServerWithAccounts(
       ways.keys.splice(at, 1);
       secondStepLeft(account);
       return route.fulfill({ status: 204 });
+    },
+  );
+  await page.route(
+    (url) =>
+      /^\/api\/instance\/accounts\/[^/]+\/deletion$/.test(url.pathname),
+    async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const account = server.listed.find((listed) => listed.id === id);
+      if (!account) {
+        return refusing(route, 404, "account-not-found");
+      }
+      if (route.request().method() === "DELETE") {
+        delete account.deletion;
+        return route.fulfill({ status: 204 });
+      }
+      if ((account.toHandOver ?? []).length > 0) {
+        return route.fulfill({
+          status: 409,
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            type: "projects-to-hand-over",
+            status: 409,
+            detail: "projects-to-hand-over",
+            projects: account.toHandOver,
+          }),
+        });
+      }
+      account.deletion ??= {
+        until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        by: "operator",
+      };
+      account.operator = false;
+      return route.fulfill({ json: account.deletion });
     },
   );
   await page.route(

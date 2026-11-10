@@ -55,9 +55,6 @@ fn overview(session: CurrentSession, account: SignedInAccount) -> impl IntoView 
 
     (
         html::h1().child(speech::said("your-account-heading")),
-        html::p()
-            .class("hint")
-            .child(speech::said("your-account-hint")),
         html::dl().class("who-you-are").child((
             html::div().child((
                 html::dt().child(speech::said("sign-up-name")),

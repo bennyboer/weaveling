@@ -1,6 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { ADA, HER_PASSWORD, aServerWithAccounts, signIn } from "./support/accounts";
+import {
+  ADA,
+  GRACE,
+  HER_PASSWORD,
+  aServerWithAccounts,
+  signIn,
+  type Server,
+} from "./support/accounts";
 import { API } from "./support/shell";
 
 async function onHerAccountPage(page: Page) {
@@ -152,4 +159,82 @@ test("the last owner of a shared project is shown it to hand over first, linking
   );
   // and: her account is not to be deleted
   expect(server.deletion).toBeNull();
+});
+
+async function anOperatorAmongOthers(page: Page): Promise<Server> {
+  const server = await aServerWithAccounts(page);
+  server.operator = true;
+  server.listed = [{ ...GRACE, locks: [] }];
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(
+    page.getByRole("banner").getByRole("button", { name: "Account: Ada Lovelace" }),
+  ).toBeVisible();
+  await page.goto("/instance");
+
+  return server;
+}
+
+const row = (page: Page, name: string) => page.getByRole("listitem").filter({ hasText: name });
+
+async function offered(page: Page, name: string, action: string) {
+  const opening = row(page, name).getByRole("button", { name: `Actions for ${name}` });
+  if ((await opening.getAttribute("aria-expanded")) !== "true") {
+    await opening.page().keyboard.press("Escape");
+    await opening.click();
+  }
+
+  return row(page, name).getByRole("menuitem", { name: action });
+}
+
+test("the operator deletes another account, which shows when it goes until they keep it", async ({
+  page,
+}) => {
+  // given: an operator looking at the accounts
+  const server = await anOperatorAmongOthers(page);
+
+  // when: they delete another account, sure of it
+  await (await offered(page, "Grace Hopper", "Delete account…")).click();
+  const asking = page.getByRole("dialog", { name: "Delete Grace Hopper’s account?" });
+  await expect(asking).toContainText("Their account is kept 30 days");
+  await asking.getByRole("button", { name: "Delete the account" }).click();
+
+  // then: the account shows when it goes
+  await expect(asking).toHaveCount(0);
+  await expect(row(page, "Grace Hopper")).toContainText("To be deleted on");
+  expect(server.listed[0].deletion?.by).toBe("operator");
+
+  // when: they keep it after all
+  await (await offered(page, "Grace Hopper", "Keep this account")).click();
+
+  // then: it no longer shows to be deleted
+  await expect(row(page, "Grace Hopper")).not.toContainText("To be deleted on");
+  expect(server.listed[0].deletion).toBeUndefined();
+});
+
+test("the operator is offered no deleting of their own account here", async ({ page }) => {
+  // given: an operator looking at the accounts
+  await anOperatorAmongOthers(page);
+
+  // expect: their own account offers no deleting
+  await expect(await offered(page, "Ada Lovelace", "Delete account…")).toHaveCount(0);
+});
+
+test("an account still the last owner of a shared project is refused, saying so", async ({
+  page,
+}) => {
+  // given: an operator, and an account the last owner of a project others are in
+  const server = await anOperatorAmongOthers(page);
+  server.listed[0].toHandOver = ["project_1"];
+
+  // when: they delete it
+  await (await offered(page, "Grace Hopper", "Delete account…")).click();
+  const asking = page.getByRole("dialog", { name: "Delete Grace Hopper’s account?" });
+  await asking.getByRole("button", { name: "Delete the account" }).click();
+
+  // then: they are told it is hers to hand over first
+  await expect(asking).toContainText(
+    "Grace Hopper is the last owner of projects others are in. They hand them over first.",
+  );
+  expect(server.listed[0].deletion).toBeUndefined();
 });

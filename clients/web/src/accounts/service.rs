@@ -313,6 +313,28 @@ fn role(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/operator")
 }
 
+fn deleted(id: &str) -> String {
+    format!("{INSTANCE_ACCOUNTS}/{id}/deletion")
+}
+
+pub async fn mark_for_deletion(id: &str, on: u64) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(http::made_on(Request::put(&deleted(id)), on)).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn keep_account_of(id: &str, on: u64) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(http::made_on(Request::delete(&deleted(id)), on)).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
 fn locked(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }

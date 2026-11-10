@@ -104,7 +104,14 @@
   margin-bottom: 1.25rem;
 }
 
-.your-account {
+.operating .accounts .mark.leaving {
+  border-color: var(--danger, #b5654f);
+  color: var(--danger, #e39a84);
+}
+
+.operating.your-account {
+  width: min(32rem, 100% - 2rem);
+
   .who-you-are {
     margin: 1.5rem 0 0.75rem;
 
@@ -136,12 +143,16 @@
     h2 {
       margin-bottom: 0.25rem;
     }
+
+    .hint {
+      margin: 0 0 1rem;
+    }
   }
 }
 
 .dialog.handing-over .to-hand-over {
   list-style: none;
-  margin: 0;
+  margin: 0 0 1.5rem;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;

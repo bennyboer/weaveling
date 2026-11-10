@@ -112,7 +112,11 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
         ["trash"] => vec![said("trash-heading", None)],
         ["invitation"] => vec![said("path-invitation", None)],
         ["setup"] => vec![said("set-up-heading", None)],
-        ["account", "security"] => vec![said("path-account", None), said("security-heading", None)],
+        ["account"] => vec![said("path-account", None)],
+        ["account", "security"] => vec![
+            said("path-account", Some(route::ACCOUNT.to_owned())),
+            said("security-heading", None),
+        ],
         ["instance", rest @ ..] => {
             let manage = said("account-menu-operator", Some("/instance".to_owned()));
             match rest {
@@ -244,6 +248,24 @@ mod tests {
                 Label::Home,
                 Label::Said("account-menu-operator"),
                 Label::Said("instance-invitations-heading"),
+            ]
+        );
+    }
+
+    #[test]
+    fn one_s_account_is_found_and_security_lies_under_it() {
+        // expect: one's account on its own
+        assert_eq!(
+            labels("/account"),
+            vec![Label::Home, Label::Said("path-account")]
+        );
+        // and: security under it
+        assert_eq!(
+            labels("/account/security"),
+            vec![
+                Label::Home,
+                Label::Said("path-account"),
+                Label::Said("security-heading"),
             ]
         );
     }

@@ -40,6 +40,7 @@ async function offered(page: Page, name: string, action: string) {
     name: `Actions for ${name}`,
   });
   if ((await opening.getAttribute("aria-expanded")) !== "true") {
+    await opening.page().keyboard.press("Escape");
     await opening.click();
   }
 

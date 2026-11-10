@@ -1,7 +1,8 @@
-use accounts_contract::{AccountPageDTO, AccountSummaryDTO, lock_kind};
+use accounts_contract::{AccountPageDTO, AccountSummaryDTO, deletion_asked_by, lock_kind};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::accounts::PendingDeletion;
 use crate::http::ApiError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub struct ListedAccount {
     pub signed_up_at: OffsetDateTime,
     pub lock: Option<OperatorLock>,
     pub second_factor: bool,
+    pub deletion: Option<PendingDeletion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +58,15 @@ fn listed(summary: AccountSummaryDTO) -> Result<ListedAccount, ApiError> {
         signed_up_at: moment(&summary.signed_up_at)?,
         lock,
         second_factor: summary.second_factor,
+        deletion: summary
+            .deletion
+            .map(|deletion| {
+                Ok::<_, ApiError>(PendingDeletion {
+                    until: moment(&deletion.until)?,
+                    by_the_operator: deletion.by == deletion_asked_by::OPERATOR,
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -95,6 +106,31 @@ mod tests {
     }
 
     #[test]
+    fn an_account_to_be_deleted_is_listed_with_its_day_and_who_asked() {
+        // when: an account the operator marked is read
+        let page = AccountPage::of(AccountPageDTO {
+            accounts: vec![AccountSummaryDTO {
+                deletion: Some(accounts_contract::DeletionDTO {
+                    until: "2026-12-09T10:00:00Z".to_owned(),
+                    by: deletion_asked_by::OPERATOR.to_owned(),
+                }),
+                ..an_account_of_ada(Vec::new())
+            }],
+            next: None,
+        })
+        .expect("a page the server sends is readable");
+
+        // then: it is listed to be deleted on its day, as the operator asked
+        assert_eq!(
+            page.accounts[0].deletion,
+            Some(PendingDeletion {
+                until: datetime!(2026-12-09 10:00 UTC),
+                by_the_operator: true,
+            })
+        );
+    }
+
+    #[test]
     fn an_account_is_listed_as_the_server_told_it() {
         // when: a page of one account the operator locked is read
         let page = AccountPage::of(AccountPageDTO {
@@ -124,6 +160,7 @@ mod tests {
                         since: datetime!(2026-10-23 09:30 UTC),
                     }),
                     second_factor: false,
+                    deletion: None,
                 }],
                 next: Some("account_1".to_owned()),
             }

@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use leptos::task;
 use time::OffsetDateTime;
 
+use crate::accounts::PendingDeletion;
 use crate::accounts::listed::{ListedAccount, OperatorLock};
 use crate::accounts::service;
 use crate::http::ApiError;
@@ -22,6 +23,10 @@ pub(super) enum Intent {
     Dismiss,
     TurnOffSecondFactor,
     RemoveKey(String),
+    MarkForDeletion {
+        until: OffsetDateTime,
+    },
+    Keep,
 }
 
 #[derive(Clone, Copy)]
@@ -33,6 +38,7 @@ pub(super) struct Roster {
     pub(super) locking: RwSignal<Option<ListedAccount>>,
     pub(super) changing_role: RwSignal<Option<ListedAccount>>,
     pub(super) seeing_ways_in: RwSignal<Option<ListedAccount>>,
+    pub(super) deleting: RwSignal<Option<ListedAccount>>,
     pub(super) menu: RwSignal<Option<String>>,
 }
 
@@ -50,6 +56,10 @@ impl Roster {
                     Intent::Dismiss => service::dismiss_operator(&id, on.version).await?,
                     Intent::TurnOffSecondFactor => service::remove_totp(&id, on.version).await?,
                     Intent::RemoveKey(key) => service::remove_key_of(&id, key, on.version).await?,
+                    Intent::MarkForDeletion { .. } => {
+                        service::mark_for_deletion(&id, on.version).await?
+                    }
+                    Intent::Keep => service::keep_account_of(&id, on.version).await?,
                 }
 
                 Ok(answered(
@@ -69,6 +79,7 @@ impl Roster {
             locking: RwSignal::new(None),
             changing_role: RwSignal::new(None),
             seeing_ways_in: RwSignal::new(None),
+            deleting: RwSignal::new(None),
             menu: RwSignal::new(None),
         };
         roster.load(None);
@@ -132,6 +143,11 @@ impl Roster {
         self.refused.set(None);
         self.accounts.intend(&id, Intent::Unlock);
     }
+
+    pub(super) fn keep(self, id: String) {
+        self.refused.set(None);
+        self.accounts.intend(&id, Intent::Keep);
+    }
 }
 
 impl Versioned for ListedAccount {
@@ -153,6 +169,14 @@ impl working_copy::Intent<ListedAccount> for Intent {
             Self::Appoint => account.operator = true,
             Self::Dismiss => account.operator = false,
             Self::TurnOffSecondFactor | Self::RemoveKey(_) => {}
+            Self::MarkForDeletion { until } => {
+                account.operator = false;
+                account.deletion = Some(PendingDeletion {
+                    until: *until,
+                    by_the_operator: true,
+                });
+            }
+            Self::Keep => account.deletion = None,
         }
     }
 
@@ -204,6 +228,7 @@ mod tests {
             signed_up_at: datetime!(2026-10-23 08:00 UTC),
             lock,
             second_factor: true,
+            deletion: None,
         }
     }
 
@@ -263,6 +288,26 @@ mod tests {
         // expect: turning the app off or removing a key, another way may still answer it
         assert!(shown(stepping.clone(), &Intent::TurnOffSecondFactor).second_factor);
         assert!(shown(stepping, &Intent::RemoveKey("key_blue".to_owned())).second_factor);
+    }
+
+    #[test]
+    fn an_account_marked_shows_to_be_deleted_as_the_operator_asked_and_no_operator_and_kept_shows_neither()
+     {
+        // when: an operator is marked to be deleted
+        let until = datetime!(2026-12-09 10:00 UTC);
+        let marked = shown(grace(true, None), &Intent::MarkForDeletion { until });
+
+        // then: it shows to be deleted on its day, asked by the operator, and no operator any more
+        assert_eq!(
+            marked.deletion,
+            Some(PendingDeletion {
+                until,
+                by_the_operator: true,
+            })
+        );
+        assert!(!marked.operator);
+        // and: kept, it shows no deletion
+        assert_eq!(shown(marked, &Intent::Keep).deletion, None);
     }
 
     #[test]
