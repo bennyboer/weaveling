@@ -141,6 +141,21 @@ impl ProjectService {
             .await
     }
 
+    pub async fn delete_abandoned(
+        &self,
+        transaction: &mut Transaction,
+        id: &ProjectId,
+    ) -> Result<Version, ProjectsError> {
+        self.carry_out(
+            transaction,
+            id,
+            ProjectCommand::DeleteAbandoned,
+            None,
+            &Agent::System,
+        )
+        .await
+    }
+
     async fn carry_out(
         &self,
         transaction: &mut Transaction,

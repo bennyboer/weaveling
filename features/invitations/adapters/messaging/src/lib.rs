@@ -16,5 +16,5 @@ pub use declining::DeclineInvitationListener;
 pub use mailing::MailIssuedInvitationListener;
 pub use naming::RememberProjectNamesListener;
 pub use publishing::message_for;
-pub use remembering::RememberWhoSignedUpListener;
+pub use remembering::{ForgetDeletedAccountListener, RememberWhoSignedUpListener};
 pub use sweeping::{SWEEP_PROJECT, SweepProjectDTO, WithdrawInvitationsOfDeletedProjectListener};

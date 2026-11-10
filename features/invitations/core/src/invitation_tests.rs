@@ -429,6 +429,16 @@ fn an_invitation_retires_once_however_it_stands() {
         let mut retired = invitation.clone();
         retired.apply(&retiring[0], &stamped(3, clock::at(3_000)));
         assert!(retired.is_retired());
+        // and: it keeps no address
+        assert_eq!(retired.to().as_str(), "deleted@invitation.invalid");
+        assert_eq!(
+            Invitation::from_first(&retired.snapshot(), &stamped(4, clock::at(4_000)))
+                .expect("a snapshot gives birth")
+                .to()
+                .as_str(),
+            "deleted@invitation.invalid",
+            "nor does its snapshot"
+        );
         assert_eq!(
             retired.outcome(),
             invitation.outcome(),

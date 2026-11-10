@@ -9,6 +9,7 @@ use eventsourcing::Version;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 use transacting::Transaction;
 use transacting::sqlite::connection;
 
@@ -46,17 +47,51 @@ const OWNER: &str = "owner";
 const MEMBER: &str = "member";
 
 const REMEMBER_HOLDING: &str = "
-    INSERT INTO project_holdings (project, account, version, held)
-    VALUES (?1, ?2, ?3, ?4)
+    INSERT INTO project_holdings (project, account, version, held, gone_at)
+    VALUES (?1, ?2, ?3, ?4, ?5)
     ON CONFLICT (project, account) DO UPDATE
-    SET version = excluded.version, held = excluded.held
+    SET version = excluded.version, held = excluded.held, gone_at = excluded.gone_at
     WHERE project_holdings.version < excluded.version
 ";
 
 const REMEMBER_DISBANDED: &str = "
-    INSERT INTO disbanded_projects (project, version)
-    VALUES (?1, ?2)
+    INSERT INTO disbanded_projects (project, version, laid_at)
+    VALUES (?1, ?2, ?3)
     ON CONFLICT (project) DO NOTHING
+";
+
+const OLD_DISBANDED: &str = "
+    SELECT project FROM disbanded_projects
+    WHERE laid_at < ?1
+    ORDER BY laid_at, project
+    LIMIT ?2
+";
+
+const FORGET_HOLDINGS_IN_OLD_DISBANDED: &str = "
+    DELETE FROM project_holdings WHERE project IN (
+        SELECT project FROM disbanded_projects
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
+";
+
+const FORGET_OLD_DISBANDED: &str = "
+    DELETE FROM disbanded_projects WHERE project IN (
+        SELECT project FROM disbanded_projects
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
+";
+
+const FORGET_OLD_GONE: &str = "
+    DELETE FROM project_holdings WHERE (project, account) IN (
+        SELECT project, account FROM project_holdings
+        WHERE gone_at < ?1
+        ORDER BY gone_at, project, account
+        LIMIT ?2
+    )
 ";
 
 const PROJECTS_TO_HAND_OVER: &str = "
@@ -202,12 +237,14 @@ impl AccountCatalog for SqliteAccountCatalog {
         account: &AccountId,
         version: Version,
         held: Option<InProject>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_HOLDING)
             .bind(project)
             .bind(account.to_string())
             .bind(i64::try_from(version.count()).map_err(unreachable)?)
             .bind(held_named(held))
+            .bind(held.is_none().then(|| text::written(at)))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
@@ -220,15 +257,50 @@ impl AccountCatalog for SqliteAccountCatalog {
         transaction: &mut Transaction,
         project: &str,
         version: Version,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_DISBANDED)
             .bind(project)
             .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(text::written(at))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let at_most = i64::try_from(at_most).map_err(unreachable)?;
+        let disbanded = sqlx::query_scalar::<_, String>(OLD_DISBANDED)
+            .bind(text::written(before))
+            .bind(at_most)
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .len();
+        for forgetting in [FORGET_HOLDINGS_IN_OLD_DISBANDED, FORGET_OLD_DISBANDED] {
+            sqlx::query(forgetting)
+                .bind(text::written(before))
+                .bind(at_most)
+                .execute(connection(transaction).map_err(unreachable)?)
+                .await
+                .map_err(unreachable)?;
+        }
+        let gone = sqlx::query(FORGET_OLD_GONE)
+            .bind(text::written(before))
+            .bind(at_most)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(u64::try_from(disbanded).map_err(unreachable)? + gone)
     }
 
     async fn remember_trash(

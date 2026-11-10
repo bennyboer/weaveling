@@ -134,6 +134,14 @@ impl InvitationCatalog for TellingInvitations {
         self.kept.people(accounts).await
     }
 
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget_person(transaction, account).await
+    }
+
     async fn remember_project_name(
         &self,
         transaction: &mut Transaction,

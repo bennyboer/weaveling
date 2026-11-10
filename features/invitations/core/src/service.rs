@@ -148,7 +148,12 @@ impl InvitationService {
             None,
             agent,
         )
-        .await
+        .await?;
+        self.events
+            .compact(transaction, &AggregateId::from(invitation), agent)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn accept(

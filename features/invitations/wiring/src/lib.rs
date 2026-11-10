@@ -9,8 +9,9 @@ use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
-    MailIssuedInvitationListener, RememberProjectNamesListener, RememberWhoSignedUpListener,
-    WithdrawIfProjectGoneListener, WithdrawInvitationsOfDeletedProjectListener,
+    ForgetDeletedAccountListener, MailIssuedInvitationListener, RememberProjectNamesListener,
+    RememberWhoSignedUpListener, WithdrawIfProjectGoneListener,
+    WithdrawInvitationsOfDeletedProjectListener,
 };
 use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
@@ -208,6 +209,7 @@ impl Feature for InvitationFeature {
                 ))),
                 Arc::new(hearing.inboxed(WithdrawIfProjectGoneListener::new(invitations.clone()))),
                 Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(ForgetDeletedAccountListener::new(invitations.clone()))),
                 Arc::new(hearing.inboxed(RememberProjectNamesListener::new(
                     invitations.clone(),
                     ports.outbox.clone(),
@@ -418,7 +420,7 @@ mod tests {
             .expect("reading should succeed");
         assert!(matches!(
             told.last().map(|recorded| &recorded.event),
-            Some(InvitationEvent::Retired)
+            Some(InvitationEvent::Snapshotted { retired: true, .. })
         ));
         assert_eq!(
             told.last().map(|recorded| &recorded.metadata.agent),
@@ -444,6 +446,7 @@ mod tests {
             "catalogue-invitation",
             "withdraw-invitation-if-project-gone",
             "invitations-remember-who-signed-up",
+            "invitations-forget-deleted-account",
             "remember-project-names",
             "withdraw-invitations-of-deleted-project",
         ] {

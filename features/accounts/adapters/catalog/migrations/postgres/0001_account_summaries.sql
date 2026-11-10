@@ -15,14 +15,18 @@ CREATE TABLE project_holdings (
     account       TEXT COLLATE "C" NOT NULL,
     version       BIGINT           NOT NULL,
     held          TEXT,
+    gone_at       TIMESTAMPTZ,
     PRIMARY KEY (project, account)
 );
 
 CREATE INDEX project_holdings_by_account ON project_holdings (account, project);
 
+CREATE INDEX project_holdings_by_gone_at ON project_holdings (gone_at);
+
 CREATE TABLE disbanded_projects (
     project       TEXT COLLATE "C" PRIMARY KEY,
-    version       BIGINT           NOT NULL
+    version       BIGINT           NOT NULL,
+    laid_at       TIMESTAMPTZ      NOT NULL
 );
 
 CREATE TABLE trashed_projects (

@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod abandoning;
+
+#[cfg(test)]
 mod project_cataloguing;
 
 #[cfg(test)]

@@ -27,6 +27,7 @@ pub struct MembersCore {
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn MembershipCatalog>,
     authorizer: Arc<dyn Authorizer>,
+    clock: Arc<dyn Clock>,
 }
 
 impl MembersCore {
@@ -38,10 +39,11 @@ impl MembersCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: MembersService::new(store, clock),
+            service: MembersService::new(store, clock.clone()),
             transactions,
             catalog,
             authorizer,
+            clock,
         }
     }
 
@@ -243,10 +245,26 @@ impl MembersCore {
     ) -> Result<(), MembersCoreError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog
-                .remember_leaving(transaction, account, version, until)
+                .remember_leaving(transaction, account, version, until, self.clock.now())
                 .await?;
 
             Ok(())
+        })
+    }
+
+    /// Forgets the accounts no longer leaving since before then, once no word about their leaving may be retried.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, MembersCoreError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_leaving_settled_before(transaction, before, at_most)
+                .await?;
+
+            Ok::<_, MembersCoreError>(forgotten)
         })
     }
 
@@ -284,7 +302,7 @@ impl MembersCore {
             }
             self.catalog.forget_person(transaction, account).await?;
             self.catalog
-                .remember_leaving(transaction, account, version, None)
+                .remember_leaving(transaction, account, version, None, self.clock.now())
                 .await?;
 
             Ok(())

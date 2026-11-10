@@ -13,7 +13,7 @@ use accounts_messaging::{
 };
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
-use chores::Chore;
+use chores::{Chore, ForgetOldTombstones};
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use mailing::{LoggingMailer, Mailer};
@@ -67,6 +67,21 @@ fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     vec![
         Arc::new(hearing.forgetting("forget-old-account-hearings", context.clock.clone())),
+        Arc::new(ForgetOldTombstones::new(
+            "forget-old-account-tombstones",
+            chores::tombstones_by({
+                let accounts = core(ports, context);
+                move |before, at_most| {
+                    let accounts = accounts.clone();
+                    async move {
+                        accounts
+                            .forget_tombstones_laid_before(before, at_most)
+                            .await
+                    }
+                }
+            }),
+            context.clock.clone(),
+        )),
         Arc::new(PurgeTheTrash::new(
             "sweep-deleted-accounts",
             ports.trash.clone(),

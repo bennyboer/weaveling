@@ -10,7 +10,7 @@ use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
 use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
-use projects_messaging::CatalogueProjectsListener;
+use projects_messaging::{CatalogueProjectsListener, DeleteAbandonedProjectListener};
 use transacting::Transactions;
 use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -60,6 +60,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![
             Arc::new(broadcast),
             Arc::new(hearing.inboxed(CatalogueProjectsListener::new(projects.clone()))),
+            Arc::new(hearing.inboxed(DeleteAbandonedProjectListener::new(projects.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(PurgeTheTrash::new(

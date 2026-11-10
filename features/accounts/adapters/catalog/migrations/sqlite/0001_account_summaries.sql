@@ -15,14 +15,18 @@ CREATE TABLE project_holdings (
     account       TEXT    NOT NULL,
     version       INTEGER NOT NULL,
     held          TEXT,
+    gone_at       TEXT,
     PRIMARY KEY (project, account)
 );
 
 CREATE INDEX project_holdings_by_account ON project_holdings (account, project);
 
+CREATE INDEX project_holdings_by_gone_at ON project_holdings (gone_at);
+
 CREATE TABLE disbanded_projects (
     project       TEXT    PRIMARY KEY,
-    version       INTEGER NOT NULL
+    version       INTEGER NOT NULL,
+    laid_at       TEXT    NOT NULL
 );
 
 CREATE TABLE trashed_projects (

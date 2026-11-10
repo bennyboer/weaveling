@@ -64,11 +64,20 @@ const FORGET_TRASH: &str = "DELETE FROM project_trash WHERE project = $1";
 const IN_THE_TRASH: &str = "SELECT in_the_trash FROM project_trash WHERE project = $1";
 
 const REMEMBER_LEAVING: &str = "
-    INSERT INTO leaving_accounts (account, version, until)
-    VALUES ($1, $2, $3)
+    INSERT INTO leaving_accounts (account, version, until, settled_at)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (account) DO UPDATE
-    SET version = EXCLUDED.version, until = EXCLUDED.until
+    SET version = EXCLUDED.version, until = EXCLUDED.until, settled_at = EXCLUDED.settled_at
     WHERE leaving_accounts.version < EXCLUDED.version
+";
+
+const FORGET_SETTLED_LEAVING: &str = "
+    DELETE FROM leaving_accounts WHERE account IN (
+        SELECT account FROM leaving_accounts
+        WHERE settled_at < $1
+        ORDER BY settled_at, account
+        LIMIT $2
+    )
 ";
 
 const LEAVING: &str = "
@@ -260,16 +269,33 @@ impl MembershipCatalog for PostgresMembershipCatalog {
         account: &AccountId,
         version: Version,
         until: Option<OffsetDateTime>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_LEAVING)
             .bind(account.as_str())
             .bind(i64::try_from(version.count()).map_err(unreachable)?)
             .bind(until)
+            .bind(until.is_none().then_some(at))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_leaving_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_SETTLED_LEAVING)
+            .bind(before)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {

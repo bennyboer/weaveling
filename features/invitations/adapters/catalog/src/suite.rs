@@ -107,6 +107,18 @@ impl<C: InvitationCatalog> Committing<'_, C> {
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
+    pub async fn forget_person(&self, account: &AccountId) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_person(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
     pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
@@ -739,6 +751,28 @@ pub async fn the_people_asked_for_are_told_by_account_and_no_others(
     );
 }
 
+pub async fn a_person_forgotten_is_known_no_more_and_nobody_else_with_them(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    // given: two people known
+    known(catalog, &a_person("account_ada", "Ada", "ada@example.com")).await;
+    known(catalog, &a_person("account_bo", "Bo", "bo@example.com")).await;
+
+    // when: one is forgotten, twice
+    for _ in 0..2 {
+        catalog
+            .forget_person(&AccountId::from("account_ada"))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    // then: the other alone is known
+    assert_eq!(
+        people(catalog, &["account_ada", "account_bo"]).await,
+        vec![a_person("account_bo", "Bo", "bo@example.com")]
+    );
+}
+
 pub async fn a_person_told_again_is_known_as_last_told(
     catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
@@ -1273,6 +1307,10 @@ macro_rules! conformance_tests {
             the_people_asked_for_are_told_by_account_and_no_others
         );
         $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_person_forgotten_is_known_no_more_and_nobody_else_with_them
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             the_project_names_asked_for_are_told_by_project_and_no_others

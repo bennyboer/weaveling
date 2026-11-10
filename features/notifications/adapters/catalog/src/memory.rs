@@ -165,6 +165,32 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
             .collect())
     }
 
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.people
+            .write()
+            .expect("notice catalog lock poisoned")
+            .remove(account);
+
+        Ok(())
+    }
+
+    async fn notices_of(&self, account: &AccountId) -> Result<Vec<NoticeId>, CatalogError> {
+        let mut theirs: Vec<NoticeId> = self
+            .read()
+            .values()
+            .filter(|summary| &summary.account == account)
+            .map(|summary| summary.id)
+            .collect();
+        theirs.sort();
+
+        Ok(theirs)
+    }
+
     async fn remember_project_name(
         &self,
         transaction: &mut Transaction,

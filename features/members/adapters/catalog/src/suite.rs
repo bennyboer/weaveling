@@ -101,13 +101,41 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         version: u64,
         until: Option<OffsetDateTime>,
     ) -> Result<(), CatalogError> {
+        self.remember_leaving_at(account, version, until, OffsetDateTime::UNIX_EPOCH)
+            .await
+    }
+
+    pub async fn remember_leaving_at(
+        &self,
+        account: &AccountId,
+        version: u64,
+        until: Option<OffsetDateTime>,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
-                .remember_leaving(transaction, account, Version::of(version), until)
+                .remember_leaving(transaction, account, Version::of(version), until, at)
                 .await
                 .map_err(Tried::Refused)?;
 
             Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn forget_leaving_settled_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_leaving_settled_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(forgotten)
         })
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
@@ -719,6 +747,7 @@ pub async fn leaving_told_in_a_dropped_transaction_was_never_heard(
             &ada(),
             Version::of(7),
             Some(on_the_day(1_800_000_000)),
+            OffsetDateTime::UNIX_EPOCH,
         )
         .await
         .expect("remembering should succeed");
@@ -728,6 +757,75 @@ pub async fn leaving_told_in_a_dropped_transaction_was_never_heard(
 
     // then: she is not leaving
     assert!(leaving(catalog.uncommitted(), &[ada()]).await.is_empty());
+}
+
+pub async fn accounts_no_longer_leaving_long_ago_are_forgotten_and_none_still_leaving(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: ada kept long ago, grace kept lately, hedy still leaving since long ago
+    catalog
+        .remember_leaving_at(&ada(), 8, None, clock::at(1_000))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_leaving_at(&grace(), 8, None, clock::at(5_000))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_leaving_at(
+            &hedy(),
+            3,
+            Some(on_the_day(1_800_000_000)),
+            clock::at(1_000),
+        )
+        .await
+        .expect("remembering should succeed");
+
+    // when: what settled before a moment between is forgotten
+    let forgotten = catalog
+        .forget_leaving_settled_before(clock::at(3_000), 10)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: ada's keeping alone is forgotten
+    assert_eq!(forgotten, 1);
+    // and: it no longer guards against the asking it undid, heard late
+    catalog
+        .remember_leaving(&ada(), 7, Some(on_the_day(1_800_000_000)))
+        .await
+        .expect("remembering should succeed");
+    assert_eq!(leaving(catalog.uncommitted(), &[ada()]).await.len(), 1);
+    // and: grace's still does
+    catalog
+        .remember_leaving(&grace(), 7, Some(on_the_day(1_800_000_000)))
+        .await
+        .expect("remembering should succeed");
+    assert!(leaving(catalog.uncommitted(), &[grace()]).await.is_empty());
+    // and: hedy is still leaving
+    assert_eq!(leaving(catalog.uncommitted(), &[hedy()]).await.len(), 1);
+}
+
+pub async fn accounts_no_longer_leaving_are_forgotten_no_more_than_asked_at_a_time(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: three accounts kept long ago
+    for (account, seconds) in [(ada(), 1_000), (grace(), 2_000), (hedy(), 3_000)] {
+        catalog
+            .remember_leaving_at(&account, 8, None, clock::at(seconds))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // expect: they are forgotten two at a time
+    for expected in [2, 1] {
+        assert_eq!(
+            catalog
+                .forget_leaving_settled_before(clock::at(9_000), 2)
+                .await
+                .expect("forgetting should succeed"),
+            expected
+        );
+    }
 }
 
 #[macro_export]
@@ -798,6 +896,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             leaving_told_in_a_dropped_transaction_was_never_heard
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            accounts_no_longer_leaving_long_ago_are_forgotten_and_none_still_leaving
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            accounts_no_longer_leaving_are_forgotten_no_more_than_asked_at_a_time
         );
     };
 }

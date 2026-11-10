@@ -60,7 +60,7 @@ pub trait AccountCatalog: Send + Sync {
         account: &AccountId,
     ) -> Result<(), CatalogError>;
 
-    /// Remembers what an account is in a project, none where it is gone, by the members' version, so an older word heard late changes nothing, a join after the removal it preceded among them.
+    /// Remembers what an account is in a project, none where it is gone, as of when, by the members' version, so an older word heard late changes nothing, a join after the removal it preceded among them.
     async fn remember_holding(
         &self,
         transaction: &mut Transaction,
@@ -68,15 +68,25 @@ pub trait AccountCatalog: Send + Sync {
         account: &AccountId,
         version: Version,
         held: Option<InProject>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Remembers a project's members disbanded, its project deleted: nobody holds anything in it any more.
+    /// Remembers a project's members disbanded, its project deleted, as of when: nobody holds anything in it any more.
     async fn remember_disbanded(
         &self,
         transaction: &mut Transaction,
         project: &str,
         version: Version,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
+
+    /// Forgets, at most so many of each, the projects disbanded before then with everything held in them, and the members gone before then: once no word about them may be retried, nothing is left for them to guard against.
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     /// Remembers whether a project is in the trash, by the project's version, so an older word heard late changes nothing.
     async fn remember_trash(

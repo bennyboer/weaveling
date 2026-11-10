@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::Authorizer;
+use chores::ForgetOldTombstones;
 use clock::Clock;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -194,7 +195,7 @@ impl Feature for MembersFeature {
                     hearing.inboxed(DisbandMembersOfDeletedProjectListener::new(members.clone())),
                 ),
                 Arc::new(hearing.inboxed(RememberTrashedProjectsListener::new(members.clone()))),
-                Arc::new(hearing.inboxed(CatalogueMembersListener::new(members))),
+                Arc::new(hearing.inboxed(CatalogueMembersListener::new(members.clone()))),
                 Arc::new(BroadcastChangesListener::new(
                     LIVE,
                     EVERY_MEMBERS,
@@ -202,9 +203,17 @@ impl Feature for MembersFeature {
                     |_| vec![members_rest::MembershipChanges],
                 )),
             ])
-            .doing_chores(vec![Arc::new(
-                hearing.forgetting("forget-old-member-hearings", context.clock.clone()),
-            )])
+            .doing_chores(vec![
+                Arc::new(hearing.forgetting("forget-old-member-hearings", context.clock.clone())),
+                Arc::new(ForgetOldTombstones::new(
+                    "forget-old-member-tombstones",
+                    chores::tombstones_by(move |before, at_most| {
+                        let members = members.clone();
+                        async move { members.forget_tombstones_laid_before(before, at_most).await }
+                    }),
+                    context.clock.clone(),
+                )),
+            ])
     }
 }
 
@@ -303,7 +312,7 @@ mod tests {
                 .iter()
                 .map(|chore| chore.named())
                 .collect::<Vec<_>>(),
-            ["forget-old-member-hearings"]
+            ["forget-old-member-hearings", "forget-old-member-tombstones"]
         );
     }
 }

@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use authorizing::AllowingEverything;
 use clock::Clock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use inbox::Inboxed;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationsCore, Outcome,
+    DeclineReason, InvitationCatalog, InvitationEvent, InvitationId, InvitationSummary,
+    InvitationsCore, KIND, Outcome,
 };
 use invitations_messaging::CatalogueInvitationsListener;
 use messaging::{Listener, Message, RoutingKey};
@@ -200,6 +201,49 @@ async fn a_message_about_no_invitation_is_refused() {
             .await
             .is_err(),
         "a message the listener cannot act on belongs in dead letters"
+    );
+}
+
+#[tokio::test]
+async fn a_retired_invitation_is_collapsed_to_a_snapshot_that_keeps_no_address() {
+    // given: an invitation to ada, listed long enough to retire
+    let listing = listing();
+    let id = listing.an_open_invitation_to(ADA).await;
+    listing
+        .listener
+        .handle(&a_message(ISSUED, &id))
+        .await
+        .expect("cataloguing should succeed");
+    listing.wired.clock.set(
+        clock::at(1_700_000_000)
+            + Duration::days(7)
+            + InvitationSummary::EXPIRED_LISTED_FOR
+            + Duration::SECOND,
+    );
+
+    // when: it retires
+    listing
+        .invitations
+        .retire_due(100)
+        .await
+        .expect("an invitation retires");
+
+    // then: its stream is one snapshot, retired
+    let stream = listing
+        .wired
+        .store
+        .read_from(&AggregateId::from(&id), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(stream.len(), 1, "every event before the snapshot is gone");
+    assert!(matches!(
+        &stream[0].event,
+        InvitationEvent::Snapshotted { retired: true, .. }
+    ));
+    // and: nothing in it holds her address
+    assert!(
+        !format!("{:?}", stream[0].event).contains(ADA),
+        "the address goes with the retiring"
     );
 }
 

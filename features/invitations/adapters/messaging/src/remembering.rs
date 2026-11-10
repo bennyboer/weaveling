@@ -1,4 +1,4 @@
-use accounts_contract::{AccountEventDTO, SIGNED_UP, SIGNED_UP_BY_INVITATION};
+use accounts_contract::{AccountEventDTO, DELETED, SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use async_trait::async_trait;
 use email::EmailAddress;
 use eventsourcing::AccountId;
@@ -44,6 +44,40 @@ impl KeptHandler for RememberWhoSignedUpListener {
         Ok(self
             .invitations
             .remember_person(Some(transaction), &person)
+            .await?)
+    }
+}
+
+pub struct ForgetDeletedAccountListener {
+    invitations: InvitationsCore,
+}
+
+impl ForgetDeletedAccountListener {
+    pub fn new(invitations: InvitationsCore) -> Self {
+        Self { invitations }
+    }
+}
+
+#[async_trait]
+impl KeptHandler for ForgetDeletedAccountListener {
+    const NAME: &'static str = "invitations-forget-deleted-account";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED];
+    const WHEN_REFUSED: &'static str =
+        "A deleted account's name and address are still known to invitations.";
+
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Failure> {
+        let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
+        let AccountEventDTO::Deleted = told.event.body else {
+            return Err("this tells no account deleted".into());
+        };
+
+        Ok(self
+            .invitations
+            .forget_person(Some(transaction), &AccountId::from(told.aggregate.id))
             .await?)
     }
 }

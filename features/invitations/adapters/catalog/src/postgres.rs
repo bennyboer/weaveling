@@ -109,6 +109,8 @@ const PEOPLE: &str = "
     ORDER BY account
 ";
 
+const FORGET_PERSON: &str = "DELETE FROM people WHERE account = $1";
+
 const REMEMBER_PROJECT_NAME: &str = "
     INSERT INTO project_names (project, version, name)
     SELECT $1, $2, $3
@@ -412,6 +414,20 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .bind(person.account.as_str())
             .bind(&person.name)
             .bind(person.email.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(FORGET_PERSON)
+            .bind(account.as_str())
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

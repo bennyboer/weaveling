@@ -315,7 +315,10 @@ impl Aggregate for Invitation {
             InvitationEvent::Declined { reason } => {
                 self.settle(Outcome::Declined(*reason), metadata)
             }
-            InvitationEvent::Retired => self.retired = true,
+            InvitationEvent::Retired => {
+                self.retired = true;
+                self.to = gone_address();
+            }
             InvitationEvent::Snapshotted {
                 to,
                 digest,
@@ -359,4 +362,8 @@ impl Aggregate for Invitation {
             retired: self.retired,
         }
     }
+}
+
+fn gone_address() -> EmailAddress {
+    EmailAddress::new("deleted@invitation.invalid").expect("a plain address")
 }

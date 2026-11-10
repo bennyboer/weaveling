@@ -52,6 +52,10 @@ const PEOPLE: &str = "
     ORDER BY account
 ";
 
+const FORGET_PERSON: &str = "DELETE FROM people WHERE account = ?1";
+
+const NOTICES_OF: &str = "SELECT notice FROM notices WHERE account = ?1 ORDER BY notice";
+
 const REMEMBER_PROJECT_NAME: &str = "
     INSERT INTO project_names (project, version, name)
     SELECT ?1, ?2, ?3
@@ -229,6 +233,34 @@ impl NoticeCatalog for SqliteNoticeCatalog {
                     ),
                     name: row.try_get("name").map_err(unreachable)?,
                 })
+            })
+            .collect()
+    }
+
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(FORGET_PERSON)
+            .bind(account.to_string())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn notices_of(&self, account: &AccountId) -> Result<Vec<NoticeId>, CatalogError> {
+        sqlx::query_scalar::<_, String>(NOTICES_OF)
+            .bind(account.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .into_iter()
+            .map(|id| {
+                id.parse::<NoticeId>()
+                    .map_err(|_| unreadable(format!("{id:?} is no notice")))
             })
             .collect()
     }

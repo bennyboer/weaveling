@@ -203,6 +203,28 @@ impl ProjectsCore {
         })
     }
 
+    /// Deletes a project nobody is left in, as its members tell it, whether in the trash or not, and takes it out of the trash.
+    pub async fn delete_abandoned(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+    ) -> Result<(), ProjectsError> {
+        let id: ProjectId = project.parse()?;
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            match self.service.delete_abandoned(transaction, &id).await {
+                Ok(_)
+                | Err(ProjectsError::Events(ServiceError::Refused(ProjectError::Deleted))) => {}
+                Err(failure) => return Err(failure),
+            }
+            self.trash
+                .take_out(transaction, KIND.as_str(), &id.to_string())
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn may_hear_of(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {
         Ok(self.authorizer.may(agent, Act::Read, project).await?
             || self.authorizer.may(agent, Act::Restore, project).await?)

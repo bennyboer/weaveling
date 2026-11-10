@@ -9,8 +9,8 @@ use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
 use notifications_messaging::{
-    CatalogueNoticeListener, NoteRoleChangedListener, RememberProjectNamesListener,
-    RememberWhoSignedUpListener,
+    CatalogueNoticeListener, ForgetNoticesOfDeletedAccountListener, NoteRoleChangedListener,
+    RememberProjectNamesListener, RememberWhoSignedUpListener,
 };
 use notifications_rest::{NotificationsTopic, TellingNotices};
 use outbox::Outbox;
@@ -56,6 +56,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(CatalogueNoticeListener::new(notifications.clone()))),
             Arc::new(hearing.inboxed(RememberWhoSignedUpListener::new(notifications.clone()))),
             Arc::new(hearing.inboxed(RememberProjectNamesListener::new(notifications.clone()))),
+            Arc::new(hearing.inboxed(ForgetNoticesOfDeletedAccountListener::new(
+                notifications.clone(),
+            ))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldNotices::new(notifications.clone())),
@@ -210,7 +213,8 @@ mod tests {
                 "note-role-changed",
                 "catalogue-notice",
                 "notifications-remember-who-signed-up",
-                "notifications-remember-project-names"
+                "notifications-remember-project-names",
+                "forget-notices-of-deleted-account"
             ]
         );
         // and: tells live through its topic

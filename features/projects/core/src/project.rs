@@ -37,6 +37,7 @@ pub enum ProjectCommand {
     Trash { until: OffsetDateTime },
     Restore,
     Delete,
+    DeleteAbandoned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,6 +208,7 @@ impl Aggregate for Project {
 
         match command {
             ProjectCommand::Start(..) => Err(ProjectError::AlreadyStarted),
+            ProjectCommand::DeleteAbandoned => Ok(vec![ProjectEvent::Deleted]),
             ProjectCommand::Trash { .. } if self.is_trashed() => Err(ProjectError::AlreadyTrashed),
             ProjectCommand::Trash { until } => Ok(vec![ProjectEvent::Trashed { until }]),
             ProjectCommand::Restore | ProjectCommand::Delete if !self.is_trashed() => {

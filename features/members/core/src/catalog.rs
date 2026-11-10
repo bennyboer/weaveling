@@ -88,14 +88,23 @@ pub trait MembershipCatalog: Send + Sync {
 
     async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 
-    /// Remembers until when an account is leaving, none where it is kept after all, by the account's version, so an older word heard late changes nothing.
+    /// Remembers until when an account is leaving, none where it is kept after all or gone, as of when, by the account's version, so an older word heard late changes nothing.
     async fn remember_leaving(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
         version: Version,
         until: Option<OffsetDateTime>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
+
+    /// Forgets, at most so many, the accounts no longer leaving since before then: once no word about their leaving may be retried, nothing is left for them to guard against.
+    async fn forget_leaving_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     /// Those of the accounts asked for that are leaving, by account.
     async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError>;

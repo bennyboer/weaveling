@@ -8,6 +8,9 @@ use accounts_core::{
     Lock, LockKind, LockReason,
 };
 use eventsourcing::Version;
+use time::OffsetDateTime;
+
+const LAID_AT: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -46,9 +49,28 @@ impl<C: AccountCatalog> Committing<'_, C> {
         version: u64,
         held: Option<InProject>,
     ) {
+        self.holding_at(project, account, version, held, LAID_AT)
+            .await;
+    }
+
+    pub async fn holding_at(
+        &self,
+        project: &str,
+        account: &AccountId,
+        version: u64,
+        held: Option<InProject>,
+        at: OffsetDateTime,
+    ) {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
-                .remember_holding(transaction, project, account, Version::of(version), held)
+                .remember_holding(
+                    transaction,
+                    project,
+                    account,
+                    Version::of(version),
+                    held,
+                    at,
+                )
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -98,9 +120,13 @@ impl<C: AccountCatalog> Committing<'_, C> {
     }
 
     pub async fn disbanded(&self, project: &str, version: u64) {
+        self.disbanded_at(project, version, LAID_AT).await;
+    }
+
+    pub async fn disbanded_at(&self, project: &str, version: u64, at: OffsetDateTime) {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
-                .remember_disbanded(transaction, project, Version::of(version))
+                .remember_disbanded(transaction, project, Version::of(version), at)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -108,6 +134,20 @@ impl<C: AccountCatalog> Committing<'_, C> {
         })
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
         .expect("remembering should succeed");
+    }
+
+    pub async fn forget_tombstones_laid_before(&self, before: OffsetDateTime, at_most: u64) -> u64 {
+        transacting::retrying!(self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(forgotten)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("forgetting should succeed")
     }
 
     pub async fn begun(&self) -> Transaction {
@@ -474,6 +514,7 @@ pub async fn a_holding_in_a_dropped_transaction_was_never_heard(
             &grace,
             Version::of(2),
             Some(InProject::Member),
+            LAID_AT,
         )
         .await
         .expect("remembering should succeed");
@@ -481,6 +522,123 @@ pub async fn a_holding_in_a_dropped_transaction_was_never_heard(
 
     // then: ada is alone in it, with nothing to hand over
     assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
+}
+
+pub async fn projects_disbanded_and_members_gone_long_ago_are_forgotten_and_nothing_since(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: ada owning a project long disbanded that grace was in, and one disbanded lately
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    let bo = an_account_signed_up_at(3_000);
+    for project in ["project_long_gone", "project_lately_gone"] {
+        catalog
+            .holding(project, &ada, 1, Some(InProject::Owner))
+            .await;
+        catalog
+            .holding(project, &grace, 2, Some(InProject::Member))
+            .await;
+    }
+    catalog
+        .disbanded_at("project_long_gone", 3, clock::at(1_000))
+        .await;
+    catalog
+        .disbanded_at("project_lately_gone", 3, clock::at(5_000))
+        .await;
+    // and: in a project still there, which ada alone owns, bo gone long ago, grace gone lately, cy gone long ago and back since
+    let cy = an_account_signed_up_at(4_000);
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding_at("project_shared", &bo, 2, None, clock::at(1_000))
+        .await;
+    catalog
+        .holding_at("project_shared", &grace, 3, None, clock::at(5_000))
+        .await;
+    catalog
+        .holding_at("project_shared", &cy, 4, None, clock::at(1_000))
+        .await;
+    catalog
+        .holding_at(
+            "project_shared",
+            &cy,
+            5,
+            Some(InProject::Member),
+            clock::at(2_000),
+        )
+        .await;
+
+    // when: what was laid before a moment between is forgotten
+    let forgotten = catalog
+        .forget_tombstones_laid_before(clock::at(3_000), 10)
+        .await;
+
+    // then: the project long disbanded and bo's leaving are forgotten
+    assert_eq!(forgotten, 2);
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(clock::at(3_000), 10)
+            .await,
+        0,
+        "nothing is left to forget before then"
+    );
+    // and: nothing ada held in the project long disbanded is left to hand over, nor in the one lately
+    assert_eq!(
+        to_hand_over(catalog.uncommitted(), &ada).await,
+        vec!["project_shared".to_owned()],
+        "only the project still there, which cy is in"
+    );
+    // and: bo's leaving no longer guards against a word heard late
+    catalog
+        .holding("project_shared", &bo, 1, Some(InProject::Owner))
+        .await;
+    assert!(
+        to_hand_over(catalog.uncommitted(), &ada).await.is_empty(),
+        "an older word is taken in once nothing guards against it"
+    );
+    // and: grace's lately leaving still does
+    catalog
+        .holding("project_shared", &grace, 1, Some(InProject::Owner))
+        .await;
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(clock::at(9_000), 10)
+            .await,
+        2,
+        "grace's leaving and the project lately disbanded are left, and cy back is no tombstone"
+    );
+}
+
+pub async fn members_gone_long_ago_are_forgotten_no_more_than_asked_at_a_time(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: three members gone long ago
+    for (seconds, account) in [(1_000, 1_000), (2_000, 2_000), (3_000, 3_000)] {
+        catalog
+            .holding_at(
+                "project_shared",
+                &an_account_signed_up_at(account),
+                1,
+                None,
+                clock::at(seconds),
+            )
+            .await;
+    }
+
+    // expect: they are forgotten two at a time
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(clock::at(9_000), 2)
+            .await,
+        2
+    );
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(clock::at(9_000), 2)
+            .await,
+        1
+    );
 }
 
 async fn in_the_trash(catalog: &impl AccountCatalog, project: &str) -> bool {
@@ -701,6 +859,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_deleted_account_is_forgotten_whole_and_no_other
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            projects_disbanded_and_members_gone_long_ago_are_forgotten_and_nothing_since
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            members_gone_long_ago_are_forgotten_no_more_than_asked_at_a_time
         );
     };
 }

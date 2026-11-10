@@ -28,5 +28,8 @@ CREATE TABLE project_trash (
 CREATE TABLE leaving_accounts (
     account          TEXT    PRIMARY KEY,
     version          INTEGER NOT NULL,
-    until            TEXT
+    until            TEXT,
+    settled_at       TEXT
 );
+
+CREATE INDEX leaving_accounts_by_settled_at ON leaving_accounts (settled_at);

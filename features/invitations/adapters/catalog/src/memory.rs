@@ -391,6 +391,20 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .collect())
     }
 
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.people
+            .write()
+            .expect("invitation catalog lock poisoned")
+            .remove(account.as_str());
+
+        Ok(())
+    }
+
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
         let known = self
             .people

@@ -13,5 +13,6 @@ clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "we
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-projects-contract" }
 projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core" }

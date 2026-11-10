@@ -9,6 +9,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: process.env.CI ? 2 : 12,
   retries: 1,
+  maxFailures: process.env.CI ? 20 : undefined,
   reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
     baseURL: "http://127.0.0.1:3100",

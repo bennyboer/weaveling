@@ -75,6 +75,18 @@ impl<C: NoticeCatalog> Committing<'_, C> {
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
+    pub async fn forget_person(&self, account: &AccountId) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget_person(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
     pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
@@ -319,6 +331,76 @@ pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
             account: AccountId::from("account_ada"),
             name: "Ada Lovelace".to_owned(),
         }]
+    );
+}
+
+pub async fn a_person_forgotten_is_named_no_more_and_nobody_else_with_them(
+    catalog: &Committing<'_, impl NoticeCatalog>,
+) {
+    // given: two people named
+    for (account, name) in [("account_ada", "Ada"), ("account_bo", "Bo")] {
+        catalog
+            .remember_person(&Person {
+                account: AccountId::from(account),
+                name: name.to_owned(),
+            })
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // when: one is forgotten, twice
+    for _ in 0..2 {
+        catalog
+            .forget_person(&AccountId::from("account_ada"))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    // then: the other alone is named
+    assert_eq!(
+        catalog
+            .people(&[
+                AccountId::from("account_ada"),
+                AccountId::from("account_bo")
+            ])
+            .await
+            .expect("asking should succeed"),
+        vec![Person {
+            account: AccountId::from("account_bo"),
+            name: "Bo".to_owned(),
+        }]
+    );
+}
+
+pub async fn every_notice_of_an_account_is_named_dismissed_or_not_and_no_other_s(
+    catalog: &Committing<'_, impl NoticeCatalog>,
+) {
+    // given: an open and a dismissed notice for bo, and one for cy
+    let open = a_summary("account_bo", 1_000, 1, false);
+    let dismissed = a_summary("account_bo", 2_000, 2, true);
+    remembered(catalog, &open).await;
+    remembered(catalog, &dismissed).await;
+    remembered(catalog, &a_summary("account_cy", 1_000, 1, false)).await;
+
+    // when: bo's notices are asked for
+    let mut theirs = vec![open.id, dismissed.id];
+    theirs.sort();
+
+    // then: both are named, and cy's is not
+    assert_eq!(
+        catalog
+            .notices_of(&AccountId::from("account_bo"))
+            .await
+            .expect("asking should succeed"),
+        theirs
+    );
+    // and: none for an account without any
+    assert!(
+        catalog
+            .notices_of(&AccountId::from("account_dee"))
+            .await
+            .expect("asking should succeed")
+            .is_empty()
     );
 }
 
@@ -843,6 +925,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_person_forgotten_is_named_no_more_and_nobody_else_with_them
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            every_notice_of_an_account_is_named_dismissed_or_not_and_no_other_s
         );
     };
 }

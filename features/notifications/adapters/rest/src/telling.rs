@@ -61,6 +61,18 @@ impl NoticeCatalog for TellingNotices {
         self.kept.people(accounts).await
     }
 
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget_person(transaction, account).await
+    }
+
+    async fn notices_of(&self, account: &AccountId) -> Result<Vec<NoticeId>, CatalogError> {
+        self.kept.notices_of(account).await
+    }
+
     async fn remember_project_name(
         &self,
         transaction: &mut Transaction,

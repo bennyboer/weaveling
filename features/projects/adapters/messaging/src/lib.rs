@@ -1,5 +1,7 @@
+mod abandoning;
 mod publishing;
 
+pub use abandoning::DeleteAbandonedProjectListener;
 use async_trait::async_trait;
 use inbox::KeptHandler;
 use messaging::{Failure, Message};

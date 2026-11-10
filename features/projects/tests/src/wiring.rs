@@ -17,6 +17,7 @@ use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-project";
 const PURGING: &str = "purge-the-projects-trash";
+const ABANDONING: &str = "delete-abandoned-project";
 
 pub struct Wired {
     pub projects: ProjectsCore,
@@ -27,6 +28,7 @@ pub struct Wired {
     pub catalog: Arc<InMemoryProjectCatalog>,
     pub trash: Arc<InMemoryTrash>,
     pub projector: Arc<dyn Listener>,
+    pub abandoning: Arc<dyn Listener>,
     pub purging: Arc<dyn Chore>,
 }
 
@@ -69,6 +71,12 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         .find(|listener| listener.named().as_str() == CATALOGUING)
         .cloned()
         .expect("the feature should wire a catalog projector");
+    let abandoning = wired
+        .listeners
+        .iter()
+        .find(|listener| listener.named().as_str() == ABANDONING)
+        .cloned()
+        .expect("the feature should wire a listener deleting a project nobody is left in");
     let purging = wired
         .chores
         .iter()
@@ -87,6 +95,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         catalog,
         trash,
         projector,
+        abandoning,
         purging,
     }
 }

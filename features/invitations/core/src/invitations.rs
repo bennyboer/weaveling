@@ -419,6 +419,19 @@ impl InvitationsCore {
         })
     }
 
+    /// Forgets a deleted account's name and address.
+    pub async fn forget_person(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+    ) -> Result<(), InvitationsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog.forget_person(transaction, account).await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn catalogue(
         &self,
         within: Option<&mut Transaction>,

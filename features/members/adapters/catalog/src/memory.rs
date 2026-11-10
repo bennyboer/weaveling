@@ -13,7 +13,7 @@ type Kept = BTreeMap<String, ProjectMembers>;
 
 type Trash = BTreeMap<String, (Version, bool)>;
 
-type LeavingAccounts = BTreeMap<String, (Version, Option<OffsetDateTime>)>;
+type LeavingAccounts = BTreeMap<String, (Version, Option<OffsetDateTime>, Option<OffsetDateTime>)>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
@@ -225,6 +225,7 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
         account: &AccountId,
         version: Version,
         until: Option<OffsetDateTime>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
         let mut leaving = self
@@ -233,12 +234,43 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
             .expect("membership catalog lock poisoned");
         if leaving
             .get(account.as_str())
-            .is_none_or(|(known, _)| *known < version)
+            .is_none_or(|(known, _, _)| *known < version)
         {
-            leaving.insert(account.to_string(), (version, until));
+            leaving.insert(
+                account.to_string(),
+                (version, until, until.is_none().then_some(at)),
+            );
         }
 
         Ok(())
+    }
+
+    async fn forget_leaving_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut leaving = self
+            .leaving
+            .write()
+            .expect("membership catalog lock poisoned");
+        let mut settled: Vec<(OffsetDateTime, String)> = leaving
+            .iter()
+            .filter_map(|(account, (_, _, settled_at))| {
+                settled_at
+                    .filter(|at| *at < before)
+                    .map(|at| (at, account.clone()))
+            })
+            .collect();
+        settled.sort();
+        settled.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, account) in &settled {
+            leaving.remove(account);
+        }
+
+        Ok(u64::try_from(settled.len()).unwrap_or(u64::MAX))
     }
 
     async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
@@ -249,7 +281,7 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
 
         Ok(known
             .iter()
-            .filter_map(|(account, (_, until))| {
+            .filter_map(|(account, (_, until, _))| {
                 let account = AccountId::from(account.as_str());
                 let until = (*until)?;
                 accounts

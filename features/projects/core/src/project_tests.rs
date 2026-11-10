@@ -51,6 +51,7 @@ fn nothing_but_starting_can_be_the_first_thing_that_happens() {
     for command in [
         ProjectCommand::Rename(a_name("Renamed")),
         ProjectCommand::Delete,
+        ProjectCommand::DeleteAbandoned,
     ] {
         assert_eq!(
             Project::begin(command, &eventsourcing::an_author()),
@@ -174,6 +175,7 @@ fn a_deleted_project_refuses_everything() {
     for command in [
         ProjectCommand::Rename(a_name("Renamed")),
         ProjectCommand::Delete,
+        ProjectCommand::DeleteAbandoned,
         a_start(),
     ] {
         assert_eq!(
@@ -538,6 +540,18 @@ fn only_a_project_in_the_trash_is_restored_or_deleted() {
             project.decide(command, &eventsourcing::an_author()),
             Err(ProjectError::NotTrashed),
             "a project is deleted only once its time in the trash is over"
+        );
+    }
+}
+
+#[test]
+fn a_project_nobody_is_left_in_is_deleted_in_the_trash_or_out_of_it() {
+    // expect: a project out of the trash and one in it are both deleted
+    for project in [a_started_project(), a_trashed_project()] {
+        assert_eq!(
+            project.decide(ProjectCommand::DeleteAbandoned, &eventsourcing::an_author()),
+            Ok(vec![ProjectEvent::Deleted]),
+            "a project nobody is left in has nobody to keep it"
         );
     }
 }

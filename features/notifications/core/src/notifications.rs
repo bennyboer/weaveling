@@ -220,6 +220,29 @@ impl NotificationsCore {
         Ok(due.len())
     }
 
+    /// Forgets every notice of a deleted account, whole, as an old one is, and its name.
+    pub async fn forget_account(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+    ) -> Result<(), NotificationsError> {
+        let notices = self.catalog.notices_of(account).await?;
+        let now = self.clock.now();
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            for notice in &notices {
+                self.store
+                    .forget(transaction, &AggregateId::from(notice), KIND)
+                    .await
+                    .map_err(ServiceError::Store)?;
+                self.catalog.forget(transaction, notice, now).await?;
+            }
+            self.catalog.forget_person(transaction, account).await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,

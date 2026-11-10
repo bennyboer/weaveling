@@ -156,7 +156,14 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog
-                .remember_holding(transaction, project, account, version, held)
+                .remember_holding(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    held,
+                    self.clock.now(),
+                )
                 .await?;
 
             Ok(())
@@ -172,10 +179,26 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog
-                .remember_disbanded(transaction, project, version)
+                .remember_disbanded(transaction, project, version, self.clock.now())
                 .await?;
 
             Ok(())
+        })
+    }
+
+    /// Forgets what only guarded against a late word about projects disbanded and members gone, once no word may be retried.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, AccountsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+
+            Ok::<_, AccountsError>(forgotten)
         })
     }
 

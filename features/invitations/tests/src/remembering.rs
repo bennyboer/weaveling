@@ -1,8 +1,8 @@
-use accounts_contract::{SIGNED_UP, SIGNED_UP_BY_INVITATION};
+use accounts_contract::{DELETED, SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use email::EmailAddress;
 use eventsourcing::{AccountId, Agent};
 use invitations_core::{InvitationCatalog, Person};
-use invitations_messaging::RememberWhoSignedUpListener;
+use invitations_messaging::{ForgetDeletedAccountListener, RememberWhoSignedUpListener};
 use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -89,4 +89,64 @@ async fn what_is_no_sign_up_or_names_no_address_is_refused_and_teaches_nothing()
     }
     // and: nobody is known
     assert!(known(&wired).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_account_is_known_no_more_however_often_it_is_told() {
+    // given: ada known
+    let wired = wiring::a_workbench();
+    wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()))
+        .handle(&a_message(
+            SIGNED_UP,
+            a_sign_up("SIGNED_UP", "ada@example.com"),
+        ))
+        .await
+        .expect("a sign-up is taken in");
+    // and: the listener forgetting a deleted account
+    let listener = wiring::inboxed(ForgetDeletedAccountListener::new(wired.invitations.clone()));
+    // then: it hears an account deleted
+    assert!(listener.hears(&RoutingKey::parse(DELETED).expect("a declared key")));
+
+    // when: her account is heard deleted, twice
+    for _ in 0..2 {
+        listener
+            .handle(&a_message(
+                DELETED,
+                json!({ "version": 9, "name": "DELETED" }),
+            ))
+            .await
+            .expect("messages come at least once");
+    }
+
+    // then: she is known no more
+    assert!(known(&wired).await.is_empty());
+}
+
+#[tokio::test]
+async fn what_tells_no_deletion_forgets_nobody() {
+    // given: ada known
+    let wired = wiring::a_workbench();
+    wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()))
+        .handle(&a_message(
+            SIGNED_UP,
+            a_sign_up("SIGNED_UP", "ada@example.com"),
+        ))
+        .await
+        .expect("a sign-up is taken in");
+
+    // when: what is no deletion is heard
+    let refused = wiring::inboxed(ForgetDeletedAccountListener::new(wired.invitations.clone()))
+        .handle(&a_message(
+            DELETED,
+            json!({ "version": 9, "name": "EMAIL_VERIFIED" }),
+        ))
+        .await;
+
+    // then: it is refused
+    assert!(
+        refused.is_err(),
+        "a message the listener cannot act on belongs in dead letters"
+    );
+    // and: she is still known
+    assert_eq!(known(&wired).await.len(), 1);
 }

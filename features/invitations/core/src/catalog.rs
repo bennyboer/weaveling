@@ -127,6 +127,13 @@ pub trait InvitationCatalog: Send + Sync {
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 
+    /// Forgets an account's name and address, once its account is deleted.
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError>;
+
     async fn remember_project_name(
         &self,
         transaction: &mut Transaction,

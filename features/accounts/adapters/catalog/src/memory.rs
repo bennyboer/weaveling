@@ -4,17 +4,18 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use accounts_core::{AccountCatalog, AccountId, AccountSummary, CatalogError, InProject};
 use async_trait::async_trait;
 use eventsourcing::Version;
+use time::OffsetDateTime;
 use transacting::{Failure, Transaction};
 
 type Listed = BTreeMap<AccountId, AccountSummary>;
 
-type Holdings = BTreeMap<(String, String), (Version, Option<InProject>)>;
+type Holdings = BTreeMap<(String, String), (Version, Option<InProject>, Option<OffsetDateTime>)>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryAccountCatalog {
     listed: Arc<RwLock<Listed>>,
     holdings: Arc<RwLock<Holdings>>,
-    disbanded: Arc<RwLock<BTreeMap<String, Version>>>,
+    disbanded: Arc<RwLock<BTreeMap<String, (Version, OffsetDateTime)>>>,
     trash: Arc<RwLock<BTreeMap<String, (Version, bool)>>>,
 }
 
@@ -132,6 +133,7 @@ impl AccountCatalog for InMemoryAccountCatalog {
         account: &AccountId,
         version: Version,
         held: Option<InProject>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
         let mut holdings = self
@@ -139,8 +141,11 @@ impl AccountCatalog for InMemoryAccountCatalog {
             .write()
             .expect("account catalog lock poisoned");
         let key = (project.to_owned(), account.to_string());
-        if holdings.get(&key).is_none_or(|(known, _)| *known < version) {
-            holdings.insert(key, (version, held));
+        if holdings
+            .get(&key)
+            .is_none_or(|(known, _, _)| *known < version)
+        {
+            holdings.insert(key, (version, held, held.is_none().then_some(at)));
         }
 
         Ok(())
@@ -151,15 +156,62 @@ impl AccountCatalog for InMemoryAccountCatalog {
         transaction: &mut Transaction,
         project: &str,
         version: Version,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
         self.disbanded
             .write()
             .expect("account catalog lock poisoned")
             .entry(project.to_owned())
-            .or_insert(version);
+            .or_insert((version, at));
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let at_most = usize::try_from(at_most).unwrap_or(usize::MAX);
+        let mut disbanded = self
+            .disbanded
+            .write()
+            .expect("account catalog lock poisoned");
+        let mut holdings = self
+            .holdings
+            .write()
+            .expect("account catalog lock poisoned");
+
+        let mut old: Vec<(OffsetDateTime, String)> = disbanded
+            .iter()
+            .filter(|(_, (_, laid_at))| *laid_at < before)
+            .map(|(project, (_, laid_at))| (*laid_at, project.clone()))
+            .collect();
+        old.sort();
+        old.truncate(at_most);
+        for (_, project) in &old {
+            disbanded.remove(project);
+            holdings.retain(|(held_in, _), _| held_in != project);
+        }
+
+        let mut gone: Vec<(OffsetDateTime, (String, String))> = holdings
+            .iter()
+            .filter_map(|(key, (_, _, gone_at))| {
+                gone_at
+                    .filter(|at| *at < before)
+                    .map(|at| (at, key.clone()))
+            })
+            .collect();
+        gone.sort();
+        gone.truncate(at_most);
+        for (_, key) in &gone {
+            holdings.remove(key);
+        }
+
+        Ok(u64::try_from(old.len() + gone.len()).unwrap_or(u64::MAX))
     }
 
     async fn remember_trash(
@@ -213,7 +265,7 @@ impl AccountCatalog for InMemoryAccountCatalog {
         let trash = self.trash.read().expect("account catalog lock poisoned");
         let me = account.to_string();
         let mut others: BTreeMap<&str, Vec<InProject>> = BTreeMap::new();
-        for ((project, by), (_, held)) in holdings.iter() {
+        for ((project, by), (_, held, _)) in holdings.iter() {
             if let Some(held) = held
                 && *by != me
             {
@@ -223,7 +275,7 @@ impl AccountCatalog for InMemoryAccountCatalog {
 
         Ok(holdings
             .iter()
-            .filter(|((project, by), (_, held))| {
+            .filter(|((project, by), (_, held, _))| {
                 *by == me
                     && *held == Some(InProject::Owner)
                     && !disbanded.contains_key(project)

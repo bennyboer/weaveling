@@ -171,8 +171,18 @@ mod tests {
             _account: &AccountId,
             _version: Version,
             _until: Option<OffsetDateTime>,
+            _at: OffsetDateTime,
         ) -> Result<(), CatalogError> {
             Ok(())
+        }
+
+        async fn forget_leaving_settled_before(
+            &self,
+            _transaction: &mut Transaction,
+            _before: OffsetDateTime,
+            _at_most: u64,
+        ) -> Result<u64, CatalogError> {
+            Ok(0)
         }
 
         async fn leaving(&self, _accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
