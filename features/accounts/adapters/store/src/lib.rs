@@ -64,6 +64,7 @@ enum StoredAccountEvent {
         by: StoredDeletionAskedBy,
     },
     DeletionCalledOff,
+    Deleted,
     Snapshotted {
         email: String,
         name: String,
@@ -84,6 +85,8 @@ enum StoredAccountEvent {
         preferred_way: StoredPreferredWay,
         #[serde(default)]
         pending_deletion: Option<StoredPendingDeletion>,
+        #[serde(default)]
+        gone: bool,
     },
 }
 
@@ -343,6 +346,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 by: (*by).into(),
             },
             AccountEvent::DeletionCalledOff => Self::DeletionCalledOff,
+            AccountEvent::Deleted => Self::Deleted,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -356,6 +360,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 recovery_codes_left,
                 preferred_way,
                 pending_deletion,
+                gone,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
@@ -384,6 +389,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: (*preferred_way).into(),
                 pending_deletion: pending_deletion.map(Into::into),
+                gone: *gone,
             },
         }
     }
@@ -474,6 +480,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 by: by.into(),
             },
             StoredAccountEvent::DeletionCalledOff => Self::DeletionCalledOff,
+            StoredAccountEvent::Deleted => Self::Deleted,
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -487,6 +494,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 recovery_codes_left,
                 preferred_way,
                 pending_deletion,
+                gone,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 let keys = keys
@@ -541,6 +549,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     recovery_codes_left,
                     preferred_way: preferred_way.into(),
                     pending_deletion: pending_deletion.map(Into::into),
+                    gone,
                 }
             }
         })
@@ -638,6 +647,7 @@ mod tests {
                 by: DeletionAskedBy::Operator,
             },
             AccountEvent::DeletionCalledOff,
+            AccountEvent::Deleted,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -669,6 +679,7 @@ mod tests {
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
                     asked_by: DeletionAskedBy::Operator,
                 }),
+                gone: false,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -726,6 +737,7 @@ mod tests {
             recovery_codes_left: 0,
             preferred_way: PreferredWay::LastUsed,
             pending_deletion: None,
+            gone: false,
         });
 
         // then: its moment of signing up is stored as a readable date

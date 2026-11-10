@@ -38,6 +38,10 @@ const LISTED_AFTER: &str = "
     LIMIT $2
 ";
 
+const FORGET_SUMMARY: &str = "DELETE FROM account_summaries WHERE account = $1";
+
+const FORGET_HOLDINGS: &str = "DELETE FROM project_holdings WHERE account = $1";
+
 const OWNER: &str = "owner";
 const MEMBER: &str = "member";
 
@@ -169,6 +173,22 @@ impl AccountCatalog for PostgresAccountCatalog {
             .map_err(unreachable)?;
 
         found.iter().map(to_summary).collect()
+    }
+
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        for forgetting in [FORGET_SUMMARY, FORGET_HOLDINGS] {
+            sqlx::query(forgetting)
+                .bind(account.to_string())
+                .execute(connection(transaction).map_err(unreachable)?)
+                .await
+                .map_err(unreachable)?;
+        }
+
+        Ok(())
     }
 
     async fn remember_holding(

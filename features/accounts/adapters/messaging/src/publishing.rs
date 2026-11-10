@@ -65,6 +65,7 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
             .to_owned(),
         },
         AccountEvent::DeletionCalledOff => AccountEventDTO::DeletionCalledOff,
+        AccountEvent::Deleted => AccountEventDTO::Deleted,
         AccountEvent::RecoveryCodesDrawn
         | AccountEvent::RecoveryCodeUsed
         | AccountEvent::PreferredWayChosen { .. }
@@ -104,10 +105,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use accounts_contract::{
-        BECAME_OPERATOR, DELETION_ASKED, DELETION_CALLED_OFF, EMAIL_VERIFIED, EVERY_ACCOUNT,
-        INVITATION_DECLINED, INVITATION_TAKEN_UP, KEY_ADDED, KEY_DEMOTED, KEY_REMOVED, KEY_RENAMED,
-        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
-        TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
+        BECAME_OPERATOR, DELETED, DELETION_ASKED, DELETION_CALLED_OFF, EMAIL_VERIFIED,
+        EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP, KEY_ADDED, KEY_DEMOTED,
+        KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION,
+        STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
     };
     use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
@@ -215,6 +216,7 @@ mod tests {
                 DELETION_ASKED,
             ),
             (AccountEvent::DeletionCalledOff, DELETION_CALLED_OFF),
+            (AccountEvent::Deleted, DELETED),
         ]
     }
 
@@ -422,6 +424,7 @@ mod tests {
             recovery_codes_left: 0,
             preferred_way: accounts_core::PreferredWay::LastUsed,
             pending_deletion: None,
+            gone: false,
         };
 
         // expect: no message is made of it

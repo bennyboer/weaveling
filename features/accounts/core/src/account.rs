@@ -37,6 +37,7 @@ const KEY_DEMOTED: EventName = EventName::of("KEY_DEMOTED");
 const PREFERRED_WAY_CHOSEN: EventName = EventName::of("PREFERRED_WAY_CHOSEN");
 const DELETION_ASKED: EventName = EventName::of("DELETION_ASKED");
 const DELETION_CALLED_OFF: EventName = EventName::of("DELETION_CALLED_OFF");
+const DELETED: EventName = EventName::of("DELETED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +88,7 @@ pub enum AccountCommand {
     CallOffDeletion {
         by: DeletionAskedBy,
     },
+    Delete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +146,7 @@ pub enum AccountEvent {
         by: DeletionAskedBy,
     },
     DeletionCalledOff,
+    Deleted,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -157,6 +160,7 @@ pub enum AccountEvent {
         recovery_codes_left: usize,
         preferred_way: PreferredWay,
         pending_deletion: Option<PendingDeletion>,
+        gone: bool,
     },
 }
 
@@ -174,6 +178,7 @@ pub struct Account {
     recovery_codes_left: usize,
     preferred_way: PreferredWay,
     pending_deletion: Option<PendingDeletion>,
+    gone: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -204,6 +209,10 @@ pub enum AccountError {
         "the operator asked for this account to be deleted, and only the operator calls it off"
     )]
     DeletionAskedByTheOperator,
+    #[error("this account was deleted")]
+    Gone,
+    #[error("nobody asked for this account to be deleted")]
+    NotAskedToBeDeleted,
 }
 
 impl Account {
@@ -298,9 +307,14 @@ impl Account {
         self.totp
     }
 
-    /// Whether the account is kept from signing in: locked by the operator, or asked to be deleted.
+    /// Whether the account is kept from signing in: locked by the operator, asked to be deleted, or deleted.
     pub fn is_locked(&self) -> bool {
-        !self.locks.is_empty() || self.pending_deletion.is_some()
+        !self.locks.is_empty() || self.pending_deletion.is_some() || self.gone
+    }
+
+    /// Whether the account was deleted: nothing of who held it is left, only its id.
+    pub fn is_gone(&self) -> bool {
+        self.gone
     }
 
     pub fn pending_deletion(&self) -> Option<PendingDeletion> {
@@ -309,7 +323,7 @@ impl Account {
 
     /// Whether the operator locked the account, which nobody signs in to at all, unlike an account asked to be deleted, signed in to only to be kept.
     pub fn is_locked_by_the_operator(&self) -> bool {
-        !self.locks.is_empty()
+        !self.locks.is_empty() || self.gone
     }
 
     /// The stage a session opens at once whatever signing in asks is answered: signed in, or, for an account asked to be deleted, only to keep it or sign out.
@@ -354,6 +368,7 @@ impl Event for AccountEvent {
             Self::PreferredWayChosen { .. } => PREFERRED_WAY_CHOSEN,
             Self::DeletionAsked { .. } => DELETION_ASKED,
             Self::DeletionCalledOff => DELETION_CALLED_OFF,
+            Self::Deleted => DELETED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -403,7 +418,8 @@ impl Aggregate for Account {
             | AccountCommand::DemoteKey { .. }
             | AccountCommand::ChoosePreferredWay(_)
             | AccountCommand::AskDeletion { .. }
-            | AccountCommand::CallOffDeletion { .. } => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::CallOffDeletion { .. }
+            | AccountCommand::Delete => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -422,6 +438,7 @@ impl Aggregate for Account {
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
                 pending_deletion: None,
+                gone: false,
             }),
             AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
@@ -436,6 +453,7 @@ impl Aggregate for Account {
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
                 pending_deletion: None,
+                gone: false,
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -450,6 +468,7 @@ impl Aggregate for Account {
                 recovery_codes_left,
                 preferred_way,
                 pending_deletion,
+                gone,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -463,6 +482,7 @@ impl Aggregate for Account {
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: *preferred_way,
                 pending_deletion: *pending_deletion,
+                gone: *gone,
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
@@ -482,7 +502,8 @@ impl Aggregate for Account {
             | AccountEvent::KeyDemoted { .. }
             | AccountEvent::PreferredWayChosen { .. }
             | AccountEvent::DeletionAsked { .. }
-            | AccountEvent::DeletionCalledOff => None,
+            | AccountEvent::DeletionCalledOff
+            | AccountEvent::Deleted => None,
         }
     }
 
@@ -491,6 +512,12 @@ impl Aggregate for Account {
         command: AccountCommand,
         _agent: &Agent,
     ) -> Result<Vec<AccountEvent>, AccountError> {
+        if self.gone {
+            return match command {
+                AccountCommand::Delete => Ok(vec![]),
+                _ => Err(AccountError::Gone),
+            };
+        }
         match command {
             AccountCommand::SignUp(..) | AccountCommand::SignUpByInvitation { .. } => {
                 Err(AccountError::AlreadySignedUp)
@@ -603,6 +630,10 @@ impl Aggregate for Account {
                 }
                 Some(_) => Ok(vec![AccountEvent::DeletionCalledOff]),
             },
+            AccountCommand::Delete if self.pending_deletion.is_none() => {
+                Err(AccountError::NotAskedToBeDeleted)
+            }
+            AccountCommand::Delete => Ok(vec![AccountEvent::Deleted]),
         }
     }
 
@@ -678,6 +709,23 @@ impl Aggregate for Account {
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::DeletionCalledOff => self.pending_deletion = None,
+            AccountEvent::Deleted => {
+                *self = Self {
+                    email: gone_address(),
+                    name: gone_name(),
+                    verified: false,
+                    signed_up_at: self.signed_up_at,
+                    sessions_since: Some(metadata.occurred_at),
+                    operator: false,
+                    locks: BTreeMap::new(),
+                    totp: None,
+                    keys: BTreeMap::new(),
+                    recovery_codes_left: 0,
+                    preferred_way: PreferredWay::default(),
+                    pending_deletion: None,
+                    gone: true,
+                };
+            }
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -691,6 +739,7 @@ impl Aggregate for Account {
                 recovery_codes_left,
                 preferred_way,
                 pending_deletion,
+                gone,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -704,6 +753,7 @@ impl Aggregate for Account {
                 self.recovery_codes_left = *recovery_codes_left;
                 self.preferred_way = *preferred_way;
                 self.pending_deletion = *pending_deletion;
+                self.gone = *gone;
             }
         }
     }
@@ -722,8 +772,18 @@ impl Aggregate for Account {
             recovery_codes_left: self.recovery_codes_left,
             preferred_way: self.preferred_way,
             pending_deletion: self.pending_deletion,
+            gone: self.gone,
         }
     }
+}
+
+/// The address a deleted account stands at, in a domain reserved never to exist.
+fn gone_address() -> EmailAddress {
+    EmailAddress::new("deleted@account.invalid").expect("a plain address")
+}
+
+fn gone_name() -> AccountName {
+    AccountName::new("Deleted").expect("a plain name")
 }
 
 impl Account {

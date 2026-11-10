@@ -1,4 +1,4 @@
-use eventsourcing::{Agent, Version};
+use eventsourcing::{Agent, AggregateId, Version};
 use time::OffsetDateTime;
 use transacting::Transaction;
 
@@ -225,7 +225,18 @@ impl AccountsCore {
     /// Sweeps an account whose thirty days are over, for good.
     pub async fn sweep(&self, account: &AccountId) -> Result<(), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            // TODO 9d-2: collapse the account, forget its secrets and release its address
+            self.commanded_in(
+                transaction,
+                account,
+                None,
+                AccountCommand::Delete,
+                &Agent::System,
+            )
+            .await?;
+            self.events
+                .compact(transaction, &AggregateId::from(account), &Agent::System)
+                .await?;
+            // TODO 9d-2b: forget its secrets and release its address
             self.trash
                 .take_out(transaction, KIND.as_str(), &account.to_string())
                 .await?;

@@ -123,12 +123,16 @@ impl AccountsCore {
         let standing = self.get(id).await?;
 
         transacting::joining!(&*self.transactions, within, |transaction| {
-            self.catalog
-                .remember(
-                    transaction,
-                    &AccountSummary::of(*id, standing.version, &standing.state),
-                )
-                .await?;
+            if standing.state.is_gone() {
+                self.catalog.forget(transaction, id).await?;
+            } else {
+                self.catalog
+                    .remember(
+                        transaction,
+                        &AccountSummary::of(*id, standing.version, &standing.state),
+                    )
+                    .await?;
+            }
 
             Ok(())
         })

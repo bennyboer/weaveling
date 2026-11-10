@@ -53,6 +53,13 @@ pub trait AccountCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<AccountSummary>, CatalogError>;
 
+    /// Forgets a deleted account whole: its place in the list and what it held in any project.
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError>;
+
     /// Remembers what an account is in a project, none where it is gone, by the members' version, so an older word heard late changes nothing, a join after the removal it preceded among them.
     async fn remember_holding(
         &self,

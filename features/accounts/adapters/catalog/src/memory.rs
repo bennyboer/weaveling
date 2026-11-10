@@ -109,6 +109,22 @@ impl AccountCatalog for InMemoryAccountCatalog {
             .collect())
     }
 
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.write().remove(account);
+        let gone = account.to_string();
+        self.holdings
+            .write()
+            .expect("account catalog lock poisoned")
+            .retain(|(_, held_by), _| *held_by != gone);
+
+        Ok(())
+    }
+
     async fn remember_holding(
         &self,
         transaction: &mut Transaction,

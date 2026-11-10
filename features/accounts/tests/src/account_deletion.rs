@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use accounts_contract::stage;
 use accounts_core::{
-    AccountError, AccountId, AccountsError, DeletionAskedBy, EmailAddress, EmailAddresses,
-    KEPT_BEFORE_DELETION, PendingDeletion, Stage,
+    AccountCatalog, AccountError, AccountId, AccountsError, DeletionAskedBy, EmailAddress,
+    EmailAddresses, KEPT_BEFORE_DELETION, KIND, PendingDeletion, Stage,
 };
 use chores::Chore;
-use eventsourcing::ServiceError;
+use eventsourcing::{AggregateId, Event, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
 use trash::Trash;
 
@@ -482,4 +482,61 @@ async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
     // then: only ada is swept, and hedy waits for her own day
     assert_eq!(swept, 1);
     assert_eq!(due_at(&wired, later).await, vec![hedy.to_string()]);
+}
+
+#[tokio::test]
+async fn an_account_swept_keeps_nothing_of_its_holder_and_is_listed_no_more() {
+    // given: an account asked to be deleted, listed among the accounts
+    let wired = wiring::wired();
+    let ada = a_verified_account(&wired, ADA).await;
+    let until = wired
+        .accounts
+        .ask_deletion(&ada, HER_PASSWORD)
+        .await
+        .expect("her password asks for it");
+    wired.settle().await;
+    assert!(listed(&wired).await.contains(&ada));
+
+    // when: the sweep runs on its day
+    wired.clock.set(until);
+    sweeping(&wired)
+        .carry_out()
+        .await
+        .expect("sweeping should succeed");
+    wired.settle().await;
+
+    // then: the account is gone
+    let gone = wired
+        .account(&ada)
+        .await
+        .expect("the account should exist")
+        .state;
+    assert!(gone.is_gone());
+    // and: its history holds only the snapshot of it gone, nothing naming or reaching her
+    let history = wired
+        .store
+        .read_from(&AggregateId::from(&ada), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(history.len(), 1);
+    assert!(history[0].event.is_snapshot());
+    let written = format!("{:?}", history[0].event);
+    assert!(
+        !written.contains(ADA) && !written.contains("Someone"),
+        "{written}"
+    );
+    // and: it is listed no more, nor due in the trash
+    assert!(!listed(&wired).await.contains(&ada));
+    assert!(due_at(&wired, until).await.is_empty());
+}
+
+async fn listed(wired: &Wired) -> Vec<AccountId> {
+    wired
+        .catalog
+        .listed_after(None, 100)
+        .await
+        .expect("listing should succeed")
+        .into_iter()
+        .map(|summary| summary.id)
+        .collect()
 }

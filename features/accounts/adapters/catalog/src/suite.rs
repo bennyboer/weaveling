@@ -84,6 +84,19 @@ impl<C: AccountCatalog> Committing<'_, C> {
         .expect("forgetting should succeed");
     }
 
+    pub async fn forget(&self, account: &AccountId) {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .forget(transaction, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+        .expect("forgetting should succeed");
+    }
+
     pub async fn disbanded(&self, project: &str, version: u64) {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
@@ -583,6 +596,45 @@ pub async fn a_project_in_the_trash_is_nothing_to_hand_over(
     );
 }
 
+pub async fn a_deleted_account_is_forgotten_whole_and_no_other(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    // given: two accounts listed, both in a project, one its only owner
+    let ada = an_account_signed_up_at(1_000);
+    let grace = an_account_signed_up_at(2_000);
+    for summary in [
+        a_summary(ada, "ada@example.com"),
+        a_summary(grace, "grace@example.com"),
+    ] {
+        catalog
+            .remember(&summary)
+            .await
+            .expect("remembering should succeed");
+    }
+    catalog
+        .holding("project_shared", &ada, 1, Some(InProject::Owner))
+        .await;
+    catalog
+        .holding("project_shared", &grace, 2, Some(InProject::Member))
+        .await;
+
+    // when: ada is forgotten
+    catalog.forget(&ada).await;
+
+    // then: only grace is listed
+    assert_eq!(
+        listed(catalog)
+            .await
+            .iter()
+            .map(|summary| summary.id)
+            .collect::<Vec<_>>(),
+        vec![grace]
+    );
+    // and: ada holds nothing anywhere, so grace alone is in the project, with nothing to hand over
+    assert!(to_hand_over(catalog.uncommitted(), &ada).await.is_empty());
+    assert!(to_hand_over(catalog.uncommitted(), &grace).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -645,6 +697,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_project_in_the_trash_is_nothing_to_hand_over
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_deleted_account_is_forgotten_whole_and_no_other
         );
     };
 }

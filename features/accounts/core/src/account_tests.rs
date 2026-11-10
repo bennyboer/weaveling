@@ -1461,3 +1461,73 @@ fn nobody_asks_for_an_account_to_be_deleted_before_signing_up() {
         Err(AccountError::NotSignedUpYet)
     );
 }
+
+#[test]
+fn an_account_deleted_keeps_nothing_of_who_held_it_and_refuses_everything_after() {
+    // given: an account with an operator's lock, TOTP and a key, asked to be deleted
+    let mut account = asked_to_be_deleted_by(DeletionAskedBy::Holder);
+    account.apply(&a_lock(), &stamped(4, clock::at(4_000)));
+    account.apply(&AccountEvent::TotpAdded, &stamped(5, clock::at(4_100)));
+    account.apply(
+        &a_key_added("MacBook", KeyRole::Primary),
+        &stamped(6, clock::at(4_200)),
+    );
+
+    // when: it is deleted
+    let deleted = account
+        .decide(AccountCommand::Delete, &Agent::System)
+        .expect("an account asked to be deleted is deleted");
+    assert_eq!(deleted, vec![AccountEvent::Deleted]);
+    account.apply(&AccountEvent::Deleted, &stamped(7, clock::at(9_000)));
+
+    // then: neither its name nor its address is left, nor any way in
+    assert!(account.is_gone());
+    assert_eq!(account.email().as_str(), "deleted@account.invalid");
+    assert_eq!(account.name().as_str(), "Deleted");
+    assert!(account.keys().is_empty());
+    assert_eq!(account.totp(), None);
+    assert_eq!(account.second_factor(), None);
+    assert!(account.locks().is_empty());
+    assert!(account.is_locked());
+    assert!(account.is_locked_by_the_operator());
+    // and: its snapshot holds nothing more
+    let AccountEvent::Snapshotted { email, name, .. } = account.snapshot() else {
+        panic!("an account's snapshot is a snapshot");
+    };
+    assert_eq!(email.as_str(), "deleted@account.invalid");
+    assert_eq!(name.as_str(), "Deleted");
+    assert_eq!(
+        Account::from_first(&account.snapshot(), &stamped(8, clock::at(9_100))),
+        Some(account.clone())
+    );
+    // and: everything after is refused, deleting again changing nothing
+    assert_eq!(
+        account.decide(AccountCommand::Verify, &herself()),
+        Err(AccountError::Gone)
+    );
+    assert_eq!(
+        account.decide(
+            AccountCommand::CallOffDeletion {
+                by: DeletionAskedBy::Operator
+            },
+            &herself()
+        ),
+        Err(AccountError::Gone)
+    );
+    assert_eq!(
+        account.decide(AccountCommand::Delete, &Agent::System),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn an_account_nobody_asked_to_delete_is_not_deleted() {
+    // given: an account nobody asked to delete
+    let account = a_verified_account();
+
+    // expect: deleting it is refused
+    assert_eq!(
+        account.decide(AccountCommand::Delete, &Agent::System),
+        Err(AccountError::NotAskedToBeDeleted)
+    );
+}
