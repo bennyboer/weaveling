@@ -5,6 +5,8 @@ use argon2::password_hash::phc::PasswordHash as Phc;
 use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use thiserror::Error;
 
+use crate::hashing;
+
 pub struct Password(String);
 
 static STAND_IN: LazyLock<PasswordHash> =
@@ -43,6 +45,11 @@ impl Password {
         Ok(Self(raw.to_owned()))
     }
 
+    /// Hashed beside the runtime, in turn.
+    pub async fn hashed_aside(self) -> PasswordHash {
+        hashing::aside(move || self.hashed()).await
+    }
+
     pub fn hashed(&self) -> PasswordHash {
         let hash: Phc = Argon2::default()
             .hash_password(self.0.as_bytes())
@@ -63,6 +70,13 @@ impl PasswordHash {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Whether it admits the password tried, checked beside the runtime, in turn.
+    pub async fn admits_aside(&self, tried: &str) -> bool {
+        let (kept, tried) = (self.clone(), tried.to_owned());
+
+        hashing::aside(move || kept.admits(&tried)).await
     }
 
     pub fn admits(&self, tried: &str) -> bool {

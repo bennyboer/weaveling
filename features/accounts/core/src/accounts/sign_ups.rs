@@ -68,7 +68,7 @@ impl AccountsCore {
         let password = Password::new(password)?;
         self.counted_mail_to(&email).await?;
 
-        let hashed = password.hashed();
+        let hashed = password.hashed_aside().await;
         let id = AccountId::generate(self.clock.now());
         let claimed = transacting::retrying!(&*self.transactions, |transaction| {
             if !self.claimed(transaction, &email, &id).await? {
@@ -101,7 +101,7 @@ impl AccountsCore {
         password: &str,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let name = AccountName::new(name)?;
-        let hashed = Password::new(password)?.hashed();
+        let password = Password::new(password)?;
         let digest = InvitationToken::presented(token).digest();
         let Some(found) = self.invitation_tickets.find_ticket(&digest).await? else {
             return Err(AccountsError::InvitationInvalid);
@@ -112,6 +112,7 @@ impl AccountsCore {
         if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
+        let hashed = password.hashed_aside().await;
         transacting::retrying!(&*self.transactions, |transaction| {
             self.not_paused(&found.scope).await?;
             let Some(ticket) = self

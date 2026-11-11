@@ -4,6 +4,8 @@ use argon2::Argon2;
 use argon2::password_hash::phc::PasswordHash as Phc;
 use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 
+use crate::hashing;
+
 pub struct RecoveryCode(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +18,22 @@ impl RecoveryCode {
 
     pub fn drawn() -> Vec<Self> {
         (0..Self::DRAWN).map(|_| Self::one_drawn()).collect()
+    }
+
+    /// Codes drawn, and their hashes to keep, hashed beside the runtime, in turn.
+    pub(crate) async fn drawn_and_hashed() -> (Vec<Self>, Vec<RecoveryCodeHash>) {
+        hashing::aside(|| {
+            let codes = Self::drawn();
+            let hashes = codes.iter().map(Self::hashed).collect();
+
+            (codes, hashes)
+        })
+        .await
+    }
+
+    /// The one of the hashes kept that admits it, checked beside the runtime, in turn.
+    pub(crate) async fn admitted_by(self, kept: Vec<RecoveryCodeHash>) -> Option<RecoveryCodeHash> {
+        hashing::aside(move || kept.into_iter().find(|hash| hash.admits(&self))).await
     }
 
     pub fn presented(raw: &str) -> Option<Self> {

@@ -14,7 +14,7 @@ time = { workspace = true }
 totp-rs = { workspace = true }
 serde_json = { workspace = true }
 webauthn-rs = { workspace = true, features = ["conditional-ui", "danger-credential-internals"] }
-tokio = { workspace = true, features = ["sync", "time", "macros"] }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 ending = { version = "0.1.0", path = "../../../libraries/ending", package = "weaveling-ending" }

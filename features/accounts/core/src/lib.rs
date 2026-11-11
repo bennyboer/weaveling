@@ -5,6 +5,7 @@ mod code;
 mod decline;
 mod deletion;
 mod error;
+mod hashing;
 mod id;
 mod key;
 mod key_ceremonies;

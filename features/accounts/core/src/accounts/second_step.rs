@@ -68,13 +68,8 @@ impl AccountsCore {
         let Some(presented) = RecoveryCode::presented(typed) else {
             return Err(AccountsError::RecoveryCodeWrong);
         };
-        let Some(hash) = self
-            .second_factors
-            .recovery_codes_of(&account)
-            .await?
-            .into_iter()
-            .find(|hash| hash.admits(&presented))
-        else {
+        let kept = self.second_factors.recovery_codes_of(&account).await?;
+        let Some(hash) = presented.admitted_by(kept).await else {
             return Err(AccountsError::RecoveryCodeWrong);
         };
 

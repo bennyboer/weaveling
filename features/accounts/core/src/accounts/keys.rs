@@ -9,7 +9,7 @@ use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::key_ceremonies::{CeremonyFailed, KeyCeremonies};
-use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
+use crate::recovery_code::RecoveryCode;
 use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
 
@@ -99,8 +99,7 @@ impl AccountsCore {
                 CeremonyFailed::Refused => AccountsError::KeyRefused,
             })?;
         let key = KeyId::generate(self.clock.now());
-        let codes = RecoveryCode::drawn();
-        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+        let (codes, hashes) = RecoveryCode::drawn_and_hashed().await;
 
         let (first, (token, _)) = transacting::retrying!(&*self.transactions, |transaction| {
             let standing = self.get(account).await?;
@@ -316,8 +315,7 @@ impl AccountsCore {
         session: &SessionToken,
     ) -> Result<AddedKey, AccountsError> {
         self.password_confirmed(account, password).await?;
-        let codes = RecoveryCode::drawn();
-        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+        let (codes, hashes) = RecoveryCode::drawn_and_hashed().await;
 
         let (first, (token, _)) = transacting::retrying!(&*self.transactions, |transaction| {
             let standing = self.get(account).await?;
@@ -368,11 +366,10 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         let who = account.to_string();
         self.admitted(Guarded::ConfirmingPassword, &who).await?;
-        let confirmed = self
-            .passwords
-            .of(account)
-            .await?
-            .is_some_and(|kept| kept.admits(password));
+        let confirmed = match self.passwords.of(account).await? {
+            Some(kept) => kept.admits_aside(password).await,
+            None => false,
+        };
         if !confirmed {
             return Err(AccountsError::PasswordWrong);
         }

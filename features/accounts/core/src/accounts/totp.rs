@@ -4,7 +4,7 @@ use transacting::Transaction;
 use crate::account::{Account, AccountCommand};
 use crate::error::AccountsError;
 use crate::id::AccountId;
-use crate::recovery_code::{RecoveryCode, RecoveryCodeHash};
+use crate::recovery_code::RecoveryCode;
 use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
 use crate::totp::TotpSecret;
@@ -76,8 +76,7 @@ impl AccountsCore {
         let Some(step) = secret.accepts(code, self.clock.now(), None) else {
             return Err(AccountsError::TotpCodeWrong);
         };
-        let codes = RecoveryCode::drawn();
-        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+        let (codes, hashes) = RecoveryCode::drawn_and_hashed().await;
         let holder = self.get(account).await?.state;
 
         let (token, _) = transacting::retrying!(&*self.transactions, |transaction| {
@@ -125,8 +124,7 @@ impl AccountsCore {
         password: &str,
     ) -> Result<Vec<RecoveryCode>, AccountsError> {
         self.password_confirmed(account, password).await?;
-        let codes = RecoveryCode::drawn();
-        let hashes: Vec<RecoveryCodeHash> = codes.iter().map(RecoveryCode::hashed).collect();
+        let (codes, hashes) = RecoveryCode::drawn_and_hashed().await;
 
         transacting::retrying!(&*self.transactions, |transaction| {
             self.commanded_in(

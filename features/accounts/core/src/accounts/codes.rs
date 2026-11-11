@@ -67,13 +67,14 @@ impl AccountsCore {
         password: &str,
     ) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
-        let hashed = Password::new(password)?.hashed();
+        let password = Password::new(password)?;
         let Some((id, _account)) = self.whose(&email).await? else {
             return Err(AccountsError::CodeWrong);
         };
         let code = self
             .checked_code(&id, CodePurpose::ResetPassword, code)
             .await?;
+        let hashed = password.hashed_aside().await;
 
         let reset: Result<(), AccountsError> =
             transacting::retrying!(&*self.transactions, |transaction| {

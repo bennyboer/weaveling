@@ -34,10 +34,10 @@ impl AccountsCore {
         let began = self.clock.now();
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
-            let _same_work = PasswordHash::stand_in().admits(password);
+            let _same_work = PasswordHash::stand_in().admits_aside(password).await;
             return Err(AccountsError::SignInRefused);
         };
-        if !kept.admits(password) {
+        if !kept.admits_aside(password).await {
             return Err(AccountsError::SignInRefused);
         }
         self.throttles
