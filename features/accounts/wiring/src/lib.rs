@@ -1,7 +1,9 @@
+mod forgetting;
 mod purging;
 
 use std::sync::Arc;
 
+use crate::forgetting::ForgetRunOutSessionsAndCodes;
 use crate::purging::AccountsPurge;
 use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{
@@ -85,6 +87,10 @@ fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
                     }
                 }
             }),
+            context.clock.clone(),
+        )),
+        Arc::new(ForgetRunOutSessionsAndCodes::new(
+            core(ports, context),
             context.clock.clone(),
         )),
         Arc::new(PurgeTheTrash::new(

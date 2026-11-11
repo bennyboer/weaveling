@@ -10,6 +10,7 @@ use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 use clock::Clock;
 use ending::SessionEnd;
+use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 use transacting::{InMemoryTransactions, Transaction};
 
@@ -176,6 +177,16 @@ impl Sessions for Unreachable {
         account: &AccountId,
     ) -> Result<(), SecretsError> {
         self.kept.end_every_session_of(transaction, account).await
+    }
+
+    async fn forget_sessions_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        self.kept
+            .forget_sessions_run_out_before(before, at_most)
+            .await
     }
 }
 

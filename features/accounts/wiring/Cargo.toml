@@ -18,12 +18,14 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 accounts-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-accounts-catalog" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
 async-trait = { workspace = true }
+time = { workspace = true }
 accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-accounts-messaging" }
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
 accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }
 accounts-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-accounts-store" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }
 

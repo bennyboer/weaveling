@@ -93,6 +93,24 @@ const OPEN: &str = "
 
 const FIND: &str = "SELECT account, stage, begun, until FROM account_sessions WHERE digest = $1";
 
+const FORGET_SESSIONS_RUN_OUT: &str = "
+    DELETE FROM account_sessions WHERE digest IN (
+        SELECT digest FROM account_sessions
+        WHERE until < $1
+        ORDER BY until, digest
+        LIMIT $2
+    )
+";
+
+const FORGET_CODES_RUN_OUT: &str = "
+    DELETE FROM account_codes WHERE (account, purpose) IN (
+        SELECT account, purpose FROM account_codes
+        WHERE until < $1
+        ORDER BY until, account, purpose
+        LIMIT $2
+    )
+";
+
 const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = $1";
 
 const SIGNED_IN: &str = "signed-in";
@@ -439,6 +457,20 @@ impl Sessions for PostgresSecrets {
     ) -> Result<(), SecretsError> {
         forgotten(transaction, account, &[END_EVERY_SESSION]).await
     }
+
+    async fn forget_sessions_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        Ok(sqlx::query(FORGET_SESSIONS_RUN_OUT)
+            .bind(before)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
+    }
 }
 
 #[async_trait]
@@ -517,6 +549,20 @@ impl Verifications for PostgresSecrets {
         account: &AccountId,
     ) -> Result<(), SecretsError> {
         forgotten(transaction, account, &[FORGET_CODES]).await
+    }
+
+    async fn forget_codes_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        Ok(sqlx::query(FORGET_CODES_RUN_OUT)
+            .bind(before)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 }
 

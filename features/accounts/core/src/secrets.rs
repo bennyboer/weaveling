@@ -144,6 +144,12 @@ pub trait Sessions: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError>;
+    /// Forgets at most so many sessions that ran out before then, the oldest first: how many.
+    async fn forget_sessions_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError>;
 }
 
 #[async_trait]
@@ -177,6 +183,12 @@ pub trait Verifications: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError>;
+    /// Forgets at most so many codes that ran out before then, the oldest first: how many.
+    async fn forget_codes_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError>;
 }
 
 #[async_trait]

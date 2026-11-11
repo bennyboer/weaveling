@@ -1,7 +1,7 @@
 use accounts_core::{
     AccountId, Attempt, CodeDigest, CodePurpose, KeyCredential, KeyId, PasswordHash, Passwords,
     PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondStepWay, SecretsError, Session,
-    Stage, TokenDigest, TotpStep,
+    Sessions, Stage, TokenDigest, TotpStep,
 };
 use transacting::{Transaction, Tried};
 
@@ -184,4 +184,96 @@ pub async fn a_forgotten_account_holds_no_secret_and_others_keep_theirs<S: Secre
         .forget_every_of(&ada)
         .await
         .expect("forgetting twice should succeed");
+}
+
+pub async fn sessions_and_codes_run_out_are_forgotten_oldest_first_and_the_rest_kept<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    // given: a session and a code of each of three accounts, run out at one, two and five
+    let accounts: Vec<(AccountId, &str, i64)> = vec![
+        (AccountId::generate(clock::at(1_000)), "ada", 1_000),
+        (AccountId::generate(clock::at(2_000)), "grace", 2_000),
+        (AccountId::generate(clock::at(3_000)), "bea", 5_000),
+    ];
+    for (account, name, until) in &accounts {
+        secrets
+            .open(
+                &digest_of(name),
+                &Session {
+                    until: clock::at(*until),
+                    ..session_of(account)
+                },
+            )
+            .await
+            .expect("opening should succeed");
+        secrets
+            .issue(
+                account,
+                CodePurpose::ConfirmAddress,
+                &PendingVerification {
+                    digest: CodeDigest::kept(format!("code of {name}")),
+                    until: clock::at(*until),
+                    tried: 0,
+                },
+            )
+            .await
+            .expect("issuing should succeed");
+    }
+    let store = secrets.store;
+    let before = clock::at(3_000);
+
+    // when: one of each run out before three is forgotten
+    let sessions = store
+        .forget_sessions_run_out_before(before, 1)
+        .await
+        .expect("forgetting should succeed");
+    let codes = store
+        .forget_codes_run_out_before(before, 1)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: the oldest of each is gone, and only it
+    assert_eq!((sessions, codes), (1, 1));
+    assert_eq!(
+        secrets.run_out_held(&accounts).await,
+        [(false, false), (true, true), (true, true)]
+    );
+
+    // when: the rest run out before three are forgotten
+    let sessions = store
+        .forget_sessions_run_out_before(before, 100)
+        .await
+        .expect("forgetting should succeed");
+    let codes = store
+        .forget_codes_run_out_before(before, 100)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: the one left of each is gone, and those running out later are kept
+    assert_eq!((sessions, codes), (1, 1));
+    assert_eq!(
+        secrets.run_out_held(&accounts).await,
+        [(false, false), (false, false), (true, true)]
+    );
+}
+
+impl<S: Secrets> Committing<'_, S> {
+    async fn run_out_held(&self, accounts: &[(AccountId, &str, i64)]) -> Vec<(bool, bool)> {
+        let mut held = Vec::new();
+        for (account, name, _) in accounts {
+            let session = Sessions::find(self.store, &digest_of(name))
+                .await
+                .expect("reading should succeed")
+                .is_some();
+            let code = matches!(
+                self.attempt(account, CodePurpose::ConfirmAddress, 100)
+                    .await
+                    .expect("reading should succeed"),
+                Attempt::Counted(_)
+            );
+            held.push((session, code));
+        }
+
+        held
+    }
 }

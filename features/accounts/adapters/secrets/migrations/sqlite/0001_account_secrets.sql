@@ -18,6 +18,8 @@ CREATE TABLE account_codes (
     PRIMARY KEY (account, purpose)
 );
 
+CREATE INDEX account_codes_by_until ON account_codes (until);
+
 CREATE TABLE account_sessions (
     digest   TEXT PRIMARY KEY,
     account  TEXT NOT NULL,
@@ -25,6 +27,8 @@ CREATE TABLE account_sessions (
     begun    TEXT NOT NULL,
     until    TEXT NOT NULL
 );
+
+CREATE INDEX account_sessions_by_until ON account_sessions (until);
 
 CREATE TABLE account_operator_code (
     single   BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (single),

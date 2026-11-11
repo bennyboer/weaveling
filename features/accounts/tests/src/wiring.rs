@@ -299,4 +299,12 @@ impl Sessions for RefusesOpening {
     ) -> Result<(), SecretsError> {
         self.0.end_every_session_of(transaction, account).await
     }
+
+    async fn forget_sessions_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        self.0.forget_sessions_run_out_before(before, at_most).await
+    }
 }

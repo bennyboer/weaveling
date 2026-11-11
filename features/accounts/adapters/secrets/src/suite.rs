@@ -2788,5 +2788,9 @@ macro_rules! conformance_tests {
             $workbench,
             a_forgotten_account_holds_no_secret_and_others_keep_theirs
         );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            sessions_and_codes_run_out_are_forgotten_oldest_first_and_the_rest_kept
+        );
     };
 }

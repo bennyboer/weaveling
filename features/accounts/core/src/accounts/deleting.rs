@@ -202,6 +202,24 @@ impl AccountsCore {
         })
     }
 
+    /// Forgets sessions and codes that ran out before then, at most so many of each: how many.
+    pub async fn forget_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<(u64, u64), AccountsError> {
+        let sessions = self
+            .sessions
+            .forget_sessions_run_out_before(before, at_most)
+            .await?;
+        let codes = self
+            .verifications
+            .forget_codes_run_out_before(before, at_most)
+            .await?;
+
+        Ok((sessions, codes))
+    }
+
     async fn nothing_to_hand_over(&self, account: &AccountId) -> Result<(), AccountsError> {
         let due = self.catalog.projects_to_hand_over(account).await?;
         if due.is_empty() {

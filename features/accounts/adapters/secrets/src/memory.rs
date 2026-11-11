@@ -270,6 +270,27 @@ impl Sessions for InMemorySecrets {
         kept.sessions = open;
         self.undo_on_rollback(transaction, move |kept| kept.sessions.extend(ended))
     }
+
+    async fn forget_sessions_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        let mut kept = self.kept();
+        let mut run_out: Vec<(OffsetDateTime, TokenDigest)> = kept
+            .sessions
+            .iter()
+            .filter(|(_, session)| session.until < before)
+            .map(|(digest, session)| (session.until, digest.clone()))
+            .collect();
+        run_out.sort_by_key(|(until, _)| *until);
+        run_out.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, digest) in &run_out {
+            kept.sessions.remove(digest);
+        }
+
+        Ok(u64::try_from(run_out.len()).unwrap_or(u64::MAX))
+    }
 }
 
 #[async_trait]
@@ -358,6 +379,27 @@ impl Verifications for InMemorySecrets {
             .partition(|((holder, _), _)| holder == account);
         kept.pending = pending;
         self.undo_on_rollback(transaction, move |kept| kept.pending.extend(forgotten))
+    }
+
+    async fn forget_codes_run_out_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, SecretsError> {
+        let mut kept = self.kept();
+        let mut run_out: Vec<(OffsetDateTime, (AccountId, CodePurpose))> = kept
+            .pending
+            .iter()
+            .filter(|(_, pending)| pending.until < before)
+            .map(|(issued, pending)| (pending.until, *issued))
+            .collect();
+        run_out.sort_by_key(|(until, _)| *until);
+        run_out.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, issued) in &run_out {
+            kept.pending.remove(issued);
+        }
+
+        Ok(u64::try_from(run_out.len()).unwrap_or(u64::MAX))
     }
 }
 
