@@ -73,6 +73,7 @@ impl Adapters {
         storage: Storage,
         accounts: Accounts,
         mailer: Arc<dyn Mailer>,
+        links_to: Option<String>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Unprepared> {
         let refusals = Broadcaster::new();
@@ -113,8 +114,13 @@ impl Adapters {
         let accounts = match accounts {
             Accounts::On => {
                 features.push(
-                    invitations_wiring::assembled_invitations(&storage, &context, mailer.clone())
-                        .await?,
+                    invitations_wiring::assembled_invitations(
+                        &storage,
+                        &context,
+                        mailer.clone(),
+                        links_to,
+                    )
+                    .await?,
                 );
                 features.push(wiring::assemble::<NotificationsFeature>(&storage, &context).await?);
                 Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
@@ -136,9 +142,15 @@ impl Adapters {
     }
 
     pub async fn in_memory(accounts: Accounts, clock: Arc<dyn Clock>) -> Self {
-        Self::assembled(Storage::InMemory, accounts, Arc::new(LoggingMailer), clock)
-            .await
-            .expect("nothing kept in memory needs preparing")
+        Self::assembled(
+            Storage::InMemory,
+            accounts,
+            Arc::new(LoggingMailer),
+            None,
+            clock,
+        )
+        .await
+        .expect("nothing kept in memory needs preparing")
     }
 
     pub fn authorizer(&self) -> Arc<dyn Authorizer> {

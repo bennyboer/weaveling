@@ -111,7 +111,7 @@ pub mod refused {
     pub const EMAIL_MALFORMED: &str = "email-malformed";
     pub const EMAIL_TOO_LONG: &str = "email-too-long";
     pub const THROTTLED: &str = "too-many-tries";
-    pub const ORIGIN_MISSING: &str = "origin-missing";
+    pub const PUBLIC_URL_MISSING: &str = "public-url-missing";
     pub const INVITATION_ID_INVALID: &str = "invitation-id-invalid";
     pub const INVITATION_NOT_FOUND: &str = "invitation-not-found";
     pub const INVITATION_ALREADY_ACCEPTED: &str = "invitation-already-accepted";
@@ -125,7 +125,7 @@ pub mod refused {
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         THROTTLED,
-        ORIGIN_MISSING,
+        PUBLIC_URL_MISSING,
         INVITATION_ID_INVALID,
         INVITATION_NOT_FOUND,
         INVITATION_ALREADY_ACCEPTED,

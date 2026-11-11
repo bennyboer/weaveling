@@ -37,17 +37,22 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
             }
             if key_ceremonies.is_none() {
                 tracing::warn!(
-                    "no public URL is set, so no key or passkey can be added; see weaveling.example.toml"
+                    "no public URL is set, so no key or passkey can be added and nobody invited; see weaveling.example.toml"
                 );
             }
         }
         Accounts::Off => tracing::info!("keeping the work {backend}, {accounts}, {mailing}"),
     }
     let storage = or_stop(backend.storage());
-    let mut adapters =
-        Adapters::assembled(storage, accounts, mailing.mailer(), Arc::new(SystemClock))
-            .await
-            .unwrap_or_else(|why| panic!("{why}"));
+    let mut adapters = Adapters::assembled(
+        storage,
+        accounts,
+        mailing.mailer(),
+        settings.public_url(),
+        Arc::new(SystemClock),
+    )
+    .await
+    .unwrap_or_else(|why| panic!("{why}"));
     adapters = adapters.signing_up(sign_up);
     if let Some(key) = totp_key {
         adapters = adapters.sealing_totp_secrets(key);

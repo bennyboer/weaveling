@@ -14,7 +14,10 @@ use crate::wiring::{ORIGIN as INSTANCE, Wired};
 const ADA: &str = "ada@example.com";
 
 fn served_to(wired: &Wired, acting: Acting) -> TestServer {
-    TestServer::new(invitations_rest::router(wired.invitations.clone()).layer(Extension(acting)))
+    TestServer::new(
+        invitations_rest::router(wired.invitations.clone().linking_to(INSTANCE))
+            .layer(Extension(acting)),
+    )
 }
 
 fn inviting(email: &str) -> InviteRequest {
@@ -25,11 +28,7 @@ fn inviting(email: &str) -> InviteRequest {
 }
 
 async fn invite(server: &TestServer, email: &str) -> TestResponse {
-    server
-        .post("/invitations")
-        .add_header(ORIGIN, INSTANCE)
-        .json(&inviting(email))
-        .await
+    server.post("/invitations").json(&inviting(email)).await
 }
 
 fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) -> Value {
@@ -85,22 +84,6 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
         &issued[0].event,
         InvitationEvent::Issued { digest, .. } if *digest == wired.token_mailed_to(ADA).await.digest()
     ));
-}
-
-#[tokio::test]
-async fn an_invitation_named_from_no_page_is_refused() {
-    // given: an operator
-    let wired = wiring::a_workbench();
-    let server = served_to(&wired, wiring::an_operator());
-
-    // then: inviting from no page is refused
-    refused_as(
-        &server.post("/invitations").json(&inviting(ADA)).await,
-        StatusCode::BAD_REQUEST,
-        refused::ORIGIN_MISSING,
-    );
-    // and: nothing is mailed
-    assert!(wired.sent_to(ADA).await.is_empty());
 }
 
 #[tokio::test]
@@ -315,4 +298,52 @@ async fn withdrawing_without_a_version_withdraws_whatever_the_invitation_stands_
         events_of(&wired, &id).await.last(),
         Some(&InvitationEvent::Withdrawn)
     );
+}
+
+#[tokio::test]
+async fn an_invitation_s_link_leads_where_the_instance_is_served_whatever_the_request_names() {
+    // given: an operator, on an instance served at its address
+    let wired = wiring::a_workbench();
+    let server = served_to(&wired, wiring::an_operator());
+
+    // when: an invitation is asked for by a request naming another page
+    let invited = server
+        .post("/invitations")
+        .add_header(ORIGIN, "https://weaveling-login.evil")
+        .json(&inviting(ADA))
+        .await;
+    invited.assert_status(StatusCode::CREATED);
+
+    // then: its link leads to where the instance is served
+    let issued = wired
+        .store
+        .read_from(
+            &AggregateId::from(invited.json::<InvitationSummaryDTO>().id),
+            KIND,
+            Version::ZERO,
+        )
+        .await
+        .expect("reading should succeed");
+    assert!(
+        matches!(&issued[0].event, InvitationEvent::Issued { origin, .. } if origin == INSTANCE),
+        "{:?}",
+        issued[0].event
+    );
+}
+
+#[tokio::test]
+async fn an_instance_not_told_where_it_is_served_invites_nobody() {
+    // given: an operator, on an instance not told where it is served
+    let wired = wiring::a_workbench();
+    let server = TestServer::new(
+        invitations_rest::router(wired.invitations.clone()).layer(Extension(wiring::an_operator())),
+    );
+
+    // when: an invitation is asked for
+    let refused = invite(&server, ADA).await;
+
+    // then: it is refused, as its link would lead nowhere known
+    refused_as(&refused, StatusCode::CONFLICT, refused::PUBLIC_URL_MISSING);
+    // and: nothing is mailed
+    assert!(wired.sent_to(ADA).await.is_empty());
 }

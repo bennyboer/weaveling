@@ -32,10 +32,11 @@ pub struct Ports {
     pub inbox: Arc<dyn Inbox>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
+    pub links_to: Option<String>,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
-    InvitationsCore::new(
+    let invitations = InvitationsCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
         ports.keys.clone(),
@@ -44,16 +45,23 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
         ports.mailer.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
-    )
+    );
+
+    match &ports.links_to {
+        Some(public_url) => invitations.linking_to(public_url),
+        None => invitations,
+    }
 }
 
 pub async fn assembled_invitations(
     storage: &Storage,
     context: &Context,
     mailer: Arc<dyn Mailer>,
+    links_to: Option<String>,
 ) -> Result<Assembled, Unprepared> {
     let ports = Ports {
         mailer,
+        links_to,
         ..wiring::ports::<InvitationFeature>(storage, context).await?
     };
     let wired = InvitationFeature::wire(&ports, context);
@@ -91,6 +99,7 @@ impl Feature for InvitationFeature {
             catalog: Arc::new(InMemoryInvitationCatalog::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
+            links_to: None,
             outbox,
         }
     }
@@ -116,6 +125,7 @@ impl Feature for InvitationFeature {
             catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
+            links_to: None,
             outbox,
         })
     }
@@ -152,6 +162,7 @@ impl Feature for InvitationFeature {
             catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
+            links_to: None,
             outbox,
         })
     }
@@ -187,6 +198,10 @@ impl Feature for InvitationFeature {
             context.authorizer.clone(),
             context.clock.clone(),
         );
+        let invitations = match &ports.links_to {
+            Some(public_url) => invitations.linking_to(public_url),
+            None => invitations,
+        };
 
         Wired::serving(invitations_rest::router(invitations.clone()))
             .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))

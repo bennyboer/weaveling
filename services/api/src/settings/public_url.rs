@@ -13,6 +13,13 @@ pub struct UnreadablePublicUrl {
 }
 
 impl Settings {
+    /// Where the instance is served, as it is set, for the links its mail leads to.
+    pub fn public_url(&self) -> Option<String> {
+        self.public_url
+            .as_ref()
+            .map(|setting| setting.value.trim().to_owned())
+    }
+
     pub fn key_ceremonies(&self) -> Result<Option<KeyCeremonies>, UnreadablePublicUrl> {
         self.public_url
             .as_ref()

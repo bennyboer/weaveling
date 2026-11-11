@@ -10,7 +10,6 @@ use authorizing::{Act, Authorizer};
 use axum::Router;
 use axum::body;
 use axum::body::Body;
-use axum::http::header::ORIGIN;
 use axum::http::{Request, StatusCode};
 use axum_test::{TestServer, WsMessage};
 use clock::SystemClock;
@@ -621,6 +620,7 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
             Storage::InMemory,
             Accounts::On,
             mailing.mailer(),
+            None,
             Arc::new(SystemClock),
         )
         .await
@@ -685,6 +685,7 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         Storage::InMemory,
         Accounts::On,
         Mailing::Dropped { into: drop.clone() }.mailer(),
+        Some("https://weaveling.example.com".to_owned()),
         Arc::new(SystemClock),
     )
     .await
@@ -794,20 +795,20 @@ async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_page_it_came_from() {
+async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_where_the_instance_is_served()
+ {
     // given: an operator signed in on a server
     let signed_in = an_operator_signed_in_on_a_server("inviting").await;
 
-    // when: she invites an address from a page
+    // when: she invites an address
     signed_in
         .server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({ "email": "grace@example.com" }))
         .await
         .assert_status(StatusCode::CREATED);
 
-    // then: one link to that page is mailed to the address
+    // then: one link to where the instance is served is mailed to the address
     mail_drop::invitation_token_mailed_to(&signed_in.drop, "grace@example.com")
         .await
         .expect("the link should have been mailed, once the issue was heard");
@@ -833,7 +834,6 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
     signed_in
         .server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({ "email": "grace@example.com" }))
         .await
         .assert_status(StatusCode::CREATED);
@@ -896,7 +896,6 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
     signed_in
         .server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({ "email": "grace@example.com" }))
         .await
         .assert_status(StatusCode::CREATED);
@@ -946,7 +945,6 @@ async fn an_invitation_to_an_address_that_has_an_account_is_listed_as_declined_a
     signed_in
         .server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({ "email": "ada@example.com" }))
         .await
         .assert_status(StatusCode::CREATED);
@@ -980,7 +978,6 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
         // then: making an invitation asks for signing in, or is not found without accounts
         server
             .post("/api/invitations")
-            .add_header(ORIGIN, "https://weaveling.example.com")
             .json(&json!({ "email": "grace@example.com" }))
             .await
             .assert_status(status);
@@ -1215,7 +1212,6 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
     // when: she is invited into it
     let issued: Value = server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({
             "email": ada["email"],
             "scope": { "kind": "project", "project": started["id"], "role": "reader" },
@@ -1454,7 +1450,6 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
     // and: an account that joined it as author
     server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({ "email": "grace@example.com", "scope": { "kind": "project", "project": project, "role": "author" } }))
         .await
         .assert_status(StatusCode::CREATED);

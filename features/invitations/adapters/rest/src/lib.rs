@@ -3,7 +3,6 @@ mod topic;
 
 use acting::Acting;
 use axum::extract::{Path, Query, State};
-use axum::http::header::ORIGIN;
 use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json, Router, routing};
 use clock::text;
@@ -43,18 +42,15 @@ pub fn router_for_anyone(invitations: InvitationsCore) -> Router {
 async fn invite(
     State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
-    headers: HeaderMap,
     Json(request): Json<InviteRequest>,
 ) -> Result<(StatusCode, Json<InvitationSummaryDTO>), Problem> {
-    let origin = headers
-        .get(ORIGIN)
-        .and_then(|origin| origin.to_str().ok())
-        .ok_or_else(|| {
-            Problem::rejected(
-                refused::ORIGIN_MISSING,
-                "an invitation's link is made from the page it was sent from",
-            )
-        })?;
+    let origin = invitations.links_to().map(str::to_owned).ok_or_else(|| {
+        Problem::refused(
+            refused::PUBLIC_URL_MISSING,
+            "an invitation's link leads to where the instance is served, which it is not told",
+        )
+    })?;
+    let origin = origin.as_str();
 
     let summary = match &request.scope {
         ScopeDTO::Instance => {

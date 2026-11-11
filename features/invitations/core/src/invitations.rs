@@ -29,6 +29,7 @@ pub struct InvitationsCore {
     catalog: Arc<dyn InvitationCatalog>,
     authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
+    links_to: Option<String>,
 }
 
 impl InvitationsCore {
@@ -50,7 +51,21 @@ impl InvitationsCore {
             catalog,
             authorizer,
             clock,
+            links_to: None,
         }
+    }
+
+    /// Where the instance is served, as it is configured, so an invitation's link leads there and nowhere a request names.
+    pub fn linking_to(self, public_url: &str) -> Self {
+        Self {
+            links_to: Some(public_url.trim().trim_end_matches('/').to_owned()),
+            ..self
+        }
+    }
+
+    /// Where an invitation's link leads, none where the instance does not know where it is served.
+    pub fn links_to(&self) -> Option<&str> {
+        self.links_to.as_deref()
     }
 
     pub async fn invite_to_instance(

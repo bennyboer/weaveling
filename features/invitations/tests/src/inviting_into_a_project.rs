@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum::http::header::ORIGIN;
 use axum_test::{TestResponse, TestServer};
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use invitations_contract::{
@@ -84,14 +83,14 @@ fn ada() -> Acting {
 
 fn served_to(guarded: &Guarded, acting: Acting) -> TestServer {
     TestServer::new(
-        invitations_rest::router(guarded.wired.invitations.clone()).layer(Extension(acting)),
+        invitations_rest::router(guarded.wired.invitations.clone().linking_to(INSTANCE))
+            .layer(Extension(acting)),
     )
 }
 
 async fn inviting(server: &TestServer, as_whom: &str) -> TestResponse {
     server
         .post("/invitations")
-        .add_header(ORIGIN, INSTANCE)
         .json(&InviteRequest {
             email: BO.to_owned(),
             scope: ScopeDTO::Project {

@@ -140,6 +140,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
                 local(),
                 Accounts::Off,
                 Arc::new(LoggingMailer),
+                None,
                 Arc::new(SystemClock),
             )
             .await
@@ -163,6 +164,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
             local(),
             Accounts::Off,
             Arc::new(LoggingMailer),
+            None,
             Arc::new(SystemClock),
         )
         .await

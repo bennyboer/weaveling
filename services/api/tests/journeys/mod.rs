@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use axum::http::header::ORIGIN;
 use axum_test::TestServer;
 use chores::Chore;
 use clock::Clock;
@@ -75,9 +74,15 @@ pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
 }
 
 async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts, clock: Arc<Later>) -> Adapters {
-    Adapters::assembled(backend.storage(), accounts, Arc::new(LoggingMailer), clock)
-        .await
-        .expect("every feature's schema should lay down")
+    Adapters::assembled(
+        backend.storage(),
+        accounts,
+        Arc::new(LoggingMailer),
+        Some("https://weaveling.example.com".to_owned()),
+        clock,
+    )
+    .await
+    .expect("every feature's schema should lay down")
 }
 
 impl<B: Backend> Journey<B> {
@@ -141,6 +146,7 @@ impl<B: Backend> Journey<B> {
             backend.storage(),
             Accounts::On,
             Mailing::Dropped { into: drop.clone() }.mailer(),
+            Some("https://weaveling.example.com".to_owned()),
             clock.clone(),
         )
         .await
@@ -884,7 +890,6 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
     // and: an account invited into it as author
     server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({
             "email": "grace@example.com",
             "scope": { "kind": "project", "project": project, "role": "author" },
@@ -961,7 +966,6 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
         until(|| async {
             server
                 .post("/api/invitations")
-                .add_header(ORIGIN, "https://weaveling.example.com")
                 .json(&json!({
                     "email": "grace@example.com",
                     "scope": { "kind": "project", "project": project, "role": "author" },
@@ -993,7 +997,6 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
     // and: an account invited into it as author
     server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({
             "email": "grace@example.com",
             "scope": { "kind": "project", "project": project, "role": "author" },
@@ -1074,7 +1077,6 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
     // and: an account invited into it as author
     server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({
             "email": "grace@example.com",
             "scope": { "kind": "project", "project": project, "role": "author" },
@@ -1173,7 +1175,6 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
     // and: an invitation mailed to that address
     server
         .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
         .json(&json!({
             "email": "grace@example.com",
             "scope": { "kind": "project", "project": project, "role": "author" },
