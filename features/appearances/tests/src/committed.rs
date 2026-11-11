@@ -9,6 +9,7 @@ fn unreachable(failure: Failure) -> CatalogError {
 
 #[async_trait]
 pub trait Committed {
+    /// Remembered in a place of the idea's own project, when that is known.
     async fn remember_committed(
         &self,
         subject: &Subject,
@@ -60,6 +61,10 @@ impl<C: AppearanceCatalog + ?Sized> Committed for C {
             .begin()
             .await
             .map_err(unreachable)?;
+        if let Some(project) = self.project_of(subject).await? {
+            self.remember_place_project(&mut transaction, place, &project)
+                .await?;
+        }
         self.remember(&mut transaction, subject, place, version)
             .await?;
         transaction.finish().await.map_err(unreachable)

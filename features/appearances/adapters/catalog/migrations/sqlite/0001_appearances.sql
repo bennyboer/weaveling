@@ -38,3 +38,13 @@ CREATE TABLE subject_projects (
 
     PRIMARY KEY (subject_type, subject_id)
 );
+
+CREATE TABLE place_projects (
+    place_type  TEXT NOT NULL,
+    place_id    TEXT NOT NULL,
+    project     TEXT NOT NULL,
+
+    PRIMARY KEY (place_type, place_id)
+);
+
+CREATE INDEX place_projects_by_project ON place_projects (project);

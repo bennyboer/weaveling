@@ -66,11 +66,14 @@ async fn guarded() -> Guarded {
             )])))
             .layer(Extension(Agent::Account(AccountId::from("account_ada")))),
     );
-    for (idea, project) in [("idea_ada", READABLE), ("idea_kept", UNREADABLE)] {
+    for (idea, project, scene) in [
+        ("idea_ada", READABLE, "scene_1"),
+        ("idea_kept", UNREADABLE, "scene_kept"),
+    ] {
         kept.remember_project_committed(&an_idea(idea), &ProjectLink::from(project))
             .await
             .expect("remembering should succeed");
-        kept.remember_committed(&an_idea(idea), &Place::Scene(SceneLink::from("scene_1")), 1)
+        kept.remember_committed(&an_idea(idea), &Place::Scene(SceneLink::from(scene)), 1)
             .await
             .expect("remembering should succeed");
     }

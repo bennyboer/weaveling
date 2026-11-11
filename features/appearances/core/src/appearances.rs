@@ -50,6 +50,23 @@ impl AppearancesCore {
         Ok(self.may_read(idea, agent).await?.unwrap_or(false))
     }
 
+    /// An idea's project is taken from the ideas alone, never from where it is linked, so a link from another project moves nothing.
+    pub async fn captured(
+        &self,
+        within: Option<&mut Transaction>,
+        idea: &str,
+        project: &str,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_project(transaction, &an_idea(idea), &ProjectLink::from(project))
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    /// The project given is the place's, so an idea linked from another project is kept but shown nowhere.
     pub async fn appeared(
         &self,
         within: Option<&mut Transaction>,
@@ -58,16 +75,14 @@ impl AppearancesCore {
         version: u64,
         project: Option<&str>,
     ) -> Result<(), AppearancesError> {
-        let idea = an_idea(idea);
-
         transacting::joining!(&*self.transactions, within, |transaction| {
             if let Some(project) = project {
                 self.catalog
-                    .remember_project(transaction, &idea, &ProjectLink::from(project))
+                    .remember_place_project(transaction, place, &ProjectLink::from(project))
                     .await?;
             }
             self.catalog
-                .remember(transaction, &idea, place, version)
+                .remember(transaction, &an_idea(idea), place, version)
                 .await?;
 
             Ok(())
@@ -98,6 +113,22 @@ impl AppearancesCore {
     ) -> Result<(), AppearancesError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog.forget_place(transaction, place, at).await?;
+
+            Ok(())
+        })
+    }
+
+    /// Every place of a deleted project goes, sections included, whose outline names none of them as it goes.
+    pub async fn project_deleted(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .forget_places_of_project(transaction, &ProjectLink::from(project), at)
+                .await?;
 
             Ok(())
         })

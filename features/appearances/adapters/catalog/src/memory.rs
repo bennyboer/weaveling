@@ -18,6 +18,7 @@ struct Appearances {
     subject_tombstones: BTreeMap<Subject, OffsetDateTime>,
     place_tombstones: BTreeMap<Place, OffsetDateTime>,
     projects: BTreeMap<Subject, ProjectLink>,
+    place_projects: BTreeMap<Place, ProjectLink>,
 }
 
 #[derive(Debug, Default)]
@@ -175,6 +176,7 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
             .place_tombstones
             .entry(place.clone())
             .or_insert(at);
+        appearances.place_projects.remove(place);
         appearances.seen.retain(|(subject, held), seen| {
             if held != place {
                 return true;
@@ -216,11 +218,19 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {
-        Ok(self
-            .read()
+        let appearances = self.read();
+        let Some(project) = appearances.projects.get(subject) else {
+            return Ok(Vec::new());
+        };
+
+        Ok(appearances
             .seen
             .iter()
-            .filter(|((held, _), seen)| held == subject && seen.present)
+            .filter(|((held, place), seen)| {
+                held == subject
+                    && seen.present
+                    && appearances.place_projects.get(place) == Some(project)
+            })
             .map(|((_, place), _)| place.clone())
             .collect())
     }
@@ -241,6 +251,63 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {
         Ok(self.read().projects.get(subject).cloned())
+    }
+
+    async fn forget_places_of_project(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut appearances = self.write();
+        let places: Vec<Place> = appearances
+            .place_projects
+            .iter()
+            .filter(|(_, of)| *of == project)
+            .map(|(place, _)| place.clone())
+            .collect();
+        let mut appeared = Vec::new();
+
+        for place in &places {
+            appearances
+                .place_tombstones
+                .entry(place.clone())
+                .or_insert(at);
+            appearances.place_projects.remove(place);
+        }
+        appearances.seen.retain(|(subject, held), seen| {
+            if !places.contains(held) {
+                return true;
+            }
+            if seen.present {
+                appeared.push(subject.clone());
+            }
+
+            false
+        });
+        appeared.sort();
+        appeared.dedup();
+
+        Ok(appeared)
+    }
+
+    async fn remember_place_project(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut appearances = self.write();
+
+        if !appearances.place_tombstones.contains_key(place) {
+            appearances
+                .place_projects
+                .insert(place.clone(), project.clone());
+        }
+
+        Ok(())
     }
 }
 

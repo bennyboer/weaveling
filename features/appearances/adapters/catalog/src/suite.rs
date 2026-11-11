@@ -11,6 +11,8 @@ const LAID: OffsetDateTime = datetime!(2026-10-25 12:00 UTC);
 
 const ALL_AT_ONCE: u64 = u64::MAX;
 
+const PROJECT: &str = "project_1";
+
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
     type Catalog: AppearanceCatalog;
@@ -52,7 +54,35 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         self.catalog
     }
 
+    /// Remembered as an idea of `PROJECT` in a place of `PROJECT`, as nearly every case has it.
     pub async fn remember(
+        &self,
+        subject: &Subject,
+        place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let project = ProjectLink::from(PROJECT);
+
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_project(transaction, subject, &project)
+                .await
+                .map_err(Tried::Refused)?;
+            self.catalog
+                .remember_place_project(transaction, place, &project)
+                .await
+                .map_err(Tried::Refused)?;
+            self.catalog
+                .remember(transaction, subject, place, version)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn remember_alone(
         &self,
         subject: &Subject,
         place: &Place,
@@ -61,6 +91,22 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
                 .remember(transaction, subject, place, version)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn remember_place_project(
+        &self,
+        place: &Place,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_place_project(transaction, place, project)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -873,6 +919,165 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
     );
 }
 
+pub async fn an_idea_appears_only_in_places_of_its_own_project(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: an idea of one project
+    let idea = an_idea("idea_1");
+    catalog
+        .remember_project(&idea, &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+    // and: a scene of that project, a scene of another and a section of no project known
+    for (scene, project) in [("scene_own", "project_1"), ("scene_strange", "project_2")] {
+        catalog
+            .remember_place_project(&a_scene(scene), &ProjectLink::from(project))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // when: the idea is linked from each
+    for place in [
+        a_scene("scene_own"),
+        a_scene("scene_strange"),
+        a_section("section_unknown"),
+    ] {
+        catalog
+            .remember_alone(&idea, &place, 1)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // then: it appears in the scene of its own project alone
+    assert_eq!(
+        places_of(catalog, "idea_1").await,
+        vec![a_scene("scene_own")],
+        "a link from another project, made with an idea's id known from elsewhere, must not show \
+         where the idea appears"
+    );
+}
+
+pub async fn an_idea_of_no_project_known_appears_nowhere_until_its_project_is(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: an idea linked from a scene of a project before its own project is known
+    catalog
+        .remember_place_project(&a_scene("scene_1"), &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_alone(&an_idea("idea_1"), &a_scene("scene_1"), 1)
+        .await
+        .expect("remembering should succeed");
+    // and: so it appears nowhere
+    assert!(places_of(catalog, "idea_1").await.is_empty());
+
+    // when: its project is known, the scene's
+    catalog
+        .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+
+    // then: it appears there, whichever was heard first
+    assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
+}
+
+pub async fn a_forgotten_place_keeps_no_project_not_even_one_heard_late(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: an idea of a project and a scene of the same
+    let (idea, scene, project) = (
+        an_idea("idea_1"),
+        a_scene("scene_1"),
+        ProjectLink::from("project_1"),
+    );
+    catalog
+        .remember_project(&idea, &project)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_place_project(&scene, &project)
+        .await
+        .expect("remembering should succeed");
+    // and: the scene forgotten
+    catalog
+        .forget_place(&scene, LAID)
+        .await
+        .expect("forgetting should succeed");
+    // and: its project heard again, late
+    catalog
+        .remember_place_project(&scene, &project)
+        .await
+        .expect("remembering late is no failure");
+    // and: its tombstone forgotten long after
+    catalog
+        .forget_tombstones_laid_before(LAID + Duration::DAY, ALL_AT_ONCE)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    // when: the idea is remembered there once more
+    catalog
+        .remember_alone(&idea, &scene, 9)
+        .await
+        .expect("remembering should succeed");
+
+    // then: it appears nowhere, the scene's project having gone with it
+    assert!(
+        places_of(catalog, "idea_1").await.is_empty(),
+        "a place's project is forgotten with the place, and one heard after it went is never kept"
+    );
+}
+
+pub async fn forgetting_a_project_forgets_every_place_of_it_for_good(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: an idea in a scene and a section of `PROJECT`
+    remembered(catalog, "idea_1", &[a_scene("scene_1"), a_section("section_1")]).await;
+    // and: an idea of another project in a scene of it
+    let other = ProjectLink::from("project_2");
+    catalog
+        .remember_project(&an_idea("idea_2"), &other)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_place_project(&a_scene("scene_2"), &other)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_alone(&an_idea("idea_2"), &a_scene("scene_2"), 1)
+        .await
+        .expect("remembering should succeed");
+
+    // when: `PROJECT` is forgotten
+    let mut transaction = catalog.begun().await;
+    let appeared = catalog
+        .uncommitted()
+        .forget_places_of_project(&mut transaction, &ProjectLink::from(PROJECT), LAID)
+        .await
+        .expect("forgetting should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    // then: the idea that appeared in it is told, once
+    assert_eq!(appeared, vec![an_idea("idea_1")]);
+    // and: it appears nowhere
+    assert!(places_of(catalog, "idea_1").await.is_empty());
+    // and: the idea of the other project stays where it was
+    assert_eq!(places_of(catalog, "idea_2").await, vec![a_scene("scene_2")]);
+    // when: a link to the section is heard late, its project with it
+    catalog
+        .remember(&an_idea("idea_1"), &a_section("section_1"), 9)
+        .await
+        .expect("remembering late is no failure");
+    // then: nothing comes back to it
+    assert!(
+        places_of(catalog, "idea_1").await.is_empty(),
+        "every place of a deleted project is gone for good, as a removed section is"
+    );
+}
+
 pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
@@ -922,6 +1127,22 @@ macro_rules! conformance_tests {
             tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
         );
         $crate::suite::conformance_case!($workbench, an_idea_nobody_placed_appears_nowhere);
+        $crate::suite::conformance_case!(
+            $workbench,
+            an_idea_appears_only_in_places_of_its_own_project
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            an_idea_of_no_project_known_appears_nowhere_until_its_project_is
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_forgotten_place_keeps_no_project_not_even_one_heard_late
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            forgetting_a_project_forgets_every_place_of_it_for_good
+        );
         $crate::suite::conformance_case!(
             $workbench,
             an_idea_s_project_is_kept_and_none_known_is_none

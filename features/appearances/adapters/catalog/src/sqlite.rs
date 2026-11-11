@@ -84,11 +84,45 @@ const PROJECT_OF: &str =
     "SELECT project FROM subject_projects WHERE subject_type = ?1 AND subject_id = ?2";
 
 const PLACES_OF: &str = "
-    SELECT place_type, place_id
+    SELECT appearances.place_type, appearances.place_id
     FROM appearances
-    WHERE subject_type = ?1 AND subject_id = ?2 AND present
-    ORDER BY place_type, place_id
+    JOIN subject_projects
+        ON subject_projects.subject_type = appearances.subject_type
+        AND subject_projects.subject_id = appearances.subject_id
+    JOIN place_projects
+        ON place_projects.place_type = appearances.place_type
+        AND place_projects.place_id = appearances.place_id
+        AND place_projects.project = subject_projects.project
+    WHERE appearances.subject_type = ?1 AND appearances.subject_id = ?2 AND appearances.present
+    ORDER BY appearances.place_type, appearances.place_id
 ";
+
+const REMEMBER_PLACE_PROJECT: &str = "
+    INSERT INTO place_projects (place_type, place_id, project)
+    SELECT ?1, ?2, ?3
+    WHERE NOT EXISTS (
+        SELECT 1 FROM place_tombstones WHERE place_type = ?1 AND place_id = ?2
+    )
+    ON CONFLICT (place_type, place_id) DO UPDATE SET project = excluded.project
+";
+
+const LAY_TOMBSTONES_OF_PROJECT: &str = "
+    INSERT INTO place_tombstones (place_type, place_id, laid_at)
+    SELECT place_type, place_id, ?2 FROM place_projects WHERE project = ?1
+    ON CONFLICT DO NOTHING
+";
+
+const FORGET_APPEARANCES_OF_PROJECT: &str = "
+    DELETE FROM appearances WHERE (place_type, place_id) IN (
+        SELECT place_type, place_id FROM place_projects WHERE project = ?1
+    )
+    RETURNING subject_type, subject_id, present
+";
+
+const FORGET_PLACE_PROJECTS_OF_PROJECT: &str = "DELETE FROM place_projects WHERE project = ?1";
+
+const FORGET_PLACE_PROJECT: &str =
+    "DELETE FROM place_projects WHERE place_type = ?1 AND place_id = ?2";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
@@ -240,6 +274,12 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .fetch_all(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
+        sqlx::query(FORGET_PLACE_PROJECT)
+            .bind(place_type)
+            .bind(place_id)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
 
         let mut appeared = Vec::new();
         for row in &forgotten {
@@ -323,5 +363,57 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .map_err(unreachable)?;
 
         Ok(kept.map(ProjectLink::from))
+    }
+
+    async fn forget_places_of_project(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
+        sqlx::query(LAY_TOMBSTONES_OF_PROJECT)
+            .bind(project.as_str())
+            .bind(clock::text::written(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        let forgotten = sqlx::query(FORGET_APPEARANCES_OF_PROJECT)
+            .bind(project.as_str())
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_PLACE_PROJECTS_OF_PROJECT)
+            .bind(project.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        let mut appeared = Vec::new();
+        for row in &forgotten {
+            appeared.extend(appeared_from(row)?);
+        }
+        appeared.sort();
+        appeared.dedup();
+
+        Ok(appeared)
+    }
+
+    async fn remember_place_project(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        let (place_type, place_id) = place_type_and_id(place);
+
+        sqlx::query(REMEMBER_PLACE_PROJECT)
+            .bind(place_type)
+            .bind(place_id)
+            .bind(project.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 }

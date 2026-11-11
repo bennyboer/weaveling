@@ -6,7 +6,8 @@ use appearances_core::{
     Subject,
 };
 use appearances_messaging::{
-    ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
+    ForgetDeletedProjectListener, ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener,
+    ProjectSceneAppearancesListener, RememberIdeaProjectListener,
 };
 use authorizing::AllowingEverything;
 use clock::FixedClock;
@@ -24,6 +25,8 @@ struct Wired {
     outline: Inboxed<ProjectOutlineAppearancesListener>,
     scenes: Inboxed<ProjectSceneAppearancesListener>,
     ideas: Inboxed<ForgetDiscardedIdeaListener>,
+    projects: Inboxed<RememberIdeaProjectListener>,
+    deletions: Inboxed<ForgetDeletedProjectListener>,
 }
 
 fn a_workbench() -> Wired {
@@ -50,7 +53,17 @@ fn a_workbench() -> Wired {
             inbox.clone(),
         ),
         ideas: Inboxed::new(
-            ForgetDiscardedIdeaListener::new(appearances),
+            ForgetDiscardedIdeaListener::new(appearances.clone()),
+            transactions.clone(),
+            inbox.clone(),
+        ),
+        projects: Inboxed::new(
+            RememberIdeaProjectListener::new(appearances.clone()),
+            transactions.clone(),
+            inbox.clone(),
+        ),
+        deletions: Inboxed::new(
+            ForgetDeletedProjectListener::new(appearances),
             transactions,
             inbox,
         ),
@@ -59,7 +72,14 @@ fn a_workbench() -> Wired {
 }
 
 impl Wired {
+    /// Where an idea appears once it is known to be of `PROJECT`, as the places are unless a case says otherwise.
     async fn places_of(&self, idea: &str) -> Vec<Place> {
+        self.hears(&self.projects, captured(idea, PROJECT)).await;
+
+        self.places_of_as_known(idea).await
+    }
+
+    async fn places_of_as_known(&self, idea: &str) -> Vec<Place> {
         self.catalog
             .places_of(&Subject::Idea(IdeaLink::from(idea)))
             .await
@@ -82,18 +102,23 @@ fn a_scene(id: &str) -> Place {
     Place::Scene(SceneLink::from(id))
 }
 
+const PROJECT: &str = "project_1";
+
 fn published(routing: &str, aggregate: &str, kind: &str, body: Value) -> Message {
     let mut event = body;
     event["version"] = json!(0);
 
-    eventpublishing::published(
-        routing,
-        kind,
-        aggregate,
-        2,
-        event,
-        &Agent::System,
-        clock::at(1_000),
+    in_project(
+        eventpublishing::published(
+            routing,
+            kind,
+            aggregate,
+            2,
+            event,
+            &Agent::System,
+            clock::at(1_000),
+        ),
+        PROJECT,
     )
 }
 
@@ -147,10 +172,13 @@ fn removed(section: &str) -> Message {
 }
 
 fn from_scenes(routing: &str, payload: Value) -> Message {
-    Message::opening(
-        RoutingKey::parse(routing).expect("a declared routing key is fine"),
-        payload,
-        clock::at(1_000),
+    in_project(
+        Message::opening(
+            RoutingKey::parse(routing).expect("a declared routing key is fine"),
+            payload,
+            clock::at(1_000),
+        ),
+        PROJECT,
     )
 }
 
@@ -185,6 +213,15 @@ fn deleted(scene: &str) -> Message {
             scene: scene.to_owned(),
         })
         .expect("a deletion is plain data"),
+    )
+}
+
+fn captured(idea: &str, project: &str) -> Message {
+    published(
+        ideas_contract::CAPTURED,
+        idea,
+        "idea",
+        json!({ "name": "CAPTURED", "project": project, "title": "An idea" }),
     )
 }
 
@@ -553,52 +590,101 @@ impl Wired {
 }
 
 #[tokio::test]
-async fn an_idea_noted_in_a_section_or_linked_to_a_scene_is_known_in_its_project() {
-    // given: no idea placed anywhere
+async fn an_idea_is_of_the_project_it_was_captured_in_whatever_links_it() {
+    // given: an idea captured in one project
     let wired = a_workbench();
-
-    // when: an idea is noted in a section of one project and another linked from a scene of another
     wired
-        .hears(
-            &wired.outline,
-            in_project(noted("idea_1", "section_1"), "project_1"),
-        )
+        .hears(&wired.projects, captured("idea_1", "project_1"))
         .await;
+
+    // when: a scene of another project links it, its id known from elsewhere
     wired
         .hears(
             &wired.scenes,
-            in_project(linked("idea_2", "scene_1", 1), "project_2"),
+            in_project(linked("idea_1", "scene_strange", 1), "project_2"),
         )
         .await;
 
-    // then: each is known in its project
+    // then: it stays of its own project
     assert_eq!(
         wired.project_of("idea_1").await,
-        Some(ProjectLink::from("project_1"))
+        Some(ProjectLink::from("project_1")),
+        "a link from another project must not move the idea there, or that project could read \
+         where it appears and its own could not"
     );
-    assert_eq!(
-        wired.project_of("idea_2").await,
-        Some(ProjectLink::from("project_2"))
-    );
+    // and: it appears nowhere
+    assert!(wired.places_of_as_known("idea_1").await.is_empty());
 }
 
 #[tokio::test]
-async fn a_message_in_no_project_still_places_its_idea_and_names_no_project() {
-    // given: no idea placed anywhere
+async fn an_idea_linked_before_it_is_heard_captured_appears_once_it_is() {
+    // given: an idea linked from a scene of its project
     let wired = a_workbench();
-
-    // when: an idea is noted in a section in no project
     wired
-        .hears(&wired.outline, noted("idea_1", "section_1"))
+        .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
+        .await;
+    // and: so, its project not known yet, it appears nowhere
+    assert!(wired.places_of_as_known("idea_1").await.is_empty());
+
+    // when: its capture is heard after
+    wired
+        .hears(&wired.projects, captured("idea_1", PROJECT))
         .await;
 
     // then: it appears there
     assert_eq!(
-        wired.places_of("idea_1").await,
-        vec![a_section("section_1")]
+        wired.places_of_as_known("idea_1").await,
+        vec![a_scene("scene_1")],
+        "the capture and the link are heard by different listeners, in either order"
     );
-    // and: it is known in no project
-    assert_eq!(wired.project_of("idea_1").await, None);
+}
+
+#[tokio::test]
+async fn a_link_in_no_project_shows_its_idea_nowhere() {
+    // given: an idea of a project
+    let wired = a_workbench();
+
+    // when: it is noted in a section in no project
+    let mut noted = noted("idea_1", "section_1");
+    noted.payload["context"] = json!({});
+    wired.hears(&wired.outline, noted).await;
+
+    // then: it appears nowhere
+    assert!(wired.places_of("idea_1").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_project_takes_its_sections_and_scenes_along() {
+    // given: an idea noted in a section and linked from a scene of its project
+    let wired = a_workbench();
+    wired
+        .hears(&wired.projects, captured("idea_1", PROJECT))
+        .await;
+    wired
+        .hears(&wired.outline, noted("idea_1", "section_1"))
+        .await;
+    wired
+        .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
+        .await;
+
+    // when: the project is deleted
+    wired
+        .hears(
+            &wired.deletions,
+            published(
+                projects_contract::DELETED,
+                PROJECT,
+                "project",
+                json!({ "name": "DELETED" }),
+            ),
+        )
+        .await;
+
+    // then: the idea appears nowhere
+    assert!(
+        wired.places_of_as_known("idea_1").await.is_empty(),
+        "a discarded outline names none of its sections, so they go with their project"
+    );
 }
 
 #[tokio::test]

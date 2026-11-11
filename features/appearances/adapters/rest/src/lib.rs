@@ -187,11 +187,40 @@ impl AppearanceCatalog for TellingAppearances {
     ) -> Result<(), CatalogError> {
         self.kept
             .remember_project(transaction, subject, project)
-            .await
+            .await?;
+        self.tell_after(transaction, vec![subject.clone()]);
+
+        Ok(())
     }
 
     async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {
         self.kept.project_of(subject).await
+    }
+
+    async fn forget_places_of_project(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
+        let appeared = self
+            .kept
+            .forget_places_of_project(transaction, project, at)
+            .await?;
+        self.tell_after(transaction, appeared.clone());
+
+        Ok(appeared)
+    }
+
+    async fn remember_place_project(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.kept
+            .remember_place_project(transaction, place, project)
+            .await
     }
 }
 

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{AppearanceCatalog, AppearancesCore};
 use appearances_messaging::{
-    ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
+    ForgetDeletedProjectListener, ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener,
+    ProjectSceneAppearancesListener, RememberIdeaProjectListener,
 };
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -40,6 +41,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(ProjectOutlineAppearancesListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(ProjectSceneAppearancesListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(ForgetDiscardedIdeaListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(RememberIdeaProjectListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(ForgetDeletedProjectListener::new(appearances.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

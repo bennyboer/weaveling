@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{AppearancesCore, IdeaLink, Place, SceneLink, SectionLink, Subject};
+use appearances_core::{
+    AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+};
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
@@ -41,8 +43,12 @@ async fn an_idea_nobody_placed_answers_with_nothing() {
 
 #[tokio::test]
 async fn an_idea_answers_with_every_place_it_appears() {
-    // given: an idea placed in a section and in a scene
+    // given: an idea of a project, placed in a section and in a scene of it
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
+    catalog
+        .remember_project_committed(&an_idea("idea_1"), &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
     for place in [
         Place::Section(SectionLink::from("section_1")),
         Place::Scene(SceneLink::from("scene_1")),
