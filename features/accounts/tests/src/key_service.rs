@@ -1012,6 +1012,72 @@ async fn a_passkey_signs_in_alone_owing_no_second_step() {
 }
 
 #[tokio::test]
+async fn sign_ins_begun_by_the_thousand_crowd_out_none() {
+    // given: an account with a passkey, its touch to sign in begun
+    let bench = bench();
+    let (ada, mut authenticator) = with_a_passkey(&bench, ADA).await;
+    let (signing_in, touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+
+    // when: anybody begins a great many sign-ins meanwhile
+    for _ in 0..2_000 {
+        bench
+            .accounts
+            .begin_signing_in_with_passkey()
+            .expect("signing in begins");
+    }
+
+    // then: hers still signs her in
+    let signed_in = bench
+        .accounts
+        .sign_in_with_passkey(&signing_in, &touch)
+        .await;
+    assert!(
+        signed_in.is_ok(),
+        "what a sign-in asked is held by the browser, so no number of others crowds it out:          {signed_in:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_sign_in_brought_back_late_or_altered_signs_in_nobody() {
+    // given: an account with a passkey, two touches to sign in begun
+    let bench = bench();
+    let (ada, mut authenticator) = with_a_passkey(&bench, ADA).await;
+    let (signing_in, touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+    let (other, other_touch) = passkey_touch(&bench, &mut authenticator, &ada).await;
+
+    // when: the one is brought back altered
+    let mut altered = signing_in.as_str().to_owned();
+    let last = if altered.ends_with('0') { "1" } else { "0" };
+    altered.replace_range(altered.len() - 1.., last);
+    let tampered = bench
+        .accounts
+        .sign_in_with_passkey(&accounts_core::SigningIn::told(&altered), &touch)
+        .await;
+
+    // then: nothing is found under way
+    assert!(
+        matches!(tampered, Err(AccountsError::NoKeyBeingAsked)),
+        "{tampered:?}"
+    );
+
+    // when: the other is brought back five minutes later
+    bench
+        .wired
+        .clock
+        .set(clock::at(1_700_000_000) + Duration::minutes(5));
+    let late = bench
+        .accounts
+        .sign_in_with_passkey(&other, &other_touch)
+        .await;
+
+    // then: it has run out
+    assert!(
+        matches!(late, Err(AccountsError::NoKeyBeingAsked)),
+        "{late:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_key_for_the_second_step_signs_in_nobody_alone() {
     // given: an account whose only key answers the second step
     let bench = bench();

@@ -3,6 +3,8 @@ use std::fmt::{self, Debug, Formatter};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
+use aes_gcm::Aes256Gcm;
+use aes_gcm::aead::{Aead, Generate, KeyInit, Nonce, Payload};
 use serde_json::Value;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
@@ -16,7 +18,7 @@ use webauthn_rs::{Webauthn, WebauthnBuilder};
 use crate::id::AccountId;
 use crate::key::{KeyId, KeyRole};
 use crate::secrets::KeyCredential;
-use crate::session::TokenDigest;
+use crate::session::{TokenDigest, hex};
 
 /// Adding keys and passkeys and signing in with them, for this instance: every key is bound to the domain it is served at, so moving it voids every key.
 #[derive(Debug, Clone)]
@@ -24,23 +26,59 @@ pub struct KeyCeremonies {
     webauthn: Webauthn,
     adding: Arc<UnderWay<AccountId, Registration>>,
     answering: Arc<UnderWay<TokenDigest, SecurityKeyAuthentication>>,
-    signing_in: Arc<UnderWay<SigningIn, DiscoverableAuthentication>>,
+    sealing: Arc<Aes256Gcm>,
+    signed_in: Arc<Mutex<HashMap<SigningIn, OffsetDateTime>>>,
 }
 
 /// What the server keeps of a ceremony between asking the browser and hearing back, by the account it is for, the session owing a second step, or a drawn id where nobody is known yet: never written down, so a restart only asks for it to begin again.
 #[derive(Debug)]
 struct UnderWay<K, S>(Mutex<HashMap<K, (S, OffsetDateTime)>>);
 
-/// A sign-in by passkey under way, before anybody is known: the id it is told by, drawn at random so nobody can answer another's.
+/// A sign-in by passkey under way, before anybody is known: what webauthn-rs asked, and when, sealed by a key drawn at start and handed to the browser to bring back, so the server holds nothing for it and nobody can crowd it out.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SigningIn(String);
 
 impl SigningIn {
-    fn drawn() -> Self {
-        let mut drawn = [0_u8; 16];
-        getrandom::fill(&mut drawn).expect("the system draws random bytes");
+    const NONCE: usize = 12;
+    const PURPOSE: &[u8] = b"signing in by passkey";
 
-        Self(drawn.iter().map(|byte| format!("{byte:02x}")).collect())
+    fn sealed(by: &Aes256Gcm, state: &DiscoverableAuthentication, begun: OffsetDateTime) -> Self {
+        let written = serde_json::to_vec(&(state, begun.unix_timestamp()))
+            .expect("what is asked is plain data");
+        let nonce = Nonce::<Aes256Gcm>::try_generate().expect("the system draws a nonce");
+        let sealed = by
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: &written,
+                    aad: Self::PURPOSE,
+                },
+            )
+            .expect("AES-GCM seals what is asked");
+
+        Self(hex(&[nonce.as_slice(), &sealed].concat()))
+    }
+
+    fn unsealed(&self, by: &Aes256Gcm) -> Option<(DiscoverableAuthentication, OffsetDateTime)> {
+        let bytes = bytes_of(&self.0)?;
+        if bytes.len() < Self::NONCE {
+            return None;
+        }
+        let (nonce, sealed) = bytes.split_at(Self::NONCE);
+        let nonce = Nonce::<Aes256Gcm>::try_from(nonce).ok()?;
+        let written = by
+            .decrypt(
+                &nonce,
+                Payload {
+                    msg: sealed,
+                    aad: Self::PURPOSE,
+                },
+            )
+            .ok()?;
+        let (state, begun): (DiscoverableAuthentication, i64) =
+            serde_json::from_slice(&written).ok()?;
+
+        Some((state, OffsetDateTime::from_unix_timestamp(begun).ok()?))
     }
 
     pub fn told(told: &str) -> Self {
@@ -155,7 +193,8 @@ impl KeyCeremonies {
                 webauthn,
                 adding: Arc::default(),
                 answering: Arc::default(),
-                signing_in: Arc::default(),
+                sealing: Arc::new(drawn_key()),
+                signed_in: Arc::default(),
             })
             .map_err(|_| InvalidPublicUrl::NoUrl)
     }
@@ -316,10 +355,7 @@ impl KeyCeremonies {
         if let Some(asked) = asked.as_object_mut() {
             asked.remove("mediation");
         }
-        let signing_in = SigningIn::drawn();
-        self.signing_in.hold(&signing_in, state, now);
-
-        (signing_in, asked)
+        (SigningIn::sealed(&self.sealing, &state, now), asked)
     }
 
     /// Whose passkey the browser's answer names, and which credential of theirs, before anything is checked.
@@ -335,6 +371,7 @@ impl KeyCeremonies {
     }
 
     /// Finishes the sign-in with the browser's answer and the passkey it names, once: its credential as it is now, its counter moved on.
+    /// What was asked is brought back sealed, so it is kept only once it has signed someone in, until it would have run out: only a passkey's answer fills it.
     pub(crate) fn finish_signing_in(
         &self,
         signing_in: &SigningIn,
@@ -342,19 +379,50 @@ impl KeyCeremonies {
         held: &KeyCredential,
         now: OffsetDateTime,
     ) -> Result<String, CeremonyFailed> {
-        let state = self.signing_in.take(signing_in, now)?;
+        let (state, begun) = signing_in
+            .unsealed(&self.sealing)
+            .filter(|(_, begun)| now - *begun < Self::LASTS)
+            .ok_or(CeremonyFailed::NothingUnderWay)?;
         let answer: PublicKeyCredential =
             serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
         let credential = read(held).ok_or(CeremonyFailed::Refused)?;
+        let mut signed_in = self
+            .signed_in
+            .lock()
+            .expect("the sign-ins are not poisoned");
+        signed_in.retain(|_, begun| now - *begun < Self::LASTS);
+        if signed_in.contains_key(signing_in) {
+            return Err(CeremonyFailed::NothingUnderWay);
+        }
         let answered = self
             .webauthn
             .finish_discoverable_authentication_v2(&answer, state, &credential)
             .map_err(|_| CeremonyFailed::Refused)?;
+        signed_in.insert(signing_in.clone(), begun);
+        drop(signed_in);
         let mut renewed = Passkey::from(credential);
         renewed.update_credential(&answered);
 
         Ok(serde_json::to_string(&Credential::from(renewed)).expect("a credential is plain data"))
     }
+}
+
+fn drawn_key() -> Aes256Gcm {
+    let mut drawn = [0_u8; 32];
+    getrandom::fill(&mut drawn).expect("the system draws random bytes");
+
+    Aes256Gcm::new_from_slice(&drawn).expect("thirty-two bytes make an AES-256 key")
+}
+
+fn bytes_of(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(hex.get(at..at + 2)?, 16).ok())
+        .collect()
 }
 
 fn read(credential: &KeyCredential) -> Option<Credential> {
