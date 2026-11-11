@@ -291,6 +291,46 @@ test("another author's cursor shows in the scene they are writing in", async ({
   await other.close();
 });
 
+test("another author's cursor takes no style but a colour", async ({
+  page,
+  context,
+}) => {
+  // given: a book of one scene open in two windows
+  await aNewProject(page, "Strangely");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [only] = scenes["Part One"];
+  await openTheWritingView(page);
+  const other = await context.newPage();
+  // and: the other window announcing a colour that is a style of its own
+  await other.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((frame) =>
+      server.send(
+        typeof frame === "string"
+          ? frame
+          : Buffer.from(
+              frame.toString("latin1").replace("#f59e0b", "red;z:0"),
+              "latin1",
+            ),
+      ),
+    );
+    server.onMessage((frame) => socket.send(frame));
+  });
+  await other.goto(page.url());
+
+  // when: the scene is written in the other window
+  await scene(other, only).click();
+  await other.keyboard.type("Written elsewhere.");
+  await expect(scene(page, only)).toContainText("Written elsewhere.");
+
+  // then: its cursor shows here in the colour of no one told, the style announced left out
+  const cursor = flow(page).locator(
+    `[data-scene="${only}"] .ProseMirror-yjs-cursor`,
+  );
+  await expect(cursor).toHaveAttribute("style", "border-color: #ffa500");
+  await other.close();
+});
+
 test("a dropped connection comes back, and what was written meanwhile is saved", async ({
   page,
 }) => {

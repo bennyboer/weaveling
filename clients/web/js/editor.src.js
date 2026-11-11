@@ -12,6 +12,8 @@ import { addListNodes } from "prosemirror-schema-list";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import {
+  defaultCursorBuilder,
+  defaultSelectionBuilder,
   redo,
   undo,
   yCursorPlugin,
@@ -24,6 +26,10 @@ import { SceneSync } from "./sync.js";
 export { SyncConnection } from "./sync.js";
 
 const FRAGMENT = "prose";
+
+const COLOUR = /^#[0-9a-fA-F]{6}$/;
+const COLOUR_UNTOLD = "#ffa500";
+const LONGEST_NAME = 64;
 
 const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
   ? "Alt"
@@ -118,6 +124,13 @@ function markingWhereWritten() {
   });
 }
 
+function asTold(user) {
+  return {
+    name: String(user.name ?? "").slice(0, LONGEST_NAME),
+    color: COLOUR.test(user.color) ? user.color : COLOUR_UNTOLD,
+  };
+}
+
 function textOf(doc) {
   return doc.textBetween(0, doc.content.size, " ", " ");
 }
@@ -184,7 +197,12 @@ export class ProseEditor {
           }),
           markingWhereWritten(),
           ySyncPlugin(this.fragment),
-          yCursorPlugin(this.sync.awareness),
+          yCursorPlugin(this.sync.awareness, {
+            cursorBuilder: (user, client) =>
+              defaultCursorBuilder(asTold(user), client),
+            selectionBuilder: (user, client) =>
+              defaultSelectionBuilder(asTold(user), client),
+          }),
           yUndoPlugin(),
           keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
           keymap({
