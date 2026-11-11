@@ -1,4 +1,4 @@
-use accounts_contract::{RecoveryCodesDTO, refused, stage};
+use accounts_contract::{RecoveryCodesDTO, SESSION_COOKIE, refused, stage};
 use axum::http::StatusCode;
 
 use crate::totp_bench::{
@@ -133,7 +133,9 @@ async fn nothing_is_answered_where_no_second_factor_is_owed() {
     );
     // and: neither does a request without a session
     refused_as(
-        &served.answer("weaveling_session=nobody", &code).await,
+        &served
+            .answer(&format!("{SESSION_COOKIE}=nobody"), &code)
+            .await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );

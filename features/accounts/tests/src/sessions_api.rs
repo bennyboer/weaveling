@@ -105,6 +105,12 @@ async fn the_session_cookie_is_out_of_reach_of_scripts_and_other_sites() {
 
     // then: the cookie is kept from scripts and other sites
     let cookie = set_cookie(&response);
+    // and: named so that only this host itself may set it
+    assert!(cookie.starts_with("__Host-"), "{cookie}");
+    assert!(
+        !cookie.to_ascii_lowercase().contains("domain="),
+        "a cookie with a domain is refused by browsers under this name: {cookie}"
+    );
     for attribute in [
         "HttpOnly",
         "Secure",

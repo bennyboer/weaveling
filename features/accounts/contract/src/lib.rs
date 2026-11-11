@@ -235,7 +235,9 @@ pub struct PasswordRequest {
     pub password: String,
 }
 
-pub const SESSION_COOKIE: &str = "weaveling_session";
+/// Named with `__Host-`, so browsers take it only from this host itself, over https, for every path and no other domain:
+/// no sibling subdomain sets a session of its own in its place.
+pub const SESSION_COOKIE: &str = "__Host-weaveling_session";
 
 pub const SIGNED_UP: &str = "account.signed.up";
 pub const SIGNED_UP_BY_INVITATION: &str = "account.signed.up.by.invitation";

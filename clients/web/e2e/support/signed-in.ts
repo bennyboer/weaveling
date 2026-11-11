@@ -45,7 +45,7 @@ export default async function signIn() {
   const state = await server.storageState();
   await server.dispose();
 
-  const cookies = state.cookies.map((cookie) => ({ ...cookie, secure: false }));
+  const cookies = state.cookies.map((cookie) => ({ ...cookie, secure: true }));
   mkdirSync(dirname(kept), { recursive: true });
   writeFileSync(
     kept,
