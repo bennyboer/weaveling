@@ -1,5 +1,6 @@
 mod client_dir;
 mod file;
+mod hosts;
 mod listen;
 mod public_url;
 mod setting;
@@ -21,6 +22,7 @@ use crate::{
 use file::BESIDE;
 
 pub use client_dir::WEAVELING_CLIENT_DIR;
+pub use hosts::{UnreadableHosts, WEAVELING_HOSTS};
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
 pub use public_url::{UnreadablePublicUrl, WEAVELING_PUBLIC_URL};
 pub use setting::Setting;
@@ -51,6 +53,8 @@ pub enum Unsettled {
     #[error(transparent)]
     PublicUrl(#[from] UnreadablePublicUrl),
     #[error(transparent)]
+    Hosts(#[from] UnreadableHosts),
+    #[error(transparent)]
     TotpKey(#[from] UnreadableTotpKey),
 }
 
@@ -59,6 +63,7 @@ pub enum Unsettled {
 pub struct Settings {
     listen: Option<Setting>,
     public_url: Option<Setting>,
+    hosts: Option<Setting>,
     client_dir: Option<Setting>,
     reload_port: Option<u16>,
     database_url: Option<Setting>,
@@ -132,6 +137,7 @@ impl Settings {
         for (name, setting) in [
             (WEAVELING_LISTEN, &mut self.listen),
             (WEAVELING_PUBLIC_URL, &mut self.public_url),
+            (WEAVELING_HOSTS, &mut self.hosts),
             (WEAVELING_CLIENT_DIR, &mut self.client_dir),
             (WEAVELING_DATABASE_URL, &mut self.database_url),
             (WEAVELING_DATA, &mut self.data),

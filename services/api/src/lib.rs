@@ -2,6 +2,7 @@ mod accounts;
 mod backend;
 mod client;
 mod flaky;
+mod its_own;
 mod mail;
 mod refusals;
 mod relays;
@@ -43,12 +44,13 @@ use chores::ForgetOldDeadLetters;
 pub use chores::{Chore, Chores};
 pub use client::{ServedClient, serving_the_client};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
+pub use its_own::answering_only_its_own;
 pub use mail::{Mailing, Unmailable, WEAVELING_MAIL_DROP, WEAVELING_MAIL_LOG};
 pub use relays::Relays;
 pub use settings::{
-    Setting, Settings, Unlistenable, UnreadablePublicUrl, UnreadableTotpKey, Unsettled,
-    WEAVELING_CLIENT_DIR, WEAVELING_CONFIG, WEAVELING_LISTEN, WEAVELING_PUBLIC_URL,
-    WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
+    Setting, Settings, Unlistenable, UnreadableHosts, UnreadablePublicUrl, UnreadableTotpKey,
+    Unsettled, WEAVELING_CLIENT_DIR, WEAVELING_CONFIG, WEAVELING_HOSTS, WEAVELING_LISTEN,
+    WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
 };
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};

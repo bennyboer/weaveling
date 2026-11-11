@@ -680,3 +680,69 @@ log = true
     .expect("the file beside is read");
     assert_eq!(settings.mailing(), Ok(Mailing::Nowhere));
 }
+
+#[test]
+fn other_names_are_read_as_a_list_from_the_file_and_a_variable_wins_over_it() {
+    // given: a settings file listing two names the instance is opened by
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[server]\nhosts = [\"mybox.local\", \"Writing.lan\"]\n",
+    );
+
+    // when: the settings are read
+    let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("the file is read");
+
+    // then: both are named, as they are compared
+    assert_eq!(
+        filed.hosts(),
+        Ok(vec!["mybox.local".to_owned(), "writing.lan".to_owned()])
+    );
+    // when: a variable lists others, split by commas
+    let varied = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_HOSTS, "attic.lan , ")]),
+        &folder,
+    )
+    .expect("both are read");
+    // then: the variable's are the ones named
+    assert_eq!(varied.hosts(), Ok(vec!["attic.lan".to_owned()]));
+}
+
+#[test]
+fn a_name_with_a_scheme_or_a_port_is_refused_saying_where_it_was_written() {
+    // given: a variable naming a host as a URL, and one with its port
+    let folder = a_folder();
+
+    for written in ["https://mybox.local", "mybox.local:3000"] {
+        // when: the names are asked for
+        let refused = Settings::read(
+            no_arguments(),
+            variables(&[(WEAVELING_HOSTS, written)]),
+            &folder,
+        )
+        .expect("the variable itself is read")
+        .hosts();
+
+        // then: it is refused, naming the variable and the name
+        let refusal = refused.expect_err("no host name alone").to_string();
+        assert!(
+            refusal.contains(WEAVELING_HOSTS) && refusal.contains(written),
+            "{refusal}"
+        );
+    }
+}
+
+#[test]
+fn no_other_name_is_answered_unless_one_is_set() {
+    // given: no settings
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: no other name is set
+    assert_eq!(settings.hosts(), Ok(Vec::new()));
+}

@@ -23,6 +23,7 @@ struct Filed {
 struct FiledServer {
     listen: Option<toml::Value>,
     public_url: Option<toml::Value>,
+    hosts: Option<toml::Value>,
     client_dir: Option<toml::Value>,
 }
 
@@ -66,6 +67,7 @@ impl Settings {
         Ok(Self {
             listen: setting(key("server.listen"), filed.server.listen),
             public_url: setting(key("server.public_url"), filed.server.public_url),
+            hosts: setting(key("server.hosts"), filed.server.hosts),
             client_dir: setting(key("server.client_dir"), filed.server.client_dir),
             reload_port: None,
             database_url: setting(key("storage.database_url"), filed.storage.database_url),
@@ -109,6 +111,14 @@ fn setting(source: String, value: Option<toml::Value>) -> Option<Setting> {
         toml::Value::String(written) => written,
         toml::Value::Boolean(true) => "on".to_owned(),
         toml::Value::Boolean(false) => "off".to_owned(),
+        toml::Value::Array(listed) => listed
+            .iter()
+            .map(|each| match each {
+                toml::Value::String(written) => written.clone(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
         other => other.to_string(),
     };
 

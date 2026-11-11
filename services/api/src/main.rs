@@ -83,6 +83,11 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
         tracing::info!("handing out the client built in {}", client.dir.display());
         routes = weaveling_service_api::serving_the_client(routes, client);
     }
+    let routes = weaveling_service_api::answering_only_its_own(
+        routes,
+        settings.public_url().as_deref(),
+        or_stop(settings.hosts()),
+    );
 
     (
         routes,

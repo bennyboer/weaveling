@@ -17,6 +17,15 @@
 # it listens: behind a proxy, say. Keys and passkeys are bound to its domain
 # name, so without it none can be added, and moved to another domain, every
 # key added before stops working. https, or http only at localhost; no path.
+# Besides localhost and plain addresses, it is the only name the server
+# answers to, and pages from it the only ones it lets in that are not served
+# at the name asked.
+#
+# Other names the instance is opened by, besides localhost, plain addresses
+# and the public URL: a name on a home network, say. Host names alone, no
+# scheme and no port. In the variable, split by commas.
+# WEAVELING_HOSTS
+# hosts = ["mybox.local"]
 # WEAVELING_PUBLIC_URL
 # public_url = "https://weaveling.example.com"
 #
