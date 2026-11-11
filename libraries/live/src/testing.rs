@@ -115,6 +115,11 @@ impl Subscriber {
         }
     }
 
+    /// Sends `text` as it is, whatever it says.
+    pub async fn send_text(&mut self, text: String) {
+        self.socket.send_text(text).await;
+    }
+
     pub async fn close(self) {
         self.socket.close().await;
         tokio::time::sleep(SETTLING).await;

@@ -10,6 +10,9 @@ use tokio::sync::mpsc;
 use crate::connection::Connection;
 use crate::live_scenes::LiveScenes;
 
+/// The most a client sends at once: a scene's whole text when it comes back with what it wrote away, a novel's chapter many times over, and still nobody fills the server's memory with one message.
+pub const LARGEST_SENT: usize = 8 * 1024 * 1024;
+
 pub fn router(live: LiveScenes) -> Router {
     Router::new()
         .route("/scenes/sync", routing::get(attach))
@@ -22,7 +25,10 @@ async fn attach(
     Extension(agent): Extension<Agent>,
     ends: Ends,
 ) -> Response {
-    upgrade.on_upgrade(move |socket| stay(socket, live, agent, ends))
+    upgrade
+        .max_message_size(LARGEST_SENT)
+        .max_frame_size(LARGEST_SENT)
+        .on_upgrade(move |socket| stay(socket, live, agent, ends))
 }
 
 async fn stay(mut socket: WebSocket, live: LiveScenes, agent: Agent, ends: Ends) {

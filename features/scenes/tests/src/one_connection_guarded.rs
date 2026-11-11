@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration as Wait;
+use std::time::{Duration as Wait, Instant};
 
 use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
@@ -14,10 +14,11 @@ use live_contract::{SERVER_CLOSING, SESSION_ENDED};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
-use scenes_sync::{Connection, Envelope, LiveScenes, Message};
+use scenes_sync::{Connection, Envelope, LARGEST_SENT, LiveScenes, Message};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
+
 use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -555,5 +556,42 @@ async fn the_socket_stops_taking_edits_when_the_server_closes_and_is_waited_for_
             .await
             .is_ok(),
         "told the server is closing, it takes no more edits and lets the scenes be settled"
+    );
+}
+
+#[tokio::test]
+async fn a_message_larger_than_any_scene_sent_ends_the_socket() {
+    // given: the owner joined to a scene on the socket
+    let guarded = a_guarded_scene().await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(scenes_sync::router(guarded.live.clone()).layer(Extension(account("account_ada"))));
+    let mut socket = server
+        .get_websocket("/scenes/sync")
+        .await
+        .into_websocket()
+        .await;
+    socket
+        .send_message(WsMessage::Binary(
+            Envelope::Join(guarded.scene.clone()).encode().into(),
+        ))
+        .await;
+    tokio::time::timeout(Wait::from_secs(1), socket.receive_bytes())
+        .await
+        .expect("greeted while it is fresh");
+
+    // when: a message larger than any scene is sent
+    socket
+        .send_message(WsMessage::Binary(vec![0; LARGEST_SENT + 1].into()))
+        .await;
+    tokio::time::sleep(Wait::from_millis(100)).await;
+
+    // then: the socket is ended rather than the message kept, so the scene it had joined is left and let go
+    guarded.live.sweep(Instant::now()).await;
+    assert!(
+        !guarded
+            .live
+            .is_live(guarded.scene.parse().expect("a scene id")),
+        "nobody is left in the scene"
     );
 }

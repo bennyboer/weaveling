@@ -11,4 +11,4 @@ pub use live_scenes::{
     LiveScene, LiveSceneError, LiveScenes, Overheard, PeerId, Presence, Reaction,
 };
 pub use protocol::Message;
-pub use socket::router;
+pub use socket::{LARGEST_SENT, router};

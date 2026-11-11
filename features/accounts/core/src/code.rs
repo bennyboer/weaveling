@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use time::{Duration, OffsetDateTime};
 
 use crate::session::hex;
@@ -74,9 +75,13 @@ impl CodeDigest {
         &self.0
     }
 
-    /// Whether a code typed, around its spaces, is the one this was kept of.
+    /// Whether a code typed, around its spaces, is the one this was kept of, in the same time however much of it is right.
     pub fn admits(&self, tried: &str) -> bool {
-        Self::of(tried.trim()) == *self
+        Self::of(tried.trim())
+            .0
+            .as_bytes()
+            .ct_eq(self.0.as_bytes())
+            .into()
     }
 }
 

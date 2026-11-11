@@ -18,6 +18,8 @@ use crate::gate::{Access, Admission};
 use crate::{Channel, Frames, Hearing};
 
 const WAITING_TO_BE_SENT: usize = 64;
+/// The most a client sends at once: it only subscribes and unsubscribes, so far less than this, and nobody fills the server's memory with one message.
+pub const LARGEST_ASKED: usize = 64 * 1024;
 
 /// What a subscription asks to follow, by name: `{ "project": … }`, `{ "board": … }`, `{ "mine": "true" }`.
 pub type About = HashMap<String, String>;
@@ -120,8 +122,10 @@ pub fn live_socket(topics: Topics) -> Router {
                   Extension(agent): Extension<Agent>,
                   ends: Ends| async move {
                 let topics = topics.clone();
-                let answer: Response =
-                    upgrade.on_upgrade(move |socket| serve(socket, agent, topics, ends));
+                let answer: Response = upgrade
+                    .max_message_size(LARGEST_ASKED)
+                    .max_frame_size(LARGEST_ASKED)
+                    .on_upgrade(move |socket| serve(socket, agent, topics, ends));
                 answer
             },
         ),

@@ -15,7 +15,8 @@ use tokio::sync::Notify;
 
 use crate::testing::Subscriber;
 use crate::{
-    About, Broadcaster, Gate, GatedTopic, Refused, Sieve, Subscribed, Topic, Topics, live_socket,
+    About, Broadcaster, Gate, GatedTopic, LARGEST_ASKED, Refused, Sieve, Subscribed, Topic, Topics,
+    live_socket,
 };
 
 fn of(about: &About) -> String {
@@ -641,6 +642,27 @@ async fn a_socket_is_closed_when_the_server_closes_and_is_waited_for_until_it_ha
     );
     settled().await;
     // and: nobody hears for it any more
+    assert_eq!(
+        broadcaster.listener_count(),
+        0,
+        "nobody is left hearing for it"
+    );
+}
+
+#[tokio::test]
+async fn a_message_larger_than_anything_asked_ends_the_socket() {
+    // given: a subscription on an open socket
+    let broadcaster = Broadcaster::new();
+    let live = served_with(broadcaster.clone());
+    let mut socket = opened(&live).await;
+    subscribe(&mut socket, "a", "open", "board").await;
+    socket.following("a").await;
+
+    // when: a message larger than any a client asks is sent
+    socket.send_text("x".repeat(LARGEST_ASKED + 1)).await;
+    settled().await;
+
+    // then: the socket is ended rather than the message kept, its subscriptions with it
     assert_eq!(
         broadcaster.listener_count(),
         0,
