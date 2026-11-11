@@ -95,7 +95,7 @@ impl Bench {
     async fn answered_by(&self, authenticator: &mut SoftPasskey, account: &AccountId) -> Value {
         let asked = self
             .accounts
-            .begin_adding_key(account, KeyRole::SecondFactor, None)
+            .begin_adding_key(account, KeyRole::SecondFactor, None, HER_PASSWORD)
             .await
             .expect("adding begins");
 
@@ -283,7 +283,7 @@ async fn an_answer_to_another_accounts_adding_makes_no_key() {
     let session = bench.session_of(ADA).await;
     let _hers = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::SecondFactor, None)
+        .begin_adding_key(&ada, KeyRole::SecondFactor, None, HER_PASSWORD)
         .await
         .expect("adding begins");
     let theirs = bench.answered(&grace).await;
@@ -347,7 +347,7 @@ async fn without_a_public_url_no_key_is_added() {
     // when: adding a key begins
     let begun = wired
         .accounts
-        .begin_adding_key(&ada, KeyRole::SecondFactor, None)
+        .begin_adding_key(&ada, KeyRole::SecondFactor, None, HER_PASSWORD)
         .await;
 
     // then: it is refused
@@ -625,7 +625,7 @@ async fn totp_set_up_with_secret(
 ) -> (SessionToken, String) {
     let setting_up = bench
         .accounts
-        .begin_setting_up_totp(account)
+        .begin_setting_up_totp(account, HER_PASSWORD)
         .await
         .expect("setting up begins");
     let code = crate::totp_bench::code_of(&setting_up.secret, 1_700_000_000);
@@ -818,7 +818,7 @@ async fn a_passkey_is_added_to_sign_in_alone_bringing_no_second_step() {
     // when: a passkey the authenticator made is added
     let asked = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::Primary, None)
+        .begin_adding_key(&ada, KeyRole::Primary, None, HER_PASSWORD)
         .await
         .expect("adding begins");
     let answer = made_by(&mut SoftPasskey::new(true), not_resident(asked));
@@ -848,7 +848,7 @@ async fn with_a_passkey(bench: &Bench, email: &str) -> (AccountId, SoftPasskey) 
     let mut authenticator = SoftPasskey::new(true);
     let asked = bench
         .accounts
-        .begin_adding_key(&account, KeyRole::Primary, None)
+        .begin_adding_key(&account, KeyRole::Primary, None, HER_PASSWORD)
         .await
         .expect("adding begins");
     let answer = made_by(&mut authenticator, not_resident(asked));
@@ -1072,7 +1072,7 @@ async fn a_second_step_key_is_promoted_by_a_passkey_made_in_its_place_and_its_se
     // when: a passkey is made in its place, the old key not excluded
     let asked = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key))
+        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key), HER_PASSWORD)
         .await
         .expect("adding begins");
     assert_eq!(
@@ -1126,7 +1126,7 @@ async fn a_key_promoted_beside_totp_keeps_the_recovery_codes() {
     // when: the key is promoted
     let asked = bench
         .accounts
-        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key))
+        .begin_adding_key(&ada, KeyRole::Primary, Some(&added.key), HER_PASSWORD)
         .await
         .expect("adding begins");
     let answer = made_by(&mut SoftPasskey::new(true), not_resident(asked));

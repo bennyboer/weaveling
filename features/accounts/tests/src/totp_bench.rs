@@ -100,9 +100,16 @@ impl Served {
     }
 
     pub async fn begin(&self, cookie: &str) -> TestResponse {
+        self.begin_for(cookie, HER_PASSWORD).await
+    }
+
+    pub async fn begin_for(&self, cookie: &str, password: &str) -> TestResponse {
         self.server
             .post("/accounts/current/totp/setup")
             .add_header(COOKIE, cookie.to_owned())
+            .json(&PasswordRequest {
+                password: password.to_owned(),
+            })
             .await
     }
 

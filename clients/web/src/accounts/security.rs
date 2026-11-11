@@ -115,23 +115,6 @@ fn overview(
         in_dialog.set(None);
         dialog.set(None);
     };
-    let adding = Act::new(move |passkey: bool, _: Here| {
-        refused.set(None);
-        said.set(None);
-
-        async move {
-            let asked = match service::begin_adding_key(passkey, None).await {
-                Ok(asked) => asked,
-                Err(failed) => return refused.set(Some(failed)),
-            };
-            match authenticator::made(&asked).await {
-                Ok(answer) => dialog.set(Some(KeyDialog::Naming(answer))),
-                Err(NoKey::Cancelled) => said.set(Some("key-not-made")),
-                Err(NoKey::HeldAlready) => said.set(Some("key-held-here")),
-                Err(NoKey::Failed) => said.set(Some("key-failed")),
-            }
-        }
-    });
     let naming = Act::new(move |name: String, _: Here| {
         in_dialog.set(None);
         let answer = match dialog.get_untracked() {
@@ -205,7 +188,7 @@ fn overview(
 
         async move {
             let Some(id) = promoted else { return };
-            let asked = match service::begin_adding_key(true, Some(&id)).await {
+            let asked = match service::begin_adding_key(true, Some(&id), &password).await {
                 Ok(asked) => asked,
                 Err(failed) => return in_dialog.set(Some(failed)),
             };
@@ -260,16 +243,6 @@ fn overview(
     on_cleanup(move || {
         clicking_away.remove();
         escaping.remove();
-    });
-    let beginning = Act::new(move |(), _: Here| {
-        refused.set(None);
-
-        async move {
-            match service::begin_setting_up_totp().await {
-                Ok(setting_up) => step.set(Step::SettingUp(setting_up)),
-                Err(failed) => refused.set(Some(failed)),
-            }
-        }
     });
 
     move || match session.state() {
@@ -332,12 +305,16 @@ fn overview(
                             .map(|key| key_row(key, menu, dialog))
                             .collect_view()
                     },
-                    app.map(|app| app_row(app, menu, asking, beginning)),
+                    app.map(|app| app_row(app, menu, asking)),
                     factor.map(|factor| codes_row(factor, asking)),
                 )),
                 move || match asking.get() {
                     Some(Asked::Drawing) => drawing(session, step, asking).into_any(),
                     Some(Asked::TurningOff) => turning_off(session, turned_off, asking).into_any(),
+                    Some(Asked::SettingUp) => setting_up(step, asking).into_any(),
+                    Some(Asked::AddingKey { passkey }) => {
+                        adding_key(passkey, asking, dialog, said).into_any()
+                    }
                     None => ().into_any(),
                 },
                 move || refused.get().map(problem::problem),
@@ -346,21 +323,24 @@ fn overview(
                         (
                             html::button()
                                 .r#type("button")
-                                .attr("aria-busy", move || adding.busy_on(&true))
-                                .on(ev::click, move |_| adding.start(true))
+                                .on(ev::click, move |_| {
+                                    said.set(None);
+                                    asking.set(Some(Asked::AddingKey { passkey: true }))
+                                })
                                 .child(speech::said("security-add-passkey")),
                             html::button()
                                 .r#type("button")
-                                .attr("aria-busy", move || adding.busy_on(&false))
-                                .on(ev::click, move |_| adding.start(false))
+                                .on(ev::click, move |_| {
+                                    said.set(None);
+                                    asking.set(Some(Asked::AddingKey { passkey: false }))
+                                })
                                 .child(speech::said("security-add-key")),
                         )
                     }),
                     (app.is_none() && session.totp_offered()).then(|| {
                         html::button()
                             .r#type("button")
-                            .attr("aria-busy", move || beginning.busy())
-                            .on(ev::click, move |_| beginning.start(()))
+                            .on(ev::click, move |_| asking.set(Some(Asked::SettingUp)))
                             .child(speech::said("security-set-up-app"))
                     }),
                     (!session.keys_offered() && !session.totp_offered()).then(|| {
@@ -583,7 +563,6 @@ fn app_row(
     app: SecondFactorInUse,
     menu: RwSignal<Option<String>>,
     asking: RwSignal<Option<Asked>>,
-    beginning: Act<()>,
 ) -> impl IntoView {
     html::li().class("way").child((
         html::div().class("what").child((
@@ -602,7 +581,7 @@ fn app_row(
                 (
                     "two-step-set-up-anew",
                     false,
-                    Box::new(move || beginning.start(())),
+                    Box::new(move || asking.set(Some(Asked::SettingUp))),
                 ),
                 (
                     "two-step-turn-off",
@@ -724,6 +703,8 @@ fn setting_up_view(
 enum Asked {
     Drawing,
     TurningOff,
+    SettingUp,
+    AddingKey { passkey: bool },
 }
 
 /// The words of a change asked for by the password: what it does, and the button that does it.
@@ -744,6 +725,60 @@ const TURNING_OFF: PasswordAsked = PasswordAsked {
     confirming: "two-step-turn-off",
     danger: true,
 };
+
+const SETTING_UP: PasswordAsked = PasswordAsked {
+    hint: "two-step-set-up-password-hint",
+    confirming: "security-password-go-on",
+    danger: false,
+};
+
+const ADDING_PASSKEY: PasswordAsked = PasswordAsked {
+    hint: "security-add-passkey-hint",
+    confirming: "security-password-go-on",
+    danger: false,
+};
+
+const ADDING_KEY: PasswordAsked = PasswordAsked {
+    hint: "security-add-key-hint",
+    confirming: "security-password-go-on",
+    danger: false,
+};
+
+fn setting_up(step: RwSignal<Step>, asking: RwSignal<Option<Asked>>) -> impl IntoView {
+    asking_the_password(&SETTING_UP, asking, move |password| async move {
+        let setting_up = service::begin_setting_up_totp(&password).await?;
+        asking.set(None);
+        step.set(Step::SettingUp(setting_up));
+
+        Ok(())
+    })
+}
+
+fn adding_key(
+    passkey: bool,
+    asking: RwSignal<Option<Asked>>,
+    dialog: RwSignal<Option<KeyDialog>>,
+    said: RwSignal<Option<&'static str>>,
+) -> impl IntoView {
+    let words = if passkey {
+        &ADDING_PASSKEY
+    } else {
+        &ADDING_KEY
+    };
+
+    asking_the_password(words, asking, move |password| async move {
+        let asked = service::begin_adding_key(passkey, None, &password).await?;
+        asking.set(None);
+        match authenticator::made(&asked).await {
+            Ok(answer) => dialog.set(Some(KeyDialog::Naming(answer))),
+            Err(NoKey::Cancelled) => said.set(Some("key-not-made")),
+            Err(NoKey::HeldAlready) => said.set(Some("key-held-here")),
+            Err(NoKey::Failed) => said.set(Some("key-failed")),
+        }
+
+        Ok(())
+    })
+}
 
 fn drawing(
     session: CurrentSession,

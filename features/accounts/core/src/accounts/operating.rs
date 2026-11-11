@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use eventsourcing::Version;
+use eventsourcing::{Agent, Version};
 use transacting::Transaction;
 
 use super::AccountsCore;
@@ -269,6 +269,18 @@ impl AccountsCore {
         } else {
             Err(AccountsError::NotAnOperator)
         }
+    }
+
+    /// Whether who acts is an account operating this instance, as it stands now; nobody else is.
+    pub async fn operates(&self, agent: &Agent) -> Result<bool, AccountsError> {
+        let Agent::Account(account) = agent else {
+            return Ok(false);
+        };
+        let Ok(account) = account.as_str().parse::<AccountId>() else {
+            return Ok(false);
+        };
+
+        Ok(self.get(&account).await?.state.is_operator())
     }
 
     pub(super) async fn operating(&self, by: &AccountId) -> Result<(), AccountsError> {

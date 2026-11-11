@@ -198,6 +198,7 @@ pub struct KeyChallengeRequest {
     pub role: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replacing: Option<String>,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

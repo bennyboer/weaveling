@@ -57,10 +57,15 @@
 # holds it, such as /etc/weaveling/totp.key. Set one of the two, never both.
 
 [mail]
-# Where mail goes until there is a mail server to send it: left out, into the
-# log; named, each mail as a file in this folder.
+# Where mail goes until there is a mail server to send it. With accounts on,
+# one of these must be set, or the server does not start.
+# Each mail as a file in this folder:
 # WEAVELING_MAIL_DROP
 # drop = "target/mails"
+# Every mail written to the log, its codes and invitation links in it, so
+# whoever reads the log can sign in as anyone: only ever for development.
+# WEAVELING_MAIL_LOG
+# log = true
 
 [testing]
 # The share of messages every listener refuses on purpose, from 0 to 1, so the

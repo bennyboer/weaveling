@@ -44,10 +44,7 @@ fn made_by(authenticator: &mut SoftPasskey, asked: Value) -> Value {
 
 impl Served {
     async fn challenge(&self, cookie: &str) -> TestResponse {
-        self.server
-            .post("/accounts/current/keys/challenge")
-            .add_header(COOKIE, cookie.to_owned())
-            .await
+        self.challenge_as(cookie, key_role::SECOND_FACTOR).await
     }
 
     async fn key_made(&self, cookie: &str) -> Value {
@@ -381,6 +378,7 @@ impl Served {
             .json(&KeyChallengeRequest {
                 role: role.to_owned(),
                 replacing: None,
+                password: HER_PASSWORD.to_owned(),
             })
             .await
     }
@@ -514,6 +512,7 @@ async fn a_key_is_promoted_by_a_passkey_made_in_its_place_and_demoted_again_for_
         .json(&KeyChallengeRequest {
             role: key_role::PRIMARY.to_owned(),
             replacing: Some(key.clone()),
+            password: HER_PASSWORD.to_owned(),
         })
         .await
         .json::<KeyChallengeDTO>()
@@ -744,4 +743,32 @@ async fn only_an_operator_sees_how_another_account_signs_in_or_removes_its_keys(
     );
     // and: the key stays
     assert_eq!(served.keys(&cookie).await.len(), 1);
+}
+
+#[tokio::test]
+async fn adding_a_key_asks_for_her_password_first_and_a_wrong_one_asks_the_browser_for_nothing() {
+    // given: Ada signed in, on an instance that keeps keys
+    let served = with_key_ceremonies().await;
+    let cookie = served.signed_in().await;
+
+    for role in [key_role::PRIMARY, key_role::SECOND_FACTOR] {
+        // when: she begins adding a key with a wrong password
+        let refused = served
+            .server
+            .post("/accounts/current/keys/challenge")
+            .add_header(COOKIE, cookie.clone())
+            .json(&KeyChallengeRequest {
+                role: role.to_owned(),
+                replacing: None,
+                password: "not her password".to_owned(),
+            })
+            .await;
+
+        // then: it is refused as the wrong password, and no key is asked for
+        refused_as(
+            &refused,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            refused::PASSWORD_WRONG,
+        );
+    }
 }

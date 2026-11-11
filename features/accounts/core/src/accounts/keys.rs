@@ -40,14 +40,16 @@ impl AccountsCore {
         Ok(self.get(account).await?.state.keys().clone())
     }
 
-    /// What the browser is asked to make a key in its role with: a passkey signing in alone, or a key answering the second step.
+    /// What the browser is asked to make a key in its role with, a passkey signing in alone or a key answering the second step, for the account's password, as a key added is a way in.
     pub async fn begin_adding_key(
         &self,
         account: &AccountId,
         role: KeyRole,
         replacing: Option<&KeyId>,
+        password: &str,
     ) -> Result<Value, AccountsError> {
         let ceremonies = self.key_ceremonies()?;
+        self.password_confirmed(account, password).await?;
         let holder = self.get(account).await?.state;
         let held: Vec<_> = self
             .key_credentials

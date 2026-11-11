@@ -1,10 +1,15 @@
 use std::sync::Arc;
 
+use accounts_contract::refused as accounts_refused;
+use accounts_core::AccountsCore;
 use async_trait::async_trait;
+use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Request, State};
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing;
 use clock::Clock;
 use clock::text;
@@ -31,7 +36,11 @@ struct Refusals {
     clock: Arc<dyn Clock>,
 }
 
-pub struct RefusalsTopic(pub Broadcaster<RefusalChanges>);
+/// The refusals followed live, by anyone in local mode and only by an operator where there are accounts.
+pub struct RefusalsTopic {
+    pub broadcaster: Broadcaster<RefusalChanges>,
+    pub operators: Option<AccountsCore>,
+}
 
 #[async_trait]
 impl Topic for RefusalsTopic {
@@ -39,8 +48,39 @@ impl Topic for RefusalsTopic {
         REFUSALS
     }
 
-    async fn subscribe(&self, _agent: &Agent, _about: &About) -> Result<Subscribed, Refused> {
-        Ok(Subscribed::hearing(self.0.hear(RefusalChanges)))
+    async fn subscribe(&self, agent: &Agent, _about: &About) -> Result<Subscribed, Refused> {
+        if let Some(operators) = &self.operators
+            && !operators
+                .operates(agent)
+                .await
+                .map_err(|_| Refused::Failed)?
+        {
+            return Err(Refused::NotThere);
+        }
+
+        Ok(Subscribed::hearing(self.broadcaster.hear(RefusalChanges)))
+    }
+}
+
+/// Lets only an operator through to the refusals, where there are accounts: they tell what went wrong inside, and acknowledging or retrying them is the operator's.
+pub fn for_operators(refusals: Router, accounts: AccountsCore) -> Router {
+    refusals.route_layer(middleware::from_fn_with_state(accounts, operators_only))
+}
+
+async fn operators_only(
+    State(accounts): State<AccountsCore>,
+    Extension(agent): Extension<Agent>,
+    request: Request,
+    next: Next,
+) -> Response {
+    match accounts.operates(&agent).await {
+        Ok(true) => next.run(request).await,
+        Ok(false) => Problem::forbidden(
+            accounts_refused::NOT_AN_OPERATOR,
+            "only an operator sees what was refused",
+        )
+        .into_response(),
+        Err(failed) => Problem::unexpected(failed).into_response(),
     }
 }
 

@@ -74,8 +74,11 @@ impl Refused {
                 Arc::new(FixedClock::new(ASKED)),
             ));
         let live = TestServer::builder().http_transport().build(
-            live::live_socket(live::Topics::of(vec![Arc::new(RefusalsTopic(broadcaster))]))
-                .layer(Extension(Agent::Local)),
+            live::live_socket(live::Topics::of(vec![Arc::new(RefusalsTopic {
+                broadcaster,
+                operators: None,
+            })]))
+            .layer(Extension(Agent::Local)),
         );
 
         Self {

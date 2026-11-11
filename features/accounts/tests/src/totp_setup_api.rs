@@ -255,3 +255,26 @@ async fn finishing_a_second_factor_set_up_anew_goes_on_signed_in_all_the_way() {
         "the session that just proved the new factor owes none"
     );
 }
+
+#[tokio::test]
+async fn setting_up_asks_for_her_password_first_and_a_wrong_one_begins_nothing() {
+    // given: Ada signed in
+    let served = with_a_key().await;
+    let cookie = served.signed_in().await;
+
+    // when: she begins setting up a second factor with a wrong password
+    let refused = served.begin_for(&cookie, "not her password").await;
+
+    // then: it is refused as the wrong password
+    refused_as(
+        &refused,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::PASSWORD_WRONG,
+    );
+    // and: nothing is being set up that a code could finish
+    refused_as(
+        &served.finish(&cookie, "123456").await,
+        StatusCode::CONFLICT,
+        refused::NOTHING_BEING_SET_UP,
+    );
+}

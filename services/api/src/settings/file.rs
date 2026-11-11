@@ -46,6 +46,7 @@ struct FiledAccounts {
 #[serde(default, deny_unknown_fields)]
 struct FiledMail {
     drop: Option<toml::Value>,
+    log: Option<toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -72,6 +73,7 @@ impl Settings {
             accounts: setting(key("accounts.enabled"), filed.accounts.enabled),
             sign_up: setting(key("accounts.sign_up"), filed.accounts.sign_up),
             mail_drop: setting(key("mail.drop"), filed.mail.drop),
+            mail_log: setting(key("mail.log"), filed.mail.log),
             flaky: setting(key("testing.flaky"), filed.testing.flaky),
             totp_key: totp_key::secret(
                 setting(key("accounts.totp_key"), filed.accounts.totp_key),

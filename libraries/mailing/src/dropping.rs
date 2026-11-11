@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 
-use crate::{LoggingMailer, Mail, Mailer, Unsent};
+use crate::{Mail, Mailer, Unsent};
 
 pub struct DroppingMailer {
     into: PathBuf,
@@ -47,8 +47,9 @@ impl Mailer for DroppingMailer {
         fs::write(writing.join(&named), written).map_err(|why| unsent(why.to_string()))?;
         fs::rename(writing.join(&named), self.into.join(&named))
             .map_err(|why| unsent(why.to_string()))?;
+        tracing::info!(to = %mail.to, subject = %mail.subject, "[mail] dropped as {named}");
 
-        LoggingMailer.send(mail).await
+        Ok(())
     }
 }
 

@@ -339,8 +339,16 @@ fn locked(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }
 
-pub async fn begin_setting_up_totp() -> Result<SettingUpTotpDTO, ApiError> {
-    http::parsed(http::sent(Request::post(TOTP_SETUP)).await?, SUBJECT).await
+pub async fn begin_setting_up_totp(password: &str) -> Result<SettingUpTotpDTO, ApiError> {
+    let payload = PasswordRequest {
+        password: password.to_owned(),
+    };
+
+    http::parsed(
+        http::sent_with(Request::post(TOTP_SETUP), &payload).await?,
+        SUBJECT,
+    )
+    .await
 }
 
 pub async fn finish_setting_up_totp(code: &str) -> Result<Vec<String>, ApiError> {
@@ -582,6 +590,7 @@ fn held_key(key: KeyDTO) -> Result<HeldKey, ApiError> {
 pub async fn begin_adding_key(
     passkey: bool,
     replacing: Option<&str>,
+    password: &str,
 ) -> Result<serde_json::Value, ApiError> {
     let payload = KeyChallengeRequest {
         role: if passkey {
@@ -591,6 +600,7 @@ pub async fn begin_adding_key(
         }
         .to_owned(),
         replacing: replacing.map(ToOwned::to_owned),
+        password: password.to_owned(),
     };
     let asked: KeyChallengeDTO = http::parsed(
         http::sent_with(Request::post(KEY_CHALLENGE), &payload).await?,

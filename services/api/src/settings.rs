@@ -13,9 +13,10 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::{
-    Accounts, Backend, Flakiness, Mailing, SignUp, Unchosen, Unflaky, UnreadableAccounts,
-    UnreadableSignUp, WEAVELING_ACCOUNTS, WEAVELING_DATA, WEAVELING_DATABASE_URL, WEAVELING_FLAKY,
-    WEAVELING_MAIL_DROP, WEAVELING_SIGN_UP,
+    Accounts, Backend, Flakiness, Mailing, SignUp, Unchosen, Unflaky, Unmailable,
+    UnreadableAccounts, UnreadableSignUp, WEAVELING_ACCOUNTS, WEAVELING_DATA,
+    WEAVELING_DATABASE_URL, WEAVELING_FLAKY, WEAVELING_MAIL_DROP, WEAVELING_MAIL_LOG,
+    WEAVELING_SIGN_UP,
 };
 use file::BESIDE;
 
@@ -65,6 +66,7 @@ pub struct Settings {
     accounts: Option<Setting>,
     sign_up: Option<Setting>,
     mail_drop: Option<Setting>,
+    mail_log: Option<Setting>,
     flaky: Option<Setting>,
     totp_key: Option<Setting>,
 }
@@ -109,8 +111,8 @@ impl Settings {
         SignUp::chosen(self.sign_up.clone())
     }
 
-    pub fn mailing(&self) -> Mailing {
-        Mailing::chosen(self.mail_drop.clone())
+    pub fn mailing(&self) -> Result<Mailing, Unmailable> {
+        Mailing::chosen(self.mail_drop.clone(), self.mail_log.clone())
     }
 
     pub fn flakiness(&self) -> Result<Option<Flakiness>, Unflaky> {
@@ -136,6 +138,7 @@ impl Settings {
             (WEAVELING_ACCOUNTS, &mut self.accounts),
             (WEAVELING_SIGN_UP, &mut self.sign_up),
             (WEAVELING_MAIL_DROP, &mut self.mail_drop),
+            (WEAVELING_MAIL_LOG, &mut self.mail_log),
             (WEAVELING_FLAKY, &mut self.flaky),
         ] {
             if let Some(given) = set(name) {

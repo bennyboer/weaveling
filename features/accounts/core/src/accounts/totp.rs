@@ -31,11 +31,14 @@ impl AccountsCore {
         self.totp_key.is_some()
     }
 
+    /// Begins setting up an app for the second step, for the account's password, as it may replace the app in use and its recovery codes.
     pub async fn begin_setting_up_totp(
         &self,
         account: &AccountId,
+        password: &str,
     ) -> Result<SettingUpTotp, AccountsError> {
         let key = self.totp_key()?;
+        self.password_confirmed(account, password).await?;
         let holder = self.get(account).await?.state;
         let secret = TotpSecret::drawn();
         let sealed = key.seal(&secret, account);

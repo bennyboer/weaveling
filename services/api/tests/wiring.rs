@@ -1555,3 +1555,108 @@ async fn on_a_server_an_account_follows_its_notifications_on_the_one_socket() {
     );
     signed_in.end().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_accounts_on_only_an_operator_reaches_the_refusals() {
+    // given: an operator signed in on a server
+    let signed_in = an_operator_signed_in_on_a_server("refusals").await;
+    let server = &signed_in.server;
+
+    // expect: the operator is answered the refusals
+    let listed = server.get("/api/service/refusals").await;
+    listed.assert_status_ok();
+    assert_eq!(listed.text(), "[]");
+    // and: nobody signed in is refused, for each of the refusals' routes
+    for refused in [
+        server
+            .get("/api/service/refusals")
+            .do_not_save_cookies()
+            .clear_cookies()
+            .await,
+        server
+            .post("/api/service/refusals/1/acknowledge")
+            .do_not_save_cookies()
+            .clear_cookies()
+            .await,
+        server
+            .post("/api/service/refusals/1/retry")
+            .do_not_save_cookies()
+            .clear_cookies()
+            .await,
+    ] {
+        refused.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    // when: another account signs up and signs in
+    server
+        .post("/api/accounts")
+        .do_not_save_cookies()
+        .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    server
+        .post("/api/accounts/verification")
+        .do_not_save_cookies()
+        .json(&json!({ "email": "grace@example.com", "code": mail_drop::code_dropped_for(&signed_in.drop, "grace@example.com") }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let grace = server
+        .post("/api/sessions")
+        .do_not_save_cookies()
+        .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
+        .await;
+    grace.assert_status_ok();
+    let grace_cookie = grace
+        .header("set-cookie")
+        .to_str()
+        .expect("a cookie is plain text")
+        .split(';')
+        .next()
+        .expect("the cookie names the session")
+        .to_owned();
+
+    // then: she is refused the refusals, as no operator
+    let refused = server
+        .get("/api/service/refusals")
+        .do_not_save_cookies()
+        .clear_cookies()
+        .add_header("cookie", grace_cookie.clone())
+        .await;
+    refused.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(refused.json::<Value>()["type"], "not-an-operator");
+
+    // when: each follows the refusals live
+    let followed = |cookie: Option<String>| async move {
+        let asked = server.get_websocket("/api/live");
+        let asked = match cookie {
+            Some(cookie) => asked
+                .do_not_save_cookies()
+                .clear_cookies()
+                .add_header("cookie", cookie),
+            None => asked,
+        };
+        let mut socket = asked.await.into_websocket().await;
+        socket
+            .send_json(
+                &json!({ "do": "subscribe", "id": "refusals", "topic": "refusals", "about": {} }),
+            )
+            .await;
+
+        tokio::time::timeout(Duration::from_secs(1), socket.receive_json::<Value>())
+            .await
+            .expect("told whether it is followed")
+    };
+
+    // then: the operator follows them
+    assert_eq!(
+        followed(None).await,
+        json!({ "told": "following", "id": "refusals" })
+    );
+    // and: she is refused, as for something not there
+    assert_eq!(
+        followed(Some(grace_cookie.clone())).await,
+        json!({ "told": "ended", "id": "refusals", "why": "not-there" })
+    );
+
+    signed_in.end().await;
+}

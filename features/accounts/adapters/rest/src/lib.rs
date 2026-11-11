@@ -353,9 +353,10 @@ async fn become_operator(
 async fn begin_setting_up_totp(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
+    Json(request): Json<PasswordRequest>,
 ) -> Result<Json<SettingUpTotpDTO>, Problem> {
     let setting_up = accounts
-        .begin_setting_up_totp(&account)
+        .begin_setting_up_totp(&account, &request.password)
         .await
         .map_err(problem_of)?;
 
@@ -487,25 +488,21 @@ async fn remove_key_of(
 async fn begin_adding_key(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
-    asked: Option<Json<KeyChallengeRequest>>,
+    Json(asked): Json<KeyChallengeRequest>,
 ) -> Result<Json<KeyChallengeDTO>, Problem> {
-    let role = match asked.as_ref().map(|Json(asked)| asked.role.as_str()) {
-        None | Some(key_role::SECOND_FACTOR) => KeyRole::SecondFactor,
-        Some(key_role::PRIMARY) => KeyRole::Primary,
-        Some(_) => {
+    let role = match asked.role.as_str() {
+        key_role::SECOND_FACTOR => KeyRole::SecondFactor,
+        key_role::PRIMARY => KeyRole::Primary,
+        _ => {
             return Err(Problem::rejected(
                 refused::KEY_ROLE_UNKNOWN,
                 "a key signs in alone, as a passkey, or answers the second step",
             ));
         }
     };
-    let replacing = asked
-        .as_ref()
-        .and_then(|Json(asked)| asked.replacing.as_deref())
-        .map(key_named)
-        .transpose()?;
+    let replacing = asked.replacing.as_deref().map(key_named).transpose()?;
     let options = accounts
-        .begin_adding_key(&account, role, replacing.as_ref())
+        .begin_adding_key(&account, role, replacing.as_ref(), &asked.password)
         .await
         .map_err(problem_of)?;
 

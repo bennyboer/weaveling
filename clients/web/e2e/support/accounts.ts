@@ -505,6 +505,9 @@ export async function aServerWithAccounts(
     if (!server.totpOffered) {
       return refusing(route, 409, "totp-unavailable");
     }
+    if (route.request().postDataJSON()?.password !== server.password) {
+      return refusing(route, 422, "password-wrong");
+    }
     return route.fulfill({
       json: {
         secret: THE_TOTP_SECRET,
@@ -557,6 +560,9 @@ export async function aServerWithAccounts(
         return refusing(route, 409, "keys-unavailable");
       }
       const asked = route.request().postDataJSON() ?? {};
+      if (asked.password !== server.password) {
+        return refusing(route, 422, "password-wrong");
+      }
       server.addingRole = asked.role ?? "second-factor";
       server.replacing = asked.replacing ?? null;
       const passkey = server.addingRole === "primary";
@@ -1150,6 +1156,12 @@ export async function aServerWithAccounts(
   });
 
   return server;
+}
+
+/** Answers the password asked before a way in is added, and goes on. */
+export async function confirmedByHerPassword(page: Page, password = HER_PASSWORD) {
+  await page.getByLabel("Your password, to be sure it’s you").fill(password);
+  await page.getByRole("button", { name: "Go on" }).click();
 }
 
 export async function signIn(page: Page, email: string, password: string) {

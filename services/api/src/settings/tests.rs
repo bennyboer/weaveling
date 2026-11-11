@@ -47,11 +47,11 @@ fn with_neither_a_file_nor_variables_everything_is_as_built_in() {
     let settings = Settings::read(no_arguments(), variables(&[]), &folder)
         .expect("nothing to read is no failure");
 
-    // then: the work is kept in memory, without accounts, anyone may sign up, mails go to the log
+    // then: the work is kept in memory, without accounts, anyone may sign up, mails go nowhere
     assert_eq!(settings.backend().expect("built in"), Backend::InMemory);
     assert_eq!(settings.accounts().expect("built in"), Accounts::Off);
     assert_eq!(settings.sign_up().expect("built in"), SignUp::Open);
-    assert_eq!(settings.mailing(), Mailing::Logged);
+    assert_eq!(settings.mailing(), Ok(Mailing::Nowhere));
     // and: nothing is refused on purpose
     assert!(settings.flakiness().expect("built in").is_none());
 }
@@ -151,7 +151,7 @@ fn a_file_named_by_flag_or_variable_is_read_in_place_of_the_one_beside() {
         SignUp::ByInvitation
     );
     // and: the variable's file is not read
-    assert_eq!(settings.mailing(), Mailing::Logged);
+    assert_eq!(settings.mailing(), Ok(Mailing::Nowhere));
     // when: only the variable names one
     let settings = Settings::read(
         no_arguments(),
@@ -162,9 +162,9 @@ fn a_file_named_by_flag_or_variable_is_read_in_place_of_the_one_beside() {
     // then: its holds, and not the one beside
     assert_eq!(
         settings.mailing(),
-        Mailing::Dropped {
+        Ok(Mailing::Dropped {
             into: "/mails".into()
-        }
+        })
     );
 }
 
@@ -653,4 +653,30 @@ fn the_page_reloads_on_changes_only_while_cargo_leptos_watches() {
     assert_eq!(reading("true"), Some(3001));
     // and: otherwise nothing reloads
     assert_eq!(reading(""), None);
+}
+
+#[test]
+fn mail_goes_to_the_log_only_when_the_file_or_a_variable_says_so() {
+    // given: a file writing mail to the log
+    let folder = a_folder();
+    a_file(
+        &folder,
+        "weaveling.toml",
+        "[mail]
+log = true
+",
+    );
+
+    // expect: mail goes to the log
+    let settings =
+        Settings::read(no_arguments(), variables(&[]), &folder).expect("the file beside is read");
+    assert_eq!(settings.mailing(), Ok(Mailing::Logged));
+    // and: the variable turns it off again
+    let settings = Settings::read(
+        no_arguments(),
+        variables(&[(WEAVELING_MAIL_LOG, "off")]),
+        &folder,
+    )
+    .expect("the file beside is read");
+    assert_eq!(settings.mailing(), Ok(Mailing::Nowhere));
 }

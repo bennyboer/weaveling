@@ -9,6 +9,7 @@ import {
   aServerWithAccounts,
   signIn,
   type Server,
+  confirmedByHerPassword,
 } from "./support/accounts";
 
 const accountButton = (page: Page) =>
@@ -31,6 +32,7 @@ async function settingUp(page: Page) {
   await accountButton(page).click();
   await securityInMenu(page).click();
   await page.getByRole("button", { name: "Set up" }).click();
+  await confirmedByHerPassword(page);
   await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toBeVisible();
 }
 
@@ -205,4 +207,21 @@ test("the author stays signed in and following live after the server renews the 
   await expect
     .poll(() => server.liveSockets.filter((socket) => socket !== first).length)
     .toBe(1);
+});
+
+test("setting up asks for her password first, and a wrong one shows nothing to set up", async ({
+  page,
+}) => {
+  // given: she is signed in
+  await signedIn(page);
+
+  // when: she begins setting up an app with a wrong password
+  await accountButton(page).click();
+  await securityInMenu(page).click();
+  await page.getByRole("button", { name: "Set up" }).click();
+  await confirmedByHerPassword(page, "not her password");
+
+  // then: she is told it is not her password, and no code is shown
+  await expect(page.getByText("That is not your password.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Set up two-step sign-in" })).toHaveCount(0);
 });

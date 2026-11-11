@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
 use tracing_subscriber::EnvFilter;
-use weaveling_service_api::{Accounts, Adapters, Chores, Relays, Settings, Settling};
+use weaveling_service_api::{Accounts, Adapters, Chores, Mailing, Relays, Settings, Settling};
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 const SOCKETS_GIVEN_TO_CLOSE: Duration = Duration::from_secs(60);
@@ -18,13 +18,18 @@ const SOCKETS_GIVEN_TO_CLOSE: Duration = Duration::from_secs(60);
 async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
     let backend = or_stop(settings.backend());
     let accounts = or_stop(settings.accounts());
-    let mailing = settings.mailing();
+    let mailing = or_stop(or_stop(settings.mailing()).ready_for(accounts));
     let sign_up = or_stop(settings.sign_up());
     let totp_key = or_stop(settings.totp_key());
     let key_ceremonies = or_stop(settings.key_ceremonies());
     match accounts {
         Accounts::On => {
             tracing::info!("keeping the work {backend}, {accounts}, {sign_up}, {mailing}");
+            if mailing == Mailing::Logged {
+                tracing::warn!(
+                    "every mail is written to the log, codes and invitation links in it: whoever reads the log can sign in as anyone; only ever for development"
+                );
+            }
             if totp_key.is_none() {
                 tracing::warn!(
                     "no TOTP key is set, so two-step sign-in cannot be set up; see weaveling.example.toml"

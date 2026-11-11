@@ -9,6 +9,7 @@ import {
   aServerWithAccounts,
   signIn,
   type Server,
+  confirmedByHerPassword,
 } from "./support/accounts";
 
 test.use({ baseURL: "http://localhost:3100" });
@@ -79,6 +80,8 @@ test("a security key made by the browser is added under its name, the first seco
 
   // when: they add a key, and name it once the browser has made it
   await page.getByRole("button", { name: "Add a security key" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("YubiKey blue");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -115,6 +118,8 @@ test("a key beside a second step is added without new codes", async ({
 
   // when: they add the second key
   await page.getByRole("button", { name: "Add a security key" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("YubiKey green");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -142,6 +147,8 @@ test("a name another key has is refused, and the key is added under another", as
   await page.goto("/account/security");
   await aSecurityKey(page);
   await page.getByRole("button", { name: "Add a security key" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
 
   // when: they give it the first one's name
@@ -212,6 +219,8 @@ test("a key the browser does not make changes nothing", async ({ page }) => {
   // when: they try to add it
   await page.getByRole("button", { name: "Add a security key" }).click();
 
+  await confirmedByHerPassword(page);
+
   // then: they are told no key was made, and none is listed
   await expect(page.getByText("No key was made.")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -240,6 +249,8 @@ async function withAKeyAdded(page: Page) {
   const server = await onTheSecurityPage(page);
   const lost = await aSecurityKey(page);
   await page.getByRole("button", { name: "Add a security key" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("YubiKey blue");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -388,6 +399,8 @@ test("the recovery codes are shown even when the renewed session's cookie comes 
 
   // when: they add their first key
   await page.getByRole("button", { name: "Add a security key" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("YubiKey blue");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -440,6 +453,8 @@ test("a passkey is added to sign in alone, listed apart from the second step, wi
 
   // when: they add a passkey and name it
   await page.getByRole("button", { name: "Add a passkey" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("MacBook");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -463,6 +478,8 @@ test("a passkey used as the second step comes with recovery codes, and is made a
   const server = await onTheSecurityPage(page);
   await aSecurityKey(page);
   await page.getByRole("button", { name: "Add a passkey" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("MacBook");
   await naming.getByRole("button", { name: "Add the key" }).click();
@@ -512,6 +529,8 @@ async function withAPasskeyAdded(page: Page) {
   const server = await onTheSecurityPage(page);
   const lost = await aSecurityKey(page);
   await page.getByRole("button", { name: "Add a passkey" }).click();
+
+  await confirmedByHerPassword(page);
   const naming = page.getByRole("dialog", { name: "Your key is made" });
   await naming.getByLabel("Name").fill("MacBook");
   await naming.getByRole("button", { name: "Add the key" }).click();

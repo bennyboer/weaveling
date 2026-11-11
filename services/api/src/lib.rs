@@ -43,7 +43,7 @@ use chores::ForgetOldDeadLetters;
 pub use chores::{Chore, Chores};
 pub use client::{ServedClient, serving_the_client};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
-pub use mail::{Mailing, WEAVELING_MAIL_DROP};
+pub use mail::{Mailing, Unmailable, WEAVELING_MAIL_DROP, WEAVELING_MAIL_LOG};
 pub use relays::Relays;
 pub use settings::{
     Setting, Settings, Unlistenable, UnreadablePublicUrl, UnreadableTotpKey, Unsettled,
@@ -260,17 +260,15 @@ pub fn app(adapters: Adapters) -> Router {
         .accounts
         .as_ref()
         .map(|accounts| accounts.core.clone());
-    let service = Router::new()
-        .route("/health", routing::get(health))
-        .route(
-            "/mode",
-            routing::get(move || mode(told.clone(), operating.clone())),
-        )
-        .merge(refusals::router(
-            adapters.deliveries.clone(),
-            adapters.dispatcher.clone(),
-            adapters.clock.clone(),
-        ));
+    let service = Router::new().route("/health", routing::get(health)).route(
+        "/mode",
+        routing::get(move || mode(told.clone(), operating.clone())),
+    );
+    let refusals = refusals::router(
+        adapters.deliveries.clone(),
+        adapters.dispatcher.clone(),
+        adapters.clock.clone(),
+    );
     let mut open_routes = Router::new().nest("/service", service);
 
     let accounts_listeners = adapters
@@ -279,8 +277,13 @@ pub fn app(adapters: Adapters) -> Router {
         .flat_map(|accounts| accounts.listeners.clone());
     let mut guarded_routes = Router::new();
     let mut listeners = Vec::new();
-    let mut topics: Vec<Arc<dyn live::Topic>> =
-        vec![Arc::new(refusals::RefusalsTopic(adapters.refusals.clone()))];
+    let mut topics: Vec<Arc<dyn live::Topic>> = vec![Arc::new(refusals::RefusalsTopic {
+        broadcaster: adapters.refusals.clone(),
+        operators: adapters
+            .accounts
+            .as_ref()
+            .map(|accounts| accounts.core.clone()),
+    })];
     for feature in adapters.features {
         guarded_routes = guarded_routes.merge(feature.routes);
         open_routes = open_routes.merge(feature.open_routes);
@@ -298,16 +301,23 @@ pub fn app(adapters: Adapters) -> Router {
 
     let api = match adapters.accounts {
         Some(accounts) => {
+            let refusals = refusals::for_operators(refusals, accounts.core.clone());
             let guarded_routes = accounts_rest::admitting_only_the_signed_in(
                 accounts.core,
-                guarded_routes.merge(accounts.guarded_routes),
+                guarded_routes
+                    .merge(accounts.guarded_routes)
+                    .nest("/service", refusals),
             );
 
             open_routes
                 .merge(accounts.open_routes)
                 .merge(guarded_routes)
         }
-        None => open_routes.merge(guarded_routes.layer(Extension(Agent::Local))),
+        None => open_routes.merge(
+            guarded_routes
+                .nest("/service", refusals)
+                .layer(Extension(Agent::Local)),
+        ),
     };
 
     Router::new()

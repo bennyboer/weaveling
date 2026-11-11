@@ -35,11 +35,10 @@ impl AlarmState {
         };
 
         let session = expect_context::<CurrentSession>();
-        let let_in = Memo::new(move |_| {
-            matches!(
-                session.state(),
-                SignInState::SignedIn(_) | SignInState::NoAccounts
-            )
+        let let_in = Memo::new(move |_| match session.state() {
+            SignInState::SignedIn(account) => account.operator,
+            SignInState::NoAccounts => true,
+            _ => false,
         });
         Effect::new(move |_| {
             state.following.set_value(let_in.get().then(|| {
