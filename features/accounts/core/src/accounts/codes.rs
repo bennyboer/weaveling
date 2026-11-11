@@ -2,11 +2,12 @@ use mailing::Mail;
 
 use super::AccountsCore;
 use crate::account::AccountCommand;
-use crate::code::{CodePurpose, PendingVerification, VerificationCode};
+use crate::code::{CodeDigest, CodePurpose, PendingVerification};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::password::Password;
 use crate::secrets::Attempt;
+use crate::throttle::Guarded;
 use email::EmailAddress;
 
 impl AccountsCore {
@@ -105,7 +106,9 @@ impl AccountsCore {
         id: &AccountId,
         purpose: CodePurpose,
         code: &str,
-    ) -> Result<VerificationCode, AccountsError> {
+    ) -> Result<CodeDigest, AccountsError> {
+        let guessing = Guarded::GuessingCodes(purpose);
+        self.admitted(guessing, &id.to_string()).await?;
         let attempt = transacting::retrying!(&*self.transactions, |transaction| {
             Ok::<_, AccountsError>(
                 self.verifications
@@ -122,11 +125,14 @@ impl AccountsCore {
         if self.clock.now() > pending.until {
             return Err(AccountsError::CodeExpired);
         }
-        if !pending.code.is(code) {
+        if !pending.digest.admits(code) {
             return Err(AccountsError::CodeWrong);
         }
+        self.throttles
+            .clear(guessing.as_str(), &id.to_string())
+            .await?;
 
-        Ok(pending.code)
+        Ok(pending.digest)
     }
 
     pub(super) async fn mail_code(
@@ -135,7 +141,7 @@ impl AccountsCore {
         email: &EmailAddress,
         purpose: CodePurpose,
     ) -> Result<(), AccountsError> {
-        let pending = PendingVerification::issued(self.clock.now());
+        let (code, pending) = PendingVerification::issued(self.clock.now());
         transacting::retrying!(&*self.transactions, |transaction| {
             Ok::<_, AccountsError>(
                 self.verifications
@@ -143,7 +149,7 @@ impl AccountsCore {
                     .await?,
             )
         })?;
-        let code = pending.code.as_str();
+        let code = code.as_str();
         let (subject, body) = match purpose {
             CodePurpose::ConfirmAddress => (
                 "Your Weaveling code",

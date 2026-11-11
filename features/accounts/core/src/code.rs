@@ -1,4 +1,7 @@
+use sha2::{Digest, Sha256};
 use time::{Duration, OffsetDateTime};
+
+use crate::session::hex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodePurpose {
@@ -15,12 +18,17 @@ impl CodePurpose {
     }
 }
 
+/// A code as mailed, kept nowhere but in the mail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerificationCode(String);
 
+/// What is kept of a code: its SHA-256, so a database read or a backup gives no code to type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeDigest(String);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingVerification {
-    pub code: VerificationCode,
+    pub digest: CodeDigest,
     pub until: OffsetDateTime,
     pub tried: u32,
 }
@@ -44,28 +52,47 @@ impl VerificationCode {
         }
     }
 
-    pub fn kept(code: String) -> Self {
-        Self(code)
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn digest(&self) -> CodeDigest {
+        CodeDigest::of(&self.0)
+    }
+}
+
+impl CodeDigest {
+    fn of(code: &str) -> Self {
+        Self(hex(&Sha256::digest(code.as_bytes())))
+    }
+
+    pub fn kept(digest: String) -> Self {
+        Self(digest)
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    pub fn is(&self, tried: &str) -> bool {
-        tried.trim() == self.0
+    /// Whether a code typed, around its spaces, is the one this was kept of.
+    pub fn admits(&self, tried: &str) -> bool {
+        Self::of(tried.trim()) == *self
     }
 }
 
 impl PendingVerification {
     pub const MAX_TRIES: u32 = 5;
 
-    pub fn issued(now: OffsetDateTime) -> Self {
-        Self {
-            code: VerificationCode::drawn(),
+    /// A code drawn, to be mailed, and what is kept of it until when.
+    pub fn issued(now: OffsetDateTime) -> (VerificationCode, Self) {
+        let code = VerificationCode::drawn();
+        let pending = Self {
+            digest: code.digest(),
             until: now + VerificationCode::LASTS,
             tried: 0,
-        }
+        };
+
+        (code, pending)
     }
 }
 
@@ -100,8 +127,8 @@ mod tests {
 
         // expect: the code is made of the first draw within it
         assert_eq!(
-            VerificationCode::fairly_from(|| draws.next().expect("a draw left")),
-            VerificationCode::kept("999999".to_owned()),
+            VerificationCode::fairly_from(|| draws.next().expect("a draw left")).as_str(),
+            "999999",
             "the draws past 4,293,999,999 would make the lowest codes a little likelier, \
              so they are drawn again rather than folded in"
         );
@@ -110,31 +137,57 @@ mod tests {
     #[test]
     fn a_small_draw_is_padded_to_six_digits() {
         // expect: a draw of few digits makes a code led by zeros
-        assert_eq!(
-            VerificationCode::fairly_from(|| 42),
-            VerificationCode::kept("000042".to_owned())
-        );
+        assert_eq!(VerificationCode::fairly_from(|| 42).as_str(), "000042");
     }
 
     #[test]
     fn a_code_pasted_with_spaces_around_it_still_counts() {
-        // given: a code led by zeros
-        let code = VerificationCode::kept("004217".to_owned());
+        // given: what is kept of a code led by zeros
+        let kept = CodeDigest::of("004217");
 
-        // then: it is the code pasted with spaces around it
-        assert!(code.is(" 004217\n"));
+        // then: it admits the code pasted with spaces around it
+        assert!(kept.admits(" 004217\n"));
         // and: not the code without its zeros
-        assert!(!code.is("4217"));
+        assert!(!kept.admits("4217"));
     }
 
     #[test]
     fn an_issued_code_lasts_a_quarter_of_an_hour_and_is_untried() {
         // when: a code is issued
         let now = OffsetDateTime::UNIX_EPOCH;
-        let pending = PendingVerification::issued(now);
+        let (_, pending) = PendingVerification::issued(now);
 
         // then: it lasts fifteen minutes and has not been tried
         assert_eq!(pending.until, now + Duration::minutes(15));
         assert_eq!(pending.tried, 0);
+    }
+}
+
+#[cfg(test)]
+mod digest_tests {
+    use super::*;
+
+    #[test]
+    fn what_is_kept_of_a_code_is_its_sha_256_and_admits_it_alone() {
+        // given: a code issued
+        let (code, pending) = PendingVerification::issued(OffsetDateTime::UNIX_EPOCH);
+
+        // expect: what is kept is no code, but 64 hex digits
+        assert_ne!(pending.digest.as_str(), code.as_str());
+        assert_eq!(pending.digest.as_str().len(), 64);
+        // and: it admits the code, around spaces
+        assert!(pending.digest.admits(&format!(" {} ", code.as_str())));
+        // and: no other
+        let other = if code.as_str() == "000000" {
+            "000001"
+        } else {
+            "000000"
+        };
+        assert!(!pending.digest.admits(other));
+        // and: the digest of 000000 is its sha 256
+        assert_eq!(
+            CodeDigest::of("000000").as_str(),
+            "91b4d142823f7d20c5f08df69122de43f35f057a988d9619f6d3138485c9a203"
+        );
     }
 }

@@ -1,7 +1,7 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, KeyCredential, KeyId, PasswordHash, Passwords,
+    AccountId, Attempt, CodeDigest, CodePurpose, KeyCredential, KeyId, PasswordHash, Passwords,
     PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondStepWay, SecretsError, Session,
-    Stage, TokenDigest, TotpStep, VerificationCode,
+    Stage, TokenDigest, TotpStep,
 };
 use transacting::{Transaction, Tried};
 
@@ -57,7 +57,7 @@ impl<S: Secrets> Committing<'_, S> {
             account,
             CodePurpose::ResetPassword,
             &PendingVerification {
-                code: VerificationCode::kept("123456".to_owned()),
+                digest: CodeDigest::kept("123456".to_owned()),
                 until: clock::at(1_700_000_000),
                 tried: 0,
             },

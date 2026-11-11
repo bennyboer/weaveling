@@ -1,8 +1,28 @@
 use time::{Duration, OffsetDateTime};
 
+/// How many tries are free, and how long the wait after them grows at most.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rule {
     pub free: u32,
+    pub longest_wait: Duration,
+}
+
+impl Rule {
+    /// So many tries free, then a wait doubling up to an hour.
+    pub const fn free(free: u32) -> Self {
+        Self {
+            free,
+            longest_wait: Tries::LONGEST_WAIT,
+        }
+    }
+
+    /// The same, the wait growing up to the one given instead.
+    pub const fn waiting_at_most(self, longest_wait: Duration) -> Self {
+        Self {
+            free: self.free,
+            longest_wait,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +40,7 @@ pub struct Tries {
 impl Tries {
     pub const FORGOTTEN_AFTER: Duration = Duration::days(1);
     const FIRST_WAIT: Duration = Duration::minutes(1);
-    const LONGEST_WAIT: Duration = Duration::hours(1);
+    pub const LONGEST_WAIT: Duration = Duration::hours(1);
 
     pub fn is_forgotten(&self, now: OffsetDateTime) -> bool {
         now - self.last >= Self::FORGOTTEN_AFTER
@@ -52,8 +72,8 @@ impl Tries {
             return None;
         }
 
-        let doublings = (self.counted - rule.free).min(6);
-        let wait = (Self::FIRST_WAIT * 2_i32.pow(doublings)).min(Self::LONGEST_WAIT);
+        let doublings = (self.counted - rule.free).min(20);
+        let wait = (Self::FIRST_WAIT * 2_i32.pow(doublings)).min(rule.longest_wait);
         let until = self.last + wait;
 
         (now < until).then(|| until - now)
@@ -64,8 +84,8 @@ impl Tries {
 mod tests {
     use super::*;
 
-    const FIVE_FREE: Rule = Rule { free: 5 };
-    const THREE_FREE: Rule = Rule { free: 3 };
+    const FIVE_FREE: Rule = Rule::free(5);
+    const THREE_FREE: Rule = Rule::free(3);
 
     fn tried(counted: u32) -> Tries {
         Tries {
@@ -181,5 +201,27 @@ mod tests {
         assert!(!tried(40).is_forgotten(quiet - Duration::seconds(1)));
         // and: there is nothing to wait for
         assert_eq!(tried(40).wait_before_next(FIVE_FREE, quiet), None);
+    }
+
+    #[test]
+    fn a_rule_may_let_the_wait_grow_longer_than_an_hour() {
+        // given: ten free, then waits up to a day
+        let rule = Rule::free(10).waiting_at_most(Duration::days(1));
+
+        // expect: the tenth try past the free ones waits 1024 minutes, past an hour
+        assert_eq!(
+            tried(20).wait_before_next(rule, clock::at(1_000)),
+            Some(Duration::minutes(1_024))
+        );
+        // and: no wait grows past a day
+        assert_eq!(
+            tried(40).wait_before_next(rule, clock::at(1_000)),
+            Some(Duration::days(1))
+        );
+        // and: the same tries under the plain rule wait an hour at most
+        assert_eq!(
+            tried(20).wait_before_next(Rule::free(10), clock::at(1_000)),
+            Some(Duration::hours(1))
+        );
     }
 }

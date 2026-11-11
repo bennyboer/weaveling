@@ -2,11 +2,11 @@ use std::error::Error;
 use transacting::Transaction;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators,
-    PasswordHash, Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret,
-    SecondFactors, SecondStepWay, SecretsError, Session, Sessions, Stage, TokenDigest, TotpStep,
-    VerificationCode, Verifications,
+    AccountId, Attempt, CodeDigest, CodePurpose, Dismissal, EmailAddress, EmailAddresses,
+    InvitationScope, InvitationTicket, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials,
+    KeyId, Operators, PasswordHash, Passwords, PendingVerification, RecoveryCodeHash,
+    SealedTotpSecret, SecondFactors, SecondStepWay, SecretsError, Session, Sessions, Stage,
+    TokenDigest, TotpStep, Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -69,10 +69,10 @@ const KEEP: &str = "
 const PASSWORD_OF: &str = "SELECT password_hash FROM account_passwords WHERE account = $1";
 
 const ISSUE: &str = "
-    INSERT INTO account_codes (account, purpose, code, until, tried)
+    INSERT INTO account_codes (account, purpose, digest, until, tried)
     VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (account, purpose) DO UPDATE
-    SET code  = EXCLUDED.code,
+    SET digest = EXCLUDED.digest,
         until = EXCLUDED.until,
         tried = EXCLUDED.tried
 ";
@@ -81,7 +81,7 @@ const ATTEMPT: &str = "
     UPDATE account_codes
     SET tried = tried + 1
     WHERE account = $1 AND purpose = $2 AND tried < $3
-    RETURNING code, until, tried
+    RETURNING digest, until, tried
 ";
 
 const ISSUED: &str = "SELECT count(*) FROM account_codes WHERE account = $1 AND purpose = $2";
@@ -99,7 +99,7 @@ const SIGNED_IN: &str = "signed-in";
 const SECOND_FACTOR_OWED: &str = "second-factor-owed";
 const DELETION_PENDING: &str = "deletion-pending";
 
-const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2 AND code = $3";
+const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2 AND digest = $3";
 
 const KEEP_TICKET: &str = "
     INSERT INTO account_invitation_tickets (digest, invitation, email, until, project, by_an_operator)
@@ -267,12 +267,12 @@ fn to_ticket(row: &PgRow) -> Result<InvitationTicket, SecretsError> {
 }
 
 fn to_pending(row: &PgRow) -> Result<PendingVerification, SecretsError> {
-    let code: String = row.try_get("code").map_err(unreachable)?;
+    let digest: String = row.try_get("digest").map_err(unreachable)?;
     let until: OffsetDateTime = row.try_get("until").map_err(unreachable)?;
     let tried: i32 = row.try_get("tried").map_err(unreachable)?;
 
     Ok(PendingVerification {
-        code: VerificationCode::kept(code),
+        digest: CodeDigest::kept(digest),
         until,
         tried: u32::try_from(tried).map_err(unreachable)?,
     })
@@ -453,7 +453,7 @@ impl Verifications for PostgresSecrets {
         sqlx::query(ISSUE)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .bind(pending.code.as_str())
+            .bind(pending.digest.as_str())
             .bind(pending.until)
             .bind(i32::try_from(pending.tried).map_err(unreachable)?)
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
@@ -499,12 +499,12 @@ impl Verifications for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
-        code: &VerificationCode,
+        digest: &CodeDigest,
     ) -> Result<bool, SecretsError> {
         let closed = sqlx::query(CLOSE)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .bind(code.as_str())
+            .bind(digest.as_str())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

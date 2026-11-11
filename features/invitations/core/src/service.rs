@@ -15,7 +15,7 @@ use crate::scope::{Role, Scope};
 use crate::token::{InvitationToken, TokenKey};
 
 const INVITING: &str = "inviting";
-const INVITING_RULE: Rule = Rule { free: 3 };
+const INVITING_RULE: Rule = Rule::free(3);
 
 #[derive(Clone)]
 pub struct InvitationService {

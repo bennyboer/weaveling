@@ -1,4 +1,7 @@
 use throttling::Rule;
+use time::Duration;
+
+use crate::code::CodePurpose;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Guarded {
@@ -6,6 +9,7 @@ pub enum Guarded {
     SendingCodes,
     CheckingSecondFactor,
     ConfirmingPassword,
+    GuessingCodes(CodePurpose),
 }
 
 impl Guarded {
@@ -15,15 +19,18 @@ impl Guarded {
             Self::SendingCodes => "sending-codes",
             Self::CheckingSecondFactor => "checking-second-factor",
             Self::ConfirmingPassword => "confirming-password",
+            Self::GuessingCodes(CodePurpose::ConfirmAddress) => "guessing-confirmation-codes",
+            Self::GuessingCodes(CodePurpose::ResetPassword) => "guessing-reset-codes",
         }
     }
 
     pub fn rule(self) -> Rule {
         match self {
-            Self::SigningIn => Rule { free: 5 },
-            Self::SendingCodes => Rule { free: 3 },
-            Self::CheckingSecondFactor => Rule { free: 5 },
-            Self::ConfirmingPassword => Rule { free: 5 },
+            Self::SigningIn => Rule::free(5),
+            Self::SendingCodes => Rule::free(3),
+            Self::CheckingSecondFactor => Rule::free(5),
+            Self::ConfirmingPassword => Rule::free(5),
+            Self::GuessingCodes(_) => Rule::free(10).waiting_at_most(Duration::days(1)),
         }
     }
 }
@@ -35,11 +42,11 @@ mod tests {
     #[test]
     fn signing_in_forgives_more_than_sending_codes() {
         // expect: signing in is free five times
-        assert_eq!(Guarded::SigningIn.rule(), Rule { free: 5 });
+        assert_eq!(Guarded::SigningIn.rule(), Rule::free(5));
         // and: sending codes three times
         assert_eq!(
             Guarded::SendingCodes.rule(),
-            Rule { free: 3 },
+            Rule::free(3),
             "a mistyped password costs nobody anything, a code sent costs a stranger a mail"
         );
     }

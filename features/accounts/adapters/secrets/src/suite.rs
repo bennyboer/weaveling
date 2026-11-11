@@ -1,8 +1,8 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
-    InvitationTicket, InvitationTickets, KeyCredentials, Operators, PasswordHash, Passwords,
-    PendingVerification, SecondFactors, SecretsError, Session, SessionToken, Sessions, Stage,
-    TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodeDigest, CodePurpose, Dismissal, EmailAddress, EmailAddresses,
+    InvitationScope, InvitationTicket, InvitationTickets, KeyCredentials, Operators, PasswordHash,
+    Passwords, PendingVerification, SecondFactors, SecretsError, Session, SessionToken, Sessions,
+    Stage, TokenDigest, Verifications,
 };
 use std::ops::Deref;
 
@@ -267,7 +267,7 @@ impl<S: Secrets> Committing<'_, S> {
                     transaction,
                     account,
                     purpose,
-                    &VerificationCode::kept(code.to_owned()),
+                    &CodeDigest::kept(code.to_owned()),
                 )
                 .await
                 .map_err(Tried::Refused)?;
@@ -371,7 +371,7 @@ fn a_hash(phc: &str) -> PasswordHash {
 
 fn a_pending_code(code: &str, until: i64) -> PendingVerification {
     PendingVerification {
-        code: VerificationCode::kept(code.to_owned()),
+        digest: CodeDigest::kept(code.to_owned()),
         until: clock::at(until),
         tried: 0,
     }
@@ -2483,7 +2483,7 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
             &mut transaction,
             &ada,
             CodePurpose::ConfirmAddress,
-            &VerificationCode::kept("004217".to_owned()),
+            &CodeDigest::kept("004217".to_owned()),
         )
         .await
         .expect("closing should succeed");

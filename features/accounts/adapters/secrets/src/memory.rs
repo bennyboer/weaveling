@@ -4,10 +4,10 @@ use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators, PasswordHash,
-    Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret, SecondFactors,
-    SecondStepWay, SecretsError, Session, Sessions, TokenDigest, TotpStep, VerificationCode,
+    AccountId, Attempt, CodeDigest, CodePurpose, Dismissal, EmailAddress, EmailAddresses,
+    InvitationTicket, InvitationTickets, KeptTotp, KeyCredential, KeyCredentials, KeyId, Operators,
+    PasswordHash, Passwords, PendingVerification, RecoveryCodeHash, SealedTotpSecret,
+    SecondFactors, SecondStepWay, SecretsError, Session, Sessions, TokenDigest, TotpStep,
     Verifications,
 };
 use async_trait::async_trait;
@@ -328,15 +328,13 @@ impl Verifications for InMemorySecrets {
         transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
-        code: &VerificationCode,
+        digest: &CodeDigest,
     ) -> Result<bool, SecretsError> {
         let key = (*account, purpose);
         let closed = {
             let mut kept = self.kept();
             match kept.pending.get(&key) {
-                Some(pending) if pending.code.as_str() == code.as_str() => {
-                    kept.pending.remove(&key)
-                }
+                Some(pending) if pending.digest == *digest => kept.pending.remove(&key),
                 _ => None,
             }
         };

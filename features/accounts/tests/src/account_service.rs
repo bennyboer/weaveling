@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use accounts_core::{
-    AccountEvent, AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses, KIND,
-    Passwords, PendingVerification, SecretStores,
+    AccountEvent, AccountId, AccountsCore, AccountsError, Attempt, CodePurpose, EmailAddress,
+    EmailAddresses, KIND, Passwords, PendingVerification, SecretStores, Verifications,
 };
 use async_trait::async_trait;
 use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
 use time::Duration;
-use transacting::{InMemoryTransactions, Transaction};
+use transacting::{InMemoryTransactions, Transaction, Transactions};
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -65,6 +65,35 @@ async fn an_account_signs_itself_up() {
         .await
         .expect("reading should succeed");
     assert_eq!(recorded[0].metadata.agent, id.acting());
+}
+
+#[tokio::test]
+async fn the_code_mailed_is_kept_only_as_a_digest_that_admits_it() {
+    // given: a fresh instance
+    let wired = wiring::wired();
+
+    // when: an account signs up, mailed a code
+    let id = ada_signed_up(&wired).await;
+    let mailed = wired.last_code_sent_to(ADA);
+
+    // then: what is kept of it is no code to type, but admits the one mailed
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let Attempt::Counted(kept) = Verifications::attempt(
+        &*wired.secrets,
+        &mut transaction,
+        &id,
+        CodePurpose::ConfirmAddress,
+        PendingVerification::MAX_TRIES,
+    )
+    .await
+    .expect("reading should succeed") else {
+        panic!("a code is pending");
+    };
+    assert!(!kept.digest.as_str().contains(mailed.as_str()));
+    assert!(kept.digest.admits(&mailed));
 }
 
 #[tokio::test]

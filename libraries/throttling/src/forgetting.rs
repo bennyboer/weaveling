@@ -77,7 +77,7 @@ mod tests {
             ),
         ] {
             throttles
-                .admit("signing-in", about, Rule { free: 5 }, at)
+                .admit("signing-in", about, Rule::free(5), at)
                 .await
                 .expect("admitting should succeed");
         }

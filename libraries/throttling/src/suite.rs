@@ -19,7 +19,7 @@ const SENDING_CODES: &str = "sending-codes";
 const ADA: &str = "ada@example.com";
 const BEA: &str = "bea@example.com";
 const CY: &str = "cy@example.com";
-const FIVE_FREE: Rule = Rule { free: 5 };
+const FIVE_FREE: Rule = Rule::free(5);
 
 pub async fn nothing_counted_is_no_tries<S: Throttles>(throttles: &S) {
     // expect: nothing counted reads as no tries

@@ -746,3 +746,41 @@ async fn a_session_begun_while_the_password_is_reset_does_not_outlive_the_reset(
         "a session begun before the reset landed ends with the others"
     );
 }
+
+#[tokio::test]
+async fn wrong_guesses_count_across_new_codes_until_none_is_let_through_for_a_while() {
+    // given: an account
+    let wired = wiring::wired();
+    ada_signed_up(&wired, true).await;
+    // and: two codes asked for in turn, each guessed wrong as often as it may be
+    for _ in 0..2 {
+        let code = a_reset_asked_for(&wired).await;
+        for _ in 0..PendingVerification::MAX_TRIES {
+            let _refused = wired
+                .accounts
+                .reset_password(ADA, wrong(&code), HER_NEW_PASSWORD)
+                .await;
+        }
+    }
+
+    // when: a third code is asked for
+    let code = a_reset_asked_for(&wired).await;
+
+    // then: even the right one is refused for a while, as ten guesses went wrong
+    assert!(
+        matches!(
+            wired
+                .accounts
+                .reset_password(ADA, &code, HER_NEW_PASSWORD)
+                .await,
+            Err(AccountsError::Throttled { .. })
+        ),
+        "a new code must not bring the guesses spent on the old ones back"
+    );
+    // and: the old password still signs in
+    wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("guessing at codes keeps nobody from signing in");
+}

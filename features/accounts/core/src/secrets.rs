@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::code::{CodePurpose, PendingVerification, VerificationCode};
+use crate::code::{CodeDigest, CodePurpose, PendingVerification};
 use crate::id::AccountId;
 use crate::key::KeyId;
 use crate::password::PasswordHash;
@@ -169,7 +169,7 @@ pub trait Verifications: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
-        code: &VerificationCode,
+        digest: &CodeDigest,
     ) -> Result<bool, SecretsError>;
     /// Forgets every code issued to the account, for whatever purpose.
     async fn forget_codes_of(

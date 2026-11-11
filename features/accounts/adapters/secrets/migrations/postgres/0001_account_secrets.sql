@@ -12,7 +12,7 @@ CREATE TABLE account_passwords (
 CREATE TABLE account_codes (
     account  TEXT COLLATE "C" NOT NULL,
     purpose  TEXT             NOT NULL,
-    code     TEXT             NOT NULL,
+    digest   TEXT             NOT NULL,
     until    TIMESTAMPTZ      NOT NULL,
     tried    INTEGER          NOT NULL,
     PRIMARY KEY (account, purpose)
