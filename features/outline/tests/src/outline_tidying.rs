@@ -727,10 +727,10 @@ async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() 
         .await
         .expect("the listener should take this message");
 
-    // then: their tombstones were laid when they went, and are forgotten once
+    // then: their tombstones, the outline's and what they belonged to, were laid when they went, and are forgotten once
     for (before, forgotten) in [
         (clock::at(1_000), 0),
-        (clock::at(1_001), 2),
+        (clock::at(1_001), 4),
         (clock::at(1_001), 0),
     ] {
         assert_eq!(

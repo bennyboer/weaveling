@@ -4958,7 +4958,9 @@ dependencies = [
  "async-trait",
  "sqlx",
  "thiserror 2.0.21",
+ "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-test-harness",
  "weaveling-transacting",
 ]

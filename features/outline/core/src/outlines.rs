@@ -328,7 +328,7 @@ impl OutlinesCore {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog.lay_tombstone(transaction, gone, at).await?;
             self.belongings
-                .forget(transaction, kind_of(gone), gone.as_str())
+                .forget(transaction, kind_of(gone), gone.as_str(), at)
                 .await?;
 
             Ok(())
@@ -413,7 +413,11 @@ impl OutlinesCore {
             let forgotten = self
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
-                .await?;
+                .await?
+                + self
+                    .belongings
+                    .forget_tombstones_laid_before(transaction, before, at_most)
+                    .await?;
 
             Ok(forgotten)
         })

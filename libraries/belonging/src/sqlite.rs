@@ -1,17 +1,33 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
+use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::{Belongings, BelongingsError};
 
 const REMEMBER: &str = "
     INSERT INTO belongings (kind, id, owner_kind, owner)
-    VALUES (?1, ?2, ?3, ?4)
+    SELECT ?1, ?2, ?3, ?4
+    WHERE NOT EXISTS (SELECT 1 FROM belonging_tombstones WHERE kind = ?1 AND id = ?2)
     ON CONFLICT (kind, id, owner_kind) DO UPDATE SET owner = excluded.owner
 ";
 
 const FORGET: &str = "DELETE FROM belongings WHERE kind = ?1 AND id = ?2";
+
+const LAY_TOMBSTONE: &str = "
+    INSERT INTO belonging_tombstones (kind, id, laid_at) VALUES (?1, ?2, ?3)
+    ON CONFLICT DO NOTHING
+";
+
+const FORGET_OLD_TOMBSTONES: &str = "
+    DELETE FROM belonging_tombstones WHERE (kind, id) IN (
+        SELECT kind, id FROM belonging_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, kind, id
+        LIMIT ?2
+    )
+";
 
 const OWNER_OF: &str =
     "SELECT owner FROM belongings WHERE kind = ?1 AND id = ?2 AND owner_kind = ?3";
@@ -66,15 +82,39 @@ impl Belongings for SqliteBelongings {
         transaction: &mut Transaction,
         kind: &str,
         id: &str,
+        at: OffsetDateTime,
     ) -> Result<(), BelongingsError> {
+        let connection = transacting::sqlite::connection(transaction).map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(kind)
             .bind(id)
-            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .execute(&mut *connection)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(LAY_TOMBSTONE)
+            .bind(kind)
+            .bind(id)
+            .bind(clock::text::written(at))
+            .execute(&mut *connection)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, BelongingsError> {
+        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn owner_of(

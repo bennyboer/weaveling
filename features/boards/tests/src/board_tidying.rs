@@ -475,10 +475,10 @@ async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
         .await
         .expect("the listener should take this message");
 
-    // then: its tombstone is laid as of the discard, and forgotten once
+    // then: its tombstones, the board's and what it belonged to, are laid as of the discard, and forgotten once
     for (before, forgotten) in [
         (clock::at(1_000), 0),
-        (clock::at(1_001), 1),
+        (clock::at(1_001), 2),
         (clock::at(1_001), 0),
     ] {
         assert_eq!(

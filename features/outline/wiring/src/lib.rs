@@ -277,7 +277,8 @@ mod tests {
                 .carry_out()
                 .await
                 .expect("the chore should be carried out"),
-            1
+            2,
+            "the long gone one's, and what it belonged to"
         );
     }
 }

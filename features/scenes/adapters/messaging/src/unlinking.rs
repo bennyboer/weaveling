@@ -29,7 +29,11 @@ impl KeptHandler for UnlinkOnDiscardListener {
 
         Ok(self
             .scenes
-            .unlink_everywhere(Some(transaction), &discarded.aggregate.id)
+            .unlink_everywhere(
+                Some(transaction),
+                &discarded.aggregate.id,
+                message.occurred_at,
+            )
             .await?)
     }
 }

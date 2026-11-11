@@ -286,10 +286,11 @@ impl ScenesCore {
         &self,
         within: Option<&mut Transaction>,
         idea: &str,
+        at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.service.unlink_everywhere(transaction, idea).await?;
-            self.belongings.forget(transaction, IDEA, idea).await?;
+            self.belongings.forget(transaction, IDEA, idea, at).await?;
 
             Ok(())
         })
@@ -447,7 +448,11 @@ impl ScenesCore {
             let forgotten = self
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
-                .await?;
+                .await?
+                + self
+                    .belongings
+                    .forget_tombstones_laid_before(transaction, before, at_most)
+                    .await?;
 
             Ok(forgotten)
         })

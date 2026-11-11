@@ -1,10 +1,15 @@
 use std::ops::Deref;
 
+use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::{Belongings, BelongingsError};
 
 const PROJECT: &str = "project";
+
+fn at(seconds: i64) -> OffsetDateTime {
+    clock::at(seconds)
+}
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -62,9 +67,33 @@ impl<B: Belongings> Committing<'_, B> {
     }
 
     pub async fn forget(&self, kind: &str, id: &str) -> Result<(), BelongingsError> {
+        self.forget_at(kind, id, at(1_000)).await
+    }
+
+    pub async fn forget_at(
+        &self,
+        kind: &str,
+        id: &str,
+        laid: OffsetDateTime,
+    ) -> Result<(), BelongingsError> {
         let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
-        self.store.forget(&mut transaction, kind, id).await?;
+        self.store.forget(&mut transaction, kind, id, laid).await?;
         transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, BelongingsError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let forgotten = self
+            .store
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(forgotten)
     }
 
     pub async fn owner(&self, kind: &str, id: &str, owner_kind: &str) -> Option<String> {
@@ -235,7 +264,7 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         .await
         .expect("remembering should succeed");
     store
-        .forget(&mut transaction, "idea", "idea_kept")
+        .forget(&mut transaction, "idea", "idea_kept", at(1_000))
         .await
         .expect("forgetting should succeed");
 
@@ -251,6 +280,85 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
         Some("project_1")
     );
     assert_eq!(belongings.owner("idea", "idea_new", PROJECT).await, None);
+}
+
+pub async fn what_is_heard_of_again_once_forgotten_is_not_remembered(
+    belongings: &Committing<'_, impl Belongings>,
+) {
+    // given: an idea remembered and then forgotten
+    belongings
+        .remember("idea", "idea_gone", PROJECT, "project_1")
+        .await
+        .expect("remembering should succeed");
+    belongings
+        .forget("idea", "idea_gone")
+        .await
+        .expect("forgetting should succeed");
+
+    // when: its capture is heard again, late
+    belongings
+        .remember("idea", "idea_gone", PROJECT, "project_1")
+        .await
+        .expect("remembering should succeed");
+
+    // then: it belongs to no owner known
+    assert_eq!(
+        belongings.owner("idea", "idea_gone", PROJECT).await,
+        None,
+        "a thing gone is not brought back by what is heard of it late"
+    );
+    // and: a scene of the same id is still remembered, being another kind
+    belongings
+        .remember("scene", "idea_gone", PROJECT, "project_1")
+        .await
+        .expect("remembering should succeed");
+    assert_eq!(
+        belongings
+            .owner("scene", "idea_gone", PROJECT)
+            .await
+            .as_deref(),
+        Some("project_1")
+    );
+}
+
+pub async fn old_tombstones_are_forgotten_oldest_first_and_the_younger_kept(
+    belongings: &Committing<'_, impl Belongings>,
+) {
+    // given: three ideas forgotten at one, two and five
+    for (idea, laid) in [("idea_1", 1_000), ("idea_2", 2_000), ("idea_5", 5_000)] {
+        belongings
+            .forget_at("idea", idea, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    // when: one tombstone laid before three is forgotten, then the rest
+    let first = belongings
+        .forget_tombstones_laid_before(at(3_000), 1)
+        .await
+        .expect("forgetting should succeed");
+    let rest = belongings
+        .forget_tombstones_laid_before(at(3_000), 100)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: one each time, the ones before three
+    assert_eq!((first, rest), (1, 1));
+    // and: those ideas are remembered again once heard of, the younger one not
+    for idea in ["idea_1", "idea_2", "idea_5"] {
+        belongings
+            .remember("idea", idea, PROJECT, "project_1")
+            .await
+            .expect("remembering should succeed");
+    }
+    assert_eq!(
+        [
+            belongings.owner("idea", "idea_1", PROJECT).await.is_some(),
+            belongings.owner("idea", "idea_2", PROJECT).await.is_some(),
+            belongings.owner("idea", "idea_5", PROJECT).await.is_some(),
+        ],
+        [true, true, false]
+    );
 }
 
 #[macro_export]
@@ -289,6 +397,14 @@ macro_rules! conformance_tests {
         $crate::belongings_conformance_case!(
             $workbench,
             what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::belongings_conformance_case!(
+            $workbench,
+            what_is_heard_of_again_once_forgotten_is_not_remembered
+        );
+        $crate::belongings_conformance_case!(
+            $workbench,
+            old_tombstones_are_forgotten_oldest_first_and_the_younger_kept
         );
     };
 }

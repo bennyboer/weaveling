@@ -215,7 +215,7 @@ impl BoardsCore {
             self.catalog
                 .lay_tombstone(transaction, &IdeaLink::from(idea), at)
                 .await?;
-            self.belongings.forget(transaction, IDEA, idea).await?;
+            self.belongings.forget(transaction, IDEA, idea, at).await?;
 
             Ok(())
         })
@@ -301,7 +301,11 @@ impl BoardsCore {
             let forgotten = self
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
-                .await?;
+                .await?
+                + self
+                    .belongings
+                    .forget_tombstones_laid_before(transaction, before, at_most)
+                    .await?;
 
             Ok(forgotten)
         })

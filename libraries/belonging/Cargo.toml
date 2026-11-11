@@ -7,7 +7,9 @@ edition.workspace = true
 async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
 
 [features]
