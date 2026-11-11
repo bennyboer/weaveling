@@ -1,3 +1,4 @@
+mod assets;
 mod client_dir;
 mod file;
 mod hosts;
@@ -22,6 +23,10 @@ use crate::{
 };
 use file::BESIDE;
 
+pub use assets::{
+    AssetSettings, UnreadableAssets, WEAVELING_ASSETS_FOLDER, WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB,
+    WEAVELING_ASSETS_MOST_KEPT_MB,
+};
 pub use client_dir::WEAVELING_CLIENT_DIR;
 pub use hosts::{UnreadableHosts, WEAVELING_HOSTS};
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
@@ -62,6 +67,8 @@ pub enum Unsettled {
     #[error(transparent)]
     MailCap(#[from] UnreadableMailCap),
     #[error(transparent)]
+    Assets(#[from] UnreadableAssets),
+    #[error(transparent)]
     TotpKey(#[from] UnreadableTotpKey),
 }
 
@@ -82,6 +89,9 @@ pub struct Settings {
     mail_anyone_each_hour: Option<Setting>,
     mail_invitations_each_hour: Option<Setting>,
     flaky: Option<Setting>,
+    assets_most_each_upload_mb: Option<Setting>,
+    assets_most_kept_mb: Option<Setting>,
+    assets_folder: Option<Setting>,
     totp_key: Option<Setting>,
 }
 
@@ -163,6 +173,12 @@ impl Settings {
                 &mut self.mail_invitations_each_hour,
             ),
             (WEAVELING_FLAKY, &mut self.flaky),
+            (
+                WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB,
+                &mut self.assets_most_each_upload_mb,
+            ),
+            (WEAVELING_ASSETS_MOST_KEPT_MB, &mut self.assets_most_kept_mb),
+            (WEAVELING_ASSETS_FOLDER, &mut self.assets_folder),
         ] {
             if let Some(given) = set(name) {
                 *setting = Some(given);

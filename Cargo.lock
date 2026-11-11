@@ -4942,6 +4942,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-contents"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "tokio",
+ "weaveling-assets-core",
+ "weaveling-ids",
+ "weaveling-test-harness",
+]
+
+[[package]]
 name = "weaveling-assets-contract"
 version = "0.1.0"
 dependencies = [
@@ -4952,6 +4964,7 @@ dependencies = [
 name = "weaveling-assets-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "thiserror 2.0.21",
  "time",
  "weaveling-clock",

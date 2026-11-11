@@ -15,6 +15,7 @@ struct Filed {
     storage: FiledStorage,
     accounts: FiledAccounts,
     mail: FiledMail,
+    assets: FiledAssets,
     testing: FiledTesting,
 }
 
@@ -54,6 +55,14 @@ struct FiledMail {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+struct FiledAssets {
+    most_each_upload_mb: Option<toml::Value>,
+    most_kept_mb: Option<toml::Value>,
+    folder: Option<toml::Value>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 struct FiledTesting {
     flaky: Option<toml::Value>,
 }
@@ -87,6 +96,12 @@ impl Settings {
                 filed.mail.invitations_each_hour,
             ),
             flaky: setting(key("testing.flaky"), filed.testing.flaky),
+            assets_most_each_upload_mb: setting(
+                key("assets.most_each_upload_mb"),
+                filed.assets.most_each_upload_mb,
+            ),
+            assets_most_kept_mb: setting(key("assets.most_kept_mb"), filed.assets.most_kept_mb),
+            assets_folder: setting(key("assets.folder"), filed.assets.folder),
             totp_key: totp_key::secret(
                 setting(key("accounts.totp_key"), filed.accounts.totp_key),
                 setting(key("accounts.totp_key_file"), filed.accounts.totp_key_file),

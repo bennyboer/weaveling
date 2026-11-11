@@ -89,6 +89,23 @@
 # WEAVELING_MAIL_INVITATIONS_EACH_HOUR
 # invitations_each_hour = 20
 
+[assets]
+# The most one upload may be, in megabytes, a whole number above nought; left
+# out, 20.
+# WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB
+# most_each_upload_mb = 20
+#
+# The most the instance keeps for every image together, originals and the
+# sizes made of them, in megabytes; left out, as much as there is room for.
+# WEAVELING_ASSETS_MOST_KEPT_MB
+# most_kept_mb = 10240
+#
+# Where images are kept: with PostgreSQL, in the database unless a folder is
+# named here; with the data in a folder, in its assets folder unless another
+# is named here.
+# WEAVELING_ASSETS_FOLDER
+# folder = "/var/lib/weaveling/assets"
+
 [testing]
 # The share of messages every listener refuses on purpose, from 0 to 1, so the
 # alarm and its dialog can be tried by hand. Never for an author.

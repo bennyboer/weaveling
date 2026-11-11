@@ -48,9 +48,10 @@ pub use its_own::answering_only_its_own;
 pub use mail::{Mailing, Unmailable, WEAVELING_MAIL_DROP, WEAVELING_MAIL_LOG};
 pub use relays::Relays;
 pub use settings::{
-    MailCaps, Setting, Settings, Unlistenable, UnreadableHosts, UnreadableMailCap,
-    UnreadablePublicUrl, UnreadableTotpKey, Unsettled, WEAVELING_CLIENT_DIR, WEAVELING_CONFIG,
-    WEAVELING_HOSTS, WEAVELING_LISTEN, WEAVELING_MAIL_ANYONE_EACH_HOUR,
+    AssetSettings, MailCaps, Setting, Settings, Unlistenable, UnreadableAssets, UnreadableHosts,
+    UnreadableMailCap, UnreadablePublicUrl, UnreadableTotpKey, Unsettled, WEAVELING_ASSETS_FOLDER,
+    WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, WEAVELING_ASSETS_MOST_KEPT_MB, WEAVELING_CLIENT_DIR,
+    WEAVELING_CONFIG, WEAVELING_HOSTS, WEAVELING_LISTEN, WEAVELING_MAIL_ANYONE_EACH_HOUR,
     WEAVELING_MAIL_INVITATIONS_EACH_HOUR, WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY,
     WEAVELING_TOTP_KEY_FILE,
 };

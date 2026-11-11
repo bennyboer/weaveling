@@ -1,0 +1,98 @@
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use assets_core::{AssetId, Contents, ContentsError, Piece};
+use async_trait::async_trait;
+use tokio::fs;
+
+use crate::unreachable;
+
+/// Each asset a folder of its own under the root, each piece a file in it, written beside its name first and moved in place, so a piece read is never half written.
+#[derive(Debug, Clone)]
+pub struct FolderContents {
+    root: PathBuf,
+}
+
+impl FolderContents {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    fn folder_of(&self, asset: &AssetId) -> PathBuf {
+        self.root.join(asset.to_string())
+    }
+}
+
+#[async_trait]
+impl Contents for FolderContents {
+    async fn keep(&self, asset: &AssetId, piece: Piece, bytes: &[u8]) -> Result<(), ContentsError> {
+        let folder = self.folder_of(asset);
+        fs::create_dir_all(&folder).await.map_err(unreachable)?;
+        let written = folder.join(format!(".{}.part", piece.name()));
+        fs::write(&written, bytes).await.map_err(unreachable)?;
+
+        fs::rename(&written, folder.join(piece.name()))
+            .await
+            .map_err(unreachable)
+    }
+
+    async fn read(&self, asset: &AssetId, piece: Piece) -> Result<Option<Vec<u8>>, ContentsError> {
+        read_if_there(&self.folder_of(asset).join(piece.name())).await
+    }
+
+    async fn forget(&self, asset: &AssetId) -> Result<(), ContentsError> {
+        match fs::remove_dir_all(self.folder_of(asset)).await {
+            Err(failure) if failure.kind() != ErrorKind::NotFound => Err(unreachable(failure)),
+            _ => Ok(()),
+        }
+    }
+}
+
+async fn read_if_there(path: &Path) -> Result<Option<Vec<u8>>, ContentsError> {
+    match fs::read(path).await {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(failure) if failure.kind() == ErrorKind::NotFound => Ok(None),
+        Err(failure) => Err(unreachable(failure)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use async_trait::async_trait;
+
+    use super::*;
+    use crate::suite::Workbench;
+
+    static FOLDERS: AtomicUsize = AtomicUsize::new(0);
+
+    struct InAFolder(FolderContents, PathBuf);
+
+    #[async_trait]
+    impl Workbench for InAFolder {
+        type Store = FolderContents;
+
+        async fn setup() -> Self {
+            let root = env::temp_dir().join(format!(
+                "weaveling-asset-contents-{}-{}",
+                std::process::id(),
+                FOLDERS.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _gone = fs::remove_dir_all(&root).await;
+
+            Self(FolderContents::new(&root), root)
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {
+            let _gone = fs::remove_dir_all(&self.1).await;
+        }
+    }
+
+    crate::conformance_tests!(InAFolder);
+}

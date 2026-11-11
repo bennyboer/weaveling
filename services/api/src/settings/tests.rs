@@ -831,3 +831,92 @@ fn a_cap_on_mail_that_is_no_whole_number_above_nought_says_where_it_was_written(
         );
     }
 }
+
+#[test]
+fn an_upload_is_twenty_megabytes_at_most_and_nothing_else_is_capped_unless_set() {
+    // given: no settings
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: twenty megabytes an upload, no cap on what is kept, and no folder of the operator's
+    assert_eq!(
+        settings.assets(),
+        Ok(AssetSettings {
+            most_each_upload: 20 * 1024 * 1024,
+            most_kept: None,
+            folder: None,
+        })
+    );
+}
+
+#[test]
+fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over_it() {
+    // given: a settings file on assets
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[assets]\nmost_each_upload_mb = 5\nmost_kept_mb = 100\nfolder = \"/srv/assets\"\n",
+    );
+
+    // when: the settings are read
+    let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("the file is read");
+
+    // then: the file's are taken, in bytes
+    assert_eq!(
+        filed.assets(),
+        Ok(AssetSettings {
+            most_each_upload: 5 * 1024 * 1024,
+            most_kept: Some(100 * 1024 * 1024),
+            folder: Some(PathBuf::from("/srv/assets")),
+        })
+    );
+    // when: variables say otherwise
+    let varied = Settings::read(
+        no_arguments(),
+        variables(&[
+            (WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, "1"),
+            (WEAVELING_ASSETS_MOST_KEPT_MB, "2"),
+            (WEAVELING_ASSETS_FOLDER, "elsewhere"),
+        ]),
+        &folder,
+    )
+    .expect("both are read");
+    // then: the variables' are taken
+    assert_eq!(
+        varied.assets(),
+        Ok(AssetSettings {
+            most_each_upload: 1024 * 1024,
+            most_kept: Some(2 * 1024 * 1024),
+            folder: Some(PathBuf::from("elsewhere")),
+        })
+    );
+}
+
+#[test]
+fn a_size_for_assets_that_is_no_whole_number_above_nought_says_where_it_was_written() {
+    // given: a settings file taking nought, a share, and more than can be counted
+    for written in ["0", "1.5", "99999999999999999"] {
+        let folder = a_folder();
+        a_file(
+            &folder,
+            BESIDE,
+            &format!("[assets]\nmost_kept_mb = {written}\n"),
+        );
+
+        // when: the asset settings are asked for
+        let refused = Settings::read(no_arguments(), variables(&[]), &folder)
+            .expect("the file itself is read")
+            .assets();
+
+        // then: it is refused, naming the key and the value
+        let refusal = refused.expect_err("no size of that").to_string();
+        assert!(
+            refusal.contains("assets.most_kept_mb in") && refusal.contains(written),
+            "{refusal}"
+        );
+    }
+}
