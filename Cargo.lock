@@ -4942,6 +4942,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-assets-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-projects-contract",
+]
+
+[[package]]
+name = "weaveling-assets-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "weaveling-assets-core",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
 name = "weaveling-authorizing"
 version = "0.1.0"
 dependencies = [
