@@ -646,7 +646,7 @@ fn the_page_reloads_on_changes_only_while_cargo_leptos_watches() {
         )
         .expect("variables are read")
         .client()
-        .and_then(|client| client.reloading)
+        .and_then(|client| client.changes_told_at)
     };
 
     // expect: while it watches, the port is told to the page

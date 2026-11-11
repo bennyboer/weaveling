@@ -88,6 +88,11 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
         settings.public_url().as_deref(),
         or_stop(settings.hosts()),
     );
+    let routes = weaveling_service_api::shielded(
+        routes,
+        settings.public_url().as_deref(),
+        settings.client().and_then(|client| client.changes_told_at),
+    );
 
     (
         routes,

@@ -15,7 +15,7 @@ impl Settings {
 
         Some(ServedClient {
             dir: PathBuf::from(dir.value.trim()),
-            reloading: self.reload_port,
+            changes_told_at: self.reload_port,
         })
     }
 }

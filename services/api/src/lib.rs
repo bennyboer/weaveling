@@ -7,6 +7,7 @@ mod mail;
 mod refusals;
 mod relays;
 mod settings;
+mod shielding;
 mod sign_up;
 
 use std::sync::Arc;
@@ -52,6 +53,7 @@ pub use settings::{
     Unsettled, WEAVELING_CLIENT_DIR, WEAVELING_CONFIG, WEAVELING_HOSTS, WEAVELING_LISTEN,
     WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
 };
+pub use shielding::shielded;
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};
 

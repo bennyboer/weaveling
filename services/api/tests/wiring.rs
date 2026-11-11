@@ -123,7 +123,7 @@ async fn the_client_is_handed_out_beside_the_api_its_page_at_every_address_of_it
     // given: a built client, handed out by the server
     let client = ServedClient {
         dir: a_built_client(),
-        reloading: None,
+        changes_told_at: None,
     };
 
     // expect: its files are handed out as built
@@ -152,17 +152,25 @@ async fn the_client_is_handed_out_beside_the_api_its_page_at_every_address_of_it
 #[tokio::test]
 async fn while_cargo_leptos_watches_the_page_reloads_on_changes() {
     // given: a built client, handed out while cargo-leptos watches
-    let client = ServedClient {
-        dir: a_built_client(),
-        reloading: Some(3001),
-    };
+    let client = client_reloading();
 
     // when: the page is asked for
     let (status, page) = handed_out(client, "/outline").await;
 
     // then: it listens for changes on the port told
     assert_eq!(status, StatusCode::OK);
-    assert!(page.contains("(3001);</script>"), "{page}");
+    assert!(page.contains("data-port=\"3001\""), "{page}");
+    // and: the script listening is handed out as a file of its own, as the page runs no script written into it
+    let (status, script) = handed_out(client_reloading(), "/live-reload.js").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(script.contains("live_reload"), "{script}");
+}
+
+fn client_reloading() -> ServedClient {
+    ServedClient {
+        dir: a_built_client(),
+        changes_told_at: Some(3001),
+    }
 }
 
 #[tokio::test]

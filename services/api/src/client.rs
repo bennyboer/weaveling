@@ -3,23 +3,29 @@ use std::path::PathBuf;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::http::header::CONTENT_TYPE;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing;
 use tower_http::services::ServeDir;
 
 const PAGE: &str = "page.html";
+const LIVE_RELOAD_AT: &str = "/live-reload.js";
 const LIVE_RELOAD: &str = include_str!("client/live_reload.js");
 
 /// The built client this server hands out beside `/api`, and the port `cargo leptos watch` tells of changes on, while it watches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedClient {
     pub dir: PathBuf,
-    pub reloading: Option<u16>,
+    pub changes_told_at: Option<u16>,
 }
 
 /// Hands out the client's files, and its page for every other address, so the client's own routes open where they are linked to.
 pub fn serving_the_client(routes: Router, client: ServedClient) -> Router {
     let page = routing::get(page).with_state(client.clone());
+    let routes = match client.changes_told_at {
+        Some(_) => routes.route(LIVE_RELOAD_AT, routing::get(live_reload)),
+        None => routes,
+    };
 
     routes
         .route("/", page.clone())
@@ -35,18 +41,20 @@ async fn page(State(client): State<ServedClient>) -> Response {
             .into_response();
     };
 
-    Html(match client.reloading {
-        Some(port) => reloading(&written, port),
+    Html(match client.changes_told_at {
+        Some(port) => listening_for_changes(&written, port),
         None => written,
     })
     .into_response()
 }
 
-fn reloading(written: &str, port: u16) -> String {
-    let script = format!(
-        "<script>({})({port});</script>\n  </head>",
-        LIVE_RELOAD.trim()
-    );
+async fn live_reload() -> Response {
+    ([(CONTENT_TYPE, "text/javascript")], LIVE_RELOAD).into_response()
+}
+
+fn listening_for_changes(written: &str, port: u16) -> String {
+    let script =
+        format!("<script src=\"{LIVE_RELOAD_AT}\" data-port=\"{port}\"></script>\n  </head>");
 
     written.replacen("</head>", &script, 1)
 }
@@ -61,11 +69,11 @@ mod tests {
         let written = "<html><head><title>W</title></head><body></body></html>";
 
         // when: it is handed out while cargo leptos watches
-        let handed = reloading(written, 3001);
+        let handed = listening_for_changes(written, 3001);
 
         // then: the live reload is started with that port, before the head ends
-        assert!(handed.contains("})(3001);</script>"));
-        assert_eq!(handed.matches("<script>").count(), 1);
-        assert!(handed.find("(3001)").unwrap() < handed.find("</head>").unwrap());
+        assert!(handed.contains("<script src=\"/live-reload.js\" data-port=\"3001\"></script>"));
+        assert_eq!(handed.matches("<script").count(), 1);
+        assert!(handed.find("3001").unwrap() < handed.find("</head>").unwrap());
     }
 }

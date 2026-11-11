@@ -4,21 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weaveling</title>
-    <script>
-      try {
-        var said = localStorage.getItem("weaveling.theme");
-        if (said === "light" || said === "dark") {
-          document.documentElement.setAttribute("data-theme", said);
-        }
-      } catch (beyondReach) {}
-    </script>
+    <script src="/theme.js"></script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/pkg/weaveling.css" />
     <link rel="modulepreload" href="/pkg/weaveling.js" />
-    <script type="module">
-      import start from "/pkg/weaveling.js";
-      start({ module_or_path: "/pkg/weaveling.wasm" });
-    </script>
+    <script type="module" src="/start.js"></script>
   </head>
   <body></body>
 </html>

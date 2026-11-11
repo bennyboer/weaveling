@@ -1,4 +1,4 @@
-function (port) {
+(function (port) {
   const protocol = location.protocol === "https:" ? "wss://" : "ws://";
 
   function connect() {
@@ -22,4 +22,4 @@ function (port) {
   }
 
   connect();
-}
+})(document.currentScript.dataset.port);
