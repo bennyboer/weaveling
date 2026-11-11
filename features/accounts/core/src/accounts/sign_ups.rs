@@ -106,11 +106,14 @@ impl AccountsCore {
         let Some(found) = self.invitation_tickets.find_ticket(&digest).await? else {
             return Err(AccountsError::InvitationInvalid);
         };
-        if self.whose(&found.to).await?.is_some() {
-            return Err(AccountsError::EmailAddressHasAccount);
+        if self.clock.now() > found.until {
+            return Err(AccountsError::InvitationExpired);
         }
         if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
             return Err(AccountsError::InvitationNotByAnOperator);
+        }
+        if self.whose(&found.to).await?.is_some() {
+            return Err(AccountsError::EmailAddressHasAccount);
         }
         let hashed = password.hashed_aside().await;
         transacting::retrying!(&*self.transactions, |transaction| {

@@ -13,7 +13,7 @@ use crate::lock::InvalidLockReason;
 use crate::name::InvalidAccountName;
 use crate::password::InvalidPassword;
 use crate::secrets::SecretsError;
-use email::{EmailAddress, InvalidEmailAddress};
+use email::InvalidEmailAddress;
 
 #[derive(Debug, Error)]
 pub enum AccountsError {
@@ -61,8 +61,8 @@ pub enum AccountsError {
         "the project this invitation is into is in the trash; it can be taken up once it is restored"
     )]
     InvitationPaused,
-    #[error("this invitation was sent to {to}; sign in with that address to take it up")]
-    InvitationForAnotherAddress { to: EmailAddress },
+    #[error("this invitation was sent to another address; sign in with the one it was sent to")]
+    InvitationForAnotherAddress,
     #[error(
         "signing up here takes an operator's invitation, and this one came from a project's owner; ask an operator to invite you"
     )]

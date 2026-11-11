@@ -1154,9 +1154,8 @@ fn problem_of(refusal: AccountsError) -> Problem {
             Problem::unprocessable(refused::INVITATION_EXPIRED, refusal)
         }
         AccountsError::InvitationPaused => Problem::refused(refused::INVITATION_PAUSED, refusal),
-        AccountsError::InvitationForAnotherAddress { ref to } => {
-            let to = to.to_string();
-            Problem::forbidden(refused::INVITATION_FOR_ANOTHER_ADDRESS, refusal).with("to", to)
+        AccountsError::InvitationForAnotherAddress => {
+            Problem::forbidden(refused::INVITATION_FOR_ANOTHER_ADDRESS, refusal)
         }
         AccountsError::InvitationNotByAnOperator => {
             Problem::forbidden(refused::INVITATION_NOT_BY_AN_OPERATOR, refusal)

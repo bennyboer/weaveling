@@ -234,6 +234,31 @@ async fn an_address_with_an_account_already_is_told_to_sign_in() {
 }
 
 #[tokio::test]
+async fn an_expired_invitation_tells_nothing_of_its_address() {
+    // given: an address with an account
+    let wired = wiring::wired();
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    // and: an invitation to it, run out
+    an_invitation(&wired, ADA, TOKEN).await;
+    wired
+        .clock
+        .set(clock::at(1_700_000_000) + Duration::days(7) + Duration::seconds(1));
+
+    // when: someone signs up by it
+    let refused = signs_up(&wired, TOKEN).await;
+
+    // then: it is only told the invitation has run out, not that the address has an account
+    assert!(
+        matches!(refused, Err(AccountsError::InvitationExpired)),
+        "an old link must not tell whether its address signed up since: {refused:?}"
+    );
+}
+
+#[tokio::test]
 async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
     // given: signing up by invitation only
     let wired = wiring::wired();

@@ -63,7 +63,7 @@ impl AccountsCore {
 
         match self.found_ticket(id, &digest).await {
             Ok(found) => Ok((digest, found)),
-            Err(AccountsError::InvitationForAnotherAddress { .. }) => {
+            Err(AccountsError::InvitationForAnotherAddress) => {
                 Err(AccountsError::InvitationInvalid)
             }
             Err(refused) => Err(refused),
@@ -78,11 +78,11 @@ impl AccountsCore {
         let Some(found) = self.invitation_tickets.find_ticket(digest).await? else {
             return Err(AccountsError::InvitationInvalid);
         };
-        if found.to != *self.get(id).await?.state.email() {
-            return Err(AccountsError::InvitationForAnotherAddress { to: found.to });
-        }
         if self.clock.now() > found.until {
             return Err(AccountsError::InvitationExpired);
+        }
+        if found.to != *self.get(id).await?.state.email() {
+            return Err(AccountsError::InvitationForAnotherAddress);
         }
 
         Ok(found)

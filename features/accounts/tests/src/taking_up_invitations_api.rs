@@ -136,7 +136,7 @@ async fn the_account_signed_in_takes_up_an_invitation_to_its_address() {
 }
 
 #[tokio::test]
-async fn an_invitation_to_another_address_is_refused_naming_it() {
+async fn an_invitation_to_another_address_is_refused_without_naming_it() {
     // given: an invitation into a project
     let (wired, server) = served_with_ada_invited().await;
     // and: another address signed in
@@ -149,11 +149,8 @@ async fn an_invitation_to_another_address_is_refused_naming_it() {
         refused::INVITATION_FOR_ANOTHER_ADDRESS,
     );
 
-    // and: the address invited is named
-    assert_eq!(
-        told["to"], ADA,
-        "the page offers to sign in as the address invited"
-    );
+    // and: the address invited is not named, as a link may be forwarded or found
+    assert!(!told.to_string().contains(ADA), "{told}");
     // and: nothing is taken up
     assert!(!taken_up_by(&wired, BOB).await);
 }

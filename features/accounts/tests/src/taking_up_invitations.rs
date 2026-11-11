@@ -122,13 +122,10 @@ async fn an_invitation_to_another_address_is_refused_naming_it_and_left_for_it()
     // when: the account takes it up by its link
     let refused = wired.accounts.take_up_invitation(&bob, TOKEN).await;
 
-    // then: it is refused naming the address invited
+    // then: it is refused as for another address, not naming it
     assert!(
-        matches!(
-            &refused,
-            Err(AccountsError::InvitationForAnotherAddress { to }) if to.as_str() == ADA
-        ),
-        "whoever holds the link was sent it, so it may say whom it was for: {refused:?}"
+        matches!(&refused, Err(AccountsError::InvitationForAnotherAddress)),
+        "a link may be forwarded or found, so it does not tell whom it was for: {refused:?}"
     );
     // and: the account took nothing up
     assert!(invitations_taken_up_by(&wired, &bob).await.is_empty());
@@ -423,13 +420,13 @@ async fn nobody_turns_down_an_invitation_to_another_address_and_it_is_left_for_i
         .decline_invitation_by_id(&bob, "invitation_1")
         .await;
 
-    // then: by the link it is refused naming the address invited
+    // then: by the link it is refused as for another address
     assert!(
         matches!(
             &by_the_link,
-            Err(AccountsError::InvitationForAnotherAddress { to }) if to.as_str() == ADA
+            Err(AccountsError::InvitationForAnotherAddress)
         ),
-        "whoever holds the link was sent it: {by_the_link:?}"
+        "{by_the_link:?}"
     );
     // and: by its id as though it were not there
     assert!(

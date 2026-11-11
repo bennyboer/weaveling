@@ -167,7 +167,7 @@ test("a link opened while signed in is accepted there, and leads to one's projec
   expect(server.signedInAs).toBeNull();
 });
 
-test("a link for another address, opened signed in, says whose it is and stays", async ({
+test("a link for another address, opened signed in, says it is another's and stays", async ({
   page,
 }) => {
   // given: a link for another address, opened while signed in
@@ -179,7 +179,6 @@ test("a link for another address, opened signed in, says whose it is and stays",
         type: "invitation-for-another-address",
         status: 403,
         detail: "invitation-for-another-address",
-        to: "grace@example.com",
       }),
     }),
   );
@@ -187,9 +186,9 @@ test("a link for another address, opened signed in, says whose it is and stays",
   // when: it is accepted
   await page.getByRole("button", { name: "Accept" }).click();
 
-  // then: it says whose it is
+  // then: it says it is another's
   await expect(page.getByRole("alert")).toHaveText(
-    "This invitation was sent to grace@example.com. Sign in with that address to take it up.",
+    "This invitation was sent to another address. Sign in with the one it was sent to, to take it up.",
   );
   // and: stays
   await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
