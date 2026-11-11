@@ -2,11 +2,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
-    AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses, PasswordHash, Passwords,
-    PendingVerification, SecretStores, SecretsError, SessionToken, Sessions,
+    AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses, Guarded, PasswordHash,
+    Passwords, PendingVerification, SecretStores, SecretsError, SessionToken, Sessions,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
+use throttling::Throttles;
 
 use time::Duration;
 use tokio::sync::{Barrier, Notify};
@@ -763,7 +764,12 @@ async fn wrong_guesses_count_across_new_codes_until_none_is_let_through_for_a_wh
         }
     }
 
-    // when: a third code is asked for
+    // when: a third code is asked for, its sending let through
+    wired
+        .throttles
+        .clear(Guarded::SendingCodes.as_str(), ADA)
+        .await
+        .expect("clearing should succeed");
     let code = a_reset_asked_for(&wired).await;
 
     // then: even the right one is refused for a while, as ten guesses went wrong
