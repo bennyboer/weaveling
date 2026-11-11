@@ -944,6 +944,9 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
+        operator_wanted: signed_in.session.stage == Stage::SignedIn
+            && !signed_in.account.is_operator()
+            && accounts.operator_wanted().await.map_err(problem_of)?,
         deletion: signed_in.account.pending_deletion().map(deletion_told),
         second_factor: signed_in.account.second_factor().zip(asked_way).map(
             |(factor, asked_way)| SecondFactorDTO {

@@ -10,3 +10,9 @@ listen = "127.0.0.1:3100"
 # A key for tests alone, written here for anyone to read: never for an
 # instance with real accounts.
 totp_key = "7e57000000000000000000000000000000000000000000000000000000007e57"
+
+[mail]
+# Every browser test with accounts mails one server, and invites from one
+# account, far more than an instance's hour would allow.
+anyone_each_hour = 100000
+invitations_each_hour = 100000

@@ -28,7 +28,7 @@ mod totp_key;
 mod account_tests;
 
 pub use account::{Account, AccountCommand, AccountError, AccountEvent, KIND};
-pub use accounts::{AccountsCore, AddedKey, SettingUpTotp, SignedIn, WaysIn};
+pub use accounts::{AccountsCore, AddedKey, MAIL_EACH_HOUR, SettingUpTotp, SignedIn, WaysIn};
 pub use catalog::{AccountCatalog, AccountSummary, CatalogError, InProject};
 pub use code::{CodeDigest, CodePurpose, PendingVerification, VerificationCode};
 pub use decline::DeclineReason;

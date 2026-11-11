@@ -16,6 +16,10 @@ use crate::token::{InvitationToken, TokenKey};
 
 const INVITING: &str = "inviting";
 const INVITING_RULE: Rule = Rule::free(3);
+const INVITING_BY: &str = "inviting-by";
+
+/// The invitations one account may have mailed each hour, unless the instance is told otherwise.
+pub const INVITATIONS_EACH_HOUR: u32 = 20;
 
 #[derive(Clone)]
 pub struct InvitationService {
@@ -23,6 +27,7 @@ pub struct InvitationService {
     throttles: Arc<dyn Throttles>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
+    each_hour: u32,
 }
 
 impl InvitationService {
@@ -37,6 +42,7 @@ impl InvitationService {
             throttles,
             mailer,
             clock,
+            each_hour: INVITATIONS_EACH_HOUR,
         }
     }
 
@@ -212,14 +218,31 @@ impl InvitationService {
         Ok(())
     }
 
-    pub async fn admitted(&self, to: &EmailAddress) -> Result<(), InvitationsError> {
+    pub fn capping(self, each_hour: u32) -> Self {
+        Self { each_hour, ..self }
+    }
+
+    /// Whether an invitation may be mailed: to this address, a few at most, and by this account, so many each hour, so nobody mails strangers in bulk by inviting them.
+    pub async fn admitted(&self, to: &EmailAddress, by: &Agent) -> Result<(), InvitationsError> {
+        let now = self.clock.now();
+        if let Admission::Wait(wait) = self
+            .throttles
+            .admit(INVITING, to.as_str(), INVITING_RULE, now)
+            .await?
+        {
+            return Err(InvitationsError::Throttled { wait });
+        }
+        let Agent::Account(account) = by else {
+            return Ok(());
+        };
+        let (this_hour, left) = throttling::hour_of(&account.to_string(), now);
         match self
             .throttles
-            .admit(INVITING, to.as_str(), INVITING_RULE, self.clock.now())
+            .admit(INVITING_BY, &this_hour, Rule::capped(self.each_hour), now)
             .await?
         {
             Admission::Admitted => Ok(()),
-            Admission::Wait(wait) => Err(InvitationsError::Throttled { wait }),
+            Admission::Wait(_) => Err(InvitationsError::Throttled { wait: left }),
         }
     }
 }

@@ -6416,6 +6416,7 @@ dependencies = [
  "weaveling-ending",
  "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
+ "weaveling-invitations-core",
  "weaveling-invitations-wiring",
  "weaveling-live",
  "weaveling-live-contract",

@@ -11,7 +11,7 @@ use time::OffsetDateTime;
 
 pub use forgetting::ForgetOldTries;
 pub use memory::InMemoryThrottles;
-pub use rule::{Admission, Rule, Tries};
+pub use rule::{Admission, Rule, Tries, hour_of};
 
 #[derive(Debug, Error)]
 pub enum ThrottlesError {

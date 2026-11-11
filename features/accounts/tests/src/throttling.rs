@@ -360,3 +360,33 @@ async fn wrong_passwords_sent_at_once_are_checked_no_more_often_than_the_free_tr
 fn waits_for<T>(told: &Result<T, AccountsError>) -> bool {
     matches!(told, Err(AccountsError::Throttled { .. }))
 }
+
+#[tokio::test]
+async fn mail_anyone_may_have_sent_is_capped_across_the_instance_each_hour() {
+    // given: an instance sending at most two such mails an hour, at twenty to the hour and a little
+    let wired = wiring::wired();
+    let accounts = wired.accounts.clone().capping_mail(2);
+    let asked = |address: &'static str| {
+        let accounts = accounts.clone();
+        async move { accounts.ask_to_reset_password(address).await }
+    };
+
+    // when: three strangers' addresses are asked to be reset, each once
+    asked("one@example.com").await.expect("the first is sent");
+    asked("two@example.com").await.expect("the second is sent");
+    let third = asked("three@example.com").await;
+
+    // then: the third waits for the next hour, though no address was asked twice
+    assert_eq!(
+        waits(third),
+        Some(Duration::minutes(46) + Duration::seconds(40)),
+        "a cap by address alone lets anyone mail any number of strangers"
+    );
+    // and: in the next hour it is sent
+    wired
+        .clock
+        .set(clock::at(1_700_000_000) + Duration::minutes(47));
+    asked("three@example.com")
+        .await
+        .expect("each hour is counted afresh");
+}

@@ -6,7 +6,9 @@ use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use invitations_catalog::{InMemoryInvitationCatalog, InMemoryTokenKeys};
-use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys};
+use invitations_core::{
+    INVITATIONS_EACH_HOUR, InvitationCatalog, InvitationEvent, InvitationsCore, TokenKeys,
+};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
     ForgetDeletedAccountListener, MailIssuedInvitationListener, RememberProjectNamesListener,
@@ -33,6 +35,7 @@ pub struct Ports {
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
     pub links_to: Option<String>,
+    pub invitations_each_hour: u32,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
@@ -47,6 +50,7 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
         context.clock.clone(),
     );
 
+    let invitations = invitations.capping_invitations(ports.invitations_each_hour);
     match &ports.links_to {
         Some(public_url) => invitations.linking_to(public_url),
         None => invitations,
@@ -58,10 +62,12 @@ pub async fn assembled_invitations(
     context: &Context,
     mailer: Arc<dyn Mailer>,
     links_to: Option<String>,
+    invitations_each_hour: u32,
 ) -> Result<Assembled, Unprepared> {
     let ports = Ports {
         mailer,
         links_to,
+        invitations_each_hour,
         ..wiring::ports::<InvitationFeature>(storage, context).await?
     };
     let wired = InvitationFeature::wire(&ports, context);
@@ -100,6 +106,7 @@ impl Feature for InvitationFeature {
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
+            invitations_each_hour: INVITATIONS_EACH_HOUR,
             outbox,
         }
     }
@@ -126,6 +133,7 @@ impl Feature for InvitationFeature {
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
+            invitations_each_hour: INVITATIONS_EACH_HOUR,
             outbox,
         })
     }
@@ -163,6 +171,7 @@ impl Feature for InvitationFeature {
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
+            invitations_each_hour: INVITATIONS_EACH_HOUR,
             outbox,
         })
     }
@@ -198,6 +207,7 @@ impl Feature for InvitationFeature {
             context.authorizer.clone(),
             context.clock.clone(),
         );
+        let invitations = invitations.capping_invitations(ports.invitations_each_hour);
         let invitations = match &ports.links_to {
             Some(public_url) => invitations.linking_to(public_url),
             None => invitations,

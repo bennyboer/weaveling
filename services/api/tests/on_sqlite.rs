@@ -14,7 +14,7 @@ use mailing::LoggingMailer;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
-use weaveling_service_api::{Accounts, Adapters, Storage, Unprepared};
+use weaveling_service_api::{Accounts, Adapters, MailCaps, Storage, Unprepared};
 use wiring::sqlite::{DataDirectory, Files};
 
 use journeys::{Backend, DATABASES, Journey};
@@ -141,6 +141,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
                 Accounts::Off,
                 Arc::new(LoggingMailer),
                 None,
+                MailCaps::default(),
                 Arc::new(SystemClock),
             )
             .await
@@ -165,6 +166,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
             Accounts::Off,
             Arc::new(LoggingMailer),
             None,
+            MailCaps::default(),
             Arc::new(SystemClock),
         )
         .await

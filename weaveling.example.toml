@@ -75,6 +75,19 @@
 # whoever reads the log can sign in as anyone: only ever for development.
 # WEAVELING_MAIL_LOG
 # log = true
+#
+# How many mails anyone may have the instance send each hour, across the
+# instance: codes to confirm an address or reset a password, and word that an
+# address has an account already. Past it, they wait for the next hour, so
+# nobody mails strangers in bulk through the instance. A whole number above
+# nought; left out, 100.
+# WEAVELING_MAIL_ANYONE_EACH_HOUR
+# anyone_each_hour = 100
+#
+# How many invitations one account may have the instance mail each hour. Past
+# it, they wait for the next hour. A whole number above nought; left out, 20.
+# WEAVELING_MAIL_INVITATIONS_EACH_HOUR
+# invitations_each_hour = 20
 
 [testing]
 # The share of messages every listener refuses on purpose, from 0 to 1, so the

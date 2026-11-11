@@ -41,6 +41,7 @@ outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weavel
 
 accounts-contract = { version = "0.1.0", path = "../../features/accounts/contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../../features/accounts/core", package = "weaveling-accounts-core" }
+invitations-core = { version = "0.1.0", path = "../../features/invitations/core", package = "weaveling-invitations-core" }
 accounts-rest = { version = "0.1.0", path = "../../features/accounts/adapters/rest", package = "weaveling-accounts-rest" }
 accounts-wiring = { version = "0.1.0", path = "../../features/accounts/wiring", package = "weaveling-accounts-wiring" }
 invitations-wiring = { version = "0.1.0", path = "../../features/invitations/wiring", package = "weaveling-invitations-wiring" }

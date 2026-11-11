@@ -304,10 +304,19 @@ impl<S: Secrets> Committing<'_, S> {
     }
 
     pub async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        self.take_code_for(digest, &AccountId::generate(clock::at(1)))
+            .await
+    }
+
+    pub async fn take_code_for(
+        &self,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
         transacting::retrying!(self.transactions, |transaction| {
             let done = self
                 .store
-                .take_code(transaction, digest)
+                .take_code(transaction, digest, account)
                 .await
                 .map_err(Tried::Refused)?;
 
@@ -2400,7 +2409,11 @@ pub async fn a_code_kept_or_taken_in_a_transaction_that_is_dropped_is_as_it_was<
     let mut transaction = secrets.begun().await.expect("beginning should succeed");
     let store = secrets.store;
     store
-        .take_code(&mut transaction, &TokenDigest::kept("kept".to_owned()))
+        .take_code(
+            &mut transaction,
+            &TokenDigest::kept("kept".to_owned()),
+            &AccountId::generate(clock::at(1)),
+        )
         .await
         .expect("taking a code should succeed");
     store
@@ -2549,6 +2562,96 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
         ),
         (Dismissal::NotAppointed, Dismissal::Dismissed),
         "Ada was never appointed and Grace never dismissed"
+    );
+}
+
+impl<S: Secrets> Committing<'_, S> {
+    pub async fn hold_code(
+        &self,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            let held = self
+                .store
+                .hold_code(transaction, digest, account)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(held)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+}
+
+pub async fn a_code_held_for_the_first_to_sign_up_with_it_is_taken_by_nobody_else(
+    secrets: &Committing<'_, impl Secrets>,
+) {
+    // given: a code kept
+    let code = TokenDigest::kept("the code".to_owned());
+    secrets
+        .keep_code(&code)
+        .await
+        .expect("keeping a code should succeed");
+    let ada = AccountId::generate(clock::at(1_000));
+    let grace = AccountId::generate(clock::at(2_000));
+
+    // when: it is held for the first to sign up with it, and then for another
+    let first = secrets
+        .hold_code(&code, &ada)
+        .await
+        .expect("holding should succeed");
+    let second = secrets
+        .hold_code(&code, &grace)
+        .await
+        .expect("holding should succeed");
+
+    // then: it is held for the first alone
+    assert!(first);
+    assert!(!second, "a code held for one is held for nobody else");
+    // and: nobody else takes it
+    assert!(
+        !secrets
+            .take_code_for(&code, &grace)
+            .await
+            .expect("taking should succeed")
+    );
+    // and: the one it is held for does
+    assert!(
+        secrets
+            .take_code_for(&code, &ada)
+            .await
+            .expect("taking should succeed")
+    );
+}
+
+pub async fn a_code_kept_anew_is_held_for_nobody(secrets: &Committing<'_, impl Secrets>) {
+    // given: a code held for an account
+    let ada = AccountId::generate(clock::at(1_000));
+    secrets
+        .keep_code(&TokenDigest::kept("the first".to_owned()))
+        .await
+        .expect("keeping a code should succeed");
+    assert!(
+        secrets
+            .hold_code(&TokenDigest::kept("the first".to_owned()), &ada)
+            .await
+            .expect("holding should succeed")
+    );
+
+    // when: a code is kept anew, as at a restart
+    let anew = TokenDigest::kept("the second".to_owned());
+    secrets
+        .keep_code(&anew)
+        .await
+        .expect("keeping a code should succeed");
+
+    // then: it is held for nobody, so another may sign up with it
+    assert!(
+        secrets
+            .hold_code(&anew, &AccountId::generate(clock::at(2_000)))
+            .await
+            .expect("holding should succeed")
     );
 }
 
@@ -2792,5 +2895,10 @@ macro_rules! conformance_tests {
             $workbench,
             sessions_and_codes_run_out_are_forgotten_oldest_first_and_the_rest_kept
         );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_code_held_for_the_first_to_sign_up_with_it_is_taken_by_nobody_else
+        );
+        $crate::secrets_conformance_case!($workbench, a_code_kept_anew_is_held_for_nobody);
     };
 }

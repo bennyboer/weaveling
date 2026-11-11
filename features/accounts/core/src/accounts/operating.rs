@@ -44,7 +44,7 @@ impl AccountsCore {
         let digest = OperatorCode::presented(code).digest();
 
         transacting::retrying!(&*self.transactions, |transaction| {
-            if !self.operators.take_code(transaction, &digest).await? {
+            if !self.operators.take_code(transaction, &digest, id).await? {
                 return Err(AccountsError::OperatorCodeWrong);
             }
             self.operators.appoint(transaction, id).await?;

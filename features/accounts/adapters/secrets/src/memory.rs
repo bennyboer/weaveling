@@ -20,7 +20,7 @@ struct Kept {
     passwords: HashMap<AccountId, PasswordHash>,
     pending: HashMap<(AccountId, CodePurpose), PendingVerification>,
     sessions: HashMap<TokenDigest, Session>,
-    operator_code: Option<TokenDigest>,
+    operator_code: Option<(TokenDigest, Option<AccountId>)>,
     operators: HashSet<AccountId>,
     invitation_tickets: HashMap<String, (TokenDigest, InvitationTicket)>,
     ended_invitations: HashSet<String>,
@@ -414,7 +414,7 @@ impl Operators for InMemorySecrets {
         if !kept.operators.is_empty() {
             return Ok(false);
         }
-        let replaced = kept.operator_code.replace(digest.clone());
+        let replaced = kept.operator_code.replace((digest.clone(), None));
         drop(kept);
         self.undo_on_rollback(transaction, move |kept| {
             kept.operator_code = replaced;
@@ -424,22 +424,57 @@ impl Operators for InMemorySecrets {
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
-        Ok(self.kept().operator_code.as_ref() == Some(digest))
+        Ok(self
+            .kept()
+            .operator_code
+            .as_ref()
+            .is_some_and(|(kept, _)| kept == digest))
+    }
+
+    async fn hold_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        if !kept.operators.is_empty() {
+            return Ok(false);
+        }
+        let Some((kept_digest, held_for)) = kept.operator_code.as_mut() else {
+            return Ok(false);
+        };
+        if kept_digest != digest || held_for.is_some() {
+            return Ok(false);
+        }
+        *held_for = Some(*account);
+        drop(kept);
+        self.undo_on_rollback(transaction, move |kept| {
+            if let Some((_, held_for)) = kept.operator_code.as_mut() {
+                *held_for = None;
+            }
+        })?;
+
+        Ok(true)
     }
 
     async fn take_code(
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
+        account: &AccountId,
     ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
-        if kept.operator_code.as_ref() != Some(digest) || !kept.operators.is_empty() {
+        let takes = kept.operators.is_empty()
+            && kept.operator_code.as_ref().is_some_and(|(kept, held_for)| {
+                kept == digest && held_for.is_none_or(|held_for| held_for == *account)
+            });
+        if !takes {
             return Ok(false);
         }
-        kept.operator_code = None;
-        let taken = digest.clone();
+        let taken = kept.operator_code.take();
         self.undo_on_rollback(transaction, move |kept| {
-            kept.operator_code = Some(taken);
+            kept.operator_code = taken;
         })?;
 
         Ok(true)

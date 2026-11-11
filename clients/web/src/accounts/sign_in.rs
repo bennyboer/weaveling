@@ -87,9 +87,7 @@ pub fn SignInPage() -> impl IntoView {
             asked_form(account)
         } else if invitation.is_some() {
             Form::Accept
-        } else if location.pathname.get_untracked() == route::SETUP
-            && expect_context::<CurrentSession>().operator_wanted()
-        {
+        } else if location.pathname.get_untracked() == route::SETUP {
             Form::SetUp
         } else {
             Form::SignIn
@@ -203,13 +201,6 @@ fn sign_in_form(page: Page) -> impl IntoView {
             (session.signing_up() == SigningUp::Open).then(|| {
                 turning(speech::said("sign-up-instead"), move || {
                     page.turn_to(Form::SignUp, None)
-                })
-            })
-        },
-        move || {
-            session.operator_wanted().then(|| {
-                turning(speech::said("set-up-instead"), move || {
-                    page.turn_to(Form::SetUp, None)
                 })
             })
         },

@@ -20,9 +20,7 @@ async function aFreshInstanceByInvitation(page: Page): Promise<Server> {
 }
 
 async function setUp(page: Page, code: string) {
-  await page
-    .getByRole("button", { name: "Set up this Weaveling instance" })
-    .click();
+  await page.goto("/setup");
   await page.getByLabel("Code from the server's log").fill(code);
   await page.getByLabel("Your name").fill(ADA.name);
   await page.getByLabel("Email address").fill(ADA.email);
@@ -94,7 +92,7 @@ test("once an instance has an operator, nobody is offered to set it up", async (
   ).toHaveCount(0);
 });
 
-test("where anyone may sign up, setting up is offered beside signing up while nobody runs the instance", async ({
+test("while nobody runs the instance, its sign-in page does not tell so, and it is set up at its own address", async ({
   page,
 }) => {
   // given: a fresh instance where anyone may sign up
@@ -106,6 +104,10 @@ test("where anyone may sign up, setting up is offered beside signing up while no
   await expect(
     page.getByRole("button", { name: "No account yet? Sign up" }),
   ).toBeVisible();
+  // and: setting up is not, which would tell anyone the instance is unclaimed
+  await expect(
+    page.getByRole("button", { name: "Set up this Weaveling instance" }),
+  ).toHaveCount(0);
   // when: the first account sets it up with the logged code
   await setUp(page, THE_OPERATOR_CODE);
   // and: confirms its address and signs in
@@ -128,9 +130,7 @@ test("the word under the heading stands apart from the first field", async ({
 }) => {
   // given: setting up a fresh instance
   await aFreshInstanceByInvitation(page);
-  await page
-    .getByRole("button", { name: "Set up this Weaveling instance" })
-    .click();
+  await page.goto("/setup");
 
   // when: the word under the heading and the first fields are measured
   const hint = await page

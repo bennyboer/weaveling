@@ -13,7 +13,7 @@ mod sign_up;
 use std::sync::Arc;
 
 use accounts_contract::{AccountsModeDTO, ServiceModeDTO};
-use accounts_core::{AccountsCore, AccountsError, KeyCeremonies, OperatorCode, TotpKey};
+use accounts_core::{AccountsError, KeyCeremonies, OperatorCode, TotpKey};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use authorizing::{AllowingEverything, Authorizer};
@@ -31,7 +31,6 @@ use notifications_wiring::NotificationsFeature;
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
 use scenes_wiring::SceneFeature;
-use serving::Problem;
 use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context};
@@ -49,9 +48,11 @@ pub use its_own::answering_only_its_own;
 pub use mail::{Mailing, Unmailable, WEAVELING_MAIL_DROP, WEAVELING_MAIL_LOG};
 pub use relays::Relays;
 pub use settings::{
-    Setting, Settings, Unlistenable, UnreadableHosts, UnreadablePublicUrl, UnreadableTotpKey,
-    Unsettled, WEAVELING_CLIENT_DIR, WEAVELING_CONFIG, WEAVELING_HOSTS, WEAVELING_LISTEN,
-    WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE,
+    MailCaps, Setting, Settings, Unlistenable, UnreadableHosts, UnreadableMailCap,
+    UnreadablePublicUrl, UnreadableTotpKey, Unsettled, WEAVELING_CLIENT_DIR, WEAVELING_CONFIG,
+    WEAVELING_HOSTS, WEAVELING_LISTEN, WEAVELING_MAIL_ANYONE_EACH_HOUR,
+    WEAVELING_MAIL_INVITATIONS_EACH_HOUR, WEAVELING_PUBLIC_URL, WEAVELING_TOTP_KEY,
+    WEAVELING_TOTP_KEY_FILE,
 };
 pub use shielding::shielded;
 pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
@@ -78,6 +79,7 @@ impl Adapters {
         accounts: Accounts,
         mailer: Arc<dyn Mailer>,
         links_to: Option<String>,
+        caps: MailCaps,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Unprepared> {
         let refusals = Broadcaster::new();
@@ -123,11 +125,16 @@ impl Adapters {
                         &context,
                         mailer.clone(),
                         links_to,
+                        caps.invitations_each_hour,
                     )
                     .await?,
                 );
                 features.push(wiring::assemble::<NotificationsFeature>(&storage, &context).await?);
-                Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
+                Some(
+                    accounts_wiring::assembled_accounts(&storage, &context, mailer)
+                        .await?
+                        .capping_mail(caps.anyone_each_hour),
+                )
             }
             Accounts::Off => None,
         };
@@ -151,6 +158,7 @@ impl Adapters {
             accounts,
             Arc::new(LoggingMailer),
             None,
+            MailCaps::default(),
             clock,
         )
         .await
@@ -267,19 +275,13 @@ pub fn app(adapters: Adapters) -> Router {
     let told = ServiceModeDTO {
         accounts: adapters.accounts.as_ref().map(|accounts| AccountsModeDTO {
             sign_up: adapters.sign_up.told().to_owned(),
-            operator_wanted: false,
             can_set_up_totp: accounts.core.keeps_totp(),
             can_add_keys: accounts.core.keeps_keys(),
         }),
     };
-    let operating = adapters
-        .accounts
-        .as_ref()
-        .map(|accounts| accounts.core.clone());
-    let service = Router::new().route("/health", routing::get(health)).route(
-        "/mode",
-        routing::get(move || mode(told.clone(), operating.clone())),
-    );
+    let service = Router::new()
+        .route("/health", routing::get(health))
+        .route("/mode", routing::get(move || mode(told.clone())));
     let refusals = refusals::router(
         adapters.deliveries.clone(),
         adapters.dispatcher.clone(),
@@ -349,24 +351,8 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn mode(
-    told: ServiceModeDTO,
-    operating: Option<AccountsCore>,
-) -> Result<Json<ServiceModeDTO>, Problem> {
-    let (Some(accounts), Some(operating)) = (told.accounts, operating) else {
-        return Ok(Json(ServiceModeDTO { accounts: None }));
-    };
-    let operator_wanted = operating
-        .operator_wanted()
-        .await
-        .map_err(Problem::unexpected)?;
-
-    Ok(Json(ServiceModeDTO {
-        accounts: Some(AccountsModeDTO {
-            operator_wanted,
-            ..accounts
-        }),
-    }))
+async fn mode(told: ServiceModeDTO) -> Json<ServiceModeDTO> {
+    Json(told)
 }
 
 #[cfg(test)]

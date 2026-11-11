@@ -18,7 +18,9 @@ use live_contract::SESSION_ENDED;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, ServedClient, SignUp, Storage};
+use weaveling_service_api::{
+    Accounts, Adapters, MailCaps, Mailing, Relays, ServedClient, SignUp, Storage,
+};
 
 async fn an_app() -> Router {
     weaveling_service_api::app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
@@ -203,7 +205,6 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
             SignUp::Open,
             json!({ "accounts": {
                 "sign_up": "open",
-                "operator_wanted": true,
                 "can_set_up_totp": false,
                 "can_add_keys": false,
             } }),
@@ -213,7 +214,6 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
             SignUp::ByInvitation,
             json!({ "accounts": {
                 "sign_up": "invitation",
-                "operator_wanted": true,
                 "can_set_up_totp": false,
                 "can_add_keys": false,
             } }),
@@ -629,6 +629,7 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
             Accounts::On,
             mailing.mailer(),
             None,
+            MailCaps::default(),
             Arc::new(SystemClock),
         )
         .await
@@ -694,6 +695,7 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         Accounts::On,
         Mailing::Dropped { into: drop.clone() }.mailer(),
         Some("https://weaveling.example.com".to_owned()),
+        MailCaps::default(),
         Arc::new(SystemClock),
     )
     .await
@@ -752,18 +754,12 @@ async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged
     let signed_in =
         an_operator_signed_in_on_a_server_signing_up("first-operator", SignUp::ByInvitation).await;
 
-    // when: its mode is asked
-    let told: Value = signed_in.server.get("/api/service/mode").await.json();
+    // when: who is signed in is asked
+    let told: Value = signed_in.server.get("/api/sessions/current").await.json();
 
     // then: no operator is wanted any more
     assert_eq!(
-        told,
-        json!({ "accounts": {
-            "sign_up": "invitation",
-            "operator_wanted": false,
-            "can_set_up_totp": false,
-            "can_add_keys": false,
-        } }),
+        told["operator_wanted"], false,
         "with an operator there, nobody is asked to set the instance up any more"
     );
     // and: an operator code signs nobody up

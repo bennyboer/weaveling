@@ -19,14 +19,20 @@ const KEEP_CODE: &str = "
     SELECT $1
     WHERE NOT EXISTS (SELECT 1 FROM account_operators)
     ON CONFLICT (single) DO UPDATE
-    SET digest = EXCLUDED.digest
+    SET digest = EXCLUDED.digest, held_for = NULL
+";
+
+const HOLD_CODE: &str = "
+    UPDATE account_operator_code SET held_for = $2
+    WHERE digest = $1 AND held_for IS NULL AND NOT EXISTS (SELECT 1 FROM account_operators)
 ";
 
 const HOLDS_CODE: &str = "SELECT EXISTS (SELECT 1 FROM account_operator_code WHERE digest = $1)";
 
 const TAKE_CODE: &str = "
     DELETE FROM account_operator_code
-    WHERE digest = $1 AND NOT EXISTS (SELECT 1 FROM account_operators)
+    WHERE digest = $1 AND (held_for IS NULL OR held_for = $2)
+    AND NOT EXISTS (SELECT 1 FROM account_operators)
 ";
 
 const APPOINT: &str = "
@@ -590,13 +596,31 @@ impl Operators for PostgresSecrets {
             .map_err(unreachable)
     }
 
+    async fn hold_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        let held = sqlx::query(HOLD_CODE)
+            .bind(digest.as_str())
+            .bind(account.to_string())
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(held.rows_affected() == 1)
+    }
+
     async fn take_code(
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
+        account: &AccountId,
     ) -> Result<bool, SecretsError> {
         let done = sqlx::query(TAKE_CODE)
             .bind(digest.as_str())
+            .bind(account.to_string())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;

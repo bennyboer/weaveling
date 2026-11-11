@@ -48,6 +48,8 @@ struct FiledAccounts {
 struct FiledMail {
     drop: Option<toml::Value>,
     log: Option<toml::Value>,
+    anyone_each_hour: Option<toml::Value>,
+    invitations_each_hour: Option<toml::Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -76,6 +78,14 @@ impl Settings {
             sign_up: setting(key("accounts.sign_up"), filed.accounts.sign_up),
             mail_drop: setting(key("mail.drop"), filed.mail.drop),
             mail_log: setting(key("mail.log"), filed.mail.log),
+            mail_anyone_each_hour: setting(
+                key("mail.anyone_each_hour"),
+                filed.mail.anyone_each_hour,
+            ),
+            mail_invitations_each_hour: setting(
+                key("mail.invitations_each_hour"),
+                filed.mail.invitations_each_hour,
+            ),
             flaky: setting(key("testing.flaky"), filed.testing.flaky),
             totp_key: totp_key::secret(
                 setting(key("accounts.totp_key"), filed.accounts.totp_key),

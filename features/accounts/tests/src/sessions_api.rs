@@ -371,3 +371,45 @@ async fn a_wait_part_way_through_a_second_is_rounded_up() {
     );
     assert_eq!(response.json::<Value>()["minutes"], 1);
 }
+
+#[tokio::test]
+async fn whoever_is_signed_in_is_told_whether_nobody_runs_the_instance() {
+    // given: a verified account on an instance nobody runs yet
+    let (wired, server) = served_with_ada_verified().await;
+
+    // when: she signs in
+    let response = server
+        .post("/sessions")
+        .json(&signing_in(ADA, HER_PASSWORD))
+        .await;
+
+    // then: she is told nobody runs it, so she may set it up
+    let told: SignedInDTO = response.json();
+    assert!(told.operator_wanted);
+
+    // when: she becomes its operator and asks who is signed in
+    let ada = wired
+        .accounts
+        .sign_in(ADA, HER_PASSWORD)
+        .await
+        .expect("signing in should succeed");
+    let code = wired
+        .accounts
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("with nobody appointed a code is drawn");
+    wired
+        .accounts
+        .become_operator(&ada, code.as_str())
+        .await
+        .expect("the code makes her the operator");
+    let cookie = set_cookie(&response);
+    let token = token_in(&cookie);
+    let current: SignedInDTO = current_with(&server, &format!("{SESSION_COOKIE}={token}"))
+        .await
+        .json();
+
+    // then: nobody is wanted any more
+    assert!(!current.operator_wanted);
+}

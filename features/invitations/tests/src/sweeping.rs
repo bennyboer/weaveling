@@ -54,8 +54,9 @@ fn a_sweep_of(project: &str) -> Message {
 
 #[tokio::test]
 async fn a_deleted_project_s_open_invitations_are_withdrawn_by_the_system_page_after_page() {
-    // given: the sweep of a deleted project's invitations
-    let wired = wiring::a_workbench();
+    // given: the sweep of a deleted project's invitations, on an instance letting one account invite more than a page an hour
+    let mut wired = wiring::a_workbench();
+    wired.invitations = wired.invitations.clone().capping_invitations(1_000);
     let listener = WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone());
     // then: it hears a project's sweep
     assert!(listener.hears(&RoutingKey::parse(SWEEP_PROJECT).expect("a declared key")));

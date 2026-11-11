@@ -63,6 +63,14 @@ impl InvitationsCore {
         }
     }
 
+    /// Caps the invitations one account may have mailed at so many each hour.
+    pub fn capping_invitations(self, each_hour: u32) -> Self {
+        Self {
+            service: self.service.capping(each_hour),
+            ..self
+        }
+    }
+
     /// Where an invitation's link leads, none where the instance does not know where it is served.
     pub fn links_to(&self) -> Option<&str> {
         self.links_to.as_deref()
@@ -89,7 +97,7 @@ impl InvitationsCore {
         agent: &Agent,
     ) -> Result<InvitationSummary, InvitationsError> {
         let to = EmailAddress::new(to)?;
-        self.service.admitted(&to).await?;
+        self.service.admitted(&to, agent).await?;
         let key = self.keys.key().await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {

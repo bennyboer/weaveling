@@ -2,6 +2,7 @@ mod client_dir;
 mod file;
 mod hosts;
 mod listen;
+mod mail_caps;
 mod public_url;
 mod setting;
 #[cfg(test)]
@@ -24,6 +25,10 @@ use file::BESIDE;
 pub use client_dir::WEAVELING_CLIENT_DIR;
 pub use hosts::{UnreadableHosts, WEAVELING_HOSTS};
 pub use listen::{Unlistenable, WEAVELING_LISTEN};
+pub use mail_caps::{
+    MailCaps, UnreadableMailCap, WEAVELING_MAIL_ANYONE_EACH_HOUR,
+    WEAVELING_MAIL_INVITATIONS_EACH_HOUR,
+};
 pub use public_url::{UnreadablePublicUrl, WEAVELING_PUBLIC_URL};
 pub use setting::Setting;
 pub use totp_key::{UnreadableTotpKey, WEAVELING_TOTP_KEY, WEAVELING_TOTP_KEY_FILE};
@@ -55,6 +60,8 @@ pub enum Unsettled {
     #[error(transparent)]
     Hosts(#[from] UnreadableHosts),
     #[error(transparent)]
+    MailCap(#[from] UnreadableMailCap),
+    #[error(transparent)]
     TotpKey(#[from] UnreadableTotpKey),
 }
 
@@ -72,6 +79,8 @@ pub struct Settings {
     sign_up: Option<Setting>,
     mail_drop: Option<Setting>,
     mail_log: Option<Setting>,
+    mail_anyone_each_hour: Option<Setting>,
+    mail_invitations_each_hour: Option<Setting>,
     flaky: Option<Setting>,
     totp_key: Option<Setting>,
 }
@@ -145,6 +154,14 @@ impl Settings {
             (WEAVELING_SIGN_UP, &mut self.sign_up),
             (WEAVELING_MAIL_DROP, &mut self.mail_drop),
             (WEAVELING_MAIL_LOG, &mut self.mail_log),
+            (
+                WEAVELING_MAIL_ANYONE_EACH_HOUR,
+                &mut self.mail_anyone_each_hour,
+            ),
+            (
+                WEAVELING_MAIL_INVITATIONS_EACH_HOUR,
+                &mut self.mail_invitations_each_hour,
+            ),
             (WEAVELING_FLAKY, &mut self.flaky),
         ] {
             if let Some(given) = set(name) {

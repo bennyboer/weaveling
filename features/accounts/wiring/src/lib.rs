@@ -155,6 +155,15 @@ impl AssembledAccounts {
         )
     }
 
+    pub fn capping_mail(self, mail_each_hour: u32) -> Self {
+        Self::serving(
+            self.core.capping_mail(mail_each_hour),
+            self.outbox,
+            self.listeners,
+            self.chores,
+        )
+    }
+
     pub fn sealing_totp_secrets(self, key: TotpKey) -> Self {
         Self::serving(
             self.core.sealing_totp_secrets(key),

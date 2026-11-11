@@ -102,6 +102,9 @@ pub struct SignedInDTO {
     pub email: String,
     pub stage: String,
     pub operator: bool,
+    /// Whether nobody runs the instance yet, told only to an account signed in all the way, so nobody else learns it is unclaimed.
+    #[serde(default)]
+    pub operator_wanted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second_factor: Option<SecondFactorDTO>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,7 +157,6 @@ pub struct ServiceModeDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AccountsModeDTO {
     pub sign_up: String,
-    pub operator_wanted: bool,
     pub can_set_up_totp: bool,
     pub can_add_keys: bool,
 }

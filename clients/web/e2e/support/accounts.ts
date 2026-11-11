@@ -1,5 +1,8 @@
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
 
+const operatorWanted = (server: { operatorWanted: boolean; operator: boolean }) =>
+  server.operatorWanted && !server.operator;
+
 export const ADA = {
   account: "account_1",
   name: "Ada Lovelace",
@@ -276,7 +279,6 @@ export async function aServerWithAccounts(
       json: {
         accounts: {
           sign_up: server.signingUp,
-          operator_wanted: server.operatorWanted && !server.operator,
           can_set_up_totp: server.totpOffered,
           can_add_keys: server.keysOffered,
         },
@@ -312,6 +314,7 @@ export async function aServerWithAccounts(
           json: {
             ...(server.signedInAs ?? ADA),
             operator: server.operator,
+            operator_wanted: operatorWanted(server),
             ...(server.secondFactor
               ? { second_factor: secondFactorTold(server) }
               : {}),
@@ -343,7 +346,13 @@ export async function aServerWithAccounts(
       return route.fulfill({ json: deletionPendingTold(server) });
     }
     server.signedIn = true;
-    return route.fulfill({ json: { ...ADA, operator: server.operator } });
+    return route.fulfill({
+      json: {
+        ...ADA,
+        operator: server.operator,
+        operator_wanted: operatorWanted(server),
+      },
+    });
   });
   await page.route(at("/api/accounts/current/deletion"), async (route) => {
     if (route.request().method() === "DELETE") {
@@ -357,7 +366,13 @@ export async function aServerWithAccounts(
       server.deletionPending = false;
       server.signedIn = true;
       server.keptAccount += 1;
-      return route.fulfill({ json: { ...ADA, operator: server.operator } });
+      return route.fulfill({
+        json: {
+          ...ADA,
+          operator: server.operator,
+          operator_wanted: operatorWanted(server),
+        },
+      });
     }
     const { password } = route.request().postDataJSON();
     if (password !== server.password) {
@@ -729,6 +744,7 @@ export async function aServerWithAccounts(
       json: {
         ...ADA,
         operator: server.operator,
+        operator_wanted: operatorWanted(server),
         second_factor: secondFactorTold(server),
       },
     });
@@ -767,6 +783,7 @@ export async function aServerWithAccounts(
       json: {
         ...ADA,
         operator: server.operator,
+        operator_wanted: operatorWanted(server),
         ...(server.secondFactor
           ? { second_factor: secondFactorTold(server) }
           : {}),
@@ -925,6 +942,7 @@ export async function aServerWithAccounts(
         email: ADA.email,
         verified: true,
         operator: server.operator,
+        operator_wanted: operatorWanted(server),
         signed_up_at: "2026-10-21T08:00:00Z",
         locks: [],
       },

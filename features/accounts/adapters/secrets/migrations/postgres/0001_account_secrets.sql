@@ -32,7 +32,8 @@ CREATE INDEX account_sessions_by_until ON account_sessions (until);
 
 CREATE TABLE account_operator_code (
     single   BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (single),
-    digest   TEXT COLLATE "C" NOT NULL
+    digest   TEXT COLLATE "C" NOT NULL,
+    held_for TEXT COLLATE "C"
 );
 
 CREATE TABLE account_operators (

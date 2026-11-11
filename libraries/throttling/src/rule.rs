@@ -1,9 +1,10 @@
 use time::{Duration, OffsetDateTime};
 
-/// How many tries are free, and how long the wait after them grows at most.
+/// How many tries are free, how long the first wait after them is, and how long it grows at most.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rule {
     pub free: u32,
+    pub first_wait: Duration,
     pub longest_wait: Duration,
 }
 
@@ -12,17 +13,38 @@ impl Rule {
     pub const fn free(free: u32) -> Self {
         Self {
             free,
+            first_wait: Tries::FIRST_WAIT,
             longest_wait: Tries::LONGEST_WAIT,
+        }
+    }
+
+    /// So many tries free, and then none until the count is forgotten: a cap rather than a wait, kept by the hour with `hour_of`.
+    pub const fn capped(free: u32) -> Self {
+        Self {
+            free,
+            first_wait: Tries::FORGOTTEN_AFTER,
+            longest_wait: Tries::FORGOTTEN_AFTER,
         }
     }
 
     /// The same, the wait growing up to the one given instead.
     pub const fn waiting_at_most(self, longest_wait: Duration) -> Self {
         Self {
-            free: self.free,
             longest_wait,
+            ..self
         }
     }
+}
+
+/// What a count kept by the hour is about at this moment, the hour named beside it, so each hour is counted afresh; and how long until the next hour begins.
+pub fn hour_of(about: &str, at: OffsetDateTime) -> (String, Duration) {
+    let began = at
+        .replace_minute(0)
+        .and_then(|at| at.replace_second(0))
+        .and_then(|at| at.replace_nanosecond(0))
+        .expect("the start of an hour is a moment");
+
+    (format!("{about}@{began}"), began + Duration::hours(1) - at)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +61,7 @@ pub struct Tries {
 
 impl Tries {
     pub const FORGOTTEN_AFTER: Duration = Duration::days(1);
-    const FIRST_WAIT: Duration = Duration::minutes(1);
+    pub const FIRST_WAIT: Duration = Duration::minutes(1);
     pub const LONGEST_WAIT: Duration = Duration::hours(1);
 
     pub fn is_forgotten(&self, now: OffsetDateTime) -> bool {
@@ -73,7 +95,7 @@ impl Tries {
         }
 
         let doublings = (self.counted - rule.free).min(20);
-        let wait = (Self::FIRST_WAIT * 2_i32.pow(doublings)).min(rule.longest_wait);
+        let wait = (rule.first_wait * 2_i32.pow(doublings)).min(rule.longest_wait);
         let until = self.last + wait;
 
         (now < until).then(|| until - now)
@@ -92,6 +114,40 @@ mod tests {
             counted,
             last: clock::at(1_000),
         }
+    }
+
+    #[test]
+    fn past_a_cap_no_try_is_let_in_until_the_count_is_forgotten() {
+        // given: a cap of three, all three tried
+        let capped = Rule::capped(3);
+
+        // expect: no wait within the cap
+        assert_eq!(tried(2).wait_before_next(capped, clock::at(1_000)), None);
+        // and: past it, a wait lasting until the count is forgotten, however long ago the last try was
+        assert_eq!(
+            tried(3).wait_before_next(capped, clock::at(1_000)),
+            Some(Tries::FORGOTTEN_AFTER)
+        );
+        assert_eq!(
+            tried(3).wait_before_next(capped, clock::at(1_000 + 3_600)),
+            Some(Tries::FORGOTTEN_AFTER - Duration::hours(1)),
+            "a cap does not let one more in now and then, as a doubling wait would"
+        );
+    }
+
+    #[test]
+    fn a_count_by_the_hour_is_about_the_hour_and_tells_the_time_left_in_it() {
+        // given: two moments in one hour and one in the next
+        let early = time::macros::datetime!(2026-11-11 14:00:05 UTC);
+        let late = time::macros::datetime!(2026-11-11 14:59:00 UTC);
+        let next = time::macros::datetime!(2026-11-11 15:00:00 UTC);
+
+        // expect: the two in one hour are about the same, the next hour about another
+        assert_eq!(hour_of("instance", early).0, hour_of("instance", late).0);
+        assert_ne!(hour_of("instance", late).0, hour_of("instance", next).0);
+        // and: what is left of the hour is told
+        assert_eq!(hour_of("instance", late).1, Duration::minutes(1));
+        assert_eq!(hour_of("instance", next).1, Duration::hours(1));
     }
 
     #[test]

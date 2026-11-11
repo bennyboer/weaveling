@@ -13,7 +13,7 @@ use mailing::LoggingMailer;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
-use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
+use weaveling_service_api::{Accounts, Adapters, MailCaps, Mailing, Relays, Storage};
 
 pub const DATABASES: [&str; 12] = [
     "messaging",
@@ -79,6 +79,7 @@ async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts, clock: Arc<Lat
         accounts,
         Arc::new(LoggingMailer),
         Some("https://weaveling.example.com".to_owned()),
+        MailCaps::default(),
         clock,
     )
     .await
@@ -147,6 +148,7 @@ impl<B: Backend> Journey<B> {
             Accounts::On,
             Mailing::Dropped { into: drop.clone() }.mailer(),
             Some("https://weaveling.example.com".to_owned()),
+            MailCaps::default(),
             clock.clone(),
         )
         .await

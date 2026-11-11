@@ -21,4 +21,5 @@ pub use invitation::{
 };
 pub use invitations::InvitationsCore;
 pub use scope::{ProjectLink, Role, Scope};
+pub use service::INVITATIONS_EACH_HOUR;
 pub use token::{InvitationToken, InvitationTokenDigest, TokenKey, TokenKeys};

@@ -201,10 +201,20 @@ pub trait Operators: Send + Sync {
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
 
+    /// Holds the code for the first account signed up with it, so nobody else signs up with it: false where it is no code kept, or held for another already.
+    async fn hold_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError>;
+
+    /// Takes the code for the account becoming the operator, once, where it is held for nobody else.
     async fn take_code(
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
+        account: &AccountId,
     ) -> Result<bool, SecretsError>;
 
     async fn appoint(

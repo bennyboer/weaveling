@@ -34,6 +34,7 @@ pub struct SignedInAccount {
     pub name: String,
     pub email: String,
     pub operator: bool,
+    pub operator_wanted: bool,
     pub second_factor: Option<SecondFactorInUse>,
     pub owes_second_factor: bool,
     pub deletion: Option<PendingDeletion>,
@@ -127,7 +128,6 @@ pub enum Screen {
 pub struct CurrentSession {
     state: RwSignal<SignInState>,
     signing_up: RwSignal<SigningUp>,
-    operator_wanted: RwSignal<bool>,
     totp_offered: RwSignal<bool>,
     keys_offered: RwSignal<bool>,
     by_recovery_code: RwSignal<bool>,
@@ -142,8 +142,9 @@ impl CurrentSession {
         self.signing_up.get()
     }
 
+    /// Whether nobody runs the instance yet, which only an account signed in is told.
     pub fn operator_wanted(self) -> bool {
-        self.operator_wanted.get()
+        matches!(self.state.get(), SignInState::SignedIn(account) if account.operator_wanted)
     }
 
     pub fn keys_offered(self) -> bool {
@@ -162,7 +163,6 @@ impl CurrentSession {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
             signing_up: RwSignal::new(SigningUp::Open),
-            operator_wanted: RwSignal::new(false),
             totp_offered: RwSignal::new(false),
             keys_offered: RwSignal::new(false),
             by_recovery_code: RwSignal::new(false),
@@ -192,8 +192,6 @@ impl CurrentSession {
                     self.signing_up.set(SigningUp::told(
                         accounts.map(|accounts| accounts.sign_up.as_str()),
                     ));
-                    self.operator_wanted
-                        .set(accounts.is_some_and(|accounts| accounts.operator_wanted));
                     self.totp_offered
                         .set(accounts.is_some_and(|accounts| accounts.can_set_up_totp));
                     self.keys_offered
@@ -214,9 +212,6 @@ impl CurrentSession {
             self.state.set(SignInState::DeletionPending(account));
             return;
         }
-        if account.operator {
-            self.operator_wanted.set(false);
-        }
         self.state.set(SignInState::SignedIn(account));
     }
 
@@ -234,10 +229,10 @@ impl CurrentSession {
     }
 
     pub fn became_operator(self) {
-        self.operator_wanted.set(false);
         self.state.update(|state| {
             if let SignInState::SignedIn(account) = state {
                 account.operator = true;
+                account.operator_wanted = false;
             }
         });
     }
@@ -298,6 +293,7 @@ mod tests {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,
+                operator_wanted: false,
                 second_factor: None,
                 owes_second_factor: false,
                 deletion: None,
@@ -315,6 +311,7 @@ mod tests {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,
+                operator_wanted: false,
                 second_factor: None,
                 owes_second_factor: false,
                 deletion: Some(PendingDeletion {

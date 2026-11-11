@@ -746,3 +746,88 @@ fn no_other_name_is_answered_unless_one_is_set() {
     // then: no other name is set
     assert_eq!(settings.hosts(), Ok(Vec::new()));
 }
+
+#[test]
+fn mail_is_capped_at_a_hundred_an_hour_and_twenty_invitations_by_each_unless_set() {
+    // given: no settings
+    let folder = a_folder();
+
+    // when: the settings are read
+    let settings = Settings::read(no_arguments(), variables(&[]), &folder)
+        .expect("nothing to read is no failure");
+
+    // then: a hundred an hour, and twenty invitations by each account
+    assert_eq!(
+        settings.mail_caps(),
+        Ok(MailCaps {
+            anyone_each_hour: 100,
+            invitations_each_hour: 20,
+        })
+    );
+}
+
+#[test]
+fn a_cap_on_mail_is_read_from_the_file_and_a_variable_wins_over_it() {
+    // given: a settings file capping mail
+    let folder = a_folder();
+    a_file(
+        &folder,
+        BESIDE,
+        "[mail]\nanyone_each_hour = 30\ninvitations_each_hour = 5\n",
+    );
+
+    // when: the settings are read
+    let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("the file is read");
+
+    // then: the file's caps are taken
+    assert_eq!(
+        filed.mail_caps(),
+        Ok(MailCaps {
+            anyone_each_hour: 30,
+            invitations_each_hour: 5,
+        })
+    );
+    // when: a variable caps it otherwise
+    let varied = Settings::read(
+        no_arguments(),
+        variables(&[
+            (WEAVELING_MAIL_ANYONE_EACH_HOUR, "7"),
+            (WEAVELING_MAIL_INVITATIONS_EACH_HOUR, "2"),
+        ]),
+        &folder,
+    )
+    .expect("both are read");
+    // then: the variables' are taken
+    assert_eq!(
+        varied.mail_caps(),
+        Ok(MailCaps {
+            anyone_each_hour: 7,
+            invitations_each_hour: 2,
+        })
+    );
+}
+
+#[test]
+fn a_cap_on_mail_that_is_no_whole_number_above_nought_says_where_it_was_written() {
+    // given: a settings file capping mail at nought, and one at a share
+    for written in ["0", "2.5"] {
+        let folder = a_folder();
+        a_file(
+            &folder,
+            BESIDE,
+            &format!("[mail]\nanyone_each_hour = {written}\n"),
+        );
+
+        // when: the caps are asked for
+        let refused = Settings::read(no_arguments(), variables(&[]), &folder)
+            .expect("the file itself is read")
+            .mail_caps();
+
+        // then: it is refused, naming the key and the value
+        let refusal = refused.expect_err("no cap of that").to_string();
+        assert!(
+            refusal.contains("mail.anyone_each_hour in") && refusal.contains(written),
+            "{refusal}"
+        );
+    }
+}

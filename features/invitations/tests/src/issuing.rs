@@ -1,4 +1,5 @@
-use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
+use acting::Acting;
+use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Version};
 use invitations_core::{InvitationEvent, InvitationId, InvitationsError, KIND, Scope};
 use time::Duration;
 
@@ -217,4 +218,45 @@ async fn an_invitation_that_is_not_there_is_not_withdrawn() {
             .await,
         Err(InvitationsError::Events(ServiceError::NotFound { .. }))
     ));
+}
+
+#[tokio::test]
+async fn an_account_invites_so_many_each_hour_while_another_still_may() {
+    // given: an instance letting each account invite two an hour, at twenty to the hour and a little
+    let wired = wiring::a_workbench();
+    let invitations = wired.invitations.clone().capping_invitations(2);
+    let invited = |by: Acting, address: &'static str| {
+        let invitations = invitations.clone();
+        async move { invitations.invite_to_instance(&by, address, ORIGIN).await }
+    };
+
+    // when: one operator invites three addresses, each once
+    invited(wiring::an_operator(), "one@example.com")
+        .await
+        .expect("the first is mailed");
+    invited(wiring::an_operator(), "two@example.com")
+        .await
+        .expect("the second is mailed");
+    let third = invited(wiring::an_operator(), "three@example.com").await;
+
+    // then: the third waits for the next hour, though no address was invited twice
+    assert!(
+        matches!(
+            third,
+            Err(InvitationsError::Throttled { wait })
+                if wait == Duration::minutes(46) + Duration::seconds(40)
+        ),
+        "a cap by address alone lets an account taken over mail any number of strangers: {third:?}"
+    );
+    assert!(wired.sent_to("three@example.com").await.is_empty());
+    // and: another operator still invites
+    invited(
+        Acting {
+            agent: Agent::Account("account_bea".into()),
+            operator: true,
+        },
+        "three@example.com",
+    )
+    .await
+    .expect("each account is counted on its own");
 }

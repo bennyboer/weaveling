@@ -16,7 +16,7 @@ use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use mailing::Mailer;
-use throttling::{Admission, Throttles};
+use throttling::{Admission, Rule, Throttles};
 use time::Duration;
 use tokio::sync::watch;
 use transacting::{Transaction, Transactions};
@@ -43,6 +43,12 @@ pub use totp::SettingUpTotp;
 
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 
+const MAILING_ANYONE: &str = "mailing-anyone";
+const THE_INSTANCE: &str = "instance";
+
+/// The mails anyone may have the instance send, unless it is told otherwise.
+pub const MAIL_EACH_HOUR: u32 = 100;
+
 #[derive(Clone)]
 pub struct AccountsCore {
     events: Arc<EventSourcingService<Account>>,
@@ -63,6 +69,7 @@ pub struct AccountsCore {
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
     signing_up: SigningUp,
+    mail_each_hour: u32,
     sessions_checked: Arc<watch::Sender<u64>>,
 }
 
@@ -107,12 +114,21 @@ impl AccountsCore {
             mailer,
             clock,
             signing_up: SigningUp::Open,
+            mail_each_hour: MAIL_EACH_HOUR,
             sessions_checked: Arc::new(watch::Sender::new(0)),
         }
     }
 
     pub fn signing_up(self, signing_up: SigningUp) -> Self {
         Self { signing_up, ..self }
+    }
+
+    /// Caps the mails anyone may have the instance send, codes and word of an address having an account, at so many each hour across the instance, so nobody mails strangers in bulk through it.
+    pub fn capping_mail(self, mail_each_hour: u32) -> Self {
+        Self {
+            mail_each_hour,
+            ..self
+        }
     }
 
     pub async fn catalogue(
@@ -171,7 +187,22 @@ impl AccountsCore {
     }
 
     pub(super) async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
-        self.admitted(Guarded::SendingCodes, email.as_str()).await
+        self.admitted(Guarded::SendingCodes, email.as_str()).await?;
+        let now = self.clock.now();
+        let (this_hour, left) = throttling::hour_of(THE_INSTANCE, now);
+        match self
+            .throttles
+            .admit(
+                MAILING_ANYONE,
+                &this_hour,
+                Rule::capped(self.mail_each_hour),
+                now,
+            )
+            .await?
+        {
+            Admission::Admitted => Ok(()),
+            Admission::Wait(_) => Err(AccountsError::Throttled { wait: left }),
+        }
     }
 
     pub(super) async fn claimed(

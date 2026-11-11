@@ -9,7 +9,7 @@ use crate::id::AccountId;
 use crate::name::AccountName;
 use crate::operator::OperatorCode;
 use crate::password::Password;
-use crate::session::{SessionToken, Stage};
+use crate::session::{SessionToken, Stage, TokenDigest};
 use crate::signing_up::SigningUp;
 use crate::ticket::InvitationToken;
 use email::EmailAddress;
@@ -27,7 +27,7 @@ impl AccountsCore {
             return Err(AccountsError::SigningUpByInvitationOnly);
         }
 
-        self.signed_up(email, name, password).await
+        self.signed_up(email, name, password, None).await
     }
 
     pub async fn sign_up_to_operate(
@@ -41,16 +41,15 @@ impl AccountsCore {
             if !self.operator_wanted().await? {
                 return Err(AccountsError::SigningUpByInvitationOnly);
             }
-            if !self
-                .operators
-                .holds_code(&OperatorCode::presented(code).digest())
-                .await?
-            {
+            let code = OperatorCode::presented(code).digest();
+            if !self.operators.holds_code(&code).await? {
                 return Err(AccountsError::OperatorCodeWrong);
             }
+
+            return self.signed_up(email, name, password, Some(&code)).await;
         }
 
-        self.signed_up(email, name, password).await
+        self.signed_up(email, name, password, None).await
     }
 
     pub async fn operator_wanted(&self) -> Result<bool, AccountsError> {
@@ -62,6 +61,7 @@ impl AccountsCore {
         email: &str,
         name: &str,
         password: &str,
+        holding: Option<&TokenDigest>,
     ) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         let name = AccountName::new(name)?;
@@ -73,6 +73,11 @@ impl AccountsCore {
         let claimed = transacting::retrying!(&*self.transactions, |transaction| {
             if !self.claimed(transaction, &email, &id).await? {
                 return Ok(false);
+            }
+            if let Some(code) = holding
+                && !self.operators.hold_code(transaction, code, &id).await?
+            {
+                return Err(AccountsError::OperatorCodeWrong);
             }
             self.events
                 .begin(

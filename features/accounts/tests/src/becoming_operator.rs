@@ -218,12 +218,22 @@ impl Operators for FailingToAppointOnce {
         self.kept.holds_code(digest).await
     }
 
+    async fn hold_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        account: &AccountId,
+    ) -> Result<bool, SecretsError> {
+        self.kept.hold_code(transaction, digest, account).await
+    }
+
     async fn take_code(
         &self,
         transaction: &mut Transaction,
         digest: &TokenDigest,
+        account: &AccountId,
     ) -> Result<bool, SecretsError> {
-        self.kept.take_code(transaction, digest).await
+        self.kept.take_code(transaction, digest, account).await
     }
 
     async fn appoint(

@@ -49,6 +49,7 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
         accounts,
         mailing.mailer(),
         settings.public_url(),
+        or_stop(settings.mail_caps()),
         Arc::new(SystemClock),
     )
     .await
