@@ -99,12 +99,13 @@ impl AccountsCore {
             eventsourcing::tries_for(expected),
             |transaction| {
                 self.still_operating(transaction, by).await?;
-                let holder = self.get(account).await?.state;
-                self.forgetting_totp(transaction, account, &holder).await?;
+                let standing = self.get(account).await?;
+                self.forgetting_totp(transaction, account, &standing.state)
+                    .await?;
                 self.commanded_in(
                     transaction,
                     account,
-                    expected,
+                    Some(expected.unwrap_or(standing.version)),
                     AccountCommand::RemoveTotp,
                     &by.acting(),
                 )
