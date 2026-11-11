@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
+use belonging::Belongings;
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
@@ -21,8 +22,12 @@ pub struct BoardsCore {
     service: BoardService,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn BoardCatalog>,
+    belongings: Arc<dyn Belongings>,
     authorizer: Arc<dyn Authorizer>,
 }
+
+const IDEA: &str = "idea";
+const PROJECT: &str = "project";
 
 impl BoardsCore {
     pub fn new(
@@ -30,6 +35,7 @@ impl BoardsCore {
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn BoardCatalog>,
         registry: Arc<dyn Registry>,
+        belongings: Arc<dyn Belongings>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -38,6 +44,7 @@ impl BoardsCore {
             transactions,
             clock,
             catalog,
+            belongings,
             authorizer,
         }
     }
@@ -92,8 +99,24 @@ impl BoardsCore {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Standing<Board>, BoardsError> {
-        self.written(board, BoardCommand::Pin { idea, at, size }, expected, agent)
-            .await
+        let board: BoardId = board.parse()?;
+        let project = self.authorized_to_write(&board, agent).await?;
+        if self
+            .belongings
+            .owner_of(IDEA, idea.as_str(), PROJECT)
+            .await?
+            .is_some_and(|known| known != project.as_str())
+        {
+            return Err(BoardsError::IdeaNotThere);
+        }
+
+        self.carried_out(
+            &board,
+            BoardCommand::Pin { idea, at, size },
+            expected,
+            agent,
+        )
+        .await
     }
 
     pub async fn reshape(
@@ -166,6 +189,22 @@ impl BoardsCore {
         })
     }
 
+    /// Keeps which project an idea is of, so that no board of another project may pin it.
+    pub async fn idea_captured(
+        &self,
+        within: Option<&mut Transaction>,
+        idea: &str,
+        project: &str,
+    ) -> Result<(), BoardsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.belongings
+                .remember(transaction, IDEA, idea, PROJECT, project)
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn lay_tombstone(
         &self,
         within: Option<&mut Transaction>,
@@ -176,6 +215,7 @@ impl BoardsCore {
             self.catalog
                 .lay_tombstone(transaction, &IdeaLink::from(idea), at)
                 .await?;
+            self.belongings.forget(transaction, IDEA, idea).await?;
 
             Ok(())
         })
@@ -317,26 +357,42 @@ impl BoardsCore {
     ) -> Result<Standing<Board>, BoardsError> {
         let board: BoardId = board.parse()?;
         self.authorized_to_write(&board, agent).await?;
+
+        self.carried_out(&board, command, expected, agent).await
+    }
+
+    async fn carried_out(
+        &self,
+        board: &BoardId,
+        command: BoardCommand,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Standing<Board>, BoardsError> {
         transacting::retrying!(
             &*self.transactions,
             eventsourcing::tries_for(expected),
             |transaction| {
                 self.service
-                    .carry_out(transaction, &board, command.clone(), expected, agent)
+                    .carry_out(transaction, board, command.clone(), expected, agent)
                     .await
             }
         )?;
 
-        self.service.latest(&board).await
+        self.service.latest(board).await
     }
 
-    async fn authorized_to_write(&self, board: &BoardId, agent: &Agent) -> Result<(), BoardsError> {
+    async fn authorized_to_write(
+        &self,
+        board: &BoardId,
+        agent: &Agent,
+    ) -> Result<ProjectLink, BoardsError> {
         let standing = self.service.latest(board).await?;
+        let project = standing.state.project().clone();
 
-        self.authorized(agent, Act::Write, standing.state.project(), || {
-            service::not_found(board)
-        })
-        .await
+        self.authorized(agent, Act::Write, &project, || service::not_found(board))
+            .await?;
+
+        Ok(project)
     }
 
     async fn authorized(

@@ -4,7 +4,8 @@ mod publishing;
 mod sweeping;
 
 pub use discarding::{
-    LET_GO_EVERYWHERE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener, UnpinOnDiscardListener,
+    LET_GO_EVERYWHERE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener,
+    RememberProjectsOfIdeasListener, UnpinOnDiscardListener,
 };
 pub use pinning::{
     LET_GO_OF_THE_GONE, LetGoOfGoneIdeasListener, LetGoOfTheGoneDTO, ProjectPinnedIdeasListener,

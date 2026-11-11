@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod board_belonging;
+#[cfg(test)]
 mod board_cataloguing;
 
 #[cfg(test)]

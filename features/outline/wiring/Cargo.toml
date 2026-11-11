@@ -13,6 +13,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+belonging = { version = "0.1.0", path = "../../../libraries/belonging", package = "weaveling-belonging" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 
 outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
@@ -25,8 +26,8 @@ outline-store = { version = "0.1.0", path = "../adapters/store", package = "weav
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "registry/postgres", "outline-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "registry/sqlite", "outline-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "registry/postgres", "belonging/postgres", "outline-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "registry/sqlite", "belonging/sqlite", "outline-catalog/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

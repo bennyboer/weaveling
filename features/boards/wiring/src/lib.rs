@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use belonging::{Belongings, InMemoryBelongings};
 use boards_catalog::InMemoryBoardCatalog;
 use boards_contract::EVERY_BOARD;
 use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, LetGoOfDiscardedIdeaListener,
     LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, RememberDeletedProjectsListener,
-    UnpinOnDiscardListener,
+    RememberProjectsOfIdeasListener, UnpinOnDiscardListener,
 };
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -24,6 +25,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn BoardCatalog>,
     pub registry: Arc<dyn Registry>,
+    pub belongings: Arc<dyn Belongings>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -34,6 +36,7 @@ pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
         ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
+        ports.belongings.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
     )
@@ -55,6 +58,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     ));
     let let_go_everywhere = hearing.inboxed(LetGoOfDiscardedIdeaListener::new(boards.clone()));
     let let_go_of_the_gone = hearing.inboxed(LetGoOfGoneIdeasListener::new(boards.clone()));
+    let remember_projects_of_ideas =
+        hearing.inboxed(RememberProjectsOfIdeasListener::new(boards.clone()));
     let remember_deleted_projects = hearing.inboxed(RememberDeletedProjectsListener::new(
         boards.clone(),
         ports.outbox.clone(),
@@ -79,6 +84,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(unpin_discarded_ideas),
             Arc::new(let_go_everywhere),
             Arc::new(let_go_of_the_gone),
+            Arc::new(remember_projects_of_ideas),
             Arc::new(remember_deleted_projects),
             Arc::new(sweep),
         ])
@@ -114,6 +120,7 @@ impl Feature for BoardFeature {
             transactions,
             catalog: Arc::new(InMemoryBoardCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
+            belongings: Arc::new(InMemoryBelongings::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -136,7 +143,8 @@ impl Feature for BoardFeature {
             events,
             transactions,
             catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool.clone())),
-            registry: Arc::new(registry::PostgresRegistry::new(pool)),
+            registry: Arc::new(registry::PostgresRegistry::new(pool.clone())),
+            belongings: Arc::new(belonging::PostgresBelongings::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -149,6 +157,7 @@ impl Feature for BoardFeature {
             outbox::postgres::migrations(),
             boards_catalog::postgres::migrations(),
             registry::postgres::migrations(),
+            belonging::postgres::migrations(),
             inbox::postgres::migrations(),
         ]
     }
@@ -170,7 +179,8 @@ impl Feature for BoardFeature {
             events,
             transactions,
             catalog: Arc::new(boards_catalog::SqliteBoardCatalog::new(pool.clone())),
-            registry: Arc::new(registry::SqliteRegistry::new(pool)),
+            registry: Arc::new(registry::SqliteRegistry::new(pool.clone())),
+            belongings: Arc::new(belonging::SqliteBelongings::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -183,6 +193,7 @@ impl Feature for BoardFeature {
             outbox::sqlite::migrations(),
             boards_catalog::sqlite::migrations(),
             registry::sqlite::migrations(),
+            belonging::sqlite::migrations(),
             inbox::sqlite::migrations(),
         ]
     }

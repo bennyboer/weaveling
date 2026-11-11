@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::AllowingEverything;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
@@ -21,6 +22,7 @@ fn a_core_with(clock: Arc<FixedClock>) -> ScenesCore {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         clock,
     )
@@ -250,6 +252,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );
@@ -259,6 +262,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemoryTransactions::refusing_commits()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

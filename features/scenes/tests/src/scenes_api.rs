@@ -5,6 +5,7 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_TYPE, ETAG};
 use axum_test::{TestResponse, TestServer};
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use live::Broadcaster;
@@ -50,6 +51,7 @@ fn a_core_of(
         Arc::new(InMemoryTransactions::new()),
         catalog,
         tasks,
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     )
@@ -1066,4 +1068,23 @@ async fn an_if_match_that_is_no_version_is_a_bad_request() {
 
     // then: it is a bad request
     refused_as(response, StatusCode::BAD_REQUEST, "unreadable");
+}
+
+#[tokio::test]
+async fn an_idea_of_another_project_is_not_found_by_a_scene() {
+    // given: a scene of one project
+    let scenes = a_core();
+    let server = a_server(scenes.clone());
+    let created = a_scene(&server).await;
+    // and: an idea of another project
+    scenes
+        .idea_captured(None, "idea_strange", "project_2")
+        .await
+        .expect("remembering should succeed");
+
+    // when: it is linked to the scene
+    let response = linking(&server, &created.id, "idea_strange").await;
+
+    // then: it is not found, as if there were no such idea, telling nothing of it
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }

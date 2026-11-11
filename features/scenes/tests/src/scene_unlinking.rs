@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use authorizing::AllowingEverything;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
-use ideas_contract::DISCARDED;
+use ideas_contract::{CAPTURED, DISCARDED};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey, Subscription};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
-use scenes_core::{IdeaLink, SceneId, ScenesCore};
-use scenes_messaging::UnlinkOnDiscardListener;
+use scenes_core::{IdeaLink, SceneId, ScenesCore, ScenesError};
+use scenes_messaging::{RememberProjectsOfIdeasListener, UnlinkOnDiscardListener};
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use transacting::InMemoryTransactions;
@@ -18,6 +19,7 @@ const A_PROJECT: &str = "project_1";
 struct Wired {
     scenes: ScenesCore,
     unlink: Inboxed<UnlinkOnDiscardListener>,
+    remember: Inboxed<RememberProjectsOfIdeasListener>,
 }
 
 fn a_workbench() -> Wired {
@@ -28,6 +30,7 @@ fn a_workbench() -> Wired {
         transactions.clone(),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         clock.clone(),
     );
@@ -35,6 +38,11 @@ fn a_workbench() -> Wired {
     Wired {
         unlink: Inboxed::new(
             UnlinkOnDiscardListener::new(scenes.clone()),
+            transactions.clone(),
+            Arc::new(InMemoryInbox::new(clock.clone())),
+        ),
+        remember: Inboxed::new(
+            RememberProjectsOfIdeasListener::new(scenes.clone()),
             transactions,
             Arc::new(InMemoryInbox::new(clock)),
         ),
@@ -69,6 +77,18 @@ impl Wired {
             .ideas()
             .to_vec()
     }
+}
+
+fn captured(idea: &str, project: &str) -> Message {
+    eventpublishing::published(
+        CAPTURED,
+        "idea",
+        idea,
+        2,
+        json!({ "version": 0, "name": "CAPTURED", "project": project, "title": "An idea" }),
+        &Agent::System,
+        clock::at(1_000),
+    )
 }
 
 fn discarded(idea: &str) -> Message {
@@ -173,5 +193,90 @@ async fn a_message_about_no_idea_at_all_is_refused() {
     assert!(
         wired.unlink.handle(&nonsense).await.is_err(),
         "a message the listener cannot act on belongs in dead letters, not silently dropped"
+    );
+}
+
+impl Wired {
+    async fn heard_captured(&self, idea: &str, project: &str) {
+        self.remember
+            .handle(&captured(idea, project))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    async fn a_scene(&self) -> SceneId {
+        self.a_scene_linked_to(&[]).await
+    }
+
+    async fn linked(&self, scene: SceneId, idea: &str) -> Result<(), ScenesError> {
+        self.scenes
+            .link(&scene.to_string(), idea, None, &Agent::Local)
+            .await
+            .map(|_| ())
+    }
+}
+
+#[tokio::test]
+async fn an_idea_of_another_project_is_not_there_for_a_scene() {
+    // given: a scene of one project
+    let wired = a_workbench();
+    let scene = wired.a_scene().await;
+    // and: an idea heard captured in another, its id known from elsewhere
+    wired.heard_captured("idea_strange", "project_2").await;
+
+    // when: it is linked to the scene
+    let refused = wired.linked(scene, "idea_strange").await;
+
+    // then: it is not there
+    assert!(
+        matches!(refused, Err(ScenesError::IdeaNotThere)),
+        "a scene must not link an idea of another project, which is what let another project \
+         learn where it appears"
+    );
+    // and: the scene links nothing
+    assert!(wired.ideas_of(scene).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_idea_of_the_scene_s_project_or_not_heard_of_yet_is_linked() {
+    // given: a scene of one project
+    let wired = a_workbench();
+    let scene = wired.a_scene().await;
+    // and: an idea heard captured in that project
+    wired.heard_captured("idea_own", A_PROJECT).await;
+
+    // when: it and an idea not heard of yet are linked
+    let own = wired.linked(scene, "idea_own").await;
+    let fresh = wired.linked(scene, "idea_fresh").await;
+
+    // then: both are
+    assert!(own.is_ok(), "{own:?}");
+    assert!(
+        fresh.is_ok(),
+        "an idea captured a moment ago may be linked before its capture reaches the scenes: \
+         {fresh:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_discarded_idea_s_project_is_forgotten() {
+    // given: a scene of one project
+    let wired = a_workbench();
+    let scene = wired.a_scene().await;
+    // and: an idea of another project, heard captured and then discarded
+    wired.heard_captured("idea_gone", "project_2").await;
+    wired
+        .unlink
+        .handle(&discarded("idea_gone"))
+        .await
+        .expect("unlinking should succeed");
+
+    // when: it is linked to the scene
+    let linking = wired.linked(scene, "idea_gone").await;
+
+    // then: its project is no longer known to refuse it by
+    assert!(
+        !matches!(linking, Err(ScenesError::IdeaNotThere)),
+        "nothing of a discarded idea, nor of a deleted project's ideas, stays with the scenes"
     );
 }

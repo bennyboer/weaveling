@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum_test::{TestServer, WsMessage};
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use ending::{Ending, SessionEnd};
 use eventsourcing::{AccountId, Agent};
@@ -97,6 +98,7 @@ async fn a_guarded_scene() -> Guarded {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         roles.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );

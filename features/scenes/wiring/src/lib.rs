@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use belonging::{Belongings, InMemoryBelongings};
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -11,8 +12,8 @@ use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneStore, ScenesCore};
 use scenes_messaging::{
-    CatalogueScenesListener, DeleteOnProjectDeletedListener, RestyleOnQuotationChangedListener,
-    UnlinkOnDiscardListener,
+    CatalogueScenesListener, DeleteOnProjectDeletedListener, RememberProjectsOfIdeasListener,
+    RestyleOnQuotationChangedListener, UnlinkOnDiscardListener,
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
@@ -26,6 +27,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn SceneCatalog>,
     pub quotation_restyling_tasks: Arc<dyn QuotationRestylingTasks>,
+    pub belongings: Arc<dyn Belongings>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -48,11 +50,14 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.transactions.clone(),
         catalog,
         tasks,
+        ports.belongings.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
     );
 
     let unlink = hearing.inboxed(UnlinkOnDiscardListener::new(core.clone()));
+    let remember_projects_of_ideas =
+        hearing.inboxed(RememberProjectsOfIdeasListener::new(core.clone()));
     let sweep = DeleteOnProjectDeletedListener::new(
         core.clone(),
         context.publisher.clone(),
@@ -79,6 +84,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     .listening(vec![
         Arc::new(sweep),
         Arc::new(unlink),
+        Arc::new(remember_projects_of_ideas),
         Arc::new(catalogue),
         Arc::new(restyle),
     ])
@@ -128,6 +134,7 @@ impl Feature for SceneFeature {
             )),
             catalog: Arc::new(InMemorySceneCatalog::new()),
             quotation_restyling_tasks: Arc::new(InMemoryQuotationRestylingTasks::new()),
+            belongings: Arc::new(InMemoryBelongings::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -145,6 +152,7 @@ impl Feature for SceneFeature {
             quotation_restyling_tasks: Arc::new(
                 scenes_catalog::PostgresQuotationRestylingTasks::new(pool.clone()),
             ),
+            belongings: Arc::new(belonging::PostgresBelongings::new(pool.clone())),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::PostgresOutbox::new(
                 pool,
@@ -161,6 +169,7 @@ impl Feature for SceneFeature {
             scenes_store::postgres::migrations(),
             scenes_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
+            belonging::postgres::migrations(),
         ]
     }
 
@@ -176,6 +185,7 @@ impl Feature for SceneFeature {
             quotation_restyling_tasks: Arc::new(
                 scenes_catalog::SqliteQuotationRestylingTasks::new(pool.clone()),
             ),
+            belongings: Arc::new(belonging::SqliteBelongings::new(pool.clone())),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::SqliteOutbox::new(
                 pool,
@@ -192,6 +202,7 @@ impl Feature for SceneFeature {
             scenes_store::sqlite::migrations(),
             scenes_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            belonging::sqlite::migrations(),
         ]
     }
 

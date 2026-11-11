@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use belonging::{Belongings, InMemoryBelongings};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -12,6 +13,7 @@ use outline_messaging::{
     CatalogueOutlinesListener, DetachEverywhereListener, DetachGoneAttachmentsListener,
     DetachOnDiscardListener, DetachOnSceneDeletedListener, DiscardOutlinesOnProjectDeletedListener,
     IndexAttachmentsListener, RememberDeletedProjectsListener,
+    RememberProjectsOfAttachmentsListener,
 };
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
@@ -24,6 +26,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn OutlineCatalog>,
     pub registry: Arc<dyn Registry>,
+    pub belongings: Arc<dyn Belongings>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -34,6 +37,7 @@ pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
         ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
+        ports.belongings.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
     )
@@ -65,6 +69,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.outbox.clone(),
         context.clock.clone(),
     ));
+    let remember_projects_of_attachments =
+        hearing.inboxed(RememberProjectsOfAttachmentsListener::new(outlines.clone()));
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -86,6 +92,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(detach_everywhere),
             Arc::new(detach_gone),
             Arc::new(remember_deleted_projects),
+            Arc::new(remember_projects_of_attachments),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
@@ -124,6 +131,7 @@ impl Feature for OutlineFeature {
             transactions,
             catalog: Arc::new(InMemoryOutlineCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
+            belongings: Arc::new(InMemoryBelongings::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -146,7 +154,8 @@ impl Feature for OutlineFeature {
             events,
             transactions,
             catalog: Arc::new(outline_catalog::PostgresOutlineCatalog::new(pool.clone())),
-            registry: Arc::new(registry::PostgresRegistry::new(pool)),
+            registry: Arc::new(registry::PostgresRegistry::new(pool.clone())),
+            belongings: Arc::new(belonging::PostgresBelongings::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -159,6 +168,7 @@ impl Feature for OutlineFeature {
             outbox::postgres::migrations(),
             outline_catalog::postgres::migrations(),
             registry::postgres::migrations(),
+            belonging::postgres::migrations(),
             inbox::postgres::migrations(),
         ]
     }
@@ -180,7 +190,8 @@ impl Feature for OutlineFeature {
             events,
             transactions,
             catalog: Arc::new(outline_catalog::SqliteOutlineCatalog::new(pool.clone())),
-            registry: Arc::new(registry::SqliteRegistry::new(pool)),
+            registry: Arc::new(registry::SqliteRegistry::new(pool.clone())),
+            belongings: Arc::new(belonging::SqliteBelongings::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -193,6 +204,7 @@ impl Feature for OutlineFeature {
             outbox::sqlite::migrations(),
             outline_catalog::sqlite::migrations(),
             registry::sqlite::migrations(),
+            belonging::sqlite::migrations(),
             inbox::sqlite::migrations(),
         ]
     }

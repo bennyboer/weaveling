@@ -1,4 +1,5 @@
 use authorizing::AuthorizerError;
+use belonging::BelongingsError;
 use eventsourcing::Version;
 use ids::InvalidId;
 use thiserror::Error;
@@ -20,8 +21,12 @@ pub enum ScenesError {
     Tasks(#[from] QuotationRestylingTaskError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Belongings(#[from] BelongingsError),
     #[error("there is no such project")]
     ProjectNotThere,
+    #[error("there is no such idea in the scene's project")]
+    IdeaNotThere,
     #[error("only an author of the project may do this")]
     NotAnAuthor,
     #[error("scene {scene} has moved on from version {expected}")]

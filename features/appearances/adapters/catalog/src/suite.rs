@@ -1032,7 +1032,12 @@ pub async fn forgetting_a_project_forgets_every_place_of_it_for_good(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     // given: an idea in a scene and a section of `PROJECT`
-    remembered(catalog, "idea_1", &[a_scene("scene_1"), a_section("section_1")]).await;
+    remembered(
+        catalog,
+        "idea_1",
+        &[a_scene("scene_1"), a_section("section_1")],
+    )
+    .await;
     // and: an idea of another project in a scene of it
     let other = ProjectLink::from("project_2");
     catalog

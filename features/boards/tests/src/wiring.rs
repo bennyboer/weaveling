@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
 use axum::Router;
+use belonging::InMemoryBelongings;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardsCore};
 use clock::Clock;
@@ -21,6 +22,7 @@ const INDEXING: &str = "index-pinned-ideas";
 const UNPINNING_DISCARDED_IDEAS: &str = "unpin-discarded-idea";
 const LETTING_GO_EVERYWHERE: &str = "let-go-of-discarded-idea-everywhere";
 const LETTING_GO_OF_THE_GONE: &str = "let-go-of-gone-ideas";
+const REMEMBERING_PROJECTS_OF_IDEAS: &str = "boards-remember-projects-of-ideas";
 
 #[derive(Default)]
 pub struct TheSystemAndTheAuthor {
@@ -56,6 +58,7 @@ pub struct Wired {
     pub on_idea_discarded: Arc<dyn Listener>,
     pub letting_go_everywhere: Arc<dyn Listener>,
     pub letting_go_of_the_gone: Arc<dyn Listener>,
+    pub remembering_projects_of_ideas: Arc<dyn Listener>,
     pub clock: Arc<dyn Clock>,
 }
 
@@ -78,6 +81,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         registry: registry.clone(),
+        belongings: Arc::new(InMemoryBelongings::new()),
         inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
@@ -105,6 +109,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let on_idea_discarded = named(UNPINNING_DISCARDED_IDEAS);
     let letting_go_everywhere = named(LETTING_GO_EVERYWHERE);
     let letting_go_of_the_gone = named(LETTING_GO_OF_THE_GONE);
+    let remembering_projects_of_ideas = named(REMEMBERING_PROJECTS_OF_IDEAS);
 
     Wired {
         boards: boards_wiring::core(&ports, &context),
@@ -122,6 +127,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         on_idea_discarded,
         letting_go_everywhere,
         letting_go_of_the_gone,
+        remembering_projects_of_ideas,
         clock: context.clock.clone(),
     }
 }

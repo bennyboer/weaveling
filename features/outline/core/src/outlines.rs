@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
+use belonging::Belongings;
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
@@ -22,8 +23,11 @@ pub struct OutlinesCore {
     service: OutlineService,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn OutlineCatalog>,
+    belongings: Arc<dyn Belongings>,
     authorizer: Arc<dyn Authorizer>,
 }
+
+const PROJECT: &str = "project";
 
 impl OutlinesCore {
     pub fn new(
@@ -31,6 +35,7 @@ impl OutlinesCore {
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn OutlineCatalog>,
         registry: Arc<dyn Registry>,
+        belongings: Arc<dyn Belongings>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -39,6 +44,7 @@ impl OutlinesCore {
             transactions,
             clock,
             catalog,
+            belongings,
             authorizer,
         }
     }
@@ -208,8 +214,19 @@ impl OutlinesCore {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Changed, OutlinesError> {
-        self.written(
-            outline,
+        let outline: OutlineId = outline.parse()?;
+        let project = self.authorized_to_write(&outline, agent).await?;
+        if self
+            .belongings
+            .owner_of(kind_of(&attachment), attachment.as_str(), PROJECT)
+            .await?
+            .is_some_and(|known| known != project.as_str())
+        {
+            return Err(OutlinesError::AttachmentNotThere);
+        }
+
+        self.carried_out(
+            &outline,
             OutlineCommand::Attach {
                 attachment,
                 to,
@@ -280,6 +297,28 @@ impl OutlinesCore {
         })
     }
 
+    /// Keeps which project an idea or a scene is of, so that no outline of another project may attach it.
+    pub async fn came_to_be(
+        &self,
+        within: Option<&mut Transaction>,
+        attachment: &Attachment,
+        project: &str,
+    ) -> Result<(), OutlinesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.belongings
+                .remember(
+                    transaction,
+                    kind_of(attachment),
+                    attachment.as_str(),
+                    PROJECT,
+                    project,
+                )
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn lay_tombstone(
         &self,
         within: Option<&mut Transaction>,
@@ -288,6 +327,9 @@ impl OutlinesCore {
     ) -> Result<(), OutlinesError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog.lay_tombstone(transaction, gone, at).await?;
+            self.belongings
+                .forget(transaction, kind_of(gone), gone.as_str())
+                .await?;
 
             Ok(())
         })
@@ -429,12 +471,23 @@ impl OutlinesCore {
     ) -> Result<Changed, OutlinesError> {
         let outline: OutlineId = outline.parse()?;
         self.authorized_to_write(&outline, agent).await?;
+
+        self.carried_out(&outline, command, expected, agent).await
+    }
+
+    async fn carried_out(
+        &self,
+        outline: &OutlineId,
+        command: OutlineCommand,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Changed, OutlinesError> {
         let landed = transacting::retrying!(
             &*self.transactions,
             eventsourcing::tries_for(expected),
             |transaction| {
                 self.service
-                    .carry_out(transaction, &outline, command.clone(), expected, agent)
+                    .carry_out(transaction, outline, command.clone(), expected, agent)
                     .await
             }
         )?;
@@ -447,7 +500,7 @@ impl OutlinesCore {
             ),
             version: landed.version,
             attachments_changed_in: service::attachments_changed_in(&landed),
-            standing: self.service.latest(&outline).await?,
+            standing: self.service.latest(outline).await?,
         })
     }
 
@@ -455,13 +508,14 @@ impl OutlinesCore {
         &self,
         outline: &OutlineId,
         agent: &Agent,
-    ) -> Result<(), OutlinesError> {
+    ) -> Result<ProjectLink, OutlinesError> {
         let standing = self.service.latest(outline).await?;
+        let project = standing.state.project().clone();
 
-        self.authorized(agent, Act::Write, standing.state.project(), || {
-            service::not_found(outline)
-        })
-        .await
+        self.authorized(agent, Act::Write, &project, || service::not_found(outline))
+            .await?;
+
+        Ok(project)
     }
 
     async fn authorized(
@@ -482,5 +536,12 @@ impl OutlinesCore {
         } else {
             Err(otherwise())
         }
+    }
+}
+
+fn kind_of(attachment: &Attachment) -> &'static str {
+    match attachment {
+        Attachment::Idea(_) => "idea",
+        Attachment::Scene(_) => "scene",
     }
 }

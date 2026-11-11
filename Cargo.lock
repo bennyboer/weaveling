@@ -4949,6 +4949,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-belonging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
+ "weaveling-test-harness",
+ "weaveling-transacting",
+]
+
+[[package]]
 name = "weaveling-boards-catalog"
 version = "0.1.0"
 dependencies = [
@@ -4979,6 +4991,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -5042,6 +5055,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-boards-catalog",
  "weaveling-boards-contract",
  "weaveling-boards-core",
@@ -5070,6 +5084,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-boards-catalog",
  "weaveling-boards-contract",
  "weaveling-boards-core",
@@ -5910,6 +5925,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -5977,6 +5993,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
@@ -6007,6 +6024,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
@@ -6213,6 +6231,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -6313,6 +6332,7 @@ dependencies = [
  "tokio",
  "weaveling-acting",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-clock",
  "weaveling-ending",
  "weaveling-eventpublishing",
@@ -6344,6 +6364,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-belonging",
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-inbox",

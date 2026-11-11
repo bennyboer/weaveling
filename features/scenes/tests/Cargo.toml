@@ -9,6 +9,7 @@ transacting = { version = "0.1.0", path = "../../../libraries/transacting", pack
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 ending = { version = "0.1.0", path = "../../../libraries/ending", package = "weaveling-ending" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+belonging = { version = "0.1.0", path = "../../../libraries/belonging", package = "weaveling-belonging" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 async-trait = { workspace = true }
 axum = { workspace = true }

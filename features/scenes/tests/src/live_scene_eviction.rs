@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
@@ -239,6 +240,7 @@ fn a_workbench() -> Workbench {
         transactions.clone(),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),

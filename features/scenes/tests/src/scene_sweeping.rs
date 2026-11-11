@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
@@ -185,6 +186,7 @@ fn a_workbench(at_most: usize) -> Wired {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(TheSystemAndAda),
         clock.clone(),
     );

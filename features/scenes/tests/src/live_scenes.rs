@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use authorizing::AllowingEverything;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
@@ -23,6 +24,7 @@ fn a_workbench() -> (ScenesCore, LiveScenes) {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

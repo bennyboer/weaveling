@@ -4,6 +4,7 @@ use std::time::Duration;
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use live::Broadcaster;
@@ -32,6 +33,7 @@ async fn scenes_followed(project: &str) -> ScenesFollowed {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );

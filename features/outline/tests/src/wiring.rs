@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
 use axum::Router;
+use belonging::InMemoryBelongings;
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use inbox::InMemoryInbox;
@@ -22,6 +23,7 @@ const DETACHING_DISCARDED_IDEAS: &str = "detach-discarded-idea";
 const DETACHING_DELETED_SCENES: &str = "detach-deleted-scene";
 const DETACHING_EVERYWHERE: &str = "detach-everywhere";
 const DETACHING_THE_GONE: &str = "detach-gone-attachments";
+const REMEMBERING_PROJECTS: &str = "outline-remember-projects-of-attachments";
 
 #[derive(Default)]
 pub struct TheSystemAndTheAuthor {
@@ -59,6 +61,7 @@ pub struct Wired {
     pub on_scene_deleted: Arc<dyn Listener>,
     pub detaching_everywhere: Arc<dyn Listener>,
     pub detaching_the_gone: Arc<dyn Listener>,
+    pub remembering_projects: Arc<dyn Listener>,
     pub clock: Arc<dyn Clock>,
 }
 
@@ -75,12 +78,14 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         outline_messaging::message_for,
     ));
     let registry = Arc::new(InMemoryRegistry::new());
+    let belongings = Arc::new(InMemoryBelongings::new());
     let catalog = Arc::new(InMemoryOutlineCatalog::new());
     let ports = outline_wiring::Ports {
         events: store.clone(),
         transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         registry: registry.clone(),
+        belongings: belongings.clone(),
         inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
@@ -95,6 +100,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         let catalog = catalog.clone();
         let outbox = outbox.clone();
         let registry = registry.clone();
+        let belongings = belongings.clone();
         let clock = context.clock.clone();
         let publisher = dispatcher.clone();
         let authorizer = authorizer.clone();
@@ -106,6 +112,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
                     transactions: Arc::new(InMemoryTransactions::new()),
                     catalog: catalog.clone(),
                     registry: registry.clone(),
+                    belongings: belongings.clone(),
                     inbox: Arc::new(InMemoryInbox::new(clock.clone())),
                     outbox: outbox.clone(),
                 },
@@ -136,6 +143,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let on_scene_deleted = named(DETACHING_DELETED_SCENES);
     let detaching_everywhere = named(DETACHING_EVERYWHERE);
     let detaching_the_gone = named(DETACHING_THE_GONE);
+    let remembering_projects = named(REMEMBERING_PROJECTS);
 
     Wired {
         outlines: outline_wiring::core(&ports, &context),
@@ -155,6 +163,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         on_scene_deleted,
         detaching_everywhere,
         detaching_the_gone,
+        remembering_projects,
         clock: context.clock.clone(),
     }
 }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
+use belonging::Belongings;
 use clock::Clock;
 use eventsourcing::{Agent, Standing, Version};
 use time::OffsetDateTime;
@@ -26,8 +27,12 @@ pub struct ScenesCore {
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn SceneCatalog>,
     tasks: Arc<dyn QuotationRestylingTasks>,
+    belongings: Arc<dyn Belongings>,
     authorizer: Arc<dyn Authorizer>,
 }
+
+const IDEA: &str = "idea";
+const PROJECT: &str = "project";
 
 impl ScenesCore {
     pub fn new(
@@ -35,6 +40,7 @@ impl ScenesCore {
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn SceneCatalog>,
         tasks: Arc<dyn QuotationRestylingTasks>,
+        belongings: Arc<dyn Belongings>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -43,6 +49,7 @@ impl ScenesCore {
             transactions,
             catalog,
             tasks,
+            belongings,
             authorizer,
         }
     }
@@ -98,7 +105,15 @@ impl ScenesCore {
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Standing<Scene>, ScenesError> {
-        self.authorized_to_write(id, agent).await?;
+        let project = self.authorized_to_write(id, agent).await?;
+        if self
+            .belongings
+            .owner_of(IDEA, idea, PROJECT)
+            .await?
+            .is_some_and(|known| known != project.as_str())
+        {
+            return Err(ScenesError::IdeaNotThere);
+        }
 
         let version = transacting::retrying!(&*self.transactions, |transaction| {
             self.service.link(transaction, id, idea, expected).await
@@ -250,6 +265,23 @@ impl ScenesCore {
         Ok(batch)
     }
 
+    /// Keeps which project an idea is of, so that no scene of another project may link it.
+    pub async fn idea_captured(
+        &self,
+        within: Option<&mut Transaction>,
+        idea: &str,
+        project: &str,
+    ) -> Result<(), ScenesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.belongings
+                .remember(transaction, IDEA, idea, PROJECT, project)
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    /// Unlinks a discarded idea from every scene, and forgets which project it was of.
     pub async fn unlink_everywhere(
         &self,
         within: Option<&mut Transaction>,
@@ -257,6 +289,7 @@ impl ScenesCore {
     ) -> Result<(), ScenesError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.service.unlink_everywhere(transaction, idea).await?;
+            self.belongings.forget(transaction, IDEA, idea).await?;
 
             Ok(())
         })
@@ -484,11 +517,16 @@ impl ScenesCore {
         }
     }
 
-    async fn authorized_to_write(&self, id: &str, agent: &Agent) -> Result<(), ScenesError> {
+    async fn authorized_to_write(
+        &self,
+        id: &str,
+        agent: &Agent,
+    ) -> Result<ProjectLink, ScenesError> {
         let scene = self.service.open(id).await?;
-
         self.authorized(agent, Act::Write, scene.project(), || not_there(&scene))
-            .await
+            .await?;
+
+        Ok(scene.project().clone())
     }
 
     async fn authorized(

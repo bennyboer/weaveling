@@ -253,6 +253,9 @@ fn problem_of(refusal: BoardsError) -> Problem {
         BoardsError::ProjectNotThere => {
             Problem::not_found(serving::NOT_FOUND, BoardsError::ProjectNotThere)
         }
+        BoardsError::IdeaNotThere => {
+            Problem::not_found(serving::NOT_FOUND, BoardsError::IdeaNotThere)
+        }
         BoardsError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, BoardsError::NotAnAuthor)
         }

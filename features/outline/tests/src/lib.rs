@@ -8,6 +8,8 @@ mod outline_api;
 mod outline_api_guarded;
 
 #[cfg(test)]
+mod outline_belonging;
+#[cfg(test)]
 mod outline_cataloguing;
 
 #[cfg(test)]

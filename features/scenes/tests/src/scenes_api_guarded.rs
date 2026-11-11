@@ -6,6 +6,7 @@ use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, 
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
@@ -84,6 +85,7 @@ async fn a_workbench() -> Wired {
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         roles.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );

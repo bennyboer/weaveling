@@ -468,6 +468,9 @@ fn problem_of(refusal: OutlinesError) -> Problem {
         OutlinesError::ProjectNotThere => {
             Problem::not_found(serving::NOT_FOUND, OutlinesError::ProjectNotThere)
         }
+        OutlinesError::AttachmentNotThere => {
+            Problem::not_found(serving::NOT_FOUND, OutlinesError::AttachmentNotThere)
+        }
         OutlinesError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, OutlinesError::NotAnAuthor)
         }

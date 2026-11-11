@@ -19,6 +19,7 @@ clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weave
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+belonging = { version = "0.1.0", path = "../../../libraries/belonging", package = "weaveling-belonging" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 

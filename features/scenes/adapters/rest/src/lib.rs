@@ -525,6 +525,7 @@ fn problem_of(refusal: ScenesError) -> Problem {
             Problem::not_found(NOT_FOUND, missing)
         }
         ScenesError::ProjectNotThere => Problem::not_found(NOT_FOUND, ScenesError::ProjectNotThere),
+        ScenesError::IdeaNotThere => Problem::not_found(NOT_FOUND, ScenesError::IdeaNotThere),
         ScenesError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, ScenesError::NotAnAuthor)
         }

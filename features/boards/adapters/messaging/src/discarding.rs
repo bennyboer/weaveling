@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use boards_core::BoardsCore;
 use clock::Clock;
-use ideas_contract::{DISCARDED, IdeaEventDTO};
+use ideas_contract::{CAPTURED, DISCARDED, IdeaEventDTO};
 use inbox::KeptHandler;
 use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
@@ -91,6 +91,40 @@ impl KeptHandler for LetGoOfDiscardedIdeaListener {
         Ok(self
             .boards
             .let_go_everywhere(Some(transaction), &asked.idea)
+            .await?)
+    }
+}
+
+pub struct RememberProjectsOfIdeasListener {
+    boards: BoardsCore,
+}
+
+impl RememberProjectsOfIdeasListener {
+    pub fn new(boards: BoardsCore) -> Self {
+        Self { boards }
+    }
+}
+
+#[async_trait]
+impl KeptHandler for RememberProjectsOfIdeasListener {
+    const NAME: &'static str = "boards-remember-projects-of-ideas";
+    const LISTENS_TO: &'static [&'static str] = &[CAPTURED];
+    const WHEN_REFUSED: &'static str =
+        "An idea's project did not reach the boards, so a board of another project could pin it.";
+
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Failure> {
+        let captured = eventpublishing::published_in::<IdeaEventDTO>(message)?;
+        let IdeaEventDTO::Captured { project, .. } = captured.event.body else {
+            return Ok(());
+        };
+
+        Ok(self
+            .boards
+            .idea_captured(Some(transaction), &captured.aggregate.id, &project)
             .await?)
     }
 }

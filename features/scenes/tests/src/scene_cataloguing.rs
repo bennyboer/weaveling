@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
+use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
@@ -42,6 +43,7 @@ fn a_listener_cataloguing_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<Catalogu
             transactions.clone(),
             catalog,
             Arc::new(InMemoryQuotationRestylingTasks::new()),
+            Arc::new(InMemoryBelongings::new()),
             Arc::new(AllowingEverything),
             clock.clone(),
         )),
@@ -373,6 +375,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         Arc::new(InMemoryTransactions::new()),
         bench.catalog.clone(),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(InMemoryBelongings::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

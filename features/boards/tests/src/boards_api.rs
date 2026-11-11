@@ -517,3 +517,28 @@ async fn a_board_discarded_with_its_project_refuses_what_comes_after() {
     // then: it is refused as discarded
     refused_as(response, StatusCode::CONFLICT, refused::DISCARDED);
 }
+
+#[tokio::test]
+async fn an_idea_of_another_project_is_not_found_by_a_board() {
+    // given: a board of one project
+    let (server, boards) = a_server_and_its_boards();
+    let opened = an_open_board(&server).await;
+    // and: an idea of another project
+    boards
+        .idea_captured(None, "idea_strange", "project_2")
+        .await
+        .expect("remembering should succeed");
+
+    // when: it is pinned to the board
+    let response = server
+        .post(&format!("/boards/{}/ideas", opened.id))
+        .json(&PinIdeaRequest {
+            idea: "idea_strange".to_owned(),
+            spot: a_spot(0, 0),
+            size: a_size(),
+        })
+        .await;
+
+    // then: it is not found, as if there were no such idea, telling nothing of it
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
+}

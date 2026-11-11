@@ -897,3 +897,35 @@ async fn an_outline_discarded_with_its_project_refuses_what_comes_after() {
     // then: it is refused as discarded
     refused_as(response, StatusCode::CONFLICT, refused::DISCARDED);
 }
+
+#[tokio::test]
+async fn an_idea_of_another_project_is_not_found_by_an_outline() {
+    // given: an outline with a chapter
+    let (server, outlines) = a_server_and_its_outlines();
+    let outline = an_open_outline(&server).await;
+    let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+    // and: an idea of another project
+    outlines
+        .came_to_be(
+            None,
+            &outline_core::Attachment::idea("idea_strange"),
+            "project_2",
+        )
+        .await
+        .expect("remembering should succeed");
+
+    // when: it is attached to the chapter
+    let response = server
+        .post(&format!("/outlines/{}/attachments", outline.id))
+        .json(&AttachRequest {
+            attachment: AttachmentDTO::Idea {
+                id: "idea_strange".to_owned(),
+            },
+            section: chapter.section.clone(),
+            after: None,
+        })
+        .await;
+
+    // then: it is not found, as if there were no such idea, telling nothing of it
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
+}
