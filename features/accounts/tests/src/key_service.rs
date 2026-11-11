@@ -589,6 +589,80 @@ async fn a_touch_given_for_another_accounts_asking_answers_nothing() {
 }
 
 #[tokio::test]
+async fn another_session_asking_for_a_key_takes_nothing_from_the_first() {
+    // given: Ada owing her second factor, asked for a touch
+    let bench = bench();
+    let (_, mut authenticator) = with_a_key(&bench, ADA).await;
+    let hers = bench.session_of(ADA).await;
+    let asked = bench
+        .accounts
+        .begin_answering_with_key(&hers)
+        .await
+        .expect("answering begins");
+    // and: someone who knows her password, signed in too and asking
+    let theirs = bench.session_of(ADA).await;
+    bench
+        .accounts
+        .begin_answering_with_key(&theirs)
+        .await
+        .expect("answering begins");
+
+    // when: she touches her key for what she was asked
+    let answered = bench
+        .accounts
+        .answer_with_key(&hers, &touch_of(&mut authenticator, asked))
+        .await;
+
+    // then: it answers her second step
+    assert!(
+        answered.is_ok(),
+        "what one session is asked is its own, so another cannot keep it from being answered: \
+         {answered:?}"
+    );
+}
+
+#[tokio::test]
+async fn codes_guessed_wrong_by_another_session_keep_no_key_from_answering() {
+    // given: Ada with TOTP and a key, owing her second factor
+    let bench = with_totp_too(bench());
+    let ada = signed_up(&bench.wired, ADA).await;
+    let session = bench.session_of(ADA).await;
+    let session = totp_set_up(&bench, &ada, &session).await;
+    let mut authenticator = SoftPasskey::new(true);
+    let answer = bench.answered_by(&mut authenticator, &ada).await;
+    bench
+        .accounts
+        .finish_adding_key(&ada, "YubiKey blue", &answer, &session)
+        .await
+        .expect("the key is added");
+    let hers = bench.session_of(ADA).await;
+    // and: someone who knows her password guessing codes until held back
+    let theirs = bench.session_of(ADA).await;
+    let mut guessed = Ok(());
+    for _ in 0..6 {
+        guessed = bench
+            .accounts
+            .answer_with_totp(&theirs, "000000")
+            .await
+            .map(|_| ());
+    }
+    assert!(
+        matches!(guessed, Err(AccountsError::Throttled { .. })),
+        "{guessed:?}"
+    );
+
+    // when: she touches her key
+    let touch = bench.touched_by(&mut authenticator, &hers).await;
+    let answered = bench.accounts.answer_with_key(&hers, &touch).await;
+
+    // then: it answers her second step
+    assert!(
+        answered.is_ok(),
+        "a touch cannot be guessed, so codes guessed wrong do not hold it back: {answered:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_session_owing_nothing_is_not_asked_for_a_key() {
     // given: an account without a second factor, signed in all the way
     let bench = bench();

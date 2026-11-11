@@ -16,17 +16,18 @@ use webauthn_rs::{Webauthn, WebauthnBuilder};
 use crate::id::AccountId;
 use crate::key::{KeyId, KeyRole};
 use crate::secrets::KeyCredential;
+use crate::session::TokenDigest;
 
 /// Adding keys and passkeys and signing in with them, for this instance: every key is bound to the domain it is served at, so moving it voids every key.
 #[derive(Debug, Clone)]
 pub struct KeyCeremonies {
     webauthn: Webauthn,
     adding: Arc<UnderWay<AccountId, Registration>>,
-    answering: Arc<UnderWay<AccountId, SecurityKeyAuthentication>>,
+    answering: Arc<UnderWay<TokenDigest, SecurityKeyAuthentication>>,
     signing_in: Arc<UnderWay<SigningIn, DiscoverableAuthentication>>,
 }
 
-/// What the server keeps of a ceremony between asking the browser and hearing back, by the account it is for, or by a drawn id where nobody is known yet: never written down, so a restart only asks for it to begin again.
+/// What the server keeps of a ceremony between asking the browser and hearing back, by the account it is for, the session owing a second step, or a drawn id where nobody is known yet: never written down, so a restart only asks for it to begin again.
 #[derive(Debug)]
 struct UnderWay<K, S>(Mutex<HashMap<K, (S, OffsetDateTime)>>);
 
@@ -253,10 +254,10 @@ impl KeyCeremonies {
         ))
     }
 
-    /// Asks the browser for a touch of one of the keys held, to answer the account's second step.
+    /// Asks the browser for a touch of one of the keys held, to answer the second step this session owes: held by the session, so another signed in by the password asks nothing in its place.
     pub(crate) fn begin_answering(
         &self,
-        account: &AccountId,
+        owing: &TokenDigest,
         held: &[(KeyId, KeyCredential)],
         now: OffsetDateTime,
     ) -> Result<Value, CeremonyFailed> {
@@ -269,20 +270,20 @@ impl KeyCeremonies {
             .webauthn
             .start_securitykey_authentication(&keys)
             .map_err(|_| CeremonyFailed::Refused)?;
-        self.answering.hold(account, state, now);
+        self.answering.hold(owing, state, now);
 
         Ok(serde_json::to_value(asked).expect("what a browser is asked is plain data"))
     }
 
-    /// Finishes the account's answering with the browser's answer, once: the key that answered, and its credential as it is now, its counter moved on.
+    /// Finishes the session's answering with the browser's answer, once: the key that answered, and its credential as it is now, its counter moved on.
     pub(crate) fn finish_answering(
         &self,
-        account: &AccountId,
+        owing: &TokenDigest,
         answer: &Value,
         held: &[(KeyId, KeyCredential)],
         now: OffsetDateTime,
     ) -> Result<(KeyId, String), CeremonyFailed> {
-        let state = self.answering.take(account, now)?;
+        let state = self.answering.take(owing, now)?;
         let answer: PublicKeyCredential =
             serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
         let answered = self

@@ -112,11 +112,12 @@ impl AccountsCore {
         }
 
         ceremonies
-            .begin_answering(&account, &held, self.clock.now())
+            .begin_answering(&token.digest(), &held, self.clock.now())
             .map_err(|_| AccountsError::KeyRefused)
     }
 
     /// Answers the second factor a session owes with a key's touch, opening a session signed in all the way in its place.
+    /// A touch cannot be guessed, so it is not held back by codes guessed wrong, which may be another's who knows the password.
     pub async fn answer_with_key(
         &self,
         token: &SessionToken,
@@ -125,10 +126,9 @@ impl AccountsCore {
         let account = self.owing(token).await?;
         let ceremonies = self.key_ceremonies()?;
         let who = account.to_string();
-        self.admitted(Guarded::CheckingSecondFactor, &who).await?;
         let held = self.second_step_credentials(&account).await?;
         let (key, renewed) = ceremonies
-            .finish_answering(&account, answer, &held, self.clock.now())
+            .finish_answering(&token.digest(), answer, &held, self.clock.now())
             .map_err(|failed| match failed {
                 CeremonyFailed::NothingUnderWay => AccountsError::NoKeyBeingAsked,
                 CeremonyFailed::Refused => AccountsError::KeyRefused,
