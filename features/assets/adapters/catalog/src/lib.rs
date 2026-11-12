@@ -1,4 +1,8 @@
 mod account_limits_memory;
+#[cfg(feature = "postgres")]
+mod account_limits_postgres;
+#[cfg(feature = "sqlite")]
+mod account_limits_sqlite;
 #[cfg(test)]
 mod account_limits_suite;
 mod memberships_memory;
@@ -23,6 +27,10 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use account_limits_memory::InMemoryAccountLimits;
+#[cfg(feature = "postgres")]
+pub use account_limits_postgres::PostgresAccountLimits;
+#[cfg(feature = "sqlite")]
+pub use account_limits_sqlite::SqliteAccountLimits;
 pub use memberships_memory::InMemoryMembershipCatalog;
 #[cfg(feature = "postgres")]
 pub use memberships_postgres::PostgresMembershipCatalog;

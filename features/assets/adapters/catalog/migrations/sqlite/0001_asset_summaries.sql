@@ -39,3 +39,8 @@ CREATE TABLE asset_disbanded_projects (
 );
 
 CREATE INDEX asset_disbanded_projects_by_laid_at ON asset_disbanded_projects (laid_at);
+
+CREATE TABLE asset_account_limits (
+    account  TEXT    PRIMARY KEY,
+    most     INTEGER NOT NULL
+);
