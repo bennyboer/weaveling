@@ -1,3 +1,4 @@
+mod kept;
 mod memory;
 #[cfg(test)]
 mod suite;
@@ -8,6 +9,7 @@ pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+pub use kept::KeptAccess;
 pub use memory::InMemoryAccess;
 
 #[cfg(feature = "postgres")]

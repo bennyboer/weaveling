@@ -35,6 +35,11 @@ pub trait Authorizer: Send + Sync {
 
     async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError>;
 
+    /// Whether the agent runs the instance; nobody does unless told.
+    async fn operates(&self, _agent: &Agent) -> Result<bool, AuthorizerError> {
+        Ok(false)
+    }
+
     fn access_changed(&self, _project: &str) {}
 
     fn watch_access(&self, _project: &str) -> AccessWatch {
@@ -59,6 +64,10 @@ impl Authorizer for AllowingEverything {
     async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
         Ok(Readable::Everything)
     }
+
+    async fn operates(&self, _agent: &Agent) -> Result<bool, AuthorizerError> {
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -67,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn where_one_person_does_the_work_they_may_do_everything() {
-        // expect: every agent may do every act and read everything
+        // expect: every agent may do every act, read everything and run the instance
         for agent in [
             Agent::Local,
             Agent::System,
@@ -87,6 +96,12 @@ mod tests {
                     .await
                     .expect("nothing to ask"),
                 Readable::Everything
+            );
+            assert!(
+                AllowingEverything
+                    .operates(&agent)
+                    .await
+                    .expect("nothing to ask")
             );
         }
     }
