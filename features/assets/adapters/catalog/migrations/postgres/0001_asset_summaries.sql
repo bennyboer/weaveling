@@ -20,3 +20,11 @@ CREATE TABLE asset_usage (
     total  BIGINT           NOT NULL,
     PRIMARY KEY (bound, id)
 );
+
+CREATE TABLE asset_memberships (
+    project  TEXT COLLATE "C" NOT NULL,
+    account  TEXT COLLATE "C" NOT NULL,
+    PRIMARY KEY (project, account)
+);
+
+CREATE INDEX asset_memberships_by_account ON asset_memberships (account, project);

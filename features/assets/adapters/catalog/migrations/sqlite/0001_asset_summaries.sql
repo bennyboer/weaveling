@@ -20,3 +20,11 @@ CREATE TABLE asset_usage (
     total  INTEGER NOT NULL,
     PRIMARY KEY (bound, id)
 );
+
+CREATE TABLE asset_memberships (
+    project  TEXT NOT NULL,
+    account  TEXT NOT NULL,
+    PRIMARY KEY (project, account)
+);
+
+CREATE INDEX asset_memberships_by_account ON asset_memberships (account, project);
