@@ -7,11 +7,15 @@ edition.workspace = true
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
 
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
-clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros"] }

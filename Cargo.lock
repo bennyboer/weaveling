@@ -5165,6 +5165,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-assets-core",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-test-harness",
+ "weaveling-transacting",
+]
+
+[[package]]
 name = "weaveling-assets-contents"
 version = "0.1.0"
 dependencies = [
@@ -5190,10 +5206,13 @@ dependencies = [
  "async-trait",
  "thiserror 2.0.21",
  "time",
+ "tokio",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5215,6 +5234,22 @@ dependencies = [
  "time",
  "weaveling-assets-core",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-assets-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "weaveling-assets-catalog",
+ "weaveling-assets-contents",
+ "weaveling-assets-core",
+ "weaveling-authorizing",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-transacting",
 ]
 
 [[package]]

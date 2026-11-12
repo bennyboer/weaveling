@@ -14,6 +14,11 @@ impl InMemoryContents {
         Self::default()
     }
 
+    /// How many pieces are kept, of every asset.
+    pub fn pieces(&self) -> usize {
+        self.kept().len()
+    }
+
     fn kept(&self) -> MutexGuard<'_, HashMap<(AssetId, Piece), Vec<u8>>> {
         self.kept.lock().expect("the contents are not poisoned")
     }

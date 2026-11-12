@@ -1,0 +1,18 @@
+[package]
+name = "weaveling-assets-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+async-trait = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
+
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
+
+assets-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-assets-catalog" }
+assets-contents = { version = "0.1.0", path = "../adapters/contents", package = "weaveling-assets-contents" }
+assets-core = { version = "0.1.0", path = "../core", package = "weaveling-assets-core" }
