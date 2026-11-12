@@ -10,6 +10,7 @@ mod id;
 mod images;
 mod limits;
 mod memberships;
+mod operators;
 mod preparing;
 
 pub use account_limits::AccountLimits;
@@ -24,4 +25,5 @@ pub use id::AssetId;
 pub use images::{ImageRefused, Images, Prepared, WIDTHS, widths_for};
 pub use limits::{Bound, Counted, Limit, Limits, Usage};
 pub use memberships::{Membership, MembershipCatalog};
+pub use operators::OperatorCatalog;
 pub use preparing::PREPARED_AT_ONCE;

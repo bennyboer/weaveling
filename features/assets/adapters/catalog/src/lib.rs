@@ -13,6 +13,9 @@ mod memberships_sqlite;
 #[cfg(test)]
 mod memberships_suite;
 mod memory;
+mod operators_memory;
+#[cfg(test)]
+mod operators_suite;
 #[cfg(test)]
 mod suite;
 
@@ -37,6 +40,7 @@ pub use memberships_postgres::PostgresMembershipCatalog;
 #[cfg(feature = "sqlite")]
 pub use memberships_sqlite::SqliteMembershipCatalog;
 pub use memory::InMemoryAssetCatalog;
+pub use operators_memory::InMemoryOperatorCatalog;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresAssetCatalog;
