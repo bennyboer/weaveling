@@ -19,3 +19,5 @@ The files Weaveling keeps that are not text, images for now: an account's pictur
 **Pieces first, the event after.** An upload keeps its original and variants before it is told uploaded, and forgets them again when it is refused or fails; it is prepared beside the runtime, `PREPARED_AT_ONCE` at a time.
 
 Events are kept by the [`eventsourcing`](../../libraries/eventsourcing) store through the codec in `adapters/store`; `contract` holds what other features may hear: `asset.uploaded` and `asset.deleted`. `adapters/messaging` publishes them through `message_for`: an upload says whose the asset is (a project's or an account's), its format and size in pixels, the original's bytes and all it takes together, but not which widths were made, which only the feature itself hands out; a snapshot is never published.
+
+`wiring` assembles the feature, `assembled_assets(storage, context, Keeping { limits, folder })`. The pieces are kept in a folder where the operator names one; otherwise where the data is: in memory, in PostgreSQL's `asset_contents`, or with SQLite in an `assets` folder beside its `assets.sqlite`, since SQLite keeps no pieces itself. It serves no routes yet.

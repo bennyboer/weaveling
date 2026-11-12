@@ -5265,6 +5265,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "sqlx",
+ "weaveling-assets-catalog",
+ "weaveling-assets-contents",
+ "weaveling-assets-core",
+ "weaveling-assets-images",
+ "weaveling-assets-messaging",
+ "weaveling-assets-store",
+ "weaveling-eventsourcing",
+ "weaveling-outbox",
+ "weaveling-transacting",
+ "weaveling-wiring",
+]
+
+[[package]]
 name = "weaveling-authorizing"
 version = "0.1.0"
 dependencies = [
