@@ -1,3 +1,4 @@
+mod account_limits;
 mod asset;
 #[cfg(test)]
 mod asset_tests;
@@ -11,6 +12,7 @@ mod limits;
 mod memberships;
 mod preparing;
 
+pub use account_limits::AccountLimits;
 pub use asset::{
     Asset, AssetCommand, AssetError, AssetEvent, Format, KIND, Owner, Picture, ProjectLink,
 };

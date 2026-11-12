@@ -1,3 +1,6 @@
+mod account_limits_memory;
+#[cfg(test)]
+mod account_limits_suite;
 mod memberships_memory;
 #[cfg(feature = "postgres")]
 mod memberships_postgres;
@@ -19,6 +22,7 @@ pub mod sqlite;
 #[cfg(all(test, feature = "sqlite"))]
 mod sqlite_tests;
 
+pub use account_limits_memory::InMemoryAccountLimits;
 pub use memberships_memory::InMemoryMembershipCatalog;
 #[cfg(feature = "postgres")]
 pub use memberships_postgres::PostgresMembershipCatalog;
