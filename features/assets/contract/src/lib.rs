@@ -48,14 +48,16 @@ pub mod refused {
     pub const IMAGE_TOO_LARGE: &str = "asset-image-too-large";
     pub const LIMIT_REACHED: &str = "asset-limit-reached";
     pub const NOT_AN_AUTHOR: &str = "not-an-author";
+    pub const NO_ACCOUNT: &str = "asset-no-account";
 
-    pub const EVERY: [&str; 6] = [
+    pub const EVERY: [&str; 7] = [
         ID_INVALID,
         NOT_AN_IMAGE,
         IMAGE_UNREADABLE,
         IMAGE_TOO_LARGE,
         LIMIT_REACHED,
         NOT_AN_AUTHOR,
+        NO_ACCOUNT,
     ];
 }
 

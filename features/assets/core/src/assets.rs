@@ -76,6 +76,31 @@ impl AssetsCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Write, &project, || AssetsError::ProjectNotThere)
             .await?;
+
+        self.uploaded(Owner::Project(project), uploaded, agent)
+            .await
+    }
+
+    /// Takes an image as the uploading account's own, as its picture is; counted against the installation and the account alone, and refused where nobody is signed in, as without accounts.
+    pub async fn upload_as_own(
+        &self,
+        uploaded: Vec<u8>,
+        agent: &Agent,
+    ) -> Result<(AssetId, Standing<Asset>), AssetsError> {
+        let Agent::Account(account) = agent else {
+            return Err(AssetsError::NoAccount);
+        };
+
+        self.uploaded(Owner::Account(account.clone()), uploaded, agent)
+            .await
+    }
+
+    async fn uploaded(
+        &self,
+        owner: Owner,
+        uploaded: Vec<u8>,
+        agent: &Agent,
+    ) -> Result<(AssetId, Standing<Asset>), AssetsError> {
         if let Some(limit) = self.limits.on_the_upload()
             && !limit.takes(uploaded.len() as u64)
         {
@@ -95,7 +120,6 @@ impl AssetsCore {
             return Err(failed);
         }
 
-        let owner = Owner::Project(project);
         if let Err(refused) = self.recorded(&id, owner, prepared, agent).await {
             self.contents.forget(&id).await?;
             return Err(refused);

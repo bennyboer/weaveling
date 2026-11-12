@@ -225,3 +225,25 @@ async fn an_upload_is_taken_up_to_its_limit_however_far_past_what_a_request_take
     into_the_limited.assert_status(StatusCode::CREATED);
     into_the_unlimited.assert_status(StatusCode::CREATED);
 }
+
+#[tokio::test]
+async fn an_upload_into_no_project_is_the_account_s_own_and_refused_without_one() {
+    // given: Ada, and the instance without accounts
+    let bench = bench::a_bench();
+
+    // when: she uploads into no project, and so does the local agent
+    let hers = serving(&bench, bench::ada())
+        .post("/assets")
+        .bytes(b"a portrait".to_vec().into())
+        .await;
+    let local = serving(&bench, Agent::Local)
+        .post("/assets")
+        .bytes(b"a portrait".to_vec().into())
+        .await;
+
+    // then: hers is her own, and without an account it is refused
+    hers.assert_status(StatusCode::CREATED);
+    let asset: AssetDTO = hers.json();
+    assert_eq!(asset.owner, OwnerDTO::Account("account_ada".to_owned()));
+    refused_as(local, StatusCode::FORBIDDEN, refused::NO_ACCOUNT);
+}

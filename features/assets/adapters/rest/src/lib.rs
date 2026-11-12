@@ -31,7 +31,7 @@ pub fn router(assets: AssetsCore) -> Router {
 
 #[derive(Deserialize)]
 struct IntoProject {
-    project: String,
+    project: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -51,10 +51,15 @@ async fn upload(
         }
         _ => Problem::rejected(serving::UNREADABLE, rejection),
     })?;
-    let (id, uploaded) = assets
-        .upload_into(&into.project, uploaded.to_vec(), &acting)
-        .await
-        .map_err(problem_of)?;
+    let (id, uploaded) = match into.project {
+        Some(project) => {
+            assets
+                .upload_into(&project, uploaded.to_vec(), &acting)
+                .await
+        }
+        None => assets.upload_as_own(uploaded.to_vec(), &acting).await,
+    }
+    .map_err(problem_of)?;
 
     Ok(to_response(StatusCode::CREATED, &id.to_string(), &uploaded))
 }
@@ -157,6 +162,7 @@ fn problem_of(refusal: AssetsError) -> Problem {
         AssetsError::NotAnAuthor => {
             Problem::forbidden(refused::NOT_AN_AUTHOR, AssetsError::NotAnAuthor)
         }
+        AssetsError::NoAccount => Problem::forbidden(refused::NO_ACCOUNT, AssetsError::NoAccount),
         unserveable => Problem::unexpected(unserveable),
     }
 }

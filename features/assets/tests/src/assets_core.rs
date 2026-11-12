@@ -1,7 +1,7 @@
 use assets_core::{
     AssetsError, Bound, Format, ImageRefused, Limit, Limits, Owner, ProjectLink, Usage,
 };
-use eventsourcing::{Agent, ServiceError};
+use eventsourcing::{AccountId, Agent, ServiceError};
 
 use crate::bench::{THE_LOOM, a_bench, a_bench_limited, a_bench_refusing, ada, bo, grace};
 
@@ -317,4 +317,85 @@ async fn an_id_of_no_asset_is_not_found() {
         bench.assets.content("not an id", None, &ada()).await,
         Err(AssetsError::InvalidId(_))
     ));
+}
+
+#[tokio::test]
+async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project() {
+    // given: Ada and a limit on each account
+    let bench = a_bench_limited(Limits {
+        each_account: Some(1_000),
+        ..Limits::default()
+    });
+
+    // when: she uploads a photo of her own
+    let (id, standing) = bench
+        .assets
+        .upload_as_own(A_PHOTO.to_vec(), &ada())
+        .await
+        .expect("an account uploads its own");
+
+    // then: it is hers
+    let asset = standing.state;
+    assert_eq!(
+        asset.owner(),
+        &Owner::Account(AccountId::from("account_ada"))
+    );
+    // and: the installation and Ada hold it, no project
+    let total = asset.total_size();
+    assert_eq!(
+        bench.usage().await,
+        Usage {
+            instance: total,
+            account: total,
+            project: 0,
+        }
+    );
+    // and: she sees it
+    assert!(
+        bench
+            .assets
+            .content(&id.to_string(), None, &ada())
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn an_account_s_own_photo_is_changed_by_it_alone() {
+    // given: a photo of Ada's own
+    let bench = a_bench();
+    let (id, _) = bench
+        .assets
+        .upload_as_own(A_PHOTO.to_vec(), &ada())
+        .await
+        .expect("an account uploads its own");
+    let id = id.to_string();
+
+    // when: Bo deletes it, and then Ada
+    let by_bo = bench.assets.delete(&id, &bo()).await;
+    let by_ada = bench.assets.delete(&id, &ada()).await;
+
+    // then: Bo finds nothing to delete, and Ada deletes it
+    assert!(is_not_found(&by_bo), "{by_bo:?}");
+    assert!(by_ada.is_ok(), "{by_ada:?}");
+}
+
+#[tokio::test]
+async fn nobody_keeps_photos_of_their_own_without_accounts() {
+    // given: the instance without accounts
+    let bench = a_bench();
+
+    // when: a photo is uploaded as one's own
+    let refused = bench
+        .assets
+        .upload_as_own(A_PHOTO.to_vec(), &Agent::Local)
+        .await;
+
+    // then: it is refused, and nothing was made of it
+    assert!(
+        matches!(refused, Err(AssetsError::NoAccount)),
+        "{refused:?}"
+    );
+    assert_eq!(bench.images.asked(), 0);
+    assert_eq!(bench.contents.pieces(), 0);
 }

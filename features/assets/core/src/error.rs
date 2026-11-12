@@ -30,6 +30,8 @@ pub enum AssetsError {
     ProjectNotThere,
     #[error("reading the project is all this account may do in it")]
     NotAnAuthor,
+    #[error("only an account keeps assets of its own")]
+    NoAccount,
     #[error("the upload would pass a limit on what may be kept")]
     LimitReached(Limit),
     #[error("the asset is told kept, yet the bytes for it are not there")]
