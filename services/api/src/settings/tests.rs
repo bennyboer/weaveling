@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use assets_wiring::Limits;
+
 use super::*;
 
 static FOLDERS: AtomicUsize = AtomicUsize::new(0);
@@ -937,4 +939,34 @@ fn a_size_for_assets_without_a_unit_or_of_nought_says_where_it_was_written_and_w
             "{refusal}"
         );
     }
+}
+
+#[test]
+fn an_account_is_held_to_its_limit_only_where_there_are_accounts() {
+    // given: assets settings with every limit set and a folder
+    let assets = AssetSettings {
+        most_each_upload: 5,
+        most_kept: Some(100),
+        most_each_account: 30,
+        most_each_project: Some(40),
+        folder: Some(PathBuf::from("/srv/assets")),
+    };
+
+    // when: what the assets are kept to is asked with accounts and without
+    let with_accounts = assets.keeping(Accounts::On);
+    let without = assets.keeping(Accounts::Off);
+
+    // then: every limit is handed on, the account's only with accounts, and the folder alike
+    assert_eq!(
+        with_accounts.limits,
+        Limits {
+            each_upload: Some(5),
+            instance: Some(100),
+            each_account: Some(30),
+            each_project: Some(40),
+        }
+    );
+    assert_eq!(without.limits.each_account, None);
+    assert_eq!(without.limits.each_upload, Some(5));
+    assert_eq!(with_accounts.folder, Some(PathBuf::from("/srv/assets")));
 }

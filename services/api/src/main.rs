@@ -44,12 +44,13 @@ async fn serving(settings: &Settings) -> (axum::Router, Relays, Vec<Arc<dyn Sett
         Accounts::Off => tracing::info!("keeping the work {backend}, {accounts}, {mailing}"),
     }
     let storage = or_stop(backend.storage());
-    let mut adapters = Adapters::assembled(
+    let mut adapters = Adapters::keeping_assets(
         storage,
         accounts,
         mailing.mailer(),
         settings.public_url(),
         or_stop(settings.mail_caps()),
+        or_stop(settings.assets()).keeping(accounts),
         Arc::new(SystemClock),
     )
     .await

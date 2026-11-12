@@ -16,6 +16,7 @@ use accounts_contract::{AccountsModeDTO, ServiceModeDTO};
 use accounts_core::{AccountsError, KeyCeremonies, OperatorCode, TotpKey};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
+use assets_wiring::Keeping;
 use authorizing::{AllowingEverything, Authorizer};
 use axum::http::StatusCode;
 use axum::routing;
@@ -84,6 +85,28 @@ impl Adapters {
         caps: MailCaps,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Unprepared> {
+        Self::keeping_assets(
+            storage,
+            accounts,
+            mailer,
+            links_to,
+            caps,
+            AssetSettings::default().keeping(accounts),
+            clock,
+        )
+        .await
+    }
+
+    /// Assembled as `assembled` is, the assets kept to what the operator chose.
+    pub async fn keeping_assets(
+        storage: Storage,
+        accounts: Accounts,
+        mailer: Arc<dyn Mailer>,
+        links_to: Option<String>,
+        caps: MailCaps,
+        assets: Keeping,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, Unprepared> {
         let refusals = Broadcaster::new();
         let deliveries: Arc<dyn Deliveries> = Arc::new(TellingDeliveries::around(
             deliveries(&storage).await?,
@@ -115,6 +138,7 @@ impl Adapters {
             wiring::assemble::<OutlineFeature>(&storage, &context).await?,
             wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
             wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
+            assets_wiring::assembled_assets(&storage, &context, assets).await?,
         ];
         if let Some(members) = members {
             features.push(members.assembled);

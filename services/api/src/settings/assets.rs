@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
+use assets_wiring::{Keeping, Limits};
 use thiserror::Error;
 use units::UnreadableSize;
 
 use super::{Setting, Settings};
+use crate::Accounts;
 
 pub const WEAVELING_ASSETS_MOST_EACH_UPLOAD: &str = "WEAVELING_ASSETS_MOST_EACH_UPLOAD";
 pub const WEAVELING_ASSETS_MOST_KEPT: &str = "WEAVELING_ASSETS_MOST_KEPT";
@@ -45,14 +47,46 @@ pub struct AssetSettings {
     pub folder: Option<PathBuf>,
 }
 
+impl Default for AssetSettings {
+    fn default() -> Self {
+        Self {
+            most_each_upload: MOST_EACH_UPLOAD_UNLESS_SET,
+            most_kept: None,
+            most_each_account: MOST_EACH_ACCOUNT_UNLESS_SET,
+            most_each_project: None,
+            folder: None,
+        }
+    }
+}
+
+impl AssetSettings {
+    /// What the assets are kept to: an account held to its limit only where there are accounts.
+    pub fn keeping(&self, accounts: Accounts) -> Keeping {
+        Keeping {
+            limits: Limits {
+                each_upload: Some(self.most_each_upload),
+                instance: self.most_kept,
+                each_account: match accounts {
+                    Accounts::On => Some(self.most_each_account),
+                    Accounts::Off => None,
+                },
+                each_project: self.most_each_project,
+            },
+            folder: self.folder.clone(),
+        }
+    }
+}
+
 impl Settings {
     pub fn assets(&self) -> Result<AssetSettings, UnreadableAssets> {
+        let unless_set = AssetSettings::default();
+
         Ok(AssetSettings {
             most_each_upload: size(self.assets_most_each_upload.as_ref())?
-                .unwrap_or(MOST_EACH_UPLOAD_UNLESS_SET),
+                .unwrap_or(unless_set.most_each_upload),
             most_kept: size(self.assets_most_kept.as_ref())?,
             most_each_account: size(self.assets_most_each_account.as_ref())?
-                .unwrap_or(MOST_EACH_ACCOUNT_UNLESS_SET),
+                .unwrap_or(unless_set.most_each_account),
             most_each_project: size(self.assets_most_each_project.as_ref())?,
             folder: self
                 .assets_folder

@@ -6750,6 +6750,7 @@ dependencies = [
  "weaveling-accounts-rest",
  "weaveling-accounts-wiring",
  "weaveling-appearances-wiring",
+ "weaveling-assets-wiring",
  "weaveling-authorizing",
  "weaveling-boards-wiring",
  "weaveling-chores",

@@ -3,13 +3,15 @@ use std::sync::Arc;
 
 use assets_catalog::InMemoryAssetCatalog;
 use assets_contents::{FolderContents, InMemoryContents};
-use assets_core::{AssetCatalog, AssetEvent, AssetsCore, Contents, Limits};
+use assets_core::{AssetCatalog, AssetEvent, AssetsCore, Contents};
 use assets_images::WebpImages;
 use axum::Router;
 use eventsourcing::EventStore;
 use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
+
+pub use assets_core::Limits;
 
 const FOLDER: &str = "assets";
 

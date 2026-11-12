@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use time::OffsetDateTime;
 use weaveling_service_api::{Accounts, Adapters, MailCaps, Mailing, Relays, Storage};
 
-pub const DATABASES: [&str; 12] = [
+pub const DATABASES: [&str; 13] = [
     "messaging",
     "accounts",
     "invitations",
@@ -28,6 +28,7 @@ pub const DATABASES: [&str; 12] = [
     "scenes",
     "appearances",
     "statistics",
+    "assets",
 ];
 
 #[async_trait]
