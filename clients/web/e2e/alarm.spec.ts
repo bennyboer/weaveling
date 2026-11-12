@@ -1,8 +1,23 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { routingLive } from "./support/live";
+import { withAccounts } from "./support/signed-in";
 
 const REFUSALS = "**/api/service/refusals";
+
+test.beforeEach(async ({ page }) => {
+  if (!withAccounts) {
+    return;
+  }
+  await page.route("**/api/sessions/current", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), operator: true },
+    });
+  });
+  await routingLive(page, { withheld: ["refusals"] });
+});
 
 const A_BEAT = 500;
 

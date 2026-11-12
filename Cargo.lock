@@ -5226,6 +5226,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-messaging"
+version = "0.1.0"
+dependencies = [
+ "weaveling-assets-contract",
+ "weaveling-assets-core",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+]
+
+[[package]]
 name = "weaveling-assets-store"
 version = "0.1.0"
 dependencies = [

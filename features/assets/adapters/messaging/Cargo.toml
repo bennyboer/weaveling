@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-assets-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+assets-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-assets-contract" }
+assets-core = { version = "0.1.0", path = "../../core", package = "weaveling-assets-core" }
+
+[dev-dependencies]
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

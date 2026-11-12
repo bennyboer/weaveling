@@ -581,9 +581,12 @@ async fn a_message_larger_than_any_scene_sent_ends_the_socket() {
         .expect("greeted while it is fresh");
 
     // when: a message larger than any scene is sent
-    socket
-        .send_message(WsMessage::Binary(vec![0; LARGEST_SENT + 1].into()))
-        .await;
+    let sending = tokio::spawn(async move {
+        socket
+            .send_message(WsMessage::Binary(vec![0; LARGEST_SENT + 1].into()))
+            .await;
+    });
+    let _ended_while_sending = tokio::time::timeout(Wait::from_secs(1), sending).await;
     tokio::time::sleep(Wait::from_millis(100)).await;
 
     // then: the socket is ended rather than the message kept, so the scene it had joined is left and let go
