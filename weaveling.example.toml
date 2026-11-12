@@ -100,6 +100,17 @@
 # WEAVELING_ASSETS_MOST_KEPT_MB
 # most_kept_mb = 10240
 #
+# The most each account's uploads may take together, wherever they went, in
+# megabytes; left out, 1024. Held only where there are accounts; the operator
+# may give an account its own.
+# WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB
+# most_each_account_mb = 1024
+#
+# The most each project's images may take together, in megabytes; left out, as
+# much as the other limits leave.
+# WEAVELING_ASSETS_MOST_EACH_PROJECT_MB
+# most_each_project_mb = 2048
+#
 # Where images are kept: with PostgreSQL, in the database unless a folder is
 # named here; with the data in a folder, in its assets folder unless another
 # is named here.

@@ -833,7 +833,8 @@ fn a_cap_on_mail_that_is_no_whole_number_above_nought_says_where_it_was_written(
 }
 
 #[test]
-fn an_upload_is_twenty_megabytes_at_most_and_nothing_else_is_capped_unless_set() {
+fn an_upload_is_twenty_megabytes_at_most_an_account_a_gigabyte_and_nothing_else_is_capped_unless_set()
+ {
     // given: no settings
     let folder = a_folder();
 
@@ -841,12 +842,14 @@ fn an_upload_is_twenty_megabytes_at_most_and_nothing_else_is_capped_unless_set()
     let settings = Settings::read(no_arguments(), variables(&[]), &folder)
         .expect("nothing to read is no failure");
 
-    // then: twenty megabytes an upload, no cap on what is kept, and no folder of the operator's
+    // then: twenty megabytes an upload, a gigabyte an account, no cap on what is kept or on a project, and no folder of the operator's
     assert_eq!(
         settings.assets(),
         Ok(AssetSettings {
             most_each_upload: 20 * 1024 * 1024,
             most_kept: None,
+            most_each_account: 1024 * 1024 * 1024,
+            most_each_project: None,
             folder: None,
         })
     );
@@ -859,7 +862,7 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
     a_file(
         &folder,
         BESIDE,
-        "[assets]\nmost_each_upload_mb = 5\nmost_kept_mb = 100\nfolder = \"/srv/assets\"\n",
+        "[assets]\nmost_each_upload_mb = 5\nmost_kept_mb = 100\nmost_each_account_mb = 50\nmost_each_project_mb = 70\nfolder = \"/srv/assets\"\n",
     );
 
     // when: the settings are read
@@ -871,6 +874,8 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
         Ok(AssetSettings {
             most_each_upload: 5 * 1024 * 1024,
             most_kept: Some(100 * 1024 * 1024),
+            most_each_account: 50 * 1024 * 1024,
+            most_each_project: Some(70 * 1024 * 1024),
             folder: Some(PathBuf::from("/srv/assets")),
         })
     );
@@ -880,6 +885,8 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
         variables(&[
             (WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, "1"),
             (WEAVELING_ASSETS_MOST_KEPT_MB, "2"),
+            (WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB, "3"),
+            (WEAVELING_ASSETS_MOST_EACH_PROJECT_MB, "4"),
             (WEAVELING_ASSETS_FOLDER, "elsewhere"),
         ]),
         &folder,
@@ -891,6 +898,8 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
         Ok(AssetSettings {
             most_each_upload: 1024 * 1024,
             most_kept: Some(2 * 1024 * 1024),
+            most_each_account: 3 * 1024 * 1024,
+            most_each_project: Some(4 * 1024 * 1024),
             folder: Some(PathBuf::from("elsewhere")),
         })
     );

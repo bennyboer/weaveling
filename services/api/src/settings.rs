@@ -24,8 +24,9 @@ use crate::{
 use file::BESIDE;
 
 pub use assets::{
-    AssetSettings, UnreadableAssets, WEAVELING_ASSETS_FOLDER, WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB,
-    WEAVELING_ASSETS_MOST_KEPT_MB,
+    AssetSettings, UnreadableAssets, WEAVELING_ASSETS_FOLDER,
+    WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB, WEAVELING_ASSETS_MOST_EACH_PROJECT_MB,
+    WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, WEAVELING_ASSETS_MOST_KEPT_MB,
 };
 pub use client_dir::WEAVELING_CLIENT_DIR;
 pub use hosts::{UnreadableHosts, WEAVELING_HOSTS};
@@ -91,6 +92,8 @@ pub struct Settings {
     flaky: Option<Setting>,
     assets_most_each_upload_mb: Option<Setting>,
     assets_most_kept_mb: Option<Setting>,
+    assets_most_each_account_mb: Option<Setting>,
+    assets_most_each_project_mb: Option<Setting>,
     assets_folder: Option<Setting>,
     totp_key: Option<Setting>,
 }
@@ -178,6 +181,14 @@ impl Settings {
                 &mut self.assets_most_each_upload_mb,
             ),
             (WEAVELING_ASSETS_MOST_KEPT_MB, &mut self.assets_most_kept_mb),
+            (
+                WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB,
+                &mut self.assets_most_each_account_mb,
+            ),
+            (
+                WEAVELING_ASSETS_MOST_EACH_PROJECT_MB,
+                &mut self.assets_most_each_project_mb,
+            ),
             (WEAVELING_ASSETS_FOLDER, &mut self.assets_folder),
         ] {
             if let Some(given) = set(name) {

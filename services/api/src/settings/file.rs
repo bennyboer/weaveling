@@ -58,6 +58,8 @@ struct FiledMail {
 struct FiledAssets {
     most_each_upload_mb: Option<toml::Value>,
     most_kept_mb: Option<toml::Value>,
+    most_each_account_mb: Option<toml::Value>,
+    most_each_project_mb: Option<toml::Value>,
     folder: Option<toml::Value>,
 }
 
@@ -101,6 +103,14 @@ impl Settings {
                 filed.assets.most_each_upload_mb,
             ),
             assets_most_kept_mb: setting(key("assets.most_kept_mb"), filed.assets.most_kept_mb),
+            assets_most_each_account_mb: setting(
+                key("assets.most_each_account_mb"),
+                filed.assets.most_each_account_mb,
+            ),
+            assets_most_each_project_mb: setting(
+                key("assets.most_each_project_mb"),
+                filed.assets.most_each_project_mb,
+            ),
             assets_folder: setting(key("assets.folder"), filed.assets.folder),
             totp_key: totp_key::secret(
                 setting(key("accounts.totp_key"), filed.accounts.totp_key),
