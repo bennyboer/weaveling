@@ -1,3 +1,6 @@
+mod memberships_memory;
+#[cfg(test)]
+mod memberships_suite;
 mod memory;
 #[cfg(test)]
 mod suite;
@@ -12,6 +15,7 @@ pub mod sqlite;
 #[cfg(all(test, feature = "sqlite"))]
 mod sqlite_tests;
 
+pub use memberships_memory::InMemoryMembershipCatalog;
 pub use memory::InMemoryAssetCatalog;
 
 #[cfg(feature = "postgres")]

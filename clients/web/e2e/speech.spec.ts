@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { seeingTheAlarm } from "./support/alarm";
 import { aBookWithScenes } from "./support/book";
 import {
   aNewProject,
@@ -871,6 +872,7 @@ test.describe("a browser asking for German, about what went wrong", () => {
 
   test("the alarm and the changes it holds speak German", async ({ page }) => {
     // given: a change that was refused
+    await seeingTheAlarm(page);
     await page.route("**/api/service/refusals", (route) =>
       route.fulfill({
         json: [

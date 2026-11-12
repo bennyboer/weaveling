@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { seeingTheAlarm } from "./support/alarm";
 import { aBookShaped, aBookWithScenes } from "./support/book";
 import { aLooseScene, aNewProject, API } from "./support/shell";
 import { aBookInTheWritingView, asked, beginning, flow, heading, holding, holdingWhatIsWritten, menuItem, openTheWritingView, projectsOutline, savedTitles, saveState, scene, sceneActions, sceneOnServer, statusNote, theBook, wordCount } from "./support/writing";
@@ -38,6 +39,7 @@ test("the status note sits in the status bar, at its right", async ({
 
 test("the status note makes room for the alarm beside it", async ({ page }) => {
   // given: a change that was refused
+  await seeingTheAlarm(page);
   await page.route("**/api/service/refusals", (route) =>
     route.fulfill({
       json: [
