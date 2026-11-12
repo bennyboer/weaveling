@@ -13,8 +13,8 @@ pub enum AssetEventDTO {
         format: String,
         width: u32,
         height: u32,
-        size: u64,
-        kept: u64,
+        original_size: u64,
+        total_size: u64,
     },
     #[serde(rename = "DELETED")]
     Deleted,

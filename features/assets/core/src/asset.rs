@@ -47,7 +47,7 @@ pub struct Picture {
     pub format: Format,
     pub width: u32,
     pub height: u32,
-    pub size: u64,
+    pub original_size: u64,
     pub variants: Vec<u32>,
 }
 
@@ -56,7 +56,7 @@ pub enum AssetCommand {
     Upload {
         owner: Owner,
         picture: Picture,
-        kept: u64,
+        total_size: u64,
     },
     Delete,
 }
@@ -66,13 +66,13 @@ pub enum AssetEvent {
     Uploaded {
         owner: Owner,
         picture: Picture,
-        kept: u64,
+        total_size: u64,
     },
     Deleted,
     Snapshotted {
         owner: Owner,
         picture: Picture,
-        kept: u64,
+        total_size: u64,
         uploaded_at: OffsetDateTime,
         deleted_at: Option<OffsetDateTime>,
     },
@@ -83,7 +83,7 @@ pub enum AssetEvent {
 pub struct Asset {
     owner: Owner,
     picture: Picture,
-    kept: u64,
+    total_size: u64,
     uploaded_at: OffsetDateTime,
     deleted_at: Option<OffsetDateTime>,
 }
@@ -136,8 +136,8 @@ impl Asset {
         &self.picture
     }
 
-    pub fn kept(&self) -> u64 {
-        self.kept
+    pub fn total_size(&self) -> u64 {
+        self.total_size
     }
 
     pub fn uploaded_at(&self) -> OffsetDateTime {
@@ -192,11 +192,11 @@ impl Aggregate for Asset {
             AssetCommand::Upload {
                 owner,
                 picture,
-                kept,
+                total_size,
             } => Ok(vec![AssetEvent::Uploaded {
                 owner,
                 picture,
-                kept,
+                total_size,
             }]),
             AssetCommand::Delete => Err(AssetError::NotUploadedYet),
         }
@@ -207,24 +207,24 @@ impl Aggregate for Asset {
             AssetEvent::Uploaded {
                 owner,
                 picture,
-                kept,
+                total_size,
             } => Some(Self {
                 owner: owner.clone(),
                 picture: picture.clone(),
-                kept: *kept,
+                total_size: *total_size,
                 uploaded_at: metadata.occurred_at,
                 deleted_at: None,
             }),
             AssetEvent::Snapshotted {
                 owner,
                 picture,
-                kept,
+                total_size,
                 uploaded_at,
                 deleted_at,
             } => Some(Self {
                 owner: owner.clone(),
                 picture: picture.clone(),
-                kept: *kept,
+                total_size: *total_size,
                 uploaded_at: *uploaded_at,
                 deleted_at: *deleted_at,
             }),
@@ -248,13 +248,13 @@ impl Aggregate for Asset {
             AssetEvent::Snapshotted {
                 owner,
                 picture,
-                kept,
+                total_size,
                 uploaded_at,
                 deleted_at,
             } => {
                 self.owner = owner.clone();
                 self.picture = picture.clone();
-                self.kept = *kept;
+                self.total_size = *total_size;
                 self.uploaded_at = *uploaded_at;
                 self.deleted_at = *deleted_at;
             }
@@ -265,7 +265,7 @@ impl Aggregate for Asset {
         AssetEvent::Snapshotted {
             owner: self.owner.clone(),
             picture: self.picture.clone(),
-            kept: self.kept,
+            total_size: self.total_size,
             uploaded_at: self.uploaded_at,
             deleted_at: self.deleted_at,
         }

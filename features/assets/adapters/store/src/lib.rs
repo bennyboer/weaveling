@@ -8,13 +8,13 @@ enum StoredAssetEvent {
     Uploaded {
         owner: StoredOwner,
         picture: StoredPicture,
-        kept: u64,
+        total_size: u64,
     },
     Deleted,
     Snapshotted {
         owner: StoredOwner,
         picture: StoredPicture,
-        kept: u64,
+        total_size: u64,
         #[serde(with = "time::serde::rfc3339")]
         uploaded_at: OffsetDateTime,
         #[serde(default, with = "time::serde::rfc3339::option")]
@@ -33,7 +33,7 @@ struct StoredPicture {
     format: StoredFormat,
     width: u32,
     height: u32,
-    size: u64,
+    original_size: u64,
     variants: Vec<u32>,
 }
 
@@ -65,23 +65,23 @@ impl From<&AssetEvent> for StoredAssetEvent {
             AssetEvent::Uploaded {
                 owner,
                 picture,
-                kept,
+                total_size,
             } => Self::Uploaded {
                 owner: StoredOwner::from(owner),
                 picture: StoredPicture::from(picture),
-                kept: *kept,
+                total_size: *total_size,
             },
             AssetEvent::Deleted => Self::Deleted,
             AssetEvent::Snapshotted {
                 owner,
                 picture,
-                kept,
+                total_size,
                 uploaded_at,
                 deleted_at,
             } => Self::Snapshotted {
                 owner: StoredOwner::from(owner),
                 picture: StoredPicture::from(picture),
-                kept: *kept,
+                total_size: *total_size,
                 uploaded_at: *uploaded_at,
                 deleted_at: *deleted_at,
             },
@@ -95,23 +95,23 @@ impl From<StoredAssetEvent> for AssetEvent {
             StoredAssetEvent::Uploaded {
                 owner,
                 picture,
-                kept,
+                total_size,
             } => Self::Uploaded {
                 owner: Owner::from(owner),
                 picture: Picture::from(picture),
-                kept,
+                total_size,
             },
             StoredAssetEvent::Deleted => Self::Deleted,
             StoredAssetEvent::Snapshotted {
                 owner,
                 picture,
-                kept,
+                total_size,
                 uploaded_at,
                 deleted_at,
             } => Self::Snapshotted {
                 owner: Owner::from(owner),
                 picture: Picture::from(picture),
-                kept,
+                total_size,
                 uploaded_at,
                 deleted_at,
             },
@@ -143,7 +143,7 @@ impl From<&Picture> for StoredPicture {
             format: StoredFormat::from(picture.format),
             width: picture.width,
             height: picture.height,
-            size: picture.size,
+            original_size: picture.original_size,
             variants: picture.variants.clone(),
         }
     }
@@ -155,7 +155,7 @@ impl From<StoredPicture> for Picture {
             format: Format::from(stored.format),
             width: stored.width,
             height: stored.height,
-            size: stored.size,
+            original_size: stored.original_size,
             variants: stored.variants,
         }
     }
@@ -198,7 +198,7 @@ mod tests {
             format,
             width: 1_280,
             height: 1_024,
-            size: 230_000,
+            original_size: 230_000,
             variants: vec![384, 768, 1_280],
         }
     }
@@ -210,18 +210,18 @@ mod tests {
             AssetEvent::Uploaded {
                 owner: Owner::Project(ProjectLink::from("project_loom")),
                 picture: a_picture(Format::Jpeg),
-                kept: 400_000,
+                total_size: 400_000,
             },
             AssetEvent::Uploaded {
                 owner: Owner::Account(AccountId::from("account_ada")),
                 picture: a_picture(Format::Png),
-                kept: 1,
+                total_size: 1,
             },
             AssetEvent::Deleted,
             AssetEvent::Snapshotted {
                 owner: Owner::Project(ProjectLink::from("project_loom")),
                 picture: a_picture(Format::Gif),
-                kept: 400_000,
+                total_size: 400_000,
                 uploaded_at: OffsetDateTime::from_unix_timestamp(1_700_000_000)
                     .expect("a plausible moment"),
                 deleted_at: None,
@@ -229,7 +229,7 @@ mod tests {
             AssetEvent::Snapshotted {
                 owner: Owner::Account(AccountId::from("account_ada")),
                 picture: a_picture(Format::Webp),
-                kept: 9,
+                total_size: 9,
                 uploaded_at: OffsetDateTime::from_unix_timestamp(1_700_000_000)
                     .expect("a plausible moment"),
                 deleted_at: Some(

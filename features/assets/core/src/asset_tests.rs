@@ -27,7 +27,7 @@ fn a_photo() -> Picture {
         format: Format::Jpeg,
         width: 1_280,
         height: 1_024,
-        size: 230_000,
+        original_size: 230_000,
         variants: vec![384, 768, 1_280],
     }
 }
@@ -40,7 +40,7 @@ fn an_upload(owner: Owner) -> AssetEvent {
     AssetEvent::Uploaded {
         owner,
         picture: a_photo(),
-        kept: 400_000,
+        total_size: 400_000,
     }
 }
 
@@ -56,7 +56,7 @@ fn an_asset_is_uploaded_for_its_owner_with_its_picture_and_what_it_keeps() {
         AssetCommand::Upload {
             owner: of_the_loom(),
             picture: a_photo(),
-            kept: 400_000,
+            total_size: 400_000,
         },
         &ada(),
     );
@@ -67,7 +67,7 @@ fn an_asset_is_uploaded_for_its_owner_with_its_picture_and_what_it_keeps() {
     let asset = uploaded_at(1_000);
     assert_eq!(asset.owner(), &of_the_loom());
     assert_eq!(asset.picture(), &a_photo());
-    assert_eq!(asset.kept(), 400_000);
+    assert_eq!(asset.total_size(), 400_000);
     assert_eq!(asset.uploaded_at(), clock::at(1_000));
     assert!(!asset.is_deleted());
 }
@@ -110,7 +110,7 @@ fn a_deleted_asset_is_deleted_once_and_takes_nothing_more() {
             AssetCommand::Upload {
                 owner: of_the_loom(),
                 picture: a_photo(),
-                kept: 1,
+                total_size: 1,
             },
             &ada()
         ),
@@ -131,7 +131,7 @@ fn an_asset_is_uploaded_once_and_nothing_is_deleted_before() {
             AssetCommand::Upload {
                 owner: of_the_loom(),
                 picture: a_photo(),
-                kept: 1,
+                total_size: 1,
             },
             &ada()
         ),

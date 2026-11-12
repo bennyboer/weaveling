@@ -1,0 +1,11 @@
+[package]
+name = "weaveling-assets-images"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gamut-core = { workspace = true }
+gamut-webp = { workspace = true }
+image = { workspace = true }
+
+assets-core = { version = "0.1.0", path = "../../core", package = "weaveling-assets-core" }
