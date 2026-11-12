@@ -20,4 +20,12 @@ The files Weaveling keeps that are not text, images for now: an account's pictur
 
 Events are kept by the [`eventsourcing`](../../libraries/eventsourcing) store through the codec in `adapters/store`; `contract` holds what other features may hear: `asset.uploaded` and `asset.deleted`. `adapters/messaging` publishes them through `message_for`: an upload says whose the asset is (a project's or an account's), its format and size in pixels, the original's bytes and all it takes together, but not which widths were made, which only the feature itself hands out; a snapshot is never published.
 
-`wiring` assembles the feature, `assembled_assets(storage, context, Keeping { limits, folder })`. The pieces are kept in a folder where the operator names one; otherwise where the data is: in memory, in PostgreSQL's `asset_contents`, or with SQLite in an `assets` folder beside its `assets.sqlite`, since SQLite keeps no pieces itself. The server assembles it beside the other features, `Adapters::keeping_assets` taking what `[assets]` in `weaveling.toml` says through `AssetSettings::keeping`, which holds an account to its limit only where there are accounts; `Adapters::assembled` keeps the defaults. It serves no routes yet.
+`wiring` assembles the feature, `assembled_assets(storage, context, Keeping { limits, folder })`. The pieces are kept in a folder where the operator names one; otherwise where the data is: in memory, in PostgreSQL's `asset_contents`, or with SQLite in an `assets` folder beside its `assets.sqlite`, since SQLite keeps no pieces itself. The server assembles it beside the other features, `Adapters::keeping_assets` taking what `[assets]` in `weaveling.toml` says through `AssetSettings::keeping`, which holds an account to its limit only where there are accounts; `Adapters::assembled` keeps the defaults.
+
+`adapters/rest` serves three routes under `/api`:
+
+- `POST /assets?project=` takes the image as the raw body; the body is taken up to the upload's limit (or without any, where none is set, past axum's two megabytes), and answers `201` with an `AssetDTO` and its `ETag`.
+- `GET /assets/{id}/content?width=` hands out the narrowest variant at least as wide as asked, or the widest, as `image/webp` with `Cache-Control: private, max-age=31536000, immutable`, since an asset's pieces never change.
+- `DELETE /assets/{id}` answers `204`.
+
+A limit reached is `413 asset-limit-reached` naming its `bound` (`upload`, `instance`, `account` or `project`), its `most` and what it holds, `used`; an image refused is `422`, `asset-not-an-image`, `asset-image-unreadable` or `asset-image-too-large`. The client has no words for these yet; they join its catalogue with the assets manager. It serves no routes yet.

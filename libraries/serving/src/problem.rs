@@ -43,6 +43,10 @@ impl Problem {
         Self::new(StatusCode::UNPROCESSABLE_ENTITY, kind, detail)
     }
 
+    pub fn too_large(kind: &'static str, detail: impl Display) -> Self {
+        Self::new(StatusCode::PAYLOAD_TOO_LARGE, kind, detail)
+    }
+
     pub fn unauthorized(kind: &'static str, detail: impl Display) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, kind, detail)
     }

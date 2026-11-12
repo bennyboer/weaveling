@@ -5,7 +5,6 @@ use assets_catalog::InMemoryAssetCatalog;
 use assets_contents::{FolderContents, InMemoryContents};
 use assets_core::{AssetCatalog, AssetEvent, AssetsCore, Contents};
 use assets_images::WebpImages;
-use axum::Router;
 use eventsourcing::EventStore;
 use outbox::Outbox;
 use transacting::Transactions;
@@ -44,9 +43,8 @@ pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
     .limited(ports.limits)
 }
 
-pub fn wire(_ports: &Ports, _context: &Context) -> Wired {
-    // TODO: serve the assets' routes through core(ports, context) once they are written, in 10d-1b
-    Wired::serving(Router::new())
+pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    Wired::serving(assets_rest::router(core(ports, context)))
 }
 
 pub async fn assembled_assets(

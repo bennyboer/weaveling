@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
@@ -16,6 +15,7 @@ assets-core = { version = "0.1.0", path = "../core", package = "weaveling-assets
 assets-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-assets-catalog" }
 assets-contents = { version = "0.1.0", path = "../adapters/contents", package = "weaveling-assets-contents" }
 assets-images = { version = "0.1.0", path = "../adapters/images", package = "weaveling-assets-images" }
+assets-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-assets-rest" }
 assets-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-assets-messaging" }
 assets-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-assets-store" }
 

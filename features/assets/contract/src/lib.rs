@@ -27,6 +27,46 @@ pub enum OwnerDTO {
     Account(String),
 }
 
+/// An asset as it is handed out: whose it is, its picture, the widths it can be had in, and every byte kept for it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AssetDTO {
+    pub id: String,
+    pub version: u64,
+    pub owner: OwnerDTO,
+    pub format: String,
+    pub width: u32,
+    pub height: u32,
+    pub widths: Vec<u32>,
+    pub original_size: u64,
+    pub total_size: u64,
+}
+
+pub mod refused {
+    pub const ID_INVALID: &str = "asset-id-invalid";
+    pub const NOT_AN_IMAGE: &str = "asset-not-an-image";
+    pub const IMAGE_UNREADABLE: &str = "asset-image-unreadable";
+    pub const IMAGE_TOO_LARGE: &str = "asset-image-too-large";
+    pub const LIMIT_REACHED: &str = "asset-limit-reached";
+    pub const NOT_AN_AUTHOR: &str = "not-an-author";
+
+    pub const EVERY: [&str; 6] = [
+        ID_INVALID,
+        NOT_AN_IMAGE,
+        IMAGE_UNREADABLE,
+        IMAGE_TOO_LARGE,
+        LIMIT_REACHED,
+        NOT_AN_AUTHOR,
+    ];
+}
+
+/// The bounds a limit reached may be on, as a refusal names them.
+pub mod bound {
+    pub const UPLOAD: &str = "upload";
+    pub const INSTANCE: &str = "instance";
+    pub const ACCOUNT: &str = "account";
+    pub const PROJECT: &str = "project";
+}
+
 pub mod format {
     pub const JPEG: &str = "jpeg";
     pub const PNG: &str = "png";

@@ -5238,6 +5238,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-assets-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "weaveling-assets-contract",
+ "weaveling-assets-core",
+ "weaveling-eventsourcing",
+ "weaveling-serving",
+]
+
+[[package]]
 name = "weaveling-assets-store"
 version = "0.1.0"
 dependencies = [
@@ -5253,14 +5265,20 @@ name = "weaveling-assets-tests"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
+ "axum-test",
+ "serde_json",
  "time",
  "tokio",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
+ "weaveling-assets-contract",
  "weaveling-assets-core",
+ "weaveling-assets-rest",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-serving",
  "weaveling-transacting",
 ]
 
@@ -5268,13 +5286,13 @@ dependencies = [
 name = "weaveling-assets-wiring"
 version = "0.1.0"
 dependencies = [
- "axum",
  "sqlx",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
  "weaveling-assets-core",
  "weaveling-assets-images",
  "weaveling-assets-messaging",
+ "weaveling-assets-rest",
  "weaveling-assets-store",
  "weaveling-eventsourcing",
  "weaveling-outbox",

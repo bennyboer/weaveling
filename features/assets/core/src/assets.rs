@@ -62,6 +62,10 @@ impl AssetsCore {
         Self { limits, ..self }
     }
 
+    pub fn limits(&self) -> Limits {
+        self.limits
+    }
+
     /// Takes an image into a project for whoever may write in it: refused past the upload's limit before anything is made of it, prepared beside the runtime, its pieces kept, and told uploaded only where every limit it counts against takes it, weighed in the transaction that tells it.
     pub async fn upload_into(
         &self,
