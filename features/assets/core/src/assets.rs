@@ -2,8 +2,12 @@ use std::sync::Arc;
 
 use authorizing::{Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
-use transacting::Transactions;
+use eventsourcing::{
+    AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
+    Version,
+};
+use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 use crate::asset::{Asset, AssetCommand, AssetEvent, KIND, Owner, ProjectLink};
 use crate::catalog::{AssetCatalog, AssetSummary};
@@ -12,6 +16,7 @@ use crate::error::AssetsError;
 use crate::id::AssetId;
 use crate::images::{Images, Prepared};
 use crate::limits::{Counted, Limits};
+use crate::memberships::{Membership, MembershipCatalog};
 use crate::preparing;
 
 /// What is handed out of an asset: a variant, as WebP.
@@ -28,6 +33,7 @@ pub struct AssetsCore {
     events: Arc<EventSourcingService<Asset>>,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn AssetCatalog>,
+    memberships: Arc<dyn MembershipCatalog>,
     contents: Arc<dyn Contents>,
     images: Arc<dyn Images>,
     authorizer: Arc<dyn Authorizer>,
@@ -41,6 +47,7 @@ impl AssetsCore {
         store: Arc<dyn EventStore<AssetEvent>>,
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn AssetCatalog>,
+        memberships: Arc<dyn MembershipCatalog>,
         contents: Arc<dyn Contents>,
         images: Arc<dyn Images>,
         authorizer: Arc<dyn Authorizer>,
@@ -50,6 +57,7 @@ impl AssetsCore {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             transactions,
             catalog,
+            memberships,
             contents,
             images,
             authorizer,
@@ -184,6 +192,66 @@ impl AssetsCore {
         Ok(self.contents.forget(&id).await?)
     }
 
+    /// Remembers an account a member of a project, or no more, as the project's members told it at a version, so whom its own assets are shown to follows.
+    pub async fn remember_membership(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        member: bool,
+    ) -> Result<(), AssetsError> {
+        let membership = Membership {
+            project: ProjectLink::from(project),
+            account: account.clone(),
+        };
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if member {
+                self.memberships
+                    .remember(transaction, &membership, version)
+                    .await?;
+            } else {
+                self.memberships
+                    .forget(transaction, &membership, version, self.clock.now())
+                    .await?;
+            }
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, its project deleted: nobody shares it any more.
+    pub async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        let project = ProjectLink::from(project);
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.memberships
+                .forget_project(transaction, &project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Lets go of what only guarded against a word about members heard late, once none may be any more.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, AssetsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(
+                self.memberships
+                    .forget_tombstones_laid_before(transaction, before, at_most)
+                    .await?,
+            )
+        })
+    }
+
     async fn kept(
         &self,
         id: &AssetId,
@@ -266,16 +334,24 @@ impl AssetsCore {
         Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 
-    /// Whether the agent may see an asset: a project's, by reading the project; an account's, for now, the account itself alone.
+    /// Whether the agent may see an asset: a project's, by reading the project; an account's, by being the account or sharing a project with it.
     async fn may_see(&self, agent: &Agent, owner: &Owner) -> Result<bool, AssetsError> {
-        match owner {
-            Owner::Project(project) => Ok(self
+        match (owner, agent) {
+            (Owner::Project(project), _) => Ok(self
                 .authorizer
                 .may(agent, Act::Read, project.as_str())
                 .await?),
-            Owner::Account(account) => {
-                Ok(matches!(agent, Agent::Account(acting) if acting == account))
+            (Owner::Account(account), Agent::Account(acting)) if acting == account => Ok(true),
+            (Owner::Account(account), Agent::Account(acting)) => {
+                transacting::retrying!(&*self.transactions, |transaction| {
+                    Ok::<_, AssetsError>(
+                        self.memberships
+                            .share_a_project(transaction, acting, account)
+                            .await?,
+                    )
+                })
             }
+            (Owner::Account(_), _) => Ok(false),
         }
     }
 

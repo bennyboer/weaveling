@@ -9,6 +9,8 @@ sqlx = { workspace = true, optional = true }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 assets-core = { version = "0.1.0", path = "../core", package = "weaveling-assets-core" }
@@ -20,6 +22,6 @@ assets-messaging = { version = "0.1.0", path = "../adapters/messaging", package 
 assets-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-assets-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "assets-catalog/postgres", "assets-contents/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "assets-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "assets-catalog/postgres", "assets-contents/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "assets-catalog/sqlite"]
 

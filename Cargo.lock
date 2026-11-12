@@ -5229,12 +5229,16 @@ dependencies = [
 name = "weaveling-assets-messaging"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "weaveling-assets-contract",
  "weaveling-assets-core",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
+ "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5274,10 +5278,15 @@ dependencies = [
  "weaveling-assets-contents",
  "weaveling-assets-contract",
  "weaveling-assets-core",
+ "weaveling-assets-messaging",
  "weaveling-assets-rest",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
+ "weaveling-members-contract",
+ "weaveling-messaging",
  "weaveling-serving",
  "weaveling-transacting",
 ]
@@ -5294,7 +5303,9 @@ dependencies = [
  "weaveling-assets-messaging",
  "weaveling-assets-rest",
  "weaveling-assets-store",
+ "weaveling-chores",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-outbox",
  "weaveling-transacting",
  "weaveling-wiring",

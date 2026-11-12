@@ -15,6 +15,9 @@ authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", pack
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
+eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishing", package = "weaveling-eventpublishing", features = ["testing"] }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 serving = { version = "0.1.0", path = "../../../libraries/serving", package = "weaveling-serving" }
 
 assets-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-assets-catalog" }
@@ -22,3 +25,6 @@ assets-contract = { version = "0.1.0", path = "../contract", package = "weavelin
 assets-contents = { version = "0.1.0", path = "../adapters/contents", package = "weaveling-assets-contents" }
 assets-core = { version = "0.1.0", path = "../core", package = "weaveling-assets-core" }
 assets-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-assets-rest" }
+assets-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-assets-messaging" }
+
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }

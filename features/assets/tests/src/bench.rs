@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use assets_catalog::InMemoryAssetCatalog;
+use assets_catalog::{InMemoryAssetCatalog, InMemoryMembershipCatalog};
 use assets_contents::InMemoryContents;
 use assets_core::{
     AssetCatalog, AssetsCore, Format, ImageRefused, Images, Limits, Picture, Prepared, ProjectLink,
@@ -15,6 +15,7 @@ use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use transacting::{InMemoryTransactions, Transactions};
 
 pub const THE_LOOM: &str = "project_loom";
+pub const THE_WEFT: &str = "project_weft";
 pub const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
 pub const READER: [Act; 1] = [Act::Read];
 
@@ -129,12 +130,14 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
     let contents = Arc::new(InMemoryContents::new());
     let catalog = Arc::new(InMemoryAssetCatalog::new());
     let transactions = Arc::new(InMemoryTransactions::new());
+    let memberships = Arc::new(InMemoryMembershipCatalog::new());
 
     Bench {
         assets: AssetsCore::new(
             Arc::new(InMemoryEventStore::new()),
             transactions.clone(),
             catalog.clone(),
+            memberships,
             contents.clone(),
             images.clone(),
             roles.clone(),
