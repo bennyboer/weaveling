@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use assets_catalog::{InMemoryAssetCatalog, InMemoryMembershipCatalog};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryMembershipCatalog};
 use assets_contents::{FolderContents, InMemoryContents};
-use assets_core::{AssetCatalog, AssetEvent, AssetsCore, Contents, MembershipCatalog};
+use assets_core::{
+    AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents, MembershipCatalog,
+};
 use assets_images::WebpImages;
 use assets_messaging::RememberMembershipsListener;
 use chores::ForgetOldTombstones;
@@ -22,6 +24,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn AssetCatalog>,
     pub memberships: Arc<dyn MembershipCatalog>,
+    pub account_limits: Arc<dyn AccountLimits>,
     pub contents: Arc<dyn Contents>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
@@ -41,6 +44,7 @@ pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
         ports.transactions.clone(),
         ports.catalog.clone(),
         ports.memberships.clone(),
+        ports.account_limits.clone(),
         ports.contents.clone(),
         Arc::new(WebpImages),
         context.authorizer.clone(),
@@ -124,6 +128,7 @@ impl Feature for AssetFeature {
             transactions,
             catalog: Arc::new(InMemoryAssetCatalog::new()),
             memberships: Arc::new(InMemoryMembershipCatalog::new()),
+            account_limits: Arc::new(InMemoryAccountLimits::new()),
             contents: Arc::new(InMemoryContents::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
@@ -149,6 +154,7 @@ impl Feature for AssetFeature {
             transactions,
             catalog: Arc::new(assets_catalog::PostgresAssetCatalog::new()),
             memberships: Arc::new(assets_catalog::PostgresMembershipCatalog::new()),
+            account_limits: Arc::new(assets_catalog::PostgresAccountLimits::new()),
             contents: Arc::new(assets_contents::PostgresContents::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
@@ -186,6 +192,7 @@ impl Feature for AssetFeature {
             transactions,
             catalog: Arc::new(assets_catalog::SqliteAssetCatalog::new()),
             memberships: Arc::new(assets_catalog::SqliteMembershipCatalog::new()),
+            account_limits: Arc::new(assets_catalog::SqliteAccountLimits::new()),
             contents: Arc::new(FolderContents::new(folder)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,

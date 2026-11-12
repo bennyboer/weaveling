@@ -9,6 +9,7 @@ use eventsourcing::{
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
+use crate::account_limits::AccountLimits;
 use crate::asset::{Asset, AssetCommand, AssetEvent, KIND, Owner, ProjectLink};
 use crate::catalog::{AssetCatalog, AssetSummary};
 use crate::contents::{Contents, Piece};
@@ -34,6 +35,7 @@ pub struct AssetsCore {
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn AssetCatalog>,
     memberships: Arc<dyn MembershipCatalog>,
+    account_limits: Arc<dyn AccountLimits>,
     contents: Arc<dyn Contents>,
     images: Arc<dyn Images>,
     authorizer: Arc<dyn Authorizer>,
@@ -48,6 +50,7 @@ impl AssetsCore {
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn AssetCatalog>,
         memberships: Arc<dyn MembershipCatalog>,
+        account_limits: Arc<dyn AccountLimits>,
         contents: Arc<dyn Contents>,
         images: Arc<dyn Images>,
         authorizer: Arc<dyn Authorizer>,
@@ -58,6 +61,7 @@ impl AssetsCore {
             transactions,
             catalog,
             memberships,
+            account_limits,
             contents,
             images,
             authorizer,
@@ -292,8 +296,9 @@ impl AssetsCore {
                 .catalog
                 .usage_within(transaction, uploader.as_ref(), project.as_ref())
                 .await?;
+            let limits = self.limits_of(transaction, uploader.as_ref()).await?;
             if let Some(limit) =
-                crate::limits::first_passed(self.limits.on_what_is_kept(usage, counted), total_size)
+                crate::limits::first_passed(limits.on_what_is_kept(usage, counted), total_size)
             {
                 return Err(AssetsError::LimitReached(limit));
             }
@@ -328,6 +333,27 @@ impl AssetsCore {
 
             Ok::<_, AssetsError>(())
         })
+    }
+
+    /// The limits an upload by the account is held to: its own in place of the one of every account, where the operator gave it one and accounts are held to any.
+    async fn limits_of(
+        &self,
+        transaction: &mut Transaction,
+        uploader: Option<&AccountId>,
+    ) -> Result<Limits, AssetsError> {
+        let (Some(account), Some(_)) = (uploader, self.limits.each_account) else {
+            return Ok(self.limits);
+        };
+
+        Ok(
+            match self.account_limits.limit_of(transaction, account).await? {
+                Some(own) => Limits {
+                    each_account: Some(own),
+                    ..self.limits
+                },
+                None => self.limits,
+            },
+        )
     }
 
     async fn standing(&self, id: &AssetId) -> Result<Standing<Asset>, AssetsError> {

@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use assets_catalog::{InMemoryAssetCatalog, InMemoryMembershipCatalog};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryMembershipCatalog};
 use assets_contents::InMemoryContents;
 use assets_core::{
-    AssetCatalog, AssetsCore, Format, ImageRefused, Images, Limits, Picture, Prepared, ProjectLink,
-    Usage,
+    AccountLimits, AssetCatalog, AssetsCore, Format, ImageRefused, Images, Limits, Picture,
+    Prepared, ProjectLink, Usage,
 };
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
@@ -92,6 +92,7 @@ pub struct Bench {
     pub images: Arc<FakeImages>,
     pub contents: Arc<InMemoryContents>,
     pub catalog: Arc<InMemoryAssetCatalog>,
+    account_limits: Arc<InMemoryAccountLimits>,
     transactions: Arc<InMemoryTransactions>,
 }
 
@@ -131,6 +132,7 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
     let catalog = Arc::new(InMemoryAssetCatalog::new());
     let transactions = Arc::new(InMemoryTransactions::new());
     let memberships = Arc::new(InMemoryMembershipCatalog::new());
+    let account_limits = Arc::new(InMemoryAccountLimits::new());
 
     Bench {
         assets: AssetsCore::new(
@@ -138,6 +140,7 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
             transactions.clone(),
             catalog.clone(),
             memberships,
+            account_limits.clone(),
             contents.clone(),
             images.clone(),
             roles.clone(),
@@ -147,11 +150,31 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
         images,
         contents,
         catalog,
+        account_limits,
         transactions,
     }
 }
 
 impl Bench {
+    /// Gives Ada a limit of her own, as the operator would, or takes hers back.
+    pub async fn adas_own_limit(&self, most: Option<u64>) {
+        let ada = AccountId::from("account_ada");
+        let mut transaction = self
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
+        match most {
+            Some(most) => self.account_limits.give(&mut transaction, &ada, most).await,
+            None => self.account_limits.take_back(&mut transaction, &ada).await,
+        }
+        .expect("the limits should be reached");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+    }
+
     /// What the installation, Ada and the loom hold.
     pub async fn usage(&self) -> Usage {
         let mut transaction = self

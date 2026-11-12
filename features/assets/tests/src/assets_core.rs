@@ -399,3 +399,102 @@ async fn nobody_keeps_photos_of_their_own_without_accounts() {
     assert_eq!(bench.images.asked(), 0);
     assert_eq!(bench.contents.pieces(), 0);
 }
+
+#[tokio::test]
+async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_account_s() {
+    // given: what one photo takes, and every account held to one photo and a half
+    let one = {
+        let bench = a_bench();
+        bench
+            .assets
+            .upload_as_own(A_PHOTO.to_vec(), &ada())
+            .await
+            .expect("an account uploads its own")
+            .1
+            .state
+            .total_size()
+    };
+    let bench = a_bench_limited(Limits {
+        each_account: Some(one * 3 / 2),
+        ..Limits::default()
+    });
+    // and: Ada given room for three photos of her own
+    bench.adas_own_limit(Some(one * 3)).await;
+
+    // when: she uploads three photos
+    for _ in 0..3 {
+        bench
+            .assets
+            .upload_as_own(A_PHOTO.to_vec(), &ada())
+            .await
+            .expect("her own limit takes three");
+    }
+    // and: a fourth
+    let refused = bench.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
+
+    // then: the fourth is refused, told her own limit
+    assert!(
+        matches!(
+            refused,
+            Err(AssetsError::LimitReached(Limit { bound: Bound::Account, most, used }))
+                if most == one * 3 && used == one * 3
+        ),
+        "{refused:?}"
+    );
+    // and: Bo is held to every account's limit still
+    bench
+        .assets
+        .upload_as_own(A_PHOTO.to_vec(), &bo())
+        .await
+        .expect("his first fits");
+    let his = bench.assets.upload_as_own(A_PHOTO.to_vec(), &bo()).await;
+    assert!(
+        matches!(
+            his,
+            Err(AssetsError::LimitReached(Limit { bound: Bound::Account, most, .. }))
+                if most == one * 3 / 2
+        ),
+        "{his:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_account_whose_own_limit_was_taken_back_is_held_to_every_account_s_again() {
+    // given: every account held to one byte, and Ada given a gigabyte, then taken back
+    let bench = a_bench_limited(Limits {
+        each_account: Some(1),
+        ..Limits::default()
+    });
+    bench.adas_own_limit(Some(1 << 30)).await;
+    bench.adas_own_limit(None).await;
+
+    // when: she uploads a photo
+    let refused = bench.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
+
+    // then: every account's limit holds her
+    assert!(
+        matches!(
+            refused,
+            Err(AssetsError::LimitReached(Limit {
+                bound: Bound::Account,
+                most: 1,
+                ..
+            }))
+        ),
+        "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn without_accounts_a_limit_given_an_account_holds_nobody() {
+    // given: no account held to any limit, as in local mode, and Ada given one byte nonetheless
+    let bench = a_bench();
+    bench.adas_own_limit(Some(1)).await;
+
+    // expect: her upload is taken
+    bench
+        .assets
+        .upload_as_own(A_PHOTO.to_vec(), &ada())
+        .await
+        .expect("a limit of her own counts only where accounts are held to one");
+}
