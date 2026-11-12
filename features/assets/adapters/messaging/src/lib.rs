@@ -1,5 +1,5 @@
-mod memberships;
+mod access;
 mod publishing;
 
-pub use memberships::RememberMembershipsListener;
+pub use access::{RememberOperatorsListener, RememberRolesListener, RememberTrashListener};
 pub use publishing::message_for;

@@ -73,6 +73,7 @@ impl AssetSettings {
                 each_project: self.most_each_project,
             },
             folder: self.folder.clone(),
+            with_accounts: accounts == Accounts::On,
         }
     }
 }

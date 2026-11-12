@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use ids::InvalidId;
@@ -24,6 +25,8 @@ pub enum AssetsError {
     Image(#[from] ImageRefused),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
     #[error("there is no such project")]

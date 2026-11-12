@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+access = { version = "0.1.0", path = "../../../../libraries/access", package = "weaveling-access" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
@@ -15,7 +16,9 @@ transacting = { version = "0.1.0", path = "../../../../libraries/transacting", p
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
+projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

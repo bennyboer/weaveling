@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{KeptAccess, Role};
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{
@@ -17,7 +18,6 @@ use crate::error::AssetsError;
 use crate::id::AssetId;
 use crate::images::{Images, Prepared};
 use crate::limits::{Counted, Limits};
-use crate::memberships::{Membership, MembershipCatalog};
 use crate::preparing;
 
 /// What an account's uploads take together, and the most they may, where they are held to any.
@@ -41,7 +41,7 @@ pub struct AssetsCore {
     events: Arc<EventSourcingService<Asset>>,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn AssetCatalog>,
-    memberships: Arc<dyn MembershipCatalog>,
+    access: KeptAccess,
     account_limits: Arc<dyn AccountLimits>,
     contents: Arc<dyn Contents>,
     images: Arc<dyn Images>,
@@ -56,7 +56,7 @@ impl AssetsCore {
         store: Arc<dyn EventStore<AssetEvent>>,
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn AssetCatalog>,
-        memberships: Arc<dyn MembershipCatalog>,
+        access: KeptAccess,
         account_limits: Arc<dyn AccountLimits>,
         contents: Arc<dyn Contents>,
         images: Arc<dyn Images>,
@@ -67,7 +67,7 @@ impl AssetsCore {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             transactions,
             catalog,
-            memberships,
+            access,
             account_limits,
             contents,
             images,
@@ -223,52 +223,82 @@ impl AssetsCore {
         })
     }
 
-    /// Remembers an account a member of a project, or no more, as the project's members told it at a version, so whom its own assets are shown to follows.
-    pub async fn remember_membership(
+    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    pub async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
         account: &AccountId,
         version: Version,
-        member: bool,
+        role: Option<Role>,
     ) -> Result<(), AssetsError> {
-        let membership = Membership {
-            project: ProjectLink::from(project),
-            account: account.clone(),
-        };
         transacting::joining!(&*self.transactions, within, |transaction| {
-            if member {
-                self.memberships
-                    .remember(transaction, &membership, version)
-                    .await?;
-            } else {
-                self.memberships
-                    .forget(transaction, &membership, version, self.clock.now())
-                    .await?;
-            }
-
-            Ok::<_, AssetsError>(())
-        })
-    }
-
-    /// Remembers a project's members disbanded, its project deleted: nobody shares it any more.
-    pub async fn remember_disbanded(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        version: Version,
-    ) -> Result<(), AssetsError> {
-        let project = ProjectLink::from(project);
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.memberships
-                .forget_project(transaction, &project, version, self.clock.now())
+            self.access
+                .remember_role(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    role,
+                    self.clock.now(),
+                )
                 .await?;
 
             Ok::<_, AssetsError>(())
         })
     }
 
-    /// Lets go of what only guarded against a word about members heard late, once none may be any more.
+    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    pub async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_disbanded(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers whether an account runs the instance, as the accounts told it at a version.
+    pub async fn remember_operator(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        operator: bool,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_operator(transaction, account, version, operator, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Lets go of what only guarded against a word about who may do what heard late, once none may be any more.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -276,7 +306,7 @@ impl AssetsCore {
     ) -> Result<u64, AssetsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
             Ok::<_, AssetsError>(
-                self.memberships
+                self.access
                     .forget_tombstones_laid_before(transaction, before, at_most)
                     .await?,
             )
@@ -396,13 +426,7 @@ impl AssetsCore {
                 .await?),
             (Owner::Account(account), Agent::Account(acting)) if acting == account => Ok(true),
             (Owner::Account(account), Agent::Account(acting)) => {
-                transacting::retrying!(&*self.transactions, |transaction| {
-                    Ok::<_, AssetsError>(
-                        self.memberships
-                            .share_a_project(transaction, acting, account)
-                            .await?,
-                    )
-                })
+                Ok(self.access.share_a_project(acting, account).await?)
             }
             (Owner::Account(_), _) => Ok(false),
         }

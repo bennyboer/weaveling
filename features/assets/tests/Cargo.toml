@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
 
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
@@ -28,3 +29,4 @@ assets-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveli
 assets-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-assets-messaging" }
 
 members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

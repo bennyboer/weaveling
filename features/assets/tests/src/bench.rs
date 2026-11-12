@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryMembershipCatalog};
+use access::{InMemoryAccess, KeptAccess};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
 use assets_contents::InMemoryContents;
 use assets_core::{
     AccountLimits, AssetCatalog, AssetsCore, Format, ImageRefused, Images, Limits, Picture,
@@ -131,7 +132,7 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
     let contents = Arc::new(InMemoryContents::new());
     let catalog = Arc::new(InMemoryAssetCatalog::new());
     let transactions = Arc::new(InMemoryTransactions::new());
-    let memberships = Arc::new(InMemoryMembershipCatalog::new());
+    let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let account_limits = Arc::new(InMemoryAccountLimits::new());
 
     Bench {
@@ -139,7 +140,7 @@ fn bench_of(limits: Limits, refusing: Option<ImageRefused>) -> Bench {
             Arc::new(InMemoryEventStore::new()),
             transactions.clone(),
             catalog.clone(),
-            memberships,
+            access,
             account_limits.clone(),
             contents.clone(),
             images.clone(),

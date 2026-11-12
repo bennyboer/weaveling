@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryMembershipCatalog};
+use access::{InMemoryAccess, KeptAccess};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
 use assets_contents::{FolderContents, InMemoryContents};
-use assets_core::{
-    AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents, MembershipCatalog,
-};
+use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents};
 use assets_images::WebpImages;
-use assets_messaging::RememberMembershipsListener;
+use assets_messaging::{RememberOperatorsListener, RememberRolesListener, RememberTrashListener};
+use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -23,31 +23,39 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<AssetEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn AssetCatalog>,
-    pub memberships: Arc<dyn MembershipCatalog>,
+    pub access: KeptAccess,
     pub account_limits: Arc<dyn AccountLimits>,
     pub contents: Arc<dyn Contents>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
     pub limits: Limits,
+    pub with_accounts: bool,
 }
 
-/// What the operator chose for assets: the limits they are held to, and a folder of their own to keep them in, in place of the database or the data's own folder.
+/// What the operator chose for assets: the limits they are held to, and a folder of their own to keep them in, in place of the database or the data's own folder; and whether there are accounts, who may do what then being asked of what the assets heard, and otherwise allowed everyone.
 #[derive(Debug, Clone, Default)]
 pub struct Keeping {
     pub limits: Limits,
     pub folder: Option<PathBuf>,
+    pub with_accounts: bool,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
+    let authorizer: Arc<dyn Authorizer> = if ports.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    };
+
     AssetsCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
-        ports.memberships.clone(),
+        ports.access.clone(),
         ports.account_limits.clone(),
         ports.contents.clone(),
         Arc::new(WebpImages),
-        context.authorizer.clone(),
+        authorizer,
         context.clock.clone(),
     )
     .limited(ports.limits)
@@ -58,12 +66,14 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let assets = core(ports, context);
 
     Wired::serving(assets_rest::router(assets.clone()))
-        .listening(vec![Arc::new(
-            hearing.inboxed(RememberMembershipsListener::new(assets.clone())),
-        )])
+        .listening(vec![
+            Arc::new(hearing.inboxed(RememberRolesListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberTrashListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberOperatorsListener::new(assets.clone()))),
+        ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
-                "forget-old-asset-membership-tombstones",
+                "forget-old-asset-access-tombstones",
                 chores::tombstones_by(move |before, at_most| {
                     let assets = assets.clone();
                     async move { assets.forget_tombstones_laid_before(before, at_most).await }
@@ -82,6 +92,7 @@ pub async fn assembled_assets(
     let ports = wiring::ports::<AssetFeature>(storage, context).await?;
     let ports = Ports {
         limits: keeping.limits,
+        with_accounts: keeping.with_accounts,
         contents: match keeping.folder {
             Some(folder) => Arc::new(FolderContents::new(folder)),
             None => ports.contents,
@@ -127,12 +138,13 @@ impl Feature for AssetFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryAssetCatalog::new()),
-            memberships: Arc::new(InMemoryMembershipCatalog::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             account_limits: Arc::new(InMemoryAccountLimits::new()),
             contents: Arc::new(InMemoryContents::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
+            with_accounts: false,
         }
     }
 
@@ -153,12 +165,13 @@ impl Feature for AssetFeature {
             events,
             transactions,
             catalog: Arc::new(assets_catalog::PostgresAssetCatalog::new()),
-            memberships: Arc::new(assets_catalog::PostgresMembershipCatalog::new()),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool.clone()))),
             account_limits: Arc::new(assets_catalog::PostgresAccountLimits::new()),
             contents: Arc::new(assets_contents::PostgresContents::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
+            with_accounts: false,
         })
     }
 
@@ -170,6 +183,7 @@ impl Feature for AssetFeature {
             assets_catalog::postgres::migrations(),
             assets_contents::postgres::migrations(),
             inbox::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -191,12 +205,13 @@ impl Feature for AssetFeature {
             events,
             transactions,
             catalog: Arc::new(assets_catalog::SqliteAssetCatalog::new()),
-            memberships: Arc::new(assets_catalog::SqliteMembershipCatalog::new()),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool.clone()))),
             account_limits: Arc::new(assets_catalog::SqliteAccountLimits::new()),
             contents: Arc::new(FolderContents::new(folder)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
+            with_accounts: false,
         })
     }
 
@@ -207,6 +222,7 @@ impl Feature for AssetFeature {
             outbox::sqlite::migrations(),
             assets_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 

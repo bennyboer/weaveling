@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use assets_core::{AssetsError, Content};
-use assets_messaging::RememberMembershipsListener;
+use assets_messaging::{RememberRolesListener, RememberTrashListener};
 use eventsourcing::{Agent, ServiceError};
 use inbox::{InMemoryInbox, Inboxed};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
+use projects_contract::TRASHED;
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
@@ -13,9 +14,9 @@ use crate::bench::{self, Bench, THE_LOOM, THE_WEFT};
 
 const A_PORTRAIT: &[u8] = b"the bytes of a portrait";
 
-fn heard_by(bench: &Bench) -> Inboxed<RememberMembershipsListener> {
+fn heard_by(bench: &Bench) -> Inboxed<RememberRolesListener> {
     Inboxed::new(
-        RememberMembershipsListener::new(bench.assets.clone()),
+        RememberRolesListener::new(bench.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(clock::FixedClock::new(
             clock::at(1_700_000_000),
@@ -62,7 +63,7 @@ fn left(project: &str, version: u64, account: &str) -> Message {
     )
 }
 
-async fn hear(listener: &Inboxed<RememberMembershipsListener>, message: Message) {
+async fn hear(listener: &Inboxed<RememberRolesListener>, message: Message) {
     listener
         .handle(&message)
         .await
@@ -70,7 +71,7 @@ async fn hear(listener: &Inboxed<RememberMembershipsListener>, message: Message)
 }
 
 /// Ada founds the loom and Bo joins it; Grace founds the weft alone.
-async fn the_members_heard(listener: &Inboxed<RememberMembershipsListener>) {
+async fn the_members_heard(listener: &Inboxed<RememberRolesListener>) {
     hear(listener, founded(THE_LOOM, "account_ada")).await;
     hear(listener, joined(THE_LOOM, 2, "account_bo")).await;
     hear(listener, founded(THE_WEFT, "account_grace")).await;
@@ -94,24 +95,19 @@ fn is_not_found(seen: &Result<Content, AssetsError>) -> bool {
 }
 
 #[tokio::test]
-async fn the_listener_hears_who_joins_and_goes_but_not_roles_or_abandoning() {
+async fn the_listener_hears_who_joins_goes_and_changes_role_but_not_abandoning() {
     // given: the listener
     let listener = heard_by(&bench::a_bench());
 
     // expect: it hears every word on who is a member
-    for routing in [FOUNDED, JOINED, LEFT, REMOVED, DISBANDED] {
+    for routing in [FOUNDED, JOINED, ROLE_CHANGED, LEFT, REMOVED, DISBANDED] {
         assert!(
             listener.hears(&RoutingKey::parse(routing).expect("a declared key")),
             "{routing}"
         );
     }
-    // and: not what changes nobody's membership
-    for routing in [ROLE_CHANGED, ABANDONED] {
-        assert!(
-            !listener.hears(&RoutingKey::parse(routing).expect("a declared key")),
-            "{routing}"
-        );
-    }
+    // and: not the abandoning that follows the last removal
+    assert!(!listener.hears(&RoutingKey::parse(ABANDONED).expect("a declared key")));
 }
 
 #[tokio::test]
@@ -206,5 +202,39 @@ async fn a_joining_heard_after_the_leaving_that_followed_it_shows_nothing() {
     // then: she does not see the portrait
     assert!(is_not_found(
         &bench.assets.content(&portrait, None, &bench::grace()).await
+    ));
+}
+
+#[tokio::test]
+async fn a_project_in_the_trash_is_shared_by_nobody_until_restored() {
+    // given: Ada and Bo in the loom, and a portrait of Ada's own
+    let bench = bench::a_bench();
+    the_members_heard(&heard_by(&bench)).await;
+    let portrait = adas_portrait(&bench).await;
+    let trash = Inboxed::new(
+        RememberTrashListener::new(bench.assets.clone()),
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryInbox::new(Arc::new(clock::FixedClock::new(
+            clock::at(1_700_000_000),
+        )))),
+    );
+
+    // when: the loom is put in the trash
+    trash
+        .handle(&eventpublishing::published(
+            TRASHED,
+            "project",
+            THE_LOOM,
+            4,
+            json!({ "version": 4, "name": "TRASHED", "until": "2026-12-13T00:00:00Z" }),
+            &Agent::System,
+            clock::at(1_700_000_000),
+        ))
+        .await
+        .expect("a project put in the trash is taken in");
+
+    // then: Bo sees the portrait no more
+    assert!(is_not_found(
+        &bench.assets.content(&portrait, None, &bench::bo()).await
     ));
 }

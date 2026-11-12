@@ -5222,6 +5222,7 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "weaveling-access",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
@@ -5245,6 +5246,8 @@ name = "weaveling-assets-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "weaveling-access",
+ "weaveling-accounts-contract",
  "weaveling-assets-contract",
  "weaveling-assets-core",
  "weaveling-clock",
@@ -5253,6 +5256,7 @@ dependencies = [
  "weaveling-inbox",
  "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-projects-contract",
  "weaveling-transacting",
 ]
 
@@ -5289,6 +5293,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-access",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
  "weaveling-assets-contract",
@@ -5302,6 +5307,7 @@ dependencies = [
  "weaveling-inbox",
  "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-projects-contract",
  "weaveling-serving",
  "weaveling-transacting",
 ]
@@ -5311,6 +5317,7 @@ name = "weaveling-assets-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "weaveling-access",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
  "weaveling-assets-core",
@@ -5318,6 +5325,7 @@ dependencies = [
  "weaveling-assets-messaging",
  "weaveling-assets-rest",
  "weaveling-assets-store",
+ "weaveling-authorizing",
  "weaveling-chores",
  "weaveling-eventsourcing",
  "weaveling-inbox",
