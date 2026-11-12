@@ -14,4 +14,4 @@ Who may do what, as far as a feature has heard. Each feature that asks whether s
 
 **The library knows no feature's contract:** each feature maps the members', projects' and accounts' events onto the port in a listener of its own, near alike from feature to feature, so libraries stay below features without exception.
 
-In memory so far, held to one conformance suite.
+**Each feature lays the tables down in its own database,** as with [`belonging`](../belonging/README.md), a shared mechanism rather than shared data: `access_roles`, `access_disbanded`, `access_trash` and `access_operators`, with their own migration ledger, `_sqlx_migrations_access`; in memory, on PostgreSQL and on SQLite, held to one conformance suite. What is told is written in the caller's transaction; what is asked is read on the feature's own pool, so the `Authorizer` over it answers without one.

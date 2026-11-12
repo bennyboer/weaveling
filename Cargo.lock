@@ -4863,11 +4863,13 @@ name = "weaveling-access"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "thiserror 2.0.21",
  "time",
  "tokio",
  "weaveling-authorizing",
  "weaveling-eventsourcing",
+ "weaveling-test-harness",
  "weaveling-transacting",
 ]
 

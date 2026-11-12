@@ -2,7 +2,19 @@ mod memory;
 #[cfg(test)]
 mod suite;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+
 pub use memory::InMemoryAccess;
+
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresAccess;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteAccess;
 
 use std::error::Error;
 

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 
@@ -12,5 +13,10 @@ authorizing = { version = "0.1.0", path = "../authorizing", package = "weaveling
 eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
 transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
 
+[features]
+postgres = ["dep:sqlx", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }
