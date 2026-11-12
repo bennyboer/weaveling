@@ -21,25 +21,6 @@ CREATE TABLE asset_usage (
     PRIMARY KEY (bound, id)
 );
 
-CREATE TABLE asset_memberships (
-    project  TEXT    NOT NULL,
-    account  TEXT    NOT NULL,
-    version  INTEGER NOT NULL,
-    gone_at  TEXT   ,
-    PRIMARY KEY (project, account)
-);
-
-CREATE INDEX asset_memberships_by_account ON asset_memberships (account, project);
-CREATE INDEX asset_memberships_by_gone_at ON asset_memberships (gone_at);
-
-CREATE TABLE asset_disbanded_projects (
-    project  TEXT    PRIMARY KEY,
-    version  INTEGER NOT NULL,
-    laid_at  TEXT    NOT NULL
-);
-
-CREATE INDEX asset_disbanded_projects_by_laid_at ON asset_disbanded_projects (laid_at);
-
 CREATE TABLE asset_account_limits (
     account  TEXT    PRIMARY KEY,
     most     INTEGER NOT NULL
