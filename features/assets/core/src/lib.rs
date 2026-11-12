@@ -16,7 +16,7 @@ pub use account_limits::AccountLimits;
 pub use asset::{
     Asset, AssetCommand, AssetError, AssetEvent, Format, KIND, Owner, Picture, ProjectLink,
 };
-pub use assets::{AssetsCore, Content};
+pub use assets::{AssetsCore, Content, OwnUsage};
 pub use catalog::{AssetCatalog, AssetSummary, CatalogError};
 pub use contents::{Contents, ContentsError, Piece};
 pub use error::AssetsError;

@@ -20,6 +20,13 @@ use crate::limits::{Counted, Limits};
 use crate::memberships::{Membership, MembershipCatalog};
 use crate::preparing;
 
+/// What an account's uploads take together, and the most they may, where they are held to any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OwnUsage {
+    pub used: u64,
+    pub most: Option<u64>,
+}
+
 /// What is handed out of an asset: a variant, as WebP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Content {
@@ -194,6 +201,26 @@ impl AssetsCore {
         })?;
 
         Ok(self.contents.forget(&id).await?)
+    }
+
+    /// What the signed-in account's uploads take, wherever they went, and the most they may: its own limit, or the one of every account.
+    pub async fn usage_of(&self, agent: &Agent) -> Result<OwnUsage, AssetsError> {
+        let Agent::Account(account) = agent else {
+            return Err(AssetsError::NoAccount);
+        };
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let usage = self
+                .catalog
+                .usage_within(transaction, Some(account), None)
+                .await?;
+            let limits = self.limits_of(transaction, Some(account)).await?;
+
+            Ok::<_, AssetsError>(OwnUsage {
+                used: usage.account,
+                most: limits.each_account,
+            })
+        })
     }
 
     /// Remembers an account a member of a project, or no more, as the project's members told it at a version, so whom its own assets are shown to follows.

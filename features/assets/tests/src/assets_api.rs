@@ -1,4 +1,4 @@
-use assets_contract::{AssetDTO, OwnerDTO, refused};
+use assets_contract::{AssetDTO, OwnerDTO, UsageDTO, refused};
 use assets_core::{ImageRefused, Limits};
 use axum::Extension;
 use axum::http::StatusCode;
@@ -246,4 +246,57 @@ async fn an_upload_into_no_project_is_the_account_s_own_and_refused_without_one(
     let asset: AssetDTO = hers.json();
     assert_eq!(asset.owner, OwnerDTO::Account("account_ada".to_owned()));
     refused_as(local, StatusCode::FORBIDDEN, refused::NO_ACCOUNT);
+}
+
+#[tokio::test]
+async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_most_they_may() {
+    // given: every account held to a megabyte, Ada given two of her own
+    let bench = bench::a_bench_limited(Limits {
+        each_account: Some(1 << 20),
+        ..Limits::default()
+    });
+    bench.adas_own_limit(Some(2 << 20)).await;
+    // and: an image of hers in the loom and one of her own
+    let server = serving(&bench, bench::ada());
+    let into_the_loom: AssetDTO = uploaded(&server, THE_LOOM).await.json();
+    let her_own: AssetDTO = server
+        .post("/assets")
+        .bytes(b"a portrait".to_vec().into())
+        .await
+        .json();
+
+    // when: she and Bo ask what their uploads take
+    let hers: UsageDTO = server.get("/assets/usage").await.json();
+    let his: UsageDTO = serving(&bench, bench::bo())
+        .get("/assets/usage")
+        .await
+        .json();
+
+    // then: hers take both images, out of her own two megabytes, and his nothing, out of every account's one
+    assert_eq!(
+        hers,
+        UsageDTO {
+            used: into_the_loom.total_size + her_own.total_size,
+            most: Some(2 << 20),
+        }
+    );
+    assert_eq!(
+        his,
+        UsageDTO {
+            used: 0,
+            most: Some(1 << 20),
+        }
+    );
+}
+
+#[tokio::test]
+async fn without_an_account_there_is_no_usage_of_one_s_own() {
+    // given: nobody signed in, as without accounts
+    let bench = bench::a_bench();
+
+    // when: what one's uploads take is asked
+    let response = serving(&bench, Agent::Local).get("/assets/usage").await;
+
+    // then: it is refused, as nobody keeps assets of their own
+    refused_as(response, StatusCode::FORBIDDEN, refused::NO_ACCOUNT);
 }

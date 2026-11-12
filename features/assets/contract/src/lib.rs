@@ -41,6 +41,13 @@ pub struct AssetDTO {
     pub total_size: u64,
 }
 
+/// What the signed-in account's uploads take, in bytes, and the most they may, none where it is held to no limit.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct UsageDTO {
+    pub used: u64,
+    pub most: Option<u64>,
+}
+
 pub mod refused {
     pub const ID_INVALID: &str = "asset-id-invalid";
     pub const NOT_AN_IMAGE: &str = "asset-not-an-image";

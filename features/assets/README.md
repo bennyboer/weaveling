@@ -31,5 +31,6 @@ Events are kept by the [`eventsourcing`](../../libraries/eventsourcing) store th
 - `POST /assets?project=` takes the image into a project as the raw body, and `POST /assets` without one as the signed-in account's own (`AssetsCore::upload_as_own`, counted against the installation and the account alone; `403 asset-no-account` without accounts); the body is taken up to the upload's limit (or without any, where none is set, past axum's two megabytes), and answers `201` with an `AssetDTO` and its `ETag`.
 - `GET /assets/{id}/content?width=` hands out the narrowest variant at least as wide as asked, or the widest, as `image/webp` with `Cache-Control: private, max-age=31536000, immutable`, since an asset's pieces never change.
 - `DELETE /assets/{id}` answers `204`.
+- `GET /assets/usage` tells the signed-in account what its uploads take, wherever they went, and the most they may, its own limit or every account's, as `UsageDTO { used, most }`; `403 asset-no-account` without accounts.
 
 A limit reached is `413 asset-limit-reached` naming its `bound` (`upload`, `instance`, `account` or `project`), its `most` and what it holds, `used`; an image refused is `422`, `asset-not-an-image`, `asset-image-unreadable` or `asset-image-too-large`. The client has no words for these yet; they join its catalogue with the assets manager. It serves no routes yet.

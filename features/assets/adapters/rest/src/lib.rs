@@ -1,4 +1,4 @@
-use assets_contract::{AssetDTO, OwnerDTO, bound, format, refused};
+use assets_contract::{AssetDTO, OwnerDTO, UsageDTO, bound, format, refused};
 use assets_core::{
     Asset, AssetError, AssetsCore, AssetsError, Bound, Format, ImageRefused, Limit, Owner,
 };
@@ -24,6 +24,7 @@ pub fn router(assets: AssetsCore) -> Router {
 
     Router::new()
         .route("/assets", routing::post(upload).layer(taken))
+        .route("/assets/usage", routing::get(usage))
         .route("/assets/{id}", routing::delete(delete))
         .route("/assets/{id}/content", routing::get(content))
         .with_state(assets)
@@ -83,6 +84,18 @@ async fn content(
         found.bytes,
     )
         .into_response())
+}
+
+async fn usage(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+) -> Result<Json<UsageDTO>, Problem> {
+    let own = assets.usage_of(&acting).await.map_err(problem_of)?;
+
+    Ok(Json(UsageDTO {
+        used: own.used,
+        most: own.most,
+    }))
 }
 
 async fn delete(
