@@ -862,20 +862,20 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
     a_file(
         &folder,
         BESIDE,
-        "[assets]\nmost_each_upload_mb = 5\nmost_kept_mb = 100\nmost_each_account_mb = 50\nmost_each_project_mb = 70\nfolder = \"/srv/assets\"\n",
+        "[assets]\nmost_each_upload = \"5MB\"\nmost_kept = \"1.5 GB\"\nmost_each_account = \"50mb\"\nmost_each_project = \"4096KB\"\nfolder = \"/srv/assets\"\n",
     );
 
     // when: the settings are read
     let filed = Settings::read(no_arguments(), variables(&[]), &folder).expect("the file is read");
 
-    // then: the file's are taken, in bytes
+    // then: the file's are taken, in bytes, whatever their unit
     assert_eq!(
         filed.assets(),
         Ok(AssetSettings {
             most_each_upload: 5 * 1024 * 1024,
-            most_kept: Some(100 * 1024 * 1024),
+            most_kept: Some(1536 * 1024 * 1024),
             most_each_account: 50 * 1024 * 1024,
-            most_each_project: Some(70 * 1024 * 1024),
+            most_each_project: Some(4 * 1024 * 1024),
             folder: Some(PathBuf::from("/srv/assets")),
         })
     );
@@ -883,10 +883,10 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
     let varied = Settings::read(
         no_arguments(),
         variables(&[
-            (WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, "1"),
-            (WEAVELING_ASSETS_MOST_KEPT_MB, "2"),
-            (WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB, "3"),
-            (WEAVELING_ASSETS_MOST_EACH_PROJECT_MB, "4"),
+            (WEAVELING_ASSETS_MOST_EACH_UPLOAD, "1MB"),
+            (WEAVELING_ASSETS_MOST_KEPT, "2GB"),
+            (WEAVELING_ASSETS_MOST_EACH_ACCOUNT, "3MB"),
+            (WEAVELING_ASSETS_MOST_EACH_PROJECT, "4KB"),
             (WEAVELING_ASSETS_FOLDER, "elsewhere"),
         ]),
         &folder,
@@ -897,23 +897,30 @@ fn what_assets_may_take_and_where_is_read_from_the_file_and_a_variable_wins_over
         varied.assets(),
         Ok(AssetSettings {
             most_each_upload: 1024 * 1024,
-            most_kept: Some(2 * 1024 * 1024),
+            most_kept: Some(2 * 1024 * 1024 * 1024),
             most_each_account: 3 * 1024 * 1024,
-            most_each_project: Some(4 * 1024 * 1024),
+            most_each_project: Some(4 * 1024),
             folder: Some(PathBuf::from("elsewhere")),
         })
     );
 }
 
 #[test]
-fn a_size_for_assets_that_is_no_whole_number_above_nought_says_where_it_was_written() {
-    // given: a settings file taking nought, a share, and more than can be counted
-    for written in ["0", "1.5", "99999999999999999"] {
+fn a_size_for_assets_without_a_unit_or_of_nought_says_where_it_was_written_and_why() {
+    // given: a settings file taking a number alone, nought, a comma, an unknown unit and more than can be counted
+    for (written, why) in [
+        ("20", "no unit"),
+        ("\"20\"", "no unit"),
+        ("\"0MB\"", "nought"),
+        ("\"1,5GB\"", "a comma"),
+        ("\"20 megs\"", "unknown unit megs"),
+        ("\"99999999TB\"", "more than can be counted"),
+    ] {
         let folder = a_folder();
         a_file(
             &folder,
             BESIDE,
-            &format!("[assets]\nmost_kept_mb = {written}\n"),
+            &format!("[assets]\nmost_kept = {written}\n"),
         );
 
         // when: the asset settings are asked for
@@ -921,10 +928,12 @@ fn a_size_for_assets_that_is_no_whole_number_above_nought_says_where_it_was_writ
             .expect("the file itself is read")
             .assets();
 
-        // then: it is refused, naming the key and the value
+        // then: it is refused, naming the key, the value and what is wrong with it
         let refusal = refused.expect_err("no size of that").to_string();
         assert!(
-            refusal.contains("assets.most_kept_mb in") && refusal.contains(written),
+            refusal.contains("assets.most_kept in")
+                && refusal.contains(written.trim_matches('"'))
+                && refusal.contains(why),
             "{refusal}"
         );
     }

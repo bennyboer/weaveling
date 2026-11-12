@@ -21,6 +21,7 @@ tracing-subscriber = { workspace = true }
 ending = { version = "0.1.0", path = "../../libraries/ending", package = "weaveling-ending" }
 authorizing = { version = "0.1.0", path = "../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
+units = { version = "0.1.0", path = "../../libraries/units", package = "weaveling-units" }
 eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }

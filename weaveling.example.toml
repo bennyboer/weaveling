@@ -90,26 +90,28 @@
 # invitations_each_hour = 20
 
 [assets]
-# The most one upload may be, in megabytes, a whole number above nought; left
-# out, 20.
-# WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB
-# most_each_upload_mb = 20
+# Sizes are written with their unit, B, KB, MB, GB or TB, in any case, a
+# kilobyte being 1024 bytes; "1.5GB" is 1536MB. A number alone is refused.
+#
+# The most one upload may be; left out, 20MB.
+# WEAVELING_ASSETS_MOST_EACH_UPLOAD
+# most_each_upload = "20MB"
 #
 # The most the instance keeps for every image together, originals and the
-# sizes made of them, in megabytes; left out, as much as there is room for.
-# WEAVELING_ASSETS_MOST_KEPT_MB
-# most_kept_mb = 10240
+# sizes made of them; left out, as much as there is room for.
+# WEAVELING_ASSETS_MOST_KEPT
+# most_kept = "10GB"
 #
-# The most each account's uploads may take together, wherever they went, in
-# megabytes; left out, 1024. Held only where there are accounts; the operator
-# may give an account its own.
-# WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB
-# most_each_account_mb = 1024
+# The most each account's uploads may take together, wherever they went; left
+# out, 1GB. Held only where there are accounts; the operator may give an
+# account its own.
+# WEAVELING_ASSETS_MOST_EACH_ACCOUNT
+# most_each_account = "1GB"
 #
-# The most each project's images may take together, in megabytes; left out, as
-# much as the other limits leave.
-# WEAVELING_ASSETS_MOST_EACH_PROJECT_MB
-# most_each_project_mb = 2048
+# The most each project's images may take together; left out, as much as the
+# other limits leave.
+# WEAVELING_ASSETS_MOST_EACH_PROJECT
+# most_each_project = "2GB"
 #
 # Where images are kept: with PostgreSQL, in the database unless a folder is
 # named here; with the data in a folder, in its assets folder unless another

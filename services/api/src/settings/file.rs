@@ -56,10 +56,10 @@ struct FiledMail {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct FiledAssets {
-    most_each_upload_mb: Option<toml::Value>,
-    most_kept_mb: Option<toml::Value>,
-    most_each_account_mb: Option<toml::Value>,
-    most_each_project_mb: Option<toml::Value>,
+    most_each_upload: Option<toml::Value>,
+    most_kept: Option<toml::Value>,
+    most_each_account: Option<toml::Value>,
+    most_each_project: Option<toml::Value>,
     folder: Option<toml::Value>,
 }
 
@@ -98,18 +98,18 @@ impl Settings {
                 filed.mail.invitations_each_hour,
             ),
             flaky: setting(key("testing.flaky"), filed.testing.flaky),
-            assets_most_each_upload_mb: setting(
-                key("assets.most_each_upload_mb"),
-                filed.assets.most_each_upload_mb,
+            assets_most_each_upload: setting(
+                key("assets.most_each_upload"),
+                filed.assets.most_each_upload,
             ),
-            assets_most_kept_mb: setting(key("assets.most_kept_mb"), filed.assets.most_kept_mb),
-            assets_most_each_account_mb: setting(
-                key("assets.most_each_account_mb"),
-                filed.assets.most_each_account_mb,
+            assets_most_kept: setting(key("assets.most_kept"), filed.assets.most_kept),
+            assets_most_each_account: setting(
+                key("assets.most_each_account"),
+                filed.assets.most_each_account,
             ),
-            assets_most_each_project_mb: setting(
-                key("assets.most_each_project_mb"),
-                filed.assets.most_each_project_mb,
+            assets_most_each_project: setting(
+                key("assets.most_each_project"),
+                filed.assets.most_each_project,
             ),
             assets_folder: setting(key("assets.folder"), filed.assets.folder),
             totp_key: totp_key::secret(

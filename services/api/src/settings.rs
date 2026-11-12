@@ -24,9 +24,9 @@ use crate::{
 use file::BESIDE;
 
 pub use assets::{
-    AssetSettings, UnreadableAssets, WEAVELING_ASSETS_FOLDER,
-    WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB, WEAVELING_ASSETS_MOST_EACH_PROJECT_MB,
-    WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB, WEAVELING_ASSETS_MOST_KEPT_MB,
+    AssetSettings, UnfitSize, UnreadableAssets, WEAVELING_ASSETS_FOLDER,
+    WEAVELING_ASSETS_MOST_EACH_ACCOUNT, WEAVELING_ASSETS_MOST_EACH_PROJECT,
+    WEAVELING_ASSETS_MOST_EACH_UPLOAD, WEAVELING_ASSETS_MOST_KEPT,
 };
 pub use client_dir::WEAVELING_CLIENT_DIR;
 pub use hosts::{UnreadableHosts, WEAVELING_HOSTS};
@@ -90,10 +90,10 @@ pub struct Settings {
     mail_anyone_each_hour: Option<Setting>,
     mail_invitations_each_hour: Option<Setting>,
     flaky: Option<Setting>,
-    assets_most_each_upload_mb: Option<Setting>,
-    assets_most_kept_mb: Option<Setting>,
-    assets_most_each_account_mb: Option<Setting>,
-    assets_most_each_project_mb: Option<Setting>,
+    assets_most_each_upload: Option<Setting>,
+    assets_most_kept: Option<Setting>,
+    assets_most_each_account: Option<Setting>,
+    assets_most_each_project: Option<Setting>,
     assets_folder: Option<Setting>,
     totp_key: Option<Setting>,
 }
@@ -177,17 +177,17 @@ impl Settings {
             ),
             (WEAVELING_FLAKY, &mut self.flaky),
             (
-                WEAVELING_ASSETS_MOST_EACH_UPLOAD_MB,
-                &mut self.assets_most_each_upload_mb,
+                WEAVELING_ASSETS_MOST_EACH_UPLOAD,
+                &mut self.assets_most_each_upload,
             ),
-            (WEAVELING_ASSETS_MOST_KEPT_MB, &mut self.assets_most_kept_mb),
+            (WEAVELING_ASSETS_MOST_KEPT, &mut self.assets_most_kept),
             (
-                WEAVELING_ASSETS_MOST_EACH_ACCOUNT_MB,
-                &mut self.assets_most_each_account_mb,
+                WEAVELING_ASSETS_MOST_EACH_ACCOUNT,
+                &mut self.assets_most_each_account,
             ),
             (
-                WEAVELING_ASSETS_MOST_EACH_PROJECT_MB,
-                &mut self.assets_most_each_project_mb,
+                WEAVELING_ASSETS_MOST_EACH_PROJECT,
+                &mut self.assets_most_each_project,
             ),
             (WEAVELING_ASSETS_FOLDER, &mut self.assets_folder),
         ] {
