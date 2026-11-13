@@ -52,7 +52,7 @@ impl RememberIdeaProjectListener {
 impl KeptHandler for RememberIdeaProjectListener {
     const NAME: &'static str = "remember-project-of-idea";
     const LISTENS_TO: &'static [&'static str] = &[CAPTURED];
-    const WHEN_REFUSED: &'static str = "Where an idea appears is not shown.";
+    const WHEN_REFUSED: &'static str = "The appearances feature did not learn which project a new idea belongs to. So the places where this idea appears are not shown.";
 
     async fn take_in(
         &self,

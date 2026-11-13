@@ -60,7 +60,8 @@ impl SweepAssetsOfDeletedOwnerListener {
 impl Handler for SweepAssetsOfDeletedOwnerListener {
     const NAME: &'static str = "assets-sweep-deleted-owner";
     const LISTENS_TO: &'static [&'static str] = &[SWEEP_OWNER];
-    const WHEN_REFUSED: &'static str = "The images of a deleted project or account were not deleted, so they still take up storage.";
+    const WHEN_REFUSED: &'static str =
+        "The images of a deleted project or account were not deleted. They still take up storage.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

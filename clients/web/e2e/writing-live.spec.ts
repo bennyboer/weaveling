@@ -240,7 +240,7 @@ test("a channel that keeps dropping just after opening is tried again less and l
 });
 
 const renamedMeanwhile = (page: Page) =>
-  page.getByRole("dialog", { name: "Renamed meanwhile" });
+  page.getByRole("dialog", { name: "Renamed in the meantime" });
 
 async function renamedWhileIAmInIt(page: Page, named: string) {
   const { outline, ids, heard } = await aBookFollowedLive(page, named);
@@ -584,7 +584,7 @@ test("a section added beside mine tells me nothing", async ({ page }) => {
 });
 
 const removedMeanwhile = (page: Page) =>
-  page.getByRole("dialog", { name: "Removed meanwhile" });
+  page.getByRole("dialog", { name: "Removed in the meantime" });
 
 async function writingInASceneOfPartTwo(page: Page, named: string) {
   await aNewProject(page, named);
@@ -783,7 +783,7 @@ test("a new scene whose place is removed while it begins asks where its words go
 
   // then: i am asked where its words go
   await expect(placeGone(page)).toContainText(
-    "Someone else removed where your new scene was going. It begins “Hello”.",
+    "Someone else removed the place your new scene was going to. It begins “Hello”.",
   );
   // and: only discarding or putting it at the end is offered
   await expect(
@@ -856,7 +856,7 @@ test("a new section whose neighbour is removed while it begins can go to the end
 
   // then: i am asked where it goes
   await expect(placeGone(page)).toContainText(
-    "Someone else removed what your new section “Part Three” was going after.",
+    "Someone else removed the item your new section “Part Three” was going to follow.",
   );
   // when: i put it at the end of the book
   await placeGone(page)
@@ -939,9 +939,9 @@ test("a change made from a view that is behind is refused gently, and the view c
 
   // then: i am told gently the book had changed
   await expect(
-    page.getByRole("status").filter({ hasText: "meanwhile" }),
+    page.getByRole("status").filter({ hasText: "in the meantime" }),
   ).toHaveText(
-    "Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now.",
+    "Someone else changed the book in the meantime, so that could not be done. You now see the current version.",
   );
   // and: the book shows how it is now
   await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);

@@ -86,12 +86,12 @@ test("the operator sees whom they invited, when, and how each stands", async ({
     "Open until 30 Oct 2026",
   );
   await expect(row(page, "hedy@example.com")).toContainText(
-    "Ran out on 17 Oct 2026",
+    "Expired on 17 Oct 2026",
   );
   await expect(row(page, "ada@example.com")).toContainText(
     "Not needed: this email address already has an account",
   );
-  await expect(row(page, "hopper@example.com")).toContainText("Turned down");
+  await expect(row(page, "hopper@example.com")).toContainText("Declined");
   await expect(page.getByText("Nobody is invited just now.")).toHaveCount(0);
 });
 
@@ -220,7 +220,7 @@ test("an operator withdraws an open invitation, one run out or declined offers n
     EXPIRED.id,
   ]);
   // and: the one run out offers inviting again, not withdrawing
-  await expect(row(page, "hedy@example.com")).toContainText("Ran out on");
+  await expect(row(page, "hedy@example.com")).toContainText("Expired on");
   await expect(
     row(page, "hedy@example.com").getByRole("button", { name: "Withdraw" }),
   ).toHaveCount(0);
@@ -291,7 +291,7 @@ test("an invitation run out is invited again, the new one listed open above it",
     "Open until",
   );
   await expect(row(page, "hedy@example.com").last()).toContainText(
-    "Ran out on",
+    "Expired on",
   );
   expect(server.invited[0]).toMatchObject({
     email: "hedy@example.com",

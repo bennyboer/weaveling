@@ -19,7 +19,7 @@ impl RememberTrashedProjectsListener {
 impl KeptHandler for RememberTrashedProjectsListener {
     const NAME: &'static str = "accounts-remember-trashed-projects";
     const LISTENS_TO: &'static [&'static str] = &[TRASHED, RESTORED, DELETED];
-    const WHEN_REFUSED: &'static str = "A project put in the trash, restored or deleted did not reach accounts, so an invitation into it may be taken up while it is in the trash, or not once it is restored.";
+    const WHEN_REFUSED: &'static str = "The accounts feature did not learn that a project was put in the trash, restored or deleted. Someone may accept an invitation into the project while it is in the trash. Or an invitation may not work after the project was restored.";
 
     async fn take_in(
         &self,

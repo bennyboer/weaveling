@@ -2,9 +2,27 @@
 
 What one frame on a live channel looks like.
 
-`FrameDTO` is what a frame is `of`, its `version`, when it happened, `at`, if it was published, and the `event`. On the one socket, `/live`, the client asks with `AskedDTO` (`subscribe` with an id, a topic and what it is `about`; `unsubscribe`) and is told with `ToldDTO` (a `frame`, a `FrameDTO`; a `notice`, `ACCESS_CHANGED`; or `ended` with why, one of `ended`'s; each under the subscription's id). A socket whose session ends is closed with `SESSION_ENDED`. The server's [`live`](../live) writes it and its sieves read it, and the client reads it, so the shape is written once and cannot drift apart.
+A `FrameDTO` holds:
 
-The client subscribes to a project's ideas and reads what it is told:
+- what the frame is `of`,
+- its `version`,
+- `at`: when it happened, if it was published,
+- the `event`.
+
+There is one socket, `/live`. The client sends `AskedDTO` messages:
+
+- `subscribe`, with an id, a topic and what it is `about`,
+- `unsubscribe`.
+
+The server answers with `ToldDTO` messages, each under the subscription's id:
+
+- a `frame`, which holds a `FrameDTO`,
+- a `notice`, such as `ACCESS_CHANGED`,
+- `ended`, with the reason why. The reason is one of the values in `ended`.
+
+A socket whose session ends is closed with `SESSION_ENDED`. The server's [`live`](../live) writes these shapes, and its sieves read them. The client reads them too. So the shape is defined once and the two sides cannot drift apart.
+
+The client subscribes to a project's ideas and reads what it receives:
 
 ```rust
 use std::collections::BTreeMap;
@@ -25,4 +43,4 @@ match serde_json::from_str::<ToldDTO>(&heard)? {
 }
 ```
 
-**A crate of its own so the client can depend on it** without depending on `live`, which brings axum, tokio and the sockets. The same reason every feature has a `contract`, and `messaging` its [`messaging-contract`](../messaging-contract).
+**It is a crate of its own, so the client can depend on it** without depending on `live`. `live` brings in axum, tokio and the sockets. For the same reason every feature has a `contract`, and `messaging` has its [`messaging-contract`](../messaging-contract).

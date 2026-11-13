@@ -56,7 +56,7 @@ impl<C: Channel> Listener for BroadcastChangesListener<C> {
     }
 
     fn when_refused(&self) -> &'static str {
-        "A change was not passed on to whoever has it open."
+        "A change was not sent to the people who have it open."
     }
 
     fn delivery(&self) -> Delivery {

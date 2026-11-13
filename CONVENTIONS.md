@@ -1,25 +1,25 @@
 # Conventions
 
-How this codebase is written, so that a reviewer never has to explain the same thing twice. [ARCHITECTURE.md](./ARCHITECTURE.md) says what the parts are and why; this says how they are spelled.
+This file describes how the code in this repository is written. The goal is that a reviewer never has to explain the same thing twice. [ARCHITECTURE.md](./ARCHITECTURE.md) says what the parts are and why they exist. This file says how they are spelled.
 
 ## Naming
 
 ### The register depends on the layer
 
-Weaveling's domain language is deliberate — an idea is *captured*, a project is *started*, an outline *attaches* a scene to a section — and that language belongs in the domain: aggregates, commands, events, errors, and the service methods an author's action maps onto. `capture`, `retitle`, `discard` are right, and `create`, `update`, `delete` would be worse.
+Weaveling's domain language is chosen on purpose. For example, an idea is *captured*, a project is *started*, and an outline *attaches* a scene to a section. That language belongs in the domain: in aggregates, commands, events, errors, and in the service methods that an author's actions map onto. So `capture`, `retitle` and `discard` are right there. `create`, `update` and `delete` would be worse.
 
-**Below the domain it is the wrong register.** Adapters, wiring and libraries are plumbing, and plumbing wants a plain technical name that says what the thing produces or does. Evocative naming there does not add meaning; it hides the type.
+**Below the domain, that language is the wrong register.** Adapters, wiring and libraries are plumbing. Plumbing needs a plain technical name that says what the thing produces or does. An evocative name there adds no meaning. It only hides the type.
 
 | Layer | Register | Example |
 | --- | --- | --- |
 | `core` — aggregate, command, event, error, service | The domain's own words | `IdeaCommand::Capture`, `ProjectEvent::Started` |
 | `adapters/*`, `wiring`, `libraries/*` | Plain and technical | `to_dto`, `to_response`, `CatalogueProjectsListener` |
 | Test function names | A sentence that states the claim | `a_notification_delivers_long_before_the_next_poll_would` |
-| Test helpers | Read at the call site, article-prefixed | `a_title()`, `an_author()`, `at(1_000)` |
+| Test helpers | Read well at the call site, and start with an article | `a_title()`, `an_author()`, `at(1_000)` |
 
 ### A converter is named for what it returns
 
-`to_<thing>`. Not for what the caller happens to be doing with it, and not as a participle describing the result.
+Name it `to_<thing>`. Do not name it for what the caller happens to do with the result. Do not name it with a participle that describes the result.
 
 ```rust
 fn to_dto(summary: &ProjectSummary) -> ProjectDTO     // yes
@@ -31,63 +31,72 @@ fn reported(status, id, standing) -> Response         // no — veils what it pr
 fn summarised(row: &PgRow) -> Result<ProjectSummary>  // no — participle for a conversion
 ```
 
-Rust reserves `to_*` for methods by convention, but these are free functions passed to `map`, where `found.iter().map(to_dto)` reads exactly right.
+By convention, Rust uses the `to_*` names for methods. But these converters are free functions that get passed to `map`. There, `found.iter().map(to_dto)` reads exactly right.
 
-**If two converters in one file both want the name, that is the signal to have one.** `listed` existed only because `to_dto` was taken by a single-use converter beside it; inlining that one freed the name and left each adapter with exactly one.
+**If two converters in one file both want the same name, that is a signal to keep only one.** `listed` existed only because `to_dto` was already taken by another converter next to it. That other converter was used only once. Inlining it freed the name. After that, each adapter had exactly one converter.
 
 ### A type is named for what it is, spelled out
 
-No bare abstract nouns. `Publishing` was once the only bare word in an export list that already read `UnreadableProjectEvent`, `CatalogueProjectsListener`, `ProjectSummary`, and it said less than `ProjectEventPublisher`, the name it became.
+Do not use bare abstract nouns. `Publishing` was once the only bare word in an export list. The other names in that list were `UnreadableProjectEvent`, `CatalogueProjectsListener` and `ProjectSummary`. `Publishing` said less than `ProjectEventPublisher`, which became its new name.
 
-The shapes each feature repeats:
+The name shapes that every feature repeats:
 
 - `<Thing>Catalog`, `<Thing>Summary`, `<Thing>CatalogProjector`
 - `<Thing>Event`, `<Thing>Command`, `<Thing>Error`, `<Thing>EventDTO`, `Stored<Thing>Event`
 - `Unreadable<Thing>Event`
-- `<Things>Core`, the feature's one way in, and `<Things>Error`, its errors — `ProjectsCore`, `ProjectsError`; plural, as the feature is, and `MembersCoreError` only where the aggregate's `<Thing>Error` already has the name
-- `<Thing>Service`, behind the core and not exported
+- `<Things>Core` is the feature's only way in, and `<Things>Error` holds its errors. Examples: `ProjectsCore`, `ProjectsError`. Both are plural, like the feature. Use a name like `MembersCoreError` only where the aggregate's `<Thing>Error` already uses the plain name.
+- `<Thing>Service` sits behind the core and is not exported.
 - `InMemory<Thing>Catalog`, `Postgres<Thing>Catalog`
 
-In the client, a component is named for its role. A **`<Thing>Page`** is what a route mounts: it reads the address, puts the masthead above and hands plain values down — `BoardPage`, `IdeasPage`, `WritePage`, each in `app/`, in a file named for it. A **`<Thing>View`** is what a page shows, taking plain values rather than the router, so it can be mounted elsewhere too — `BoardView`, `OutlineView`, `WriteView`, in its feature's module. Not `OneBoard` / `TheBoard`: an article says nothing about which of the two a component is.
+In the client, a component is named for its role:
 
-In the client, a component that loads and changes things keeps that in **`<Component>State`**, beside it and named for it in full — `BoardViewState` for `BoardView`, `ScenePageState` for `ScenePage`, `InspectorState` for `inspector` — and the views take it as `state`. Not `BoardState`: that reads as the state of a board rather than of the view showing one. When a state does several jobs, it is composed of parts named for each job, as `WriteViewState` is of `Structure`, `Walk` and `Beginnings`, with the `Problems` they report into held above them all, and callers say which part they mean (`state.walk.leave(…)`). Named for the view, not for how it got its data: the inspector's state is the same whether the idea came from the address or, docked on the board, from a selection.
+- A **`<Thing>Page`** is what a route mounts. It reads the address, puts the masthead above, and passes plain values down. Examples: `BoardPage`, `IdeasPage`, `WritePage`. Each one lives in `app/`, in a file named after it.
+- A **`<Thing>View`** is what a page shows. It takes plain values instead of the router, so it can be mounted in other places too. Examples: `BoardView`, `OutlineView`, `WriteView`. Each one lives in its feature's module.
 
-Singular, built on the aggregate's own name — `ProjectSummary`, `ProjectEventDTO`, not `ProjectsSummary`. The crate is plural (`projects_messaging`); the types inside it are not.
+Do not use names like `OneBoard` or `TheBoard`. An article says nothing about which of the two kinds a component is.
 
-A listener is named for what it does, a verb phrase ending in **`Listener`** — `CatalogueProjectsListener`, `DeleteOnProjectDeletedListener`, `BroadcastChangesListener` — so the wiring reads as a list of what happens, and a listener is known for one wherever it is used. Not `ProjectCatalogProjector`: a role noun says what it is, not what it does, and two in a row say even less.
+In the client, a component that loads and changes things keeps that logic in a **`<Component>State`**. The state lives next to the component and carries the component's full name. Examples: `BoardViewState` for `BoardView`, `ScenePageState` for `ScenePage`, `InspectorState` for `inspector`. The views take it as a parameter named `state`. Do not use `BoardState`: it reads as the state of a board, not as the state of the view that shows a board.
+
+When a state does several jobs, it is made of parts, and each part is named for its job. For example, `WriteViewState` is made of `Structure`, `Walk` and `Beginnings`. The `Problems` that these parts report into is held above all of them. Callers say which part they mean, as in `state.walk.leave(…)`.
+
+A state is named for the view, not for how the view got its data. For example, the inspector's state is the same in both cases: when the idea came from the address, and when the inspector is docked on the board and the idea came from a selection.
+
+Type names are singular and built on the aggregate's own name: `ProjectSummary` and `ProjectEventDTO`, not `ProjectsSummary`. The crate name is plural (`projects_messaging`). The types inside it are not.
+
+A listener is named for what it does. Its name is a verb phrase that ends in **`Listener`**: `CatalogueProjectsListener`, `DeleteOnProjectDeletedListener`, `BroadcastChangesListener`. This way, the wiring reads as a list of what happens. It also makes a listener recognisable as a listener wherever it is used. Do not use a name like `ProjectCatalogProjector`. A role noun says what a thing is, not what it does. Two role nouns in a row say even less.
 
 ### A contract crate has three suffixes and no fourth
 
-Everything in a `contract` crate crosses a process boundary, and the suffix says which direction:
+Everything in a `contract` crate crosses a process boundary. The suffix says in which direction:
 
 - **`*Request`** — a REST body coming in: `CaptureIdeaRequest`, `OpenBoardRequest`.
 - **`*Response`** — a REST body going out that is not a resource: `AddedSectionResponse`.
 - **`*DTO`** — everything else on the wire: resources (`IdeaDTO`), value objects (`SpotDTO`), event payloads (`IdeaEventDTO`) and message payloads (`MoreToSweepDTO`).
 
-`DTO` mostly earns its place as *disambiguation* — `Idea`/`IdeaDTO`, `IdeaEvent`/`IdeaEventDTO` — but it marks a wire shape even where no domain type shares the name, because one unmarked type among a dozen reads as an oversight rather than a decision.
+`DTO` is mostly there for *disambiguation*. It tells names apart, as in `Idea`/`IdeaDTO` and `IdeaEvent`/`IdeaEventDTO`. But it also marks a wire shape when no domain type has the same name. The reason: one unmarked type among a dozen marked ones looks like an oversight, not like a decision.
 
-**One suffix, never a pile of them.** `MoreToSweepMsgPayloadDTO` says *data crossing a boundary* three times, and an `Ideas` in the name stutters against `ideas_contract`. Spelling out what a thing **is** is the rule; stacking what it **is made of** is not.
+**Use one suffix, never a pile of them.** `MoreToSweepMsgPayloadDTO` says *data crossing a boundary* three times. Also, an `Ideas` inside a type name stutters against the crate name `ideas_contract`. The rule is to spell out what a thing **is**. Do not stack up what it **is made of**.
 
 ### Reading something out of something else
 
-`<thing>_in(<source>)` when a value is extracted from a message or envelope: `project_in(message)`, `idea_in(message)`, `event_in(message)`, `published_in(message)`. This is distinct from `to_*`, which converts a whole value rather than picking one out.
+Use `<thing>_in(<source>)` when a value is taken out of a message or an envelope: `project_in(message)`, `idea_in(message)`, `event_in(message)`, `published_in(message)`. This is different from `to_*`. `to_*` converts a whole value. `<thing>_in` picks one value out.
 
 ### Where participles do belong
 
-As predicates and states, not as conversions: `is_deleted`, `is_snapshot`, `is_publishable`, `Delivery::Kept`. A participle answers *what is true of this*, never *what does this return*.
+Participles belong in predicates and states, not in conversions: `is_deleted`, `is_snapshot`, `is_publishable`, `Delivery::Kept`. A participle answers *what is true of this*. It never answers *what does this return*.
 
 ### Name the mechanism, not the feeling
 
-The same trap in a different shape: a word chosen because it evokes the right *idea* rather than because it names what happens. It reads well once and tells a reader nothing the second time.
+This is the same trap in a different shape. Here, a word is chosen because it evokes the right *idea*, not because it names what happens. Such a word reads well the first time. The second time, it tells a reader nothing.
 
-- `Nudges` / `outbox.nudges()` became **`Notifications`** / `outbox.notifications()`. Both backends already call it notify — PostgreSQL `pg_notify` and `LISTEN`, tokio's `Notify` — so "nudge" was a third word for a thing that had two perfectly good ones.
-- `announce` became **`enqueue`**, because the in-memory outbox already had `enqueue` and the two were one operation under two names in one crate. What it does is put a row in a queue.
+- `Nudges` / `outbox.nudges()` was renamed to **`Notifications`** / `outbox.notifications()`. Both backends already call it notify: PostgreSQL has `pg_notify` and `LISTEN`, and tokio has `Notify`. So "nudge" was a third word for a thing that already had two good ones.
+- `announce` was renamed to **`enqueue`**. The in-memory outbox already had `enqueue`, so the two were one operation with two names in one crate. What the operation does is put a row in a queue.
 
-**Prose is the exception, and deliberately so.** A test name and an assertion message may keep the domain word — "a refused append announces nothing" says what an outbox row *means* to a reader, where `enqueue` says what the code *does*. Meaning in the prose, mechanism in the code; they are allowed to differ as long as each is in its own place.
+**Prose is the exception, and deliberately so.** A test name and an assertion message may keep the domain word. For example, "a refused append announces nothing" says what an outbox row *means* to a reader. `enqueue` says what the code *does*. Meaning goes in the prose, and mechanism goes in the code. The two may differ, as long as each stays in its own place.
 
 ## Comments
 
-**There are none.** The code says what it does; the tests say what it is for. The single exception is an **assertion message**, which carries the *why* a plain reader could not recover:
+**There are none.** The code says what it does. The tests say what it is for. The one exception is an **assertion message**. It carries the *why*, which a reader could not work out from the code alone:
 
 ```rust
 assert!(
@@ -96,23 +105,27 @@ assert!(
 );
 ```
 
-Say why the expectation holds or what breaks if it does not — never restate the assertion in prose.
+An assertion message says why the expectation holds, or what breaks if it does not. It never restates the assertion in prose.
 
-**The other exception is a `// TODO`, and a stopgap owes one.** When a slice leaves something deliberately short of where it is going, because a later slice finishes it, the place says so where the next reader will stumble on it: what is missing, why it stands so for now, and which slice replaces it.
+**The other exception is a `// TODO`, and every stopgap needs one.** Sometimes a slice leaves something unfinished on purpose, because a later slice will finish it. Then a `// TODO` goes at the spot where the next reader will run into it. It says:
+
+- what is missing,
+- why it is like this for now,
+- and which slice replaces it.
 
 ```rust
 // TODO 5b-2: project invitations keep no ticket yet, so an account is never declined for one; accounts will keep their tickets with the scope and decline for the instance alone
 InvitationEventDTO::Issued { scope: ScopeDTO::Project { .. }, .. } => Ok(()),
 ```
 
-The ROADMAP says the same in its notes, but a note is not read where the code is. A `// TODO` goes away in the slice it names.
+The ROADMAP says the same in its notes. But a note in the ROADMAP is not read where the code is. A `// TODO` is removed in the slice it names.
 
-**The third exception is a test's steps**, as in Spock: see [Tests](#tests).
+**The third exception is a test's steps**, as in Spock. See [Tests](#tests).
 
 ## Tests
 
-- The name is the claim, as a sentence: `a_deleted_project_refuses_everything`, `a_batch_that_collides_halfway_writes_none_of_itself`.
-- Every test, Rust and browser alike, reads in steps without its code: `// given: …`, `// when: …`, `// then: …`, each followed by the code it describes, and `// and: …` to go on with the step above. A `then` may be followed by another `when` and `then`. A test that only checks has a `then` alone, or `expect:` where there is nothing to set up. Each step is short, lower case, and says only what stays true of the behaviour for as long as it stands, not how it is done today or what other feature it leans on, unless the claim is about that feature.
+- The test name is the claim, written as a sentence: `a_deleted_project_refuses_everything`, `a_batch_that_collides_halfway_writes_none_of_itself`.
+- Every test, in Rust and in the browser, can be read through its steps alone, without its code. The steps are `// given: …`, `// when: …` and `// then: …`. Each step is followed by the code it describes. `// and: …` continues the step above it. A `then` may be followed by another `when` and `then`. A test that only checks something has a `then` alone. Where there is nothing to set up, it uses `expect:` instead. Each step is short and lower case. It says only what stays true of the behaviour for as long as that behaviour exists. It does not say how the behaviour is done today. It does not say which other feature the behaviour relies on, unless the claim is about that feature.
 
   ```rust
   // given: an accepted invitation
@@ -126,51 +139,76 @@ The ROADMAP says the same in its notes, but a note is not read where the code is
   // then: the accepted one is accepted once
   assert_eq!(events_of(&wired, &accepted).await.len(), 2);
   ```
-- Helpers are named for the step they serve, so the code reads as its steps do: a `given` helper names the state it sets up (`an_open_invitation`, `a_project(&service, "Tapestry")`), a `when` helper the act (`hearing_it_taken_up`), a `then` helper what it reads back (`events_of`). Helpers that make a value are article-prefixed so call sites read as English: `an_author()`, `a_workbench()`.
-- A test's assembled world is a **`Wired`**, built by **`a_workbench()`** — the feature test wirings, and the library ones. Once a helper bundles more than a value, it is that, not a new name per file.
-- A behaviour two backends must share is a **conformance suite**: free functions taking `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro each backend invokes. One case list, both implementations.
-- A guard worth having is worth proving load-bearing — break it deliberately and watch the test fail.
-- Browser tests run side by side — four at a time, two on CI — against one server. Each works in a project of its own with a name no other test uses, and never assumes it is alone: no counting every project, no relying on what the server held before it started.
-- On a developer's machine a failed browser test is tried once more, and one that passes the second time is reported as **flaky**, not passed — treat it as a finding. The retry exists for Windows, which keeps the connections of a whole run lingering for minutes, so a run straight after another can fail to load a page (`ERR_NO_BUFFER_SPACE`). CI never retries.
-- A browser test that reloads waits first for whatever the reload will read, because the client shows a change before it is stored: the ideas catalog (`catalogued`, `uncatalogued` — `captureIdea` already waits), a board change being saved (`boardSaves`), a scene's prose reaching the server (poll its text). Local mode is where a missing wait shows, since its catalogs lag a moment behind.
-- Browser tests run against a **fresh build**: Playwright starts `cargo leptos serve --split`, which builds the client and the server before the server listens, so no test meets yesterday's client. A mutation check that passes in a second is the tell. The tests' server runs at :3100 from `target/site-tests`, apart from a `cargo dev` at :3000; one left at :3100 by an interrupted run is reused as it is, so stop it before trusting a run.
+- Helpers are named for the step they serve, so the code reads like its steps:
+  - A `given` helper names the state it sets up (`an_open_invitation`, `a_project(&service, "Tapestry")`).
+  - A `when` helper names the act (`hearing_it_taken_up`).
+  - A `then` helper names what it reads back (`events_of`).
+
+  Helpers that make a value start with an article, so call sites read as English: `an_author()`, `a_workbench()`.
+- The assembled world of a test is a **`Wired`**, built by **`a_workbench()`**. This is true for the feature test wirings and for the library ones. Once a helper bundles more than a single value, it is a `Wired`. Do not invent a new name for it in each file.
+- When two backends must share a behaviour, that behaviour gets a **conformance suite**. A conformance suite has three parts: free functions that take `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro that each backend invokes. So there is one list of cases, and both implementations run it.
+- If a guard is worth having, it is worth proving that it is load-bearing. Break the guard on purpose and watch the test fail.
+- Browser tests run side by side, against one server: twelve at a time (four with accounts), or two at a time on CI. Each test works in a project of its own, with a name that no other test uses. A test never assumes it is alone. So it never counts all projects, and it never relies on what the server held before the test started.
+- On a developer's machine, a failed browser test is run once more. If it passes the second time, it is reported as **flaky**, not as passed. Treat a flaky test as a finding. The retry exists because of Windows: Windows keeps the connections of a whole run open for minutes. So a run started right after another run can fail to load a page (`ERR_NO_BUFFER_SPACE`). CI never retries.
+- A browser test that reloads the page must first wait for whatever the reload will read. The reason is that the client shows a change before the change is stored. Things to wait for:
+  - the ideas catalog (`catalogued`, `uncatalogued`; `captureIdea` already waits for it),
+  - a board change being saved (`boardSaves`),
+  - a scene's prose reaching the server (poll its text).
+
+  A missing wait shows up in local mode, because there the catalogs lag a moment behind.
+- Browser tests run against a **fresh build**. Playwright starts `cargo leptos serve --split`. That command builds the client and the server before the server starts listening. So no test runs against an old client. If a mutation check passes within a second, that is the sign that it did not run against a fresh build. The tests' server runs at :3100, from `target/site-tests`. It is separate from a `cargo dev` at :3000. If an interrupted run left a server at :3100, that server is reused as it is. So stop it before you trust a run.
 
 ## Rust
 
-- Import types rather than qualify them. `use sqlx::postgres::PgListener;`, never `sqlx::postgres::PgListener` inline. The exception is a one-off `std::time::Duration` beside a `time::Duration` already in scope. Traits, enums and constants are imported the same way.
-- Call a free function through its module, never import it by itself: `use crate::speech;` and `speech::said("sign-out")`, `eventpublishing::message_for(happened, body)`, `routing::get(handler)`. The path says where the function lives, and two functions of one name, a feature's `message_for` and the library's it wraps, need no alias. Where the module's own name would clash, with a crate of that name (`tokio::time` beside `time`) or with another module (`outbox::postgres` beside `crate::postgres`), the call takes the longer path. Associated functions (`Account::from_first`) carry their type already; macros (`json!`), attributes, preludes meant for globbing (`leptos::prelude::*`) and a test module's `use super::*` are untouched.
-- `thiserror` for every error type; `#[error(transparent)]` when wrapping another error whole.
-- `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
-- Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.
+- Import types instead of qualifying them. Write `use sqlx::postgres::PgListener;`, never `sqlx::postgres::PgListener` inline. The one exception is a one-off `std::time::Duration` next to a `time::Duration` that is already in scope. Traits, enums and constants are imported the same way.
+- Call a free function through its module. Never import the function by itself. Examples: `use crate::speech;` and then `speech::said("sign-out")`, `eventpublishing::message_for(happened, body)`, `routing::get(handler)`.
+  - The path shows where the function lives.
+  - Two functions with the same name need no alias. An example is a feature's `message_for` and the library's `message_for` that it wraps.
+  - Sometimes the module's own name clashes with something else: with a crate of that name (`tokio::time` next to `time`), or with another module (`outbox::postgres` next to `crate::postgres`). Then the call uses the longer path.
+  - This rule does not touch: associated functions (`Account::from_first`), which already carry their type; macros (`json!`); attributes; preludes that are meant to be glob-imported (`leptos::prelude::*`); and a test module's `use super::*`.
+- Use `thiserror` for every error type. Use `#[error(transparent)]` when wrapping another error whole.
+- Every `expect` states the reason why it cannot fail: `.expect("a plain title is fine")`.
+- Modules and re-exports that sit behind a cargo feature come last. They follow a blank line and are grouped by feature. This keeps what a build may leave out apart from what every build has. A feature's test module sits in that feature's group. The blank line also stops rustfmt from sorting them back in among the others.
 
 ## Writes that hold together
 
-Checked in the review of every slice that writes or tells something; each line is a fault both integrity audits found more than once.
+These points are checked in the review of every slice that writes data or sends messages. Each point is a fault that both integrity audits found more than once.
 
-- **More than one port, one transaction.** A write that touches two stores, an event and its secret, a row and its outbox entry, does it in one transaction, or says in a `// TODO` why it cannot yet.
-- **Check and act together.** A check that decides a write, is it there, is it still open, may they, is made inside the writing transaction or under a lock the other writer takes too, never before it.
-- **Effects after the commit.** What is told, published or navigated to after a write happens after it commits; ask what is left if the process dies in between, and whether the next pass or a retry finishes it.
-- **Heard twice, heard late.** A message may come again and may come after a newer one: the listener changes nothing the second time and lets the newer version stand.
-- **Answers out of order.** In the client, an asking again keeps the newest answer (`Asking`), and a press cannot start something twice (`Act`).
+- **More than one port, one transaction.** A write may touch two stores. Examples are an event and its secret, or a row and its outbox entry. Such a write happens in one transaction. If that is not possible yet, a `// TODO` says why.
+- **Check and act together.** Some checks decide whether a write happens: does it exist, is it still open, is this user allowed. Such a check is made inside the writing transaction, or under a lock that the other writer also takes. It is never made before the transaction.
+- **Effects after the commit.** Some things happen after a write: a message is sent, an event is published, or the client navigates somewhere. These things happen only after the write has committed. Ask what is left if the process dies in between. Ask whether the next pass or a retry finishes the work.
+- **Received twice, received late.** A message may arrive a second time. It may also arrive after a newer message. The listener changes nothing the second time, and it keeps the newer version.
+- **Answers out of order.** In the client, asking again keeps only the newest answer (`Asking`). A press cannot start something twice (`Act`).
 
 ## Client
 
-- What an author changes in an aggregate goes through its **`WorkingCopy`**, or for a list of aggregates its **`WorkingCopies`** (`clients/web/src/working_copy.rs`, and [ARCHITECTURE](./ARCHITECTURE.md#what-the-client-changes-and-what-it-is-told--decided)): shown at once, sent one at a time with `If-Match`, merged where the newer makes the older needless. A button that starts a change shows `aria-busy` from `unanswered()` or `unanswered_on(&id)`. What waits on a change awaits `intended(..)`, which lands `Ok` or the refusal, and handles that refusal itself; `failed` hears only changes nobody waits on. A change that would no longer fit what it was made for says so in its intent's `still_fits` and is refused without being tried again. A list is read with `read_all`, one item again with `read_again(&id)`, an item ended with `ending`; one aggregate is followed with `following` and `heard`, and a view that notes others' changes does it in `noticing_others`, never for answers to its own. Every aggregate is on one; an `Act` stays for what creates something or changes nothing the client holds, signing in, signing up, a code, a reset, and `Asking` for reading again what no working copy holds.
-- Whatever a click or key starts once that asks the server, saving, inviting, signing in, writing in a section, is an **`Act`** (`clients/web/src/act.rs`): built once with its body, started with `act.start(about)`, which does nothing while it runs, so a double click or a held key never does it twice. No flag of one's own, no `if busy { return }`. A run of small changes meant to add up, a card nudged by a held arrow key, is queued instead, not dropped.
-- The button that starts it says so with `.attr("aria-busy", move || act.busy())`, or `busy_on(&about)` where one act serves a button per row; `disabled` stays for what may not be done at all. `aria-busy` is what draws the sweeping line, after 150 ms, so a quick answer never flickers.
-- What an act does once its answer comes that only makes sense on the page it was started from, going elsewhere above all, waits on `here.still()`.
-- Asking again for something that changes, a list, the open project, one's roles, is an **`Asking`** (`clients/web/src/asking.rs`): `asking.next()` before the request, and its answer is taken in only if `asking.is_latest(asked)`, so an answer read before a change and arriving after it never stands over what came later. An `Act` keeps a second press from starting; an `Asking` lets every asking start and keeps the newest answer.
+- What an author changes in an aggregate goes through the aggregate's **`WorkingCopy`**. For a list of aggregates, it goes through **`WorkingCopies`**. See `clients/web/src/working_copy.rs` and [ARCHITECTURE](./ARCHITECTURE.md#what-the-client-changes-and-what-it-is-told--decided). A change is:
+  - shown at once,
+  - sent one at a time with `If-Match`,
+  - merged with an older change, where the newer change makes the older one unnecessary.
+
+  More rules for working copies:
+  - A button that starts a change shows `aria-busy` from `unanswered()` or `unanswered_on(&id)`.
+  - Code that waits on a change awaits `intended(..)`. That resolves to `Ok` or to the refusal. The waiting code handles the refusal itself. `failed` only receives refusals of changes that nobody waits on.
+  - A change may no longer fit what it was made for. Its intent's `still_fits` says so. Such a change is refused and is not tried again.
+  - A list is read with `read_all`. One item is read again with `read_again(&id)`. An item is ended with `ending`.
+  - One aggregate is followed with `following` and `heard`. A view that notes changes made by others does that in `noticing_others`. It never does it for answers to its own changes.
+  - Every aggregate uses a working copy. An `Act` remains only for things that create something or change nothing the client holds: signing in, signing up, a code, a reset. An `Asking` remains for reading again what no working copy holds.
+- Some things are started once by a click or a key press and ask the server. Examples are saving, inviting, signing in, and writing in a section. Such a thing is an **`Act`** (`clients/web/src/act.rs`). An act is built once, with its body. It is started with `act.start(about)`. While it runs, starting it again does nothing. So a double click or a held key never runs it twice. Do not keep a flag of your own, and do not write `if busy { return }`. A run of small changes that are meant to add up is different. An example is a card moved by a held arrow key. Such changes are queued instead, not dropped.
+- The button that starts an act shows that the act runs, with `.attr("aria-busy", move || act.busy())`. Where one act serves one button per row, it uses `busy_on(&about)`. `disabled` is kept for things that may not be done at all. `aria-busy` is what draws the sweeping line. The line appears only after 150 ms, so a quick answer never flickers.
+- Some things an act does after its answer comes only make sense on the page the act was started from. Navigating elsewhere is the main example. Such things happen only if `here.still()` is true.
+- Asking again for something that changes is an **`Asking`** (`clients/web/src/asking.rs`). Examples are a list, the open project, and one's roles. Call `asking.next()` before the request. Its answer is taken in only if `asking.is_latest(asked)` is true. So an answer that was read before a change, but arrives after it, never replaces what came later. The difference between the two: an `Act` stops a second press from starting. An `Asking` lets every request start and keeps only the newest answer.
 
 ## HTTP
 
-- A feature owns `/api/{its noun}`, plural: `/api/ideas`, `/api/boards`. Whatever the service serves about itself — its health, the messages it refused — lives under `/api/service/`, so no feature may be called `service`. A path says whose endpoint it is.
+- A feature owns `/api/{its noun}`, in the plural: `/api/ideas`, `/api/boards`. Anything the service serves about itself, such as its health or the messages it refused, lives under `/api/service/`. So no feature may be called `service`. A path says whose endpoint it is.
 
 ## Manifests
 
-- Dependencies are grouped: workspace crates, then this feature's own crates, then **foreign contracts** under a comment saying what they are. A feature may reach across the seam for another feature's `contract` crate and nothing else — never its `core`, never its adapters — and the grouping is what makes an accidental `ideas-core` in a `boards` manifest obvious on sight.
+- Dependencies are grouped in this order: workspace crates, then this feature's own crates, then **foreign contracts**. The foreign contracts sit under a comment that says what they are. A feature may depend on another feature's `contract` crate, and on nothing else of that feature. It never depends on the other feature's `core`, and never on its adapters. The grouping makes a mistake obvious at a glance, for example an `ideas-core` in a `boards` manifest.
 
 ## SQL
 
-- Statements are `const` items in SCREAMING_SNAKE, directly above the function that runs them. When a file grows past a couple of operations, give each operation its own file with its constant beside it.
-- Id columns are `TEXT COLLATE "C"` — base62 ids only sort by age under byte order, and a glibc locale puts `a` before `A`.
-- Every schema change is a migration file. `sqlx::migrate!` embeds them **at compile time** and cannot tell cargo the `.sql` files are inputs, so touching a `.rs` file in the crate is what makes a new migration take effect.
+- Statements are `const` items in SCREAMING_SNAKE case. Each one sits directly above the function that runs it. When a file grows past a couple of operations, give each operation its own file, with its constant next to it.
+- Id columns are `TEXT COLLATE "C"`. Base62 ids only sort by age under byte order. A glibc locale would put `a` before `A`.
+- Every schema change is a migration file. `sqlx::migrate!` embeds the migrations **at compile time**. It cannot tell cargo that the `.sql` files are inputs. So to make a new migration take effect, touch a `.rs` file in the crate.

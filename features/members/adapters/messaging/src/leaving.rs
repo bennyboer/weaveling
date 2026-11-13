@@ -21,7 +21,7 @@ impl RememberWhoIsLeavingListener {
 impl KeptHandler for RememberWhoIsLeavingListener {
     const NAME: &'static str = "remember-who-is-leaving";
     const LISTENS_TO: &'static [&'static str] = &[DELETION_ASKED, DELETION_CALLED_OFF];
-    const WHEN_REFUSED: &'static str = "An account asked to be deleted, or kept after all, did not reach the members, so its role may still be changed, or stays frozen, as it should not.";
+    const WHEN_REFUSED: &'static str = "The members feature did not learn that an account asked to be deleted, or that it called the deletion off. The account's roles may still be changed although they should be frozen. Or they stay frozen although they should not.";
 
     async fn take_in(
         &self,

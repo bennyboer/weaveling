@@ -19,7 +19,7 @@ impl DeclineInvitationListener {
 impl KeptHandler for DeclineInvitationListener {
     const NAME: &'static str = "decline-invitation";
     const LISTENS_TO: &'static [&'static str] = &[INVITATION_DECLINED];
-    const WHEN_REFUSED: &'static str = "An invitation declined, turned down by whoever it was for or not needed as the address has an account already, still shows as open.";
+    const WHEN_REFUSED: &'static str = "An invitation was declined, but it still shows as open. It was either turned down by the invited person, or no longer needed because the address already has an account.";
 
     async fn take_in(
         &self,

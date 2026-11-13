@@ -38,7 +38,7 @@ impl KeptHandler for IndexAttachmentsListener {
     const NAME: &'static str = "index-attachments";
     const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
     const WHEN_REFUSED: &'static str =
-        "A change to the outline did not reach the record of what it holds.";
+        "A change to an outline was not recorded in the list of what each outline holds.";
 
     async fn take_in(
         &self,

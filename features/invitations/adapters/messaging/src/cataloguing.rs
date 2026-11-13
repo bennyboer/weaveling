@@ -43,7 +43,7 @@ impl KeptHandler for CatalogueInvitationsListener {
     const NAME: &'static str = "catalogue-invitation";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_INVITATION];
     const WHEN_REFUSED: &'static str =
-        "A change to an invitation did not reach the operators' list.";
+        "A change to an invitation did not reach the operators' list of invitations.";
 
     async fn take_in(
         &self,
@@ -91,7 +91,7 @@ impl WithdrawIfProjectGoneListener {
 impl KeptHandler for WithdrawIfProjectGoneListener {
     const NAME: &'static str = "withdraw-invitation-if-project-gone";
     const LISTENS_TO: &'static [&'static str] = &[WITHDRAW_IF_PROJECT_GONE];
-    const WHEN_REFUSED: &'static str = "An invitation into a project deleted meanwhile was not withdrawn, so its link may still be taken up.";
+    const WHEN_REFUSED: &'static str = "An invitation was not withdrawn, although its project was deleted in the meantime. Its link may still be used to accept it.";
 
     async fn take_in(
         &self,

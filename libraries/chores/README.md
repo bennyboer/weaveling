@@ -1,10 +1,12 @@
 # chores
 
-Background work a feature hands over and the service does now and then, apart from any request.
+Background work that a feature hands over to the service. The service runs it from time to time, separate from any request.
 
-A **`Chore`** has a name, says how often it comes round, `every()`, and does its work once in `carry_out()`, answering how many things it cleared. A feature hands its chores over through `wiring`, as it does its listeners. **`Chores::started(chores)`** gives each chore a round of its own: done at once, then again each time its `every` has passed, so a chore that comes round hourly never waits on one that comes round daily. What a chore cleared is logged; a chore that fails is warned of and done again next time, keeping no other chore from its round. **`stop()`** ends every round at once, not waiting for a slow chore's next turn.
+A **`Chore`** has a name. Its `every()` says how often it runs. Its `carry_out()` does the work once and returns how many things it cleared. A feature hands over its chores through `wiring`, the same way it hands over its listeners.
 
-The boards forget their old tombstones like this:
+**`Chores::started(chores)`** gives each chore its own loop. Each chore runs at once, and then again each time its `every` interval has passed. So an hourly chore never waits for a daily one. The number of things a chore cleared is logged. If a chore fails, a warning is logged and the chore runs again next time. A failing chore does not keep any other chore from running. **`stop()`** ends every loop at once. It does not wait for a slow chore's next turn.
+
+This is how the boards delete their old tombstones:
 
 ```rust
 use std::sync::Arc;
@@ -24,6 +26,16 @@ let chores = Chores::started(vec![Arc::new(forget)]);
 chores.stop().await;
 ```
 
-A chore is for upkeep nobody asked for at a given moment, forgetting what is long settled, say. Work that must happen before the server stops is `wiring::Settling` instead.
+A chore is for upkeep that nobody asked for at a specific moment. Deleting data that has long been settled is an example. Work that must happen before the server stops belongs in `wiring::Settling` instead.
 
-**Tombstones.** A feature that keeps a tombstone of what was discarded, so a late message cannot bring it back, hands over a **`ForgetOldTombstones`** named for it, with the **`Tombstones`** to forget, `forget_laid_before(at)`; **`chores::tombstones_by(…)`** makes them of the core's own method, so the core needs no chores of its own. Hourly, it forgets the tombstones laid more than `TOMBSTONES_KEPT_FOR` ago, a day longer than `messaging::RETRIABLE_FOR`: a refused change older than that is not tried again, and the day covers a change that happened a little after the tombstone was laid, a scene linking an idea just discarded, say, so no message about a forgotten tombstone can still arrive. A tombstone is laid when what it marks went, the `occurred_at` of the message saying so. It forgets in batches: `forget_laid_before(at, at_most)` forgets at most `at_most` of each kind of tombstone, the oldest first, in one short transaction, and the chore asks for `TOMBSTONES_EACH_BATCH` at a time until a batch comes back short, so a backlog, a whole project deleted a month ago say, never holds a feature's store for long, yet is cleared in one round.
+**Tombstones.** Some features keep a tombstone of what was discarded, so a late message cannot bring it back. Such a feature hands over a **`ForgetOldTombstones`** chore, named after the feature. It comes with the **`Tombstones`** to delete, through `forget_laid_before(at)`. **`chores::tombstones_by(…)`** builds them from the core's own method, so the core needs no dependency on chores.
+
+The chore runs hourly. It deletes the tombstones that were laid more than `TOMBSTONES_KEPT_FOR` ago. That is one day longer than `messaging::RETRIABLE_FOR`. The reasons:
+
+- A refused change older than `messaging::RETRIABLE_FOR` is not retried.
+- The extra day covers a change that happened a little after the tombstone was laid. An example is a scene that links an idea which was just discarded.
+- So no message about a deleted tombstone can still arrive.
+
+A tombstone's time is the moment the thing it marks went away. That is the `occurred_at` of the message that reported it.
+
+The chore deletes in batches. `forget_laid_before(at, at_most)` deletes at most `at_most` tombstones of each kind, oldest first, in one short transaction. The chore asks for `TOMBSTONES_EACH_BATCH` at a time, until a batch comes back with fewer than that. So a large backlog never blocks a feature's store for long, but it is still cleared in one run. An example of such a backlog is a whole project deleted a month ago.

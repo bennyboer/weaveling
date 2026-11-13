@@ -21,8 +21,7 @@ impl FoundMembersOfStartedProjectListener {
 impl KeptHandler for FoundMembersOfStartedProjectListener {
     const NAME: &'static str = "found-members-of-started-project";
     const LISTENS_TO: &'static [&'static str] = &[STARTED];
-    const WHEN_REFUSED: &'static str =
-        "Whoever started a project was not made its owner, so it may stay out of their reach.";
+    const WHEN_REFUSED: &'static str = "The person who started a project was not made its owner. They may not be able to reach the project.";
 
     async fn take_in(
         &self,

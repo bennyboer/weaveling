@@ -515,7 +515,7 @@ test("a chosen heading removes its section with the sections inside it and all t
   await page.keyboard.press("Delete");
   // then: the question names the scenes and sections chosen
   await expect(removing(page).locator("p")).toHaveText(
-    "2 scenes and 2 sections are chosen. Each section goes with the sections inside it and all their scenes. Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
+    "2 scenes and 2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the book, the scenes move to the scenes not in the book. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
   );
   // when: they are taken out of the book
   await removing(page)
@@ -551,7 +551,7 @@ test("headings chosen without a scene among them are asked about as sections alo
 
   // then: the question names the sections alone
   await expect(removing(page).locator("p")).toHaveText(
-    "2 sections are chosen. Each section goes with the sections inside it and all their scenes. Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
+    "2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the book, the scenes move to the scenes not in the book. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
   );
 });
 
@@ -574,7 +574,7 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
 
   // then: the question offers only deleting for good
   await expect(removing(page).locator("p")).toHaveText(
-    "1 scene is chosen. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
+    "1 scene is chosen. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
   );
   await expect(removing(page).getByRole("button")).toHaveText([
     "Cancel",

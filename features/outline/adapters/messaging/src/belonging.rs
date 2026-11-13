@@ -20,7 +20,7 @@ impl RememberProjectsOfAttachmentsListener {
 impl KeptHandler for RememberProjectsOfAttachmentsListener {
     const NAME: &'static str = "outline-remember-projects-of-attachments";
     const LISTENS_TO: &'static [&'static str] = &[CAPTURED, CREATED];
-    const WHEN_REFUSED: &'static str = "The project of an idea or a scene did not reach the outline, so an outline of another project could attach it.";
+    const WHEN_REFUSED: &'static str = "The outline feature did not learn which project a new idea or scene belongs to. So an outline of a different project could attach it.";
 
     async fn take_in(
         &self,

@@ -123,7 +123,7 @@ test("without accounts there is no operator to become", async ({ page }) => {
   // then: it says there is no operator, asking for no code
   await expect(
     page.getByText(
-      "This Weaveling instance keeps no accounts, so it has no operator.",
+      "This Weaveling instance has no accounts, so it has no operator.",
     ),
   ).toBeVisible();
   await expect(page.getByLabel("Code")).toHaveCount(0);

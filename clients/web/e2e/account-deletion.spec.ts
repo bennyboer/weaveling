@@ -63,7 +63,7 @@ test("an account the operator marked offers no keeping, only signing out", async
   // then: she is told who marked it and to ask them
   await expect(
     page.getByText(
-      "Whoever operates this Weaveling instance marked your account to be deleted on 9 Dec 2026. Ask them if it should stay.",
+      "The operator of this Weaveling instance has scheduled your account for deletion on 9 Dec 2026. Ask them if you want to keep it.",
     ),
   ).toBeVisible();
   // and: she cannot keep it herself
@@ -109,7 +109,7 @@ test("she deletes her account from its own page for her password, and signing in
 
   // when: she asks to delete it with a wrong password
   await page.getByRole("button", { name: "Delete this account…" }).click();
-  await expect(page.getByText("Your account and your work are kept 30 days")).toBeVisible();
+  await expect(page.getByText("Your account and your work are kept for 30 days")).toBeVisible();
   await askedToDelete(page, "not her password");
 
   // then: she is told it is not her password
@@ -196,7 +196,7 @@ test("the operator deletes another account, which shows when it goes until they 
   // when: they delete another account, sure of it
   await (await offered(page, "Grace Hopper", "Delete account…")).click();
   const asking = page.getByRole("dialog", { name: "Delete Grace Hopper’s account?" });
-  await expect(asking).toContainText("Their account is kept 30 days");
+  await expect(asking).toContainText("Their account is kept for 30 days");
   await asking.getByRole("button", { name: "Delete the account" }).click();
 
   // then: the account shows when it goes
@@ -234,7 +234,7 @@ test("an account still the last owner of a shared project is refused, saying so"
 
   // then: they are told it is hers to hand over first
   await expect(asking).toContainText(
-    "Grace Hopper is the last owner of projects others are in. They hand them over first.",
+    "Grace Hopper is the last owner of projects that others are members of. They have to hand them over first.",
   );
   expect(server.listed[0].deletion).toBeUndefined();
 });

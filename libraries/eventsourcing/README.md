@@ -1,10 +1,17 @@
 # eventsourcing
 
-The event store and the service that drives aggregates over it. The outbox an append announces into is [its own library](../outbox).
+The event store, and the service that runs aggregates on top of it. The outbox that an append announces its messages into is [its own library](../outbox).
 
-**The model.** An `Aggregate` says how it is born (`begin`, `from_first`), what it will accept (`decide`), how it changes (`apply`), and how it collapses (`snapshot`). `EventSourcingService` replays a stream into state, runs a command against it, and appends what it decided under a `Version` guard. A snapshot falls due every `snapshot_after()` events and is taken behind them in the command's transaction, so the version a command answers is the snapshot's, the one its caller aims at next; a snapshot that fails rolls the command back with it, so a command tried again is never appended twice. `Standing<A>` is what a reader gets: the state and the version it stands at.
+**The model.** An `Aggregate` says:
 
-The ideas drive their aggregate like this:
+- how it is created (`begin`, `from_first`),
+- which commands it accepts (`decide`),
+- how it changes (`apply`),
+- how it is collapsed into a snapshot (`snapshot`).
+
+`EventSourcingService` replays a stream into state, runs a command against that state, and appends the resulting events under a `Version` guard. A snapshot is due every `snapshot_after()` events. It is taken after those events, in the command's transaction. So the version a command returns is the snapshot's version, which is the one the caller targets next. If the snapshot fails, the command is rolled back with it. So a retried command is never appended twice. `Standing<A>` is what a reader gets: the state and the version it is at.
+
+The ideas feature runs its aggregate like this:
 
 ```rust
 use std::sync::Arc;
@@ -27,18 +34,38 @@ ideas.execute(None, &idea, IdeaCommand::Discard, &Agent::Local).await?;
 let Standing { state, version } = ideas.latest(&idea).await?;
 ```
 
-**Writes go through a transaction.** `append`, `prune_through` and `forget` take a [`transacting::Transaction`](../transacting/README.md), so a feature's other ports can join the same one. *A command reads through it too (2026-11-02, the integrity audit):* `read_from_within` and `latest_snapshot_within` read the stream and its newest snapshot through the transaction they are given, as the service does for `execute`, `execute_at`, `compact` and the snapshot it makes due; so a command needs no connection beside the one its transaction holds, where five at once used to wait on PostgreSQL's pool of five for a sixth, and a second command on an aggregate in the same transaction reads what the first appended, where it used to be outdated on every try on PostgreSQL and SQLite and only memory saw it. Reads outside a command, `latest` and `as_of` for queries, take none and stay on the pool. The service opens no transaction of its own and holds no `Transactions`: `begin`, `execute`, `execute_at` and `compact` take the caller's `&mut Transaction` and append in it, the snapshot with them, leaving the commit and any retry after a lost race to the core that owns it, who alone can try the whole unit again, with [`transacting::retrying!`](../transacting/README.md) and `tries_for(expected)`; `ServiceError` is a `LostRace` when the store answers `Outdated`, and takes a `Failure` as `ServiceError::Transaction`, so it can be retried as it is. A command within a transaction reads the stream as committed, so it does not see what that same transaction appended before it. `compact` takes its snapshot and prunes in the one transaction it is handed. In memory, a write registers how to undo it, and its messages are enqueued only once the transaction commits.
+**Writes go through a transaction.** `append`, `prune_through` and `forget` take a [`transacting::Transaction`](../transacting/README.md). So a feature's other ports can join the same transaction.
 
-**A stream is collapsed or forgotten.** `prune_through` deletes the events a snapshot replaced and keeps the snapshot, so the stream keeps its history, however little, and cannot be begun again. `forget` deletes a stream whole, snapshot and all, for what no history is kept of (a notice put away long since); a stream forgotten could be begun again from version zero, so whoever forgets one makes sure nothing will. `forget_published` deletes, in the same transaction, what a stream told that the outbox has published already, leaving what still waits, so a stream compacted to keep nothing personal does not leave it in the outbox either (`EventSourcingService::forget_published`). Both in memory, on PostgreSQL and on SQLite, one conformance suite for all three, which also proves that an append, a prune or a forget whose transaction is dropped leaves the stream and the outbox as they were.
+*A command also reads through the transaction (decided on 2026-11-02, in the integrity audit).* `read_from_within` and `latest_snapshot_within` read the stream and its newest snapshot through the transaction they are given. The service does this for `execute`, `execute_at`, `compact` and for the snapshot that falls due. This has two effects:
 
-**Every event carries its aggregate's context.** An `Aggregate` may say what it belongs to as an `AggregateContext`, a small map of names to values, empty unless it says otherwise; the service stamps the context of the state after a command on every event the command wrote, and on a snapshot, and the stores keep it beside the event, as a JSON column. What the names mean is the features' business, not this library's: it knows no project, only that an aggregate may be in one, a name and a value. Messages carry it on, so a listener can tell what an event belonged to without asking anyone.
+- A command needs no connection besides the one its transaction holds. Before, five commands at once each waited for a sixth connection from PostgreSQL's pool of five.
+- A second command on the same aggregate in the same transaction reads what the first command appended. Before, it was outdated on every try on PostgreSQL and SQLite, and only the in-memory store saw the appended events.
 
-**A store that refuses every append**, `RefusesAppending`, behind the `testing` feature, reads through to the store it wraps and answers every write with a backend failure, for a feature's tests to prove that a use case whose append fails leaves nothing else behind in its transaction.
+Reads outside a command, `latest` and `as_of` for queries, take no transaction. They stay on the pool.
 
-**`an_author()`**, behind the same feature, is the one account a test acts as wherever who acted is not the point.
+The service opens no transaction of its own and holds no `Transactions`. `begin`, `execute`, `execute_at` and `compact` take the caller's `&mut Transaction` and append in it, together with the snapshot. The commit, and any retry after a lost race, are left to the core that owns the transaction. Only the core can retry the whole unit of work. It does so with [`transacting::retrying!`](../transacting/README.md) and `tries_for(expected)`. `ServiceError` is a `LostRace` when the store returns `Outdated`. A `Failure` becomes `ServiceError::Transaction`, so it can be retried unchanged.
 
-**Three backends, one conformance suite.** `InMemoryEventStore`, `PostgresEventStore` and `SqliteEventStore` are driven by the same case list through a `Workbench`, so "which store" is never a behavioural question. Storage shape is the feature's own: a `Codec<E>` converts its events to and from the JSON body, which is what keeps stored shapes out of the domain and makes upcasting a `Patch` applied on read rather than a rewrite in place.
+A command inside a transaction reads the stream as committed. So it does not see what the same transaction appended before it. `compact` takes its snapshot and prunes in the one transaction it is given. In memory, a write registers how to undo itself, and its messages are enqueued only once the transaction commits.
 
-**The dual write is closed.** `append` writes the event rows and, through the outbox's `enqueue`, a message for every event its `MessageMapping` publishes — in one transaction, so there is no window where an event is durable but unannounced, and a rolled-back append announces nothing. The outbox's table therefore has to be laid down beside the events: a feature's schema is `eventsourcing::postgres::migrations()` and `outbox::postgres::migrations()` together, each with its own ledger.
+**A stream is collapsed or forgotten.**
 
-**SQLite is local mode's store**, behind the `sqlite` feature, with its schema in `migrations/sqlite/` beside the PostgreSQL one. Two things differ from PostgreSQL on purpose. An append's transaction opens with `BEGIN IMMEDIATE`, as every `SqliteTransactions` does, taking the write lock before it reads the stream's head: a deferred transaction that read the head and then found another writer had committed cannot become a writer itself, and SQLite answers that with *busy* instead of waiting — so the losing writer would hear "the file was busy" where it should hear "your version is stale". And instants are stored as fixed-width UTC text, `2026-10-07T11:22:33.123456789Z`, readable in the file without the app and comparable as plain strings, the same format the outbox uses, from `outbox::sqlite::instant`.
+- `prune_through` deletes the events that a snapshot replaced, and keeps the snapshot. So the stream keeps its history, however small, and cannot be started again.
+- `forget` deletes a whole stream, including its snapshot. It is for things whose history is not kept, such as a notice that was dismissed long ago. A forgotten stream could be started again from version zero. So whoever forgets a stream must make sure nothing will start it again.
+- `forget_published` deletes, in the same transaction, the stream's messages that the outbox has already published. It keeps the messages that are still waiting. So a stream that was compacted to keep nothing personal does not leave personal data in the outbox either (`EventSourcingService::forget_published`).
+
+All of these exist in memory, on PostgreSQL and on SQLite. One conformance suite covers all three. The suite also proves that an append, a prune or a forget whose transaction is dropped leaves the stream and the outbox unchanged.
+
+**Every event carries its aggregate's context.** An `Aggregate` may say what it belongs to, as an `AggregateContext`. That is a small map of names to values, and it is empty unless the aggregate says otherwise. After a command, the service stamps the context of the new state on every event the command wrote, and on a snapshot. The stores keep it next to the event, in a JSON column. What the names mean is the features' business, not this library's. The library knows no project. It only knows that an aggregate may belong to something, given as a name and a value. Messages carry the context on. So a listener can tell what an event belonged to without asking anyone.
+
+**A store that refuses every append**, `RefusesAppending`, is available behind the `testing` feature. It reads through to the store it wraps, and answers every write with a backend failure. A feature's tests use it to prove that when a use case's append fails, nothing else is left behind in its transaction.
+
+**`an_author()`**, behind the same feature, is the single account a test acts as, wherever it does not matter who acted.
+
+**Three backends, one conformance suite.** `InMemoryEventStore`, `PostgresEventStore` and `SqliteEventStore` all run the same list of cases through a `Workbench`. So the choice of store never changes behaviour. The storage shape belongs to the feature. A `Codec<E>` converts the feature's events to and from the JSON body. This keeps stored shapes out of the domain. It also makes upcasting a `Patch` that is applied when reading, instead of a rewrite in place.
+
+**The dual write is closed.** `append` writes the event rows. Through the outbox's `enqueue`, it also writes a message for every event that its `MessageMapping` publishes. Both happen in one transaction. So there is no moment where an event is stored but not announced. And a rolled-back append announces nothing. Because of this, the outbox's table must be created next to the events. A feature's schema is `eventsourcing::postgres::migrations()` plus `outbox::postgres::migrations()`, each with its own ledger.
+
+**SQLite is the store for local mode.** It is behind the `sqlite` feature. Its schema is in `migrations/sqlite/`, next to the PostgreSQL one. Two things differ from PostgreSQL on purpose:
+
+- An append's transaction opens with `BEGIN IMMEDIATE`, as every `SqliteTransactions` does. It takes the write lock before it reads the stream's head. The reason: a deferred transaction that has read the head and then finds that another writer committed cannot become a writer itself. SQLite answers that case with *busy* instead of waiting. So the losing writer would get "the file was busy", when it should get "your version is stale".
+- Instants are stored as fixed-width UTC text, such as `2026-10-07T11:22:33.123456789Z`. This text is readable in the file without the app, and it can be compared as plain strings. It is the same format the outbox uses, from `outbox::sqlite::instant`.

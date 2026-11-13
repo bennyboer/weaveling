@@ -193,7 +193,7 @@ test("a scene the listing does not know yet is asked for once, not over and over
 });
 
 const renamedMeanwhile = (page: Page) =>
-  page.getByRole("dialog", { name: "Renamed meanwhile" });
+  page.getByRole("dialog", { name: "Renamed in the meantime" });
 
 async function bothRenamed(page: Page, named: string) {
   const { outline, ids, heard } = await anOutlineFollowedLive(page, named);
@@ -346,7 +346,7 @@ test("a move made from an outline that is behind is refused gently, and the outl
 
   // then: it is refused gently
   await expect(
-    page.getByText("Someone else changed this meanwhile"),
+    page.getByText("Someone else changed this in the meantime"),
   ).toBeVisible();
   // and: the outline catches up
   await expect(titleOf(page, "Part Two")).toHaveCount(0);
@@ -464,7 +464,7 @@ test("a move worked out on a section removed meanwhile is worked out again on wh
   // and: the outline catches up
   await expect(titleOf(page, "Part One")).toHaveCount(0);
   // and: nothing is refused
-  await expect(page.getByText("Someone else changed this meanwhile")).toHaveCount(0);
+  await expect(page.getByText("Someone else changed this in the meantime")).toHaveCount(0);
 });
 
 test("asked which name stays, the question follows the language chosen meanwhile", async ({

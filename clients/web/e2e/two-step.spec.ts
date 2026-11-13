@@ -52,7 +52,7 @@ test("the account menu leads to the security page, which offers a second step", 
   // then: the security page says what a second step does and offers to set up an app
   await expect(page).toHaveURL(/\/account\/security$/);
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
-  await expect(page.getByText("a password alone signs nobody in")).toBeVisible();
+  await expect(page.getByText("a password alone is not enough to sign in")).toBeVisible();
   await expect(page.getByRole("button", { name: "Set up an authenticator app" })).toBeVisible();
   // and: the path names the account, then the page, one step apart
   const path = page.getByRole("navigation", { name: "Path" });
@@ -134,7 +134,7 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   await expect(ways).toContainText("Authenticator app");
   await expect(ways).toContainText("10 of 10 left");
   await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
-  await expect(page.getByRole("menuitem", { name: "Set up anew" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Set up again" })).toBeVisible();
   // and: the codes are not shown again
   await expect(page.getByText(THE_RECOVERY_CODES[0])).toHaveCount(0);
 });

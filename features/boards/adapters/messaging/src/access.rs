@@ -4,12 +4,12 @@ members_contract::access_roles_listener!(
     RememberRolesListener,
     BoardsCore,
     "boards-remember-roles",
-    "A change to a project's members did not reach the boards, so who may see its boards and pin to them is not as it should be."
+    "A change to a project's members did not reach the boards feature. The wrong people may be able to see the project's boards or pin ideas to them."
 );
 
 projects_contract::access_trash_listener!(
     RememberTrashListener,
     BoardsCore,
     "boards-remember-trash",
-    "A project put in the trash or restored did not reach the boards, so its boards may be shown or changed when they should not, or not when they should."
+    "The boards feature did not learn that a project was put in the trash or restored. Its boards may be shown or changed while it is in the trash, or not after it was restored."
 );

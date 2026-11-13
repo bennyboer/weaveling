@@ -225,7 +225,7 @@ test("details changed elsewhere meanwhile are not overwritten", async ({
 
   // then: it is refused as changed meanwhile
   await expect(projectDetails(page).getByRole("alert")).toContainText(
-    "changed elsewhere meanwhile",
+    "changed by someone else in the meantime",
   );
   // and: the change made elsewhere stands
   expect((await onServer(page)).description).toBe("Written in another tab.");
@@ -302,7 +302,7 @@ test("the quotation marks follow the book's language until a style is chosen", a
   // given: the details open
   await aNewProject(page, "Quoting");
   await openTheProjectDetails(page);
-  const marks = projectDetails(page).getByLabel("Quotation marks");
+  const marks = projectDetails(page).getByLabel(/^Quotation marks/);
   // when: german is chosen
   await projectDetails(page)
     .getByLabel("Language of the book")
@@ -310,7 +310,7 @@ test("the quotation marks follow the book's language until a style is chosen", a
 
   // then: the quotation marks follow it
   await expect(marks.locator("option").first()).toHaveText(
-    "As the language has it, »…«",
+    "The language's default, »…«",
   );
   // when: english is chosen and saved
   await projectDetails(page)
@@ -318,7 +318,7 @@ test("the quotation marks follow the book's language until a style is chosen", a
     .selectOption({ label: "English" });
   // then: the quotation marks follow it
   await expect(marks.locator("option").first()).toHaveText(
-    "As the language has it, “…”",
+    "The language's default, “…”",
   );
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
   await expect(projectDetails(page)).toBeHidden();
@@ -335,7 +335,7 @@ test("a quotation style chosen for the book is kept", async ({ page }) => {
 
   // when: a quotation style is chosen and saved
   await projectDetails(page)
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "„…“" });
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
   await changeTheMarks(page).click();
@@ -347,7 +347,7 @@ test("a quotation style chosen for the book is kept", async ({ page }) => {
   // and: still shows after a reload
   await page.reload();
   await openTheProjectDetails(page);
-  await expect(projectDetails(page).getByLabel("Quotation marks")).toHaveValue(
+  await expect(projectDetails(page).getByLabel(/^Quotation marks/)).toHaveValue(
     "low-high",
   );
 });
@@ -359,7 +359,7 @@ test("new quotation marks are asked about first, and Back keeps the details open
   await aNewProject(page, "AskedFirst");
   await openTheProjectDetails(page);
   await projectDetails(page)
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "„…“" });
 
   // when: they are saved
@@ -378,7 +378,7 @@ test("new quotation marks are asked about first, and Back keeps the details open
   await projectDetails(page).getByRole("button", { name: "Back" }).click();
 
   // then: the details stay open as they were
-  await expect(projectDetails(page).getByLabel("Quotation marks")).toHaveValue(
+  await expect(projectDetails(page).getByLabel(/^Quotation marks/)).toHaveValue(
     "low-high",
   );
 });
@@ -421,7 +421,7 @@ test("confirmed, the dialog follows the book being rewritten until every scene i
   );
   await openTheProjectDetails(page);
   await projectDetails(page)
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "»…«" });
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
@@ -461,7 +461,7 @@ test("with nothing standing in for the server, the dialog follows a real rewriti
   await aBookWithScenes(page, { "Part One": 3 });
   await openTheProjectDetails(page);
   await projectDetails(page)
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "»…«" });
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
 

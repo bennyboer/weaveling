@@ -25,7 +25,7 @@ impl ForgetDeletedProjectListener {
 impl KeptHandler for ForgetDeletedProjectListener {
     const NAME: &'static str = "forget-appearances-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
-    const WHEN_REFUSED: &'static str = "Where ideas of a deleted project appeared is still kept.";
+    const WHEN_REFUSED: &'static str = "The places where the ideas of a deleted project appeared were not removed. They are still stored.";
 
     async fn take_in(
         &self,

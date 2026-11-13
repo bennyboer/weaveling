@@ -19,8 +19,7 @@ impl DisbandMembersOfDeletedProjectListener {
 impl KeptHandler for DisbandMembersOfDeletedProjectListener {
     const NAME: &'static str = "disband-members-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
-    const WHEN_REFUSED: &'static str =
-        "The members of a deleted project were not let go, so its owners may still invite into it.";
+    const WHEN_REFUSED: &'static str = "The members of a deleted project were not removed from it. Its owners may still invite people into it.";
 
     async fn take_in(
         &self,

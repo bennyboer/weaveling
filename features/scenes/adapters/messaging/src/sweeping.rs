@@ -80,7 +80,7 @@ fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
 impl Handler for DeleteOnProjectDeletedListener {
     const NAME: &'static str = "delete-scenes-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
-    const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away, and new ones may still be made in it.";
+    const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not removed. New scenes may still be created in that project.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

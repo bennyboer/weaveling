@@ -88,7 +88,7 @@ test("joining from the bell takes the invitation up and says so quietly", async 
 
   // then: it is taken up, said so quietly
   await expect(page.getByRole("status")).toContainText(
-    "You joined Shared. It appears in your list in a moment.",
+    "You joined Shared. It will appear in your list in a moment.",
   );
   expect(server.answered).toEqual(["accept:invitation_7"]);
   // and: the bell has nothing new
@@ -126,7 +126,7 @@ test("joining an invitation a moment before it can be taken up joins it once it 
 
   // then: it is joined
   await expect(page.getByRole("status")).toContainText(
-    "You joined Shared. It appears in your list in a moment.",
+    "You joined Shared. It will appear in your list in a moment.",
   );
   expect(server.answered, "listed a moment before it could be taken up, it is taken up on trying again").toEqual([
     "accept:invitation_7",

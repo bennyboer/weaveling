@@ -14,22 +14,114 @@ The answer to *where does this appear?* — for an idea today: in which sections
 
 **Forgetting comes in the shapes the views announce.** One appearance (a detach, an unlink), every appearance of a subject (an idea was discarded), and every subject at a place (a section removed, a scene deleted).
 
-**A late message never undoes a newer one.** A refused message can be tried again long after what followed it was handled, so every appearance remembers the `version` it was last told about and whether it is there. Remembering and forgetting a single appearance land only if they are not older than that — a forgotten one stays as a row marked absent, so a late *attached* still meets the *detached* that came after it. The version is the outline's, from the envelope, or the scene's own, from the link message; within one section or one scene it orders every note. A discarded idea, a removed section and a deleted scene are remembered as **gone for good** instead, because what forgot them came from a different stream, whose versions say nothing about the outline's — and none of them can come back. A version equal to the one held lands too: that is the same message redelivered.
+**A late message never undoes a newer one.**
+A refused message can be retried long after the messages that followed it were handled.
+So every appearance stores the `version` it was last told about, and whether it is there.
+Remembering and forgetting a single appearance only take effect if they are not older than that version.
+A forgotten appearance stays as a row marked absent.
+So a late *attached* still meets the *detached* that came after it.
+The version is the outline's, from the envelope, or the scene's own, from the link message.
+Within one section or one scene, it orders every note.
+A discarded idea, a removed section and a deleted scene are instead stored as **gone for good**.
+That is because the message that forgot them came from a different stream, whose versions say nothing about the outline's.
+And none of them can come back.
+A version equal to the stored one also takes effect: that is the same message delivered again.
 
-**An appearance and a tombstone never cross.** On PostgreSQL a mark that read no tombstone before the forget committed one loses the race and is tried again (*the lock gone 2026-11-04, every PostgreSQL transaction serializable*, locks on the place and the idea before); on SQLite the one writer at a time does the same. A hearing marks at one place, so it takes the place's lock first and waits on no other place; two hearings marking the same ideas at different places in opposite orders could still deadlock, which PostgreSQL breaks by refusing one, and its redelivery takes it in. **Gone for good lasts as long as a late message can.** Each tombstone in `subject_tombstones` and `place_tombstones` keeps `laid_at`, when what it marks went, the `occurred_at` of the message saying so, and the first such message sets it. The chore `forget-old-appearance-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), comes round hourly and forgets those laid more than `TOMBSTONES_KEPT_FOR` ago, a day longer than a refused message may be retried, so no message that could still bring one back is left; a discarded idea's project goes with its tombstone. The rows marked absent stay: they are one per idea and place that ever met, and go with the idea or the place.
+**An appearance and a tombstone never cross.**
+On PostgreSQL, a mark may read no tombstone before a forget commits one.
+That mark then loses the race and is tried again.
+(*The lock was removed on 2026-11-04, when every PostgreSQL transaction became serializable.* Before that, locks on the place and the idea did this.)
+On SQLite, only one writer runs at a time, which has the same effect.
+Processing one message marks at one place.
+Two messages that mark the same ideas at once can conflict.
+PostgreSQL then refuses one of them, and it is tried again.
 
-**A discarded outline is not followed**, as its announcement does not list its sections; its sections go with its project instead, when that is deleted, which is the only way an outline is discarded.
+**Gone for good lasts as long as a late message can.**
+Each tombstone in `subject_tombstones` and `place_tombstones` stores `laid_at`: when the thing it marks went.
+That is the `occurred_at` of the message saying so. The first such message sets it.
+The chore `forget-old-appearance-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), runs hourly.
+It forgets the tombstones laid more than `TOMBSTONES_KEPT_FOR` ago.
+That is a day longer than a refused message may be retried.
+So no message that could still bring one back is left.
+A discarded idea's project is forgotten together with its tombstone.
+The rows marked absent stay.
+There is one of them per idea and place that ever met, and they go when the idea or the place goes.
 
-**An idea's project is learnt from the ideas alone.** The idea's `CAPTURED` names its project, and `remember-project-of-idea` keeps it, `remember_project`, apart from the appearances as the answer to another question. The outline's attachments and the scenes' links name *their* project in their [context](../../libraries/eventsourcing), the place's, which is kept beside the place, `remember_place_project`, until the place is forgotten; a place forgotten already keeps none, however late its link is heard. An idea appears only in places of its own project: a link from another project, made with an idea's id known from elsewhere, is kept like any other but shown nowhere, and moves the idea into no other project, as it did when the links named the idea's project (*13c-1, 2026-11-11*). Which of `CAPTURED` and a link is heard first does not matter, as the two are matched only when asked. A deleted project, heard by `forget-appearances-of-deleted-project`, takes every place of it along, `forget_places_of_project` by the index on `place_projects (project)`: each gets its tombstone, as a removed section or a deleted scene would, and loses its appearances and its project, so nothing of the project stays here once an account and its projects are gone. It outlives a discarded idea as the idea's tombstone in `subject_tombstones` does, since whoever followed the idea is told it appears nowhere now, a frame only those who may read its project may hear; both are forgotten together. Where an idea appears is told only to whoever may read its project, `Read` asked of the [`Authorizer`](../../libraries/authorizing): `GET /api/appearances?idea=` answers 404 to anyone else, as for nothing there, and an idea whose project is not known yet appears nowhere, there being nothing to tell. The topic `appearances` on the one socket, `/api/live`, with an `idea`, asks on subscribing and again for every frame, so whoever followed an idea before its project was known hears nothing of it unless they may read it. Deleting a project could become one delete by its project here; that waits for it to be wanted.
+**A discarded outline is not followed.**
+Its announcement does not list its sections.
+Instead, its sections go with its project, when the project is deleted.
+That is the only way an outline is discarded.
 
-**Who it hears.** `index-outline-appearances` takes `ATTACHED` / `DETACHED` of ideas (a scene attached to a section is the book itself, not an appearance) and `SECTION_REMOVED`. `index-scene-appearances` takes `scene.idea.linked`, `scene.idea.unlinked` and `scene.deleted`. `forget-appearances-of-discarded-idea` takes the idea's `DISCARDED`, and `remember-project-of-idea` its `CAPTURED`. All are kept deliveries, each a `KeptHandler` heard through [`inbox::Inboxed`](../../libraries/inbox/README.md), which begins the transaction, skips a message the feature's inbox has heard before and hands the transaction on; `appeared`, `disappeared`, `place_gone` and `idea_discarded` take it as `within` and join it, so an appearance and the record of having heard it commit together. They stay idempotent too — remembering twice is one row, forgetting what is gone is nothing — for what is heard out of order. The chore `forget-old-appearance-hearings` forgets old hearings.
+**An idea's project is learnt from the ideas alone.**
+The idea's `CAPTURED` names its project.
+`remember-project-of-idea` stores it (`remember_project`), apart from the appearances, because it answers a different question.
+The outline's attachments and the scenes' links name *their* project in their [context](../../libraries/eventsourcing). That is the place's project.
+It is stored beside the place (`remember_place_project`) until the place is forgotten.
+A place that was already forgotten stores no project, however late its link arrives.
+An idea appears only in places of its own project.
+A link from another project, made with an idea's id known from elsewhere, is stored like any other, but shown nowhere.
+It does not move the idea into another project, as it did when the links named the idea's project (*13c-1, 2026-11-11*).
+It does not matter whether `CAPTURED` or a link arrives first, because the two are only matched when someone asks.
 
-**Who may read a project is kept by the feature itself,** through [`access`](../../libraries/access/README.md), laid down in the appearances' own database: `appearances-remember-roles` hears the members (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`) and `appearances-remember-trash` the projects put in the trash and restored, each through the inbox; the chore `forget-old-appearance-tombstones`, beside the feature's own, lets their tombstones go. Where there are accounts the core asks `KeptAccess`, and without them allows everyone.
+`forget-appearances-of-deleted-project` receives the deletion of a project.
+It removes every place of that project (`forget_places_of_project`), using the index on `place_projects (project)`.
+Each place gets its tombstone, as a removed section or a deleted scene would.
+Each place loses its appearances and its project.
+So nothing of the project stays here once an account and its projects are gone.
+
+A discarded idea's project is kept as long as the idea's tombstone in `subject_tombstones`.
+That is because whoever followed the idea is told that it now appears nowhere.
+Only those who may read its project may receive that frame.
+The project and the tombstone are forgotten together.
+
+Where an idea appears is told only to those who may read its project: `Read` is asked of the [`Authorizer`](../../libraries/authorizing).
+`GET /api/appearances?idea=` answers 404 to anyone else, as if there were nothing.
+An idea whose project is not known yet appears nowhere, because there is nothing to tell.
+The topic `appearances` on the one socket, `/api/live`, with an `idea`, asks when subscribing and again for every frame.
+So someone who followed an idea before its project was known receives nothing about it, unless they may read it.
+Deleting a project could become a single delete by project here. That waits until it is needed.
+
+**Who it hears.**
+
+- `index-outline-appearances` receives `ATTACHED` / `DETACHED` of ideas, and `SECTION_REMOVED`. A scene attached to a section is the book itself, not an appearance.
+- `index-scene-appearances` receives `scene.idea.linked`, `scene.idea.unlinked` and `scene.deleted`.
+- `forget-appearances-of-discarded-idea` receives the idea's `DISCARDED`.
+- `remember-project-of-idea` receives the idea's `CAPTURED`.
+
+All are kept deliveries.
+Each is a `KeptHandler` run through [`inbox::Inboxed`](../../libraries/inbox/README.md).
+It begins the transaction, skips a message the feature's inbox has received before, and hands the transaction on.
+`appeared`, `disappeared`, `place_gone` and `idea_discarded` take it as `within` and join it.
+So an appearance and the record of having received the message commit together.
+They also stay idempotent — remembering twice is one row, forgetting what is gone is nothing — for messages that arrive out of order.
+The chore `forget-old-appearance-hearings` forgets the old records of received messages.
+
+**Who may read a project is kept by the feature itself,**
+through [`access`](../../libraries/access/README.md), stored in the appearances' own database.
+`appearances-remember-roles` receives the members' messages (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`).
+`appearances-remember-trash` receives the messages about projects put in the trash and restored.
+Both run through the inbox.
+The chore `forget-old-appearance-tombstones` forgets their tombstones, beside the feature's own.
+Where there are accounts, the core asks `KeptAccess`. Without accounts, it allows everyone.
 
 **Route:** `GET /api/appearances?idea={id}` → `[{ "type": "scene" | "section", "id" }]`, in one stable order.
 
-**One way in: `AppearancesCore`.** The REST route, the live route and its sieve, the three listeners and the chore all go through one struct, which asks the `Authorizer` about the idea's project: where an idea appears is told to whoever may read its project. An idea whose project is not known yet may be followed, and answers with nothing, but a change about it is told to nobody until its project is known. Errors are one enum, `AppearancesError`.
+**One way in: `AppearancesCore`.**
+The REST route, the live route and its filter, the three listeners and the chore all go through one struct.
+It asks the `Authorizer` about the idea's project: where an idea appears is told only to those who may read its project.
+An idea whose project is not known yet may be followed, and returns nothing.
+But a change about it is told to nobody until its project is known.
+Errors are one enum, `AppearancesError`.
 
-**Core owns each write's transaction.** The feature keeps no events, yet `Ports` carries its own `Transactions` on its database, and `AppearancesCore` begins one for every write, or joins the listener's; an appearance and the project of its place are remembered in one, where they were two writes before. The catalog's writes take it, and `TellingAppearances` reads where an idea appears and tells it in an `after_commit`, so what it tells is what was committed, never a write rolled back. Nothing is retried: no write here aims at a version, and the catalog's own guards settle what is heard out of order.
+**Core owns each write's transaction.**
+The feature stores no events.
+Still, `Ports` carries its own `Transactions` on its database.
+`AppearancesCore` begins one for every write, or joins the listener's transaction.
+An appearance and the project of its place are stored in one transaction. Before, they were two writes.
+The catalog's writes take the transaction.
+`TellingAppearances` reads where an idea appears and reports it in an `after_commit`.
+So what it reports is what was committed, never a write that was rolled back.
+Nothing is retried, because no write here aims at a version.
+The catalog's own guards handle messages that arrive out of order.
 
 **Crates:** `core` (`AppearancesCore`, `Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.

@@ -1,10 +1,22 @@
 # outbox
 
-The transactional outbox and its relay: how a change that commits is always announced, and one that rolls back never is.
+The transactional outbox and its relay. They make sure that a change that commits is always announced, and that a change that rolls back is never announced.
 
-**Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's [`transacting::Transaction`](../transacting/README.md), and `InMemoryOutbox::enqueue_after_commit(transaction, message)` holds it back until that transaction commits; `Outbox::enqueue_within(transaction, origin, message)` does whichever its outbox's backend does, for a writer that does not know its backend, as a feature's core asking a follow-up of itself — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`), for whoever reads the table, the outbox itself never reading it back; the event store passes its event's version, and a writer with no versions, as the scenes or a follow-up, `Origin::unversioned(aggregate, kind)`, its version none, a null in the table, *not the `0` it was until 2026-11-02, the user asking why a follow-up said version 0, which reads as a version.* A listener asking a follow-up of its own feature in its hearing's transaction says it in one call, `outbox.enqueue_follow_up_within(transaction, origin, heard, routing, &payload, now)`, which answers the message heard with `Message::follow_up` and enqueues the answer. The relay wakes when the write commits and not before: PostgreSQL's `NOTIFY` is sent in the same transaction, and SQLite and memory ring once it is committed, through `Transaction::after_commit`. A transaction dropped unfinished takes its messages with it and wakes nobody.
+**Enqueue inside the writer's transaction.** There are several ways to put a message into the outbox:
 
-The scenes announce a change in the transaction that stores it, and a relay sends it on:
+- `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's [`transacting::Transaction`](../transacting/README.md).
+- `InMemoryOutbox::enqueue_after_commit(transaction, message)` holds the message back until that transaction commits.
+- `Outbox::enqueue_within(transaction, origin, message)` does whatever its outbox's backend does. It is for a writer that does not know its backend, such as a feature's core that sends a follow-up to itself.
+
+The writers are the event store's `append`, or a feature that is not event-sourced at all. An example of the latter is scenes, whose prose is a CRDT.
+
+`Origin` records what the message is about (`aggregate`, `kind`, `version`). This is for whoever reads the table. The outbox itself never reads it back. The event store passes its event's version. A writer without versions, such as the scenes or a follow-up, uses `Origin::unversioned(aggregate, kind)`. Its version is none, which is a null in the table. *Until 2026-11-02 it was `0`. The user asked why a follow-up said version 0, because that reads like a real version.*
+
+A listener that sends a follow-up to its own feature, in its inbox transaction, does it with one call: `outbox.enqueue_follow_up_within(transaction, origin, heard, routing, &payload, now)`. This builds the answer to the received message with `Message::follow_up`, and enqueues it.
+
+The relay wakes up when the write commits, and not before. PostgreSQL's `NOTIFY` is sent in the same transaction. SQLite and memory ring a bell once the transaction is committed, through `Transaction::after_commit`. A transaction that is dropped unfinished takes its messages with it and wakes nobody.
+
+The scenes feature announces a change in the transaction that stores it, and a relay sends it on:
 
 ```rust
 use outbox::{Cadence, Origin, RelayTask};
@@ -22,14 +34,23 @@ let relay = RelayTask::started(scenes_outbox, Cadence::default());
 relay.stop().await;
 ```
 
-**The relay.** `RelayTask` runs two loops per `Outbox`: one delivering, woken by the notification and polling only as a backstop; one sweeping published entries past `KEPT_FOR`. A claimed entry is left alone for `CLAIM_FOR`, which is what stops a crashed relay stranding a message, and on PostgreSQL `FOR UPDATE SKIP LOCKED` is what lets two relays run at all. A retry publishes the message with the id it was written with, so the far end can recognise a redelivery. **What an aggregate told can be forgotten sooner:** `outbox::postgres::forget_published` and `outbox::sqlite::forget_published` delete, in the caller's transaction, the published entries of one aggregate, and `InMemoryOutbox::forget_published_after_commit` does as much once its transaction commits; what still waits is left to go out. The event stores call them through `EventStore::forget_published`, which a deleted account's sweep and a retiring invitation call after compacting, so a name or address their messages carried does not outlive them by `KEPT_FOR`. The in-memory outbox keeps each entry's origin for it, `enqueue_after_commit_from`.
+**The relay.** `RelayTask` runs two loops per `Outbox`:
 
-**That holds for the relay's retries, not a listener's.** A listener that answers a message with another one, as the ideas and scenes sweeps do with `MORE_TO_SWEEP`, mints a fresh id through `Message::answering` each time it runs. When the broker redelivers what it is answering, the second answer is a new message, and no dedup on its id can tell it from the first. Such an answer needs an id derived from what it answers; see [TODO](../../TODO.md).
+- One delivers. It is woken by the notification, and polls only as a backstop.
+- One sweeps away published entries older than `KEPT_FOR`.
 
-**Three outboxes.** `InMemoryOutbox` for the in-memory mode, `PostgresOutbox` behind the `postgres` feature, and `SqliteOutbox` behind `sqlite` for local mode. Each lays its own table down with `migrations()`, tracked in its own ledger, `_sqlx_migrations_outbox`, so it sits beside whatever else owns the database without either knowing about the other.
+A claimed entry is left alone for `CLAIM_FOR`. This stops a crashed relay from stranding a message. On PostgreSQL, `FOR UPDATE SKIP LOCKED` is what makes it possible to run two relays at all. A retry publishes the message with the id it was written with. So the receiving end can recognise a redelivery.
 
-**Why it is not part of `eventsourcing`.** It began there, because the event store was its first writer. But a writer that is not event-sourced should not need an event store to announce its changes, and its database should not grow an `events` table it never uses. So the dependency points one way: `eventsourcing` enqueues through the outbox, and the outbox knows nothing about events.
+**An aggregate's published messages can be deleted sooner.** `outbox::postgres::forget_published` and `outbox::sqlite::forget_published` delete the published entries of one aggregate, in the caller's transaction. `InMemoryOutbox::forget_published_after_commit` does the same once its transaction commits. Entries that are still waiting are left to go out. The event stores call these through `EventStore::forget_published`. Two callers use that after compacting: the sweep of a deleted account, and an invitation that is retired. So a name or address that their messages carried is not kept for another `KEPT_FOR`. The in-memory outbox keeps each entry's origin for this, through `enqueue_after_commit_from`.
 
-**Messages go out in the order they were written.** A claim comes back from `UPDATE … RETURNING` in whatever order the database likes, so every outbox sorts what it claimed by entry before publishing — a `Detached` overtaking the `Attached` it undoes would leave a read model wrong for good. The in-memory outbox numbers its entries by a counter, never by how many it holds, so an entry written after the sweep took published ones away gets no number an older one still has (*fixed 2026-11-02*), and marking it published marks it.
+**This holds for the relay's retries, not for a listener's.** Some listeners answer a message with another message. The ideas and scenes sweeps do this with `MORE_TO_SWEEP`. Such a listener creates a fresh id through `Message::answering` each time it runs. When the broker redelivers the message it is answering, the second answer is a new message. No deduplication by id can tell it apart from the first answer. Such an answer needs an id derived from the message it answers. See [TODO](../../TODO.md).
 
-**The SQLite outbox rings an in-process bell.** SQLite has no `NOTIFY`, and its commit hook runs before the commit is visible, so `enqueue` rings a bell in the process once the writer's transaction has committed, and `Cadence::deliver_every` is the backstop for a writer in another process; see [the decision](../../ROADMAP.md#sqlite-backs-local-mode--decided). Claims expire by comparing instants stored as fixed-width UTC text, which sort as strings the way they sort in time.
+**There are three outboxes.** `InMemoryOutbox` is for the in-memory mode. `PostgresOutbox` is behind the `postgres` feature. `SqliteOutbox` is behind `sqlite`, for local mode. Each creates its own table with `migrations()`. The table is tracked in its own ledger, `_sqlx_migrations_outbox`. So the outbox sits next to whatever else owns the database, and neither knows about the other.
+
+**Why it is not part of `eventsourcing`.** It started there, because the event store was its first writer. But a writer that is not event-sourced should not need an event store to announce its changes. And its database should not get an `events` table it never uses. So the dependency points one way: `eventsourcing` enqueues through the outbox, and the outbox knows nothing about events.
+
+**Messages go out in the order they were written.** A claim comes back from `UPDATE … RETURNING` in whatever order the database chooses. So every outbox sorts what it claimed by entry before publishing. If a `Detached` overtook the `Attached` it undoes, a read model would stay wrong for good.
+
+The in-memory outbox numbers its entries with a counter, never by how many entries it holds. So an entry written after the sweep removed published entries never gets a number that an older entry still has (*fixed on 2026-11-02*). And marking that entry as published marks the right one.
+
+**The SQLite outbox rings an in-process bell.** SQLite has no `NOTIFY`. Its commit hook runs before the commit is visible. So `enqueue` rings a bell in the process once the writer's transaction has committed. `Cadence::deliver_every` is the backstop, for a writer in another process. See [the decision](../../ROADMAP.md#sqlite-backs-local-mode--decided). Claims expire by comparing instants that are stored as fixed-width UTC text. Such text sorts as strings in the same order as in time.

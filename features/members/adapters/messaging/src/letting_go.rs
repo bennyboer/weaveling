@@ -20,7 +20,7 @@ impl LetGoOfDeletedAccountListener {
 impl KeptHandler for LetGoOfDeletedAccountListener {
     const NAME: &'static str = "let-go-of-deleted-account";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
-    const WHEN_REFUSED: &'static str = "A deleted account was not let go of its projects, so it is still listed among their members, perhaps as their last owner, and its name and address are still known.";
+    const WHEN_REFUSED: &'static str = "A deleted account was not removed from its projects. It is still listed as a member, maybe even as a project's last owner. Its name and address are still stored.";
 
     async fn take_in(
         &self,

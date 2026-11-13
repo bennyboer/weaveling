@@ -2,9 +2,9 @@
 
 Who may do what in a project.
 
-**`Authorizer` is a port** every feature asks before it reads, writes or manages anything of a project: `may(agent, act, project)`. Features know only this library; who is in which project as what belongs to the members feature, which answers it, so no feature asks another.
+**`Authorizer` is a port.** Every feature asks it before it reads, writes or manages anything of a project: `may(agent, act, project)`. Features know only this library. Who is in which project, and in which role, belongs to the members feature, and that feature answers. So no feature asks another feature.
 
-A feature asks before it does anything, and a list asks once:
+A feature asks before it does anything. A list asks only once:
 
 ```rust
 use authorizing::{Act, Authorizer, Readable};
@@ -19,12 +19,19 @@ let projects = match self.authorizer.readable_by(agent).await? {
 };
 ```
 
-**Four acts.** `Read` a project and all it holds; `Write` in it, its scenes, ideas, boards and outline; `Manage` the project itself, its name and details, its members and invitations, and deleting it; `Restore` it from the trash, the one act left on a project in it, so a trashed project can be brought back while its members and invitations stay as they were. Which role may which is the members feature's to say.
+**There are four acts.**
 
-**What may one read, as a whole:** `readable_by(agent)` answers `Everything` or `Only` these projects, so a list of projects asks once, not once a project.
+- `Read`: read a project and everything in it.
+- `Write`: write in a project: its scenes, ideas, boards and outline.
+- `Manage`: manage the project itself: its name and details, its members and invitations, and deleting it.
+- `Restore`: restore the project from the trash. This is the only act still allowed on a project in the trash. So a trashed project can be brought back, while its members and invitations stay as they were.
 
-**In local mode one person does everything**, so `AllowingEverything` answers yes to anyone. On a server with accounts the members feature answers instead.
+Which role may do which act is decided by the members feature.
 
-**A failure to ask is no answer.** `may` fails rather than guessing, so a route answers that something went wrong rather than letting anyone in or locking the owner out.
+**What may someone read, as a whole?** `readable_by(agent)` returns either `Everything` or `Only` a set of projects. So a list of projects asks once, not once per project.
 
-**Who may follow can change while they follow.** `access_changed(project)` says the answers about a project may have changed, and `watch_access(project)` gives an `AccessWatch` whose `changed()` wakes when they did, or when it fell behind and cannot tell. Both are in-process, through `AccessChanges`; an authorizer whose answers never change, as `AllowingEverything`, keeps the defaults, a watch that never wakes. The members feature tells it once its list shows the change, so whoever asks again on waking is answered by the list as it is now.
+**In local mode one person does everything.** So `AllowingEverything` answers yes to anyone. On a server with accounts, the members feature answers instead.
+
+**A failed check is not an answer.** `may` returns an error rather than guessing. So a route reports that something went wrong. It neither lets anyone in nor locks the owner out.
+
+**Who may follow a project can change while they follow it.** `access_changed(project)` signals that the answers about a project may have changed. `watch_access(project)` returns an `AccessWatch`. Its `changed()` wakes up when the answers changed, or when the watch fell behind and cannot tell. Both work in-process, through `AccessChanges`. An authorizer whose answers never change, such as `AllowingEverything`, keeps the defaults: a watch that never wakes up. The members feature signals a change once its own list already shows it. So whoever asks again after waking up gets the answer from the current list.

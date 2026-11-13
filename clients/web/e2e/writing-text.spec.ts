@@ -302,7 +302,7 @@ test("a quotation style chosen while writing redraws what is already said", asyn
   await page.getByRole("button", { name: "Project details" }).click();
   const projectDetails = page.getByRole("dialog", { name: "Project details" });
   await projectDetails
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "„…“" });
   await projectDetails.getByRole("button", { name: "Save" }).click();
   await projectDetails
@@ -352,7 +352,7 @@ test("a style chosen while writing is not taken back by undoing what was typed",
   await page.getByRole("button", { name: "Project details" }).click();
   const projectDetails = page.getByRole("dialog", { name: "Project details" });
   await projectDetails
-    .getByLabel("Quotation marks")
+    .getByLabel(/^Quotation marks/)
     .selectOption({ label: "„…“" });
   await projectDetails.getByRole("button", { name: "Save" }).click();
   await projectDetails

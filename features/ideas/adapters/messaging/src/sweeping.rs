@@ -80,7 +80,7 @@ fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
 impl Handler for DiscardOnProjectDeletedListener {
     const NAME: &'static str = "discard-ideas-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
-    const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not cleared away.";
+    const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not removed.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

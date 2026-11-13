@@ -42,13 +42,13 @@ Underneath every view is a single shared model — one fabric, seen from differe
 
 The views are not separate tools stapled together; they are lenses onto the same weave. This is why they stay linked: navigating from one to another is just turning the fabric to catch the light differently.
 
-**No view owns a scene or an idea.** The same scene sits in a section of the outline, at a moment on the timeline, inside two subplots, drawing on ideas that were born on the board — and none of those is *the* answer to where it is. Which is also why either can exist having never been placed at all: unwoven thread is still thread.
+**No view owns a scene or an idea.** The same scene can sit in a section of the outline, at a moment on the timeline, and inside two subplots. It can also draw on ideas that were born on the board. None of these places is *the* answer to where the scene is. This is also why a scene or an idea can exist without ever being placed anywhere: unwoven thread is still thread.
 
 ## The Views
 
 ### Board view
 
-Where ideas land before they are anything. An infinite surface — closer to a wall of index cards than to a document — on which the author shoots in an idea and gives it a title or doesn't.
+Where ideas land before they are anything. It is an infinite surface, closer to a wall of index cards than to a document. The author throws an idea onto it, and may give it a title or not.
 
 Nothing on the board has a place in the book yet. Ideas sit wherever they were dropped, in whatever clusters make sense that day, and spatial memory is allowed to do real work — *the abandoned ideas live bottom-left*. Several authors can brainstorm on one board at once and watch each other move things around.
 
@@ -68,7 +68,7 @@ The finest grain is **the scene**: sections give the structure, scenes inside th
 
 Where the actual prose is written. Deliberately **distraction-free**: just the text, in a large, comfortable font, so the author can concentrate on the words — the book's scenes one after another, under their section names, as one flow to read and write in.
 
-Linked to every other view: opening a scene — from the outline, from an idea that draws it in, on the timeline — lands right there in the flow. Codex entity names (see below) are **highlighted** inline, so their sheet is one glance away while writing dialogue.
+It is linked to every other view. A scene can be opened from the outline, from an idea that draws it in, or from the timeline. Opening it lands right at that scene in the flow. Codex entity names (see below) are **highlighted** inline, so their sheet is one glance away while writing dialogue.
 
 ### Codex
 
@@ -106,44 +106,50 @@ Typesetting the finished weave is an **export function**, not a view. The in-ord
 
 ## How It's Built
 
-Weaveling is a browser-based client–server app: a Rust modular-monolith backend, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline), stored in PostgreSQL behind ports that do not know it is there. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, [ROADMAP.md](./ROADMAP.md) for what's actually being built right now, and [CONVENTIONS.md](./CONVENTIONS.md) for how it is written.
+Weaveling is a browser-based client–server app. The backend is a Rust modular monolith. Structure is stored with event sourcing, and prose with CRDTs. That way, editing is real-time collaborative *and* works offline. The data is stored in PostgreSQL, behind ports that do not know that PostgreSQL is there. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, [ROADMAP.md](./ROADMAP.md) for what's actually being built right now, and [CONVENTIONS.md](./CONVENTIONS.md) for how it is written.
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Rust**, via [rustup](https://rustup.rs). The toolchain, the `rustfmt`/`clippy` components and the `wasm32-unknown-unknown` target are all declared in `rust-toolchain.toml` and installed automatically on first build — nothing to add by hand.
-- **[cargo-leptos](https://github.com/leptos-rs/cargo-leptos)**, which builds the web client and the server that hands it out. Cargo can't declare tool dependencies, so this one is manual:
+- **Rust**, via [rustup](https://rustup.rs). The toolchain, the `rustfmt`/`clippy` components and the `wasm32-unknown-unknown` target are all declared in `rust-toolchain.toml`. They are installed automatically on the first build, so there is nothing to add by hand.
+- **[cargo-leptos](https://github.com/leptos-rs/cargo-leptos)**, which builds the web client and the server that serves it. Cargo cannot declare tool dependencies, so this one must be installed by hand:
 
   ```bash
   cargo install --locked cargo-leptos
   ```
 
-- **Node**, only for the client's end-to-end tests. Not needed to build or run anything:
+- **Node**, only for the client's end-to-end tests. It is not needed to build or run anything:
 
   ```bash
   cd clients/web && npm install && npx playwright install chromium
   ```
 
-- **Docker**, only for the tests that run against a real PostgreSQL. `cargo nextest run` without them needs nothing:
+- **Docker**, only for the tests that run against a real PostgreSQL. `cargo nextest run` without those tests needs nothing:
 
   ```bash
   docker compose up -d
   ```
 
-  First start creates one database per feature, reading the list from `features/` rather than repeating it. PostgreSQL only runs its init scripts on an empty data directory, so a feature added later will not get one this way — `docker compose down -v` and up again, until the API takes over creating them at startup.
+  On the first start, it creates one database per feature. It reads the list of features from `features/`, so the list is not repeated. PostgreSQL runs its init scripts only on an empty data directory. So a feature that is added later does not get a database this way. Until the API takes over creating the databases at startup, run `docker compose down -v` and then start it up again.
 
 ### Running it for development
 
-One process: the API serves the client beside `/api`, and [cargo-leptos](https://github.com/leptos-rs/cargo-leptos) builds both and watches them (`cargo install --locked cargo-leptos` once; it needs `node` on the path for the editor's JavaScript, and if a `wasm-bindgen` of your own is installed, it must be the version `Cargo.lock` names).
+Development runs as one process. The API serves the client next to `/api`. [cargo-leptos](https://github.com/leptos-rs/cargo-leptos) builds both and watches them for changes. Install it once with `cargo install --locked cargo-leptos`. It needs `node` on the path, for the editor's JavaScript. If you installed a `wasm-bindgen` of your own, it must be the version that `Cargo.lock` names.
 
 ```bash
 cargo dev
 ```
 
-`cargo dev` is an alias, in `.cargo/config.toml`, for `cargo leptos watch --split`. Then **open http://localhost:3000**. Always pass `--split` when calling cargo-leptos yourself: the views are loaded as they are opened (`clients/web/src/app/lazy.rs`), and a build without it shows a blank page, its code asking for a module only the split makes. A change to the client rebuilds it and reloads the page, a change to the styles swaps them in without a reload, and a change to the server rebuilds and restarts it, then reloads the page. Arguments for the server go after `--`, as in `cargo dev -- --config my.toml`.
+`cargo dev` is an alias for `cargo leptos watch --split`, defined in `.cargo/config.toml`. Then **open http://localhost:3000**. Always pass `--split` when you call cargo-leptos yourself. The views are loaded only when they are opened (`clients/web/src/app/lazy.rs`). A build without `--split` shows a blank page, because its code asks for a module that only the split build makes. While it runs:
 
-`TraceLayer` emits at DEBUG while `tracing_subscriber` defaults to INFO, so you get no request log unless you ask for one:
+- a change to the client rebuilds the client and reloads the page,
+- a change to the styles swaps them in without a reload,
+- a change to the server rebuilds and restarts the server, and then reloads the page.
+
+Arguments for the server go after `--`, as in `cargo dev -- --config my.toml`.
+
+`TraceLayer` logs at DEBUG level, but `tracing_subscriber` defaults to INFO. So you get no request log unless you ask for one:
 
 ```bash
 RUST_LOG=info,tower_http=debug cargo dev
@@ -153,31 +159,44 @@ The API alone, without the client, still runs as `cargo run -p weaveling-service
 
 ### Running a release build
 
-Build the client, split by view and sized for the web, and the server beside it:
+Build the client and the server next to it. The client is split by view and sized for the web:
 
 ```bash
 cargo build-release
 ```
 
-`cargo build-release` is an alias, in `.cargo/config.toml`, for `cargo leptos build --release --split`. That writes the client to `target/site` (`page.html`, the styles, fonts and icons, and `pkg/` with the WebAssembly chunks) and the server to `target/release/weaveling-service-api` (`.exe` on Windows). The two travel together: copy both wherever the instance runs. Then start the server, naming the client's folder:
+`cargo build-release` is an alias for `cargo leptos build --release --split`, defined in `.cargo/config.toml`. It writes the client to `target/site`: `page.html`, the styles, fonts and icons, and `pkg/` with the WebAssembly chunks. It writes the server to `target/release/weaveling-service-api` (`.exe` on Windows). The two belong together: copy both to wherever the instance runs. Then start the server and name the client's folder:
 
 ```bash
 WEAVELING_CLIENT_DIR=target/site ./target/release/weaveling-service-api --config weaveling.toml
 ```
 
-or with `client_dir = "target/site"` under `[server]` in the settings file. Without either, the server answers `/api` only and hands out no client. It listens on `127.0.0.1:3000` unless told otherwise (below); behind a proxy, set `public_url` to the address people open, or no passkey can be added. The files are handed out uncompressed, so let the proxy in front compress them, gzip or brotli: the first download is about 1.9 MB raw and 0.5 MB compressed.
+Instead of the variable, you can set `client_dir = "target/site"` under `[server]` in the settings file. Without either, the server answers only on `/api` and serves no client.
 
-**Settings are read once, at startup:** built-in defaults, then a `weaveling.toml` beside the server (or the file `--config <path>` or `WEAVELING_CONFIG` names), then the variables below, the later winning. [`weaveling.example.toml`](./weaveling.example.toml) names every key, each with the variable of the same meaning. A value the server cannot read stops it, saying which key in which file or which variable holds it. The API listens on `127.0.0.1:3000` unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port, `0.0.0.0:3000` to be reached from other machines.
+The server listens on `127.0.0.1:3000`, unless it is configured otherwise (see below). Behind a proxy, set `public_url` to the address that people open. Otherwise no passkey can be added. The files are served uncompressed, so let the proxy in front compress them, with gzip or brotli. The first download is about 1.9 MB uncompressed and 0.5 MB compressed.
 
-**For running it by hand**, `node scripts/dev-settings.mjs` writes a `weaveling.toml` of your own and a `weaveling.dev.key` it names, the key that seals two-step sign-in secrets, with `public_url = "http://localhost:3000"`, so open the client at localhost, not 127.0.0.1, for passkeys to work; git ignores both, and the script never overwrites either, since a new key locks out every second factor set up with the old one. The browser tests start the API with `--config clients/web/e2e/weaveling.toml` instead, a key for tests alone, so your own file changes nothing there.
+**Settings are read once, at startup.** They come from these sources, and a later source wins over an earlier one:
 
-**Where the work is kept is chosen at startup**, and one binary carries every option:
+1. the built-in defaults,
+2. a `weaveling.toml` next to the server, or the file that `--config <path>` or `WEAVELING_CONFIG` names,
+3. the environment variables below.
+
+[`weaveling.example.toml`](./weaveling.example.toml) lists every key, each with the variable that has the same meaning. If the server cannot read a value, it stops. It then says which key in which file, or which variable, holds that value. The API listens on `127.0.0.1:3000`, unless `WEAVELING_LISTEN` (`server.listen` in the file) names another address and port. Use `0.0.0.0:3000` to make it reachable from other machines.
+
+**For running it by hand**, run `node scripts/dev-settings.mjs`. It writes two files:
+
+- a `weaveling.toml` of your own, with `public_url = "http://localhost:3000"`,
+- a `weaveling.dev.key`, which that `weaveling.toml` names. The key seals the secrets of two-step sign-in.
+
+Because of that `public_url`, open the client at localhost, not at 127.0.0.1, or passkeys will not work. Git ignores both files. The script never overwrites either of them, because a new key locks out every second factor that was set up with the old key. The browser tests start the API with `--config clients/web/e2e/weaveling.toml` instead. That file has a key only for tests, so your own file changes nothing in the tests.
+
+**Where the work is stored is chosen at startup.** One binary supports every option:
 
 - **Nothing set** — in memory, so restarting the API empties it.
-- **`WEAVELING_DATA=<directory>`** — local mode: one SQLite file per feature in that directory, created if missing, so the work survives a restart and is a set of files you own.
+- **`WEAVELING_DATA=<directory>`** — local mode: one SQLite file per feature, in that directory. The directory is created if it is missing. The work survives a restart, and it is a set of files that you own.
 - **`WEAVELING_DATABASE_URL=<server>`** — PostgreSQL.
 
-Setting both is refused rather than guessed. Both names are namespaced on purpose: a `DATABASE_URL` exported for some other project must never steer where an author's work goes. The plain `DATABASE_URL` is read only by the test harness, which is developer tooling and follows the convention.
+Setting both is refused. The server does not guess which one you meant. Both names have the `WEAVELING_` prefix on purpose: a `DATABASE_URL` exported for some other project must never decide where an author's work goes. Only the test harness reads the plain `DATABASE_URL`. The harness is developer tooling, so it follows the common convention.
 
 ```bash
 WEAVELING_DATA=~/weaveling cargo run -p weaveling-service-api
@@ -186,49 +205,52 @@ docker compose up -d
 WEAVELING_DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling cargo run -p weaveling-service-api
 ```
 
-Either way it lays every schema down at startup and runs an outbox relay per feature that announces anything. On PostgreSQL each relay is woken by a notification and polls every five seconds as a backstop; SQLite has nothing to notify, so in local mode the relays poll every 100ms instead. `ctrl-c` stops the relays before exiting.
+In both cases, the API creates every schema at startup. It also runs one outbox relay for each feature that publishes events. On PostgreSQL, each relay is woken by a notification, and it also polls every five seconds as a backstop. SQLite has no notifications, so in local mode the relays poll every 100ms instead. `ctrl-c` stops the relays before the API exits.
 
-**`WEAVELING_FLAKY=<share>`** makes every listener refuse that share of the messages it is handed, from `0` to `1`, so the alarm and its dialog can be tried by hand. A message is given up on only after five refusals in a row, about half a minute with the backoff, so at `0.5` only one in 32 deliveries ends as a refusal; `0.8` shows a third of them. It is for trying things out, never for an author: the log warns at startup when it is set.
+**`WEAVELING_FLAKY=<share>`** makes every listener refuse a share of the messages it receives. The share is a number from `0` to `1`. This lets you try the alarm and its dialog by hand. A message is given up only after five refusals in a row. With the backoff, that takes about half a minute. So at `0.5`, only one in 32 deliveries ends as a refusal. At `0.8`, about a third of them do. This setting is for trying things out, never for an author. The log warns at startup when it is set.
 
 ### Testing the client
 
-The client is tested end to end in a real browser, because the two client bugs that actually shipped were browser behavior rather than logic — see [Client conventions](./ARCHITECTURE.md#client-conventions).
+The client is tested end to end in a real browser. The reason: the two client bugs that actually shipped were about browser behavior, not about logic. See [Client conventions](./ARCHITECTURE.md#client-conventions).
 
 ```bash
 cd clients/web
 npm test
 ```
 
-Playwright starts a server of the tests' own with `cargo leptos serve --split`, at :3100 and from `target/site-tests`, so a `cargo dev` of yours at :3000 is neither reused nor overwritten; a test server already at :3100 is reused. The suite takes a few minutes.
+Playwright starts its own test server with `cargo leptos serve --split`. That server runs at :3100 and serves from `target/site-tests`. So a `cargo dev` of yours at :3000 is neither reused nor overwritten. A test server that is already running at :3100 is reused. The suite takes a few minutes.
 
-`npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3100 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
+`npm run test:local` runs the same suite against local mode. It always starts its own API, on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`. So it needs port 3100 to be free. It must not reuse an in-memory server, because that would test the wrong thing. Local mode is the honest one about timing. Its outbox is polled, so a catalog lags a moment behind a write. Anything in the client that only worked because answers came back instantly fails here first.
 
-**Editing a migration needs a nudge.** `sqlx::migrate!` bakes the SQL into the binary at compile time and, on stable Rust, cannot tell cargo that the `.sql` files are build inputs — so changing one alone may not trigger a rebuild, and the old schema stays in the binary. Touch any `.rs` in the crate, or run `cargo clean -p weaveling-eventsourcing`. A test asserts the expected indexes exist, so a migration that failed to land fails the suite rather than going unnoticed.
+**Editing a migration needs a nudge.** `sqlx::migrate!` bakes the SQL into the binary at compile time. On stable Rust, it cannot tell cargo that the `.sql` files are build inputs. So changing only a `.sql` file may not trigger a rebuild, and the binary keeps the old schema. Touch any `.rs` file in the crate, or run `cargo clean -p weaveling-eventsourcing`. A test checks that the expected indexes exist. So if a migration failed to land, the suite fails, and the problem does not go unnoticed.
 
-Each feature keeps its data in [a database of its own](./ARCHITECTURE.md#dependency-rules), so a database test gets one throwaway PostgreSQL schema per feature, created on the spot and dropped afterwards. The suite still runs in parallel and no test can see another's rows; a schema left behind by a killed test is swept up an hour later by whichever test runs next.
+Each feature keeps its data in [a database of its own](./ARCHITECTURE.md#dependency-rules). So a database test gets one throwaway PostgreSQL schema per feature. The schema is created on the spot and dropped afterwards. The suite still runs in parallel, and no test can see another test's rows. Sometimes a killed test leaves a schema behind. An hour later, whichever test runs next deletes it.
 
-Two things to know before writing more of these. Selectors are **role plus accessible name** only — never a CSS class or an index — so restyling can't break a test. And the API is in memory and shared for the whole run, so no test may assume an empty list; each one makes its own uniquely-named project.
+Two things to know before you write more of these tests:
+
+- Selectors use only **role plus accessible name**, never a CSS class or an index. So restyling cannot break a test.
+- The API runs in memory and is shared for the whole run. So no test may assume an empty list. Each test creates its own project with a unique name.
 
 ### Common commands
 
 | Command | Does |
 |---|---|
-| `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — cargo-leptos builds it, for a different target. |
-| `cargo nextest run` | Runs the workspace test suite, every test of every crate at once ([cargo-nextest](https://nexte.st), `cargo install --locked cargo-nextest`). Nothing here needs a database. `cargo test` still works, only slower, as it runs one test binary after another. |
-| `cargo nextest run --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`, whose PostgreSQL takes 300 connections, as the tests run many at once; `.config/nextest.toml` lets only two of the API's journeys on PostgreSQL run together, which also keeps CI under its 100. |
+| `cargo build` | Builds the server-side crates. The web client is excluded from `default-members`, because cargo-leptos builds it, for a different target. |
+| `cargo nextest run` | Runs the workspace test suite: every test of every crate at once ([cargo-nextest](https://nexte.st), `cargo install --locked cargo-nextest`). None of these tests needs a database. `cargo test` still works, but it is slower, because it runs one test binary after another. |
+| `cargo nextest run --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`. That PostgreSQL accepts 300 connections, because the tests run many at once. `.config/nextest.toml` lets only two of the API's journeys on PostgreSQL run at the same time. This also keeps CI under its limit of 100 connections. |
 | `cargo fmt --all` | Formats everything. |
-| `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
-| `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
+| `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client**, because `--workspace` does not build for `wasm32`. |
+| `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. It is needed as a separate command, because of the row above. |
 | — | CI runs all of the above plus the browser suite, against a PostgreSQL service container. See [.github/workflows/check.yml](./.github/workflows/check.yml). |
 | `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without building it. |
-| `cargo build-release` | Produces the optimised client, split by view, in `target/site` and the server beside it (`cargo leptos build --release --split`). |
-| `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the server itself if it isn't already up, and reuses it if it is. |
+| `cargo build-release` | Produces the optimised client, split by view, in `target/site`, and the server next to it (`cargo leptos build --release --split`). |
+| `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the server itself if it is not already running, and reuses it if it is. |
 
 ### Layout
 
-A Cargo workspace: `clients/`, `services/`, `features/`, `libraries/`. Each feature is an onion — a dependency-free `core`, wrapped in a ring of adapter crates, plus a WASM-safe `contract` crate shared with the client. The rules for what may depend on what are in [ARCHITECTURE.md](./ARCHITECTURE.md#repository-structure).
+A Cargo workspace with `clients/`, `services/`, `features/` and `libraries/`. Each feature is an onion: a `core` without dependencies, wrapped in a ring of adapter crates. Each feature also has a WASM-safe `contract` crate, which is shared with the client. The rules for what may depend on what are in [ARCHITECTURE.md](./ARCHITECTURE.md#repository-structure).
 
-One crate in `libraries/` ships with nothing: `weaveling-test-harness` is a dev-dependency everywhere it appears and is never linked into a binary. It gives a test a `PostgresFixture` handing out a throwaway database namespace per feature, and it is the only crate there that exists solely for the suite.
+One crate in `libraries/` ships with nothing: `weaveling-test-harness`. It is a dev-dependency wherever it appears, and it is never linked into a binary. It gives a test a `PostgresFixture`, which hands out a throwaway database namespace per feature. It is the only crate there that exists only for the test suite.
 
 ## Status
 

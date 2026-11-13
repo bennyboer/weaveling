@@ -21,8 +21,7 @@ impl RememberWhoSignedUpListener {
 impl KeptHandler for RememberWhoSignedUpListener {
     const NAME: &'static str = "notifications-remember-who-signed-up";
     const LISTENS_TO: &'static [&'static str] = &[SIGNED_UP, SIGNED_UP_BY_INVITATION];
-    const WHEN_REFUSED: &'static str =
-        "Someone who signed up is not known to notifications, so a notice cannot name them.";
+    const WHEN_REFUSED: &'static str = "The notifications feature did not learn about a new sign-up. A notice cannot show this person's name.";
 
     async fn take_in(
         &self,
@@ -63,7 +62,7 @@ impl RememberProjectNamesListener {
 impl KeptHandler for RememberProjectNamesListener {
     const NAME: &'static str = "notifications-remember-project-names";
     const LISTENS_TO: &'static [&'static str] = &[STARTED, RENAMED, DELETED];
-    const WHEN_REFUSED: &'static str = "A project's name, or that it was deleted, did not reach notifications, so a notice may name it wrongly or stay listed.";
+    const WHEN_REFUSED: &'static str = "A project's new name or its deletion did not reach the notifications feature. A notice may show the wrong project name, or stay listed after the project was deleted.";
 
     async fn take_in(
         &self,

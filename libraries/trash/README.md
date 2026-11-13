@@ -1,10 +1,19 @@
 # trash
 
-What is marked for removal, restorable until a deadline, and purged for good by a chore once it has passed. The mechanism is shared; the domain is not: each feature keeps its own state and events, a project trashed and restored, and its own way back.
+Things that are marked for removal. They can be restored until a deadline. Once the deadline has passed, a chore purges them for good. The mechanism is shared, but the domain is not. Each feature keeps its own state and events (for example, a project that is trashed and restored), and its own way of restoring.
 
-**An entry is a kind, an id and until when it is kept**, `kept_until`, the moment from which it is due to be purged, *named so 2026-11-02, the user asking whether `swept_at` meant when it was put in or taken out: it is neither, and a purge comes at the first round after it.* A feature keeps its trash in its own database, as it keeps its inbox: `InMemoryTrash`, `PostgresTrash` behind the `postgres` feature and `SqliteTrash` behind `sqlite`, each laying its table down with `migrations()`, tracked in its own ledger, `_sqlx_migrations_trash`. The kind keeps apart the things one feature trashes, as `"project"` beside a later `"account"`.
+**An entry is a kind, an id, and a time until which it is kept:** `kept_until`. That is the moment from which the entry is due to be purged. *The name was chosen on 2026-11-02. The user asked whether the old name `swept_at` meant when the entry was put in or taken out. It meant neither. A purge happens at the first chore run after that moment.*
 
-**Every write takes the transaction.** `put_into(transaction, kind, id, until)` puts a thing in the trash, its entry kept until then, or keeps it until another moment if it is there already; `take_out(transaction, kind, id)` takes it out, answering whether it was there. So a feature trashes with the event that says so, and restores with the one that undoes it, in one [transaction](../transacting/README.md), and neither outlives the other. `due(at, at_most)` answers everything of every kind to be purged by then, oldest first, each a **`Trashed`**, its kind and its id, from the pool, *its kind told rather than asked for, the user choosing so 2026-11-02, so one chore purges all a feature trashes.*
+A feature keeps its trash in its own database, as it does with its inbox. There are three implementations: `InMemoryTrash`, `PostgresTrash` behind the `postgres` feature, and `SqliteTrash` behind `sqlite`. Each creates its table with `migrations()`, tracked in its own ledger, `_sqlx_migrations_trash`. The kind keeps apart the different things one feature trashes, such as `"project"` and, later, `"account"`.
+
+**Every write takes the transaction.**
+
+- `put_into(transaction, kind, id, until)` puts a thing in the trash, and keeps its entry until `until`. If the thing is already there, it changes the time it is kept until.
+- `take_out(transaction, kind, id)` takes it out, and returns whether it was there.
+
+So a feature trashes a thing together with the event that says so, in one [transaction](../transacting/README.md). It restores a thing together with the event that undoes it, also in one transaction. Neither one outlives the other.
+
+`due(at, at_most)` returns everything of every kind that is due to be purged by then, oldest first. Each result is a **`Trashed`**, with its kind and its id. It reads from the pool. *The result includes the kind, instead of the caller asking for one kind. Decided on 2026-11-02: the user chose this, so that one chore purges everything a feature trashes.*
 
 ```rust
 let mut transaction = transactions.begin().await?;
@@ -13,8 +22,28 @@ trash.put_into(&mut transaction, "project", project.as_str(), now + KEPT_FOR).aw
 transaction.finish().await?;
 ```
 
-**How long a thing stays is the feature's to say**, where it is wired: the library knows no period, only until when each entry is kept.
+**How long a thing stays is decided by the feature,** where it is wired. The library knows no period. It only knows until when each entry is kept.
 
-**`PurgeTheTrash` is the chore that purges**, one a feature, *called purging, not sweeping, the user choosing the word 2026-11-02, which also keeps it apart from the sweeps that follow a project's deletion.* Named as the feature wires it, it comes round hourly, asks what is due, `PURGED_AT_MOST` at a time, and hands each `Trashed` to the feature's **`Purge`**, until a batch comes back short. A purge removes the thing for good, by its kind, and takes it out of the trash in one transaction of its own, so a purge done is never done again, and a thing restored meanwhile has nothing left to purge. One that fails is logged and stays for the next round, the others purged still, and the chore says it failed. A purge that answers done but leaves its entry behind would be handed it again for ever, so the chore stops the round and says so instead.
+**`PurgeTheTrash` is the chore that purges.** There is one per feature. *It is called purging, not sweeping. Decided on 2026-11-02: the user chose the word. It also keeps it apart from the sweeps that follow a project's deletion.*
 
-**Tests.** `suite.rs` holds the conformance cases every backend runs: due once its time has come and not before, each with its kind and one id of two kinds two things, oldest first and no more than asked for, taken out once, put in again to keep it until later, and nothing put in or taken out in a transaction dropped. `purging.rs` holds the chore's: every due entry of every kind purged batch after batch, handed over with its kind, and nothing before its time, one refused left for the next round, and a purge that leaves its entry stopping the round.
+It is named the way the feature wires it. It runs hourly. It asks what is due, `PURGED_AT_MOST` at a time, and hands each `Trashed` to the feature's **`Purge`**. It continues until a batch comes back with fewer than that.
+
+A purge removes the thing for good, according to its kind. In the same transaction, which is its own, it takes the thing out of the trash. So a purge that is done is never done again. And a thing that was restored in the meantime has nothing left to purge.
+
+If a purge fails, this is logged, and the entry stays for the next run. The other entries are still purged, and the chore reports that it failed. A purge might report success but leave its entry behind. Then it would be handed the same entry again forever. So in that case the chore stops the run and reports it instead.
+
+**Tests.** `suite.rs` holds the conformance cases that every backend runs:
+
+- an entry is due once its time has come, and not before,
+- each entry comes with its kind, and one id of two kinds is two separate things,
+- entries come oldest first, and no more than asked for,
+- an entry is taken out only once,
+- putting an entry in again keeps it until the later time,
+- nothing is put in or taken out in a transaction that is dropped.
+
+`purging.rs` holds the cases for the chore:
+
+- every due entry of every kind is purged, batch after batch, and handed over with its kind,
+- nothing is purged before its time,
+- an entry whose purge was refused is left for the next run,
+- a purge that leaves its entry behind stops the run.

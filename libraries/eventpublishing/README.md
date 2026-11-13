@@ -1,10 +1,17 @@
 # eventpublishing
 
-Turning a recorded event into a message. It is the third thing between [`eventsourcing`](../eventsourcing) and [`messaging`](../messaging), and it depends on both so that neither depends on the other.
+Turns a recorded event into a message. It sits between [`eventsourcing`](../eventsourcing) and [`messaging`](../messaging) as a third library. It depends on both, so that neither of them depends on the other.
 
-The envelope is fixed here so every feature's events look alike on the wire: a `PublishedEvent` carries the aggregate it happened to, the agent who caused it, when it occurred, and the body the feature supplies. The routing key is derived — `routing_for(KIND, name)` gives `idea.captured` — and `everything_from(KIND)` gives the `idea.#` a listener binds to, so a publisher and its subscribers cannot drift apart on a string.
+The envelope is defined here, so every feature's events look the same on the wire. A `PublishedEvent` carries:
 
-This is how the ideas publish theirs:
+- the aggregate the event happened to,
+- the agent who caused it,
+- when it occurred,
+- the body that the feature supplies.
+
+The routing key is derived. `routing_for(KIND, name)` returns `idea.captured`. `everything_from(KIND)` returns `idea.#`, which a listener binds to. So a publisher and its subscribers cannot end up with different strings.
+
+This is how the ideas feature publishes its events:
 
 ```rust
 use eventsourcing::Recorded;
@@ -31,8 +38,8 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 }
 ```
 
-**The envelope carries the aggregate's context** beside the aggregate, the agent and the moment, `"context": { "project": "…" }`, and leaves it out when empty, so an instance-wide aggregate's messages look as they always did. `context_in(message)` reads it from any message, an envelope or one a feature built flat, such as the scenes', and finds an empty one where there is none.
+**The envelope also carries the aggregate's context,** next to the aggregate, the agent and the moment: `"context": { "project": "…" }`. When the context is empty, it is left out. So the messages of an instance-wide aggregate look the same as they always did. `context_in(message)` reads the context from any message. That can be an envelope, or a flat message that a feature built itself, such as the scenes' messages. If a message has no context, it returns an empty one.
 
-**What a feature still owns** is the mapping from its own event to a DTO, and it returns `Option`: a snapshot is housekeeping and publishes nothing. That mapping lives in each feature's `adapters/messaging` as its `message_for`, which the wiring hands to the event store.
+**What a feature still owns** is the mapping from its own event to a DTO. The mapping returns an `Option`, because a snapshot is housekeeping and publishes nothing. The mapping lives in each feature's `adapters/messaging` as its `message_for`. The wiring hands it to the event store.
 
-`published_in(message)` reads one back, which is how a projector recovers the aggregate id from a message it was handed. A test hands a listener such a message with **`published(routing, kind, id, version, event, agent, at)`**, behind the `testing` feature, rather than writing the envelope out by hand.
+`published_in(message)` reads a message back. A projector uses it to get the aggregate id from a message it received. A test can give a listener such a message with **`published(routing, kind, id, version, event, agent, at)`**, behind the `testing` feature. That way the test does not have to write the envelope by hand.

@@ -18,8 +18,7 @@ impl MailIssuedInvitationListener {
 impl EffectHandler for MailIssuedInvitationListener {
     const NAME: &'static str = "mail-issued-invitation";
     const LISTENS_TO: &'static [&'static str] = &[ISSUED];
-    const WHEN_REFUSED: &'static str =
-        "An invitation was issued but not mailed, so whom it is for has no link to follow.";
+    const WHEN_REFUSED: &'static str = "An invitation was created but not sent by email. The invited person has no link to follow.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         Ok(self

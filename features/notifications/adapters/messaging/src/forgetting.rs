@@ -20,7 +20,7 @@ impl ForgetNoticesOfDeletedAccountListener {
 impl KeptHandler for ForgetNoticesOfDeletedAccountListener {
     const NAME: &'static str = "forget-notices-of-deleted-account";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
-    const WHEN_REFUSED: &'static str = "The notices of a deleted account were not forgotten, so they and its name are kept until they would be forgotten as old.";
+    const WHEN_REFUSED: &'static str = "The notices of a deleted account were not deleted. They and the account's name stay stored until the notices are deleted for being old.";
 
     async fn take_in(
         &self,

@@ -19,7 +19,7 @@ impl DeleteAbandonedProjectListener {
 impl KeptHandler for DeleteAbandonedProjectListener {
     const NAME: &'static str = "delete-abandoned-project";
     const LISTENS_TO: &'static [&'static str] = &[ABANDONED];
-    const WHEN_REFUSED: &'static str = "A project nobody is left in, its last member's account deleted, was not deleted, so it and its content are kept for nobody.";
+    const WHEN_REFUSED: &'static str = "A project has no members left, because its last member's account was deleted. But the project was not deleted. It and its content stay stored, although nobody can use them.";
 
     async fn take_in(
         &self,

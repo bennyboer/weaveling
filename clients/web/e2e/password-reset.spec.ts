@@ -135,7 +135,7 @@ test("the old password no longer signs in once a new one is set", async ({
 
   // then: it does not sign in
   await expect(page.getByRole("alert")).toHaveText(
-    "This email address and password do not sign in.",
+    "The email address or the password is wrong.",
   );
 });
 

@@ -37,8 +37,7 @@ impl RememberDeletedProjectsListener {
 impl KeptHandler for RememberDeletedProjectsListener {
     const NAME: &'static str = "boards-remember-deleted-projects";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
-    const WHEN_REFUSED: &'static str =
-        "A project's deletion did not reach the boards, so one could still be opened for it.";
+    const WHEN_REFUSED: &'static str = "The boards feature did not learn that a project was deleted. So a board could still be opened for that project.";
 
     async fn take_in(
         &self,
@@ -82,7 +81,7 @@ impl DiscardBoardsOnProjectDeletedListener {
 impl Handler for DiscardBoardsOnProjectDeletedListener {
     const NAME: &'static str = "discard-boards-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[SWEEP_PROJECT];
-    const WHEN_REFUSED: &'static str = "The board of a deleted project was not cleared away.";
+    const WHEN_REFUSED: &'static str = "The board of a deleted project was not removed.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

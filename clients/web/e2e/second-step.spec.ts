@@ -88,7 +88,7 @@ test("a recovery code signs in instead, and a note says how many are left and ho
   // and: a note says nine are left, with the way to set up anew
   const note = page.getByRole("status").filter({ hasText: "recovery code" });
   await expect(note).toContainText("9 are left");
-  await expect(note.getByRole("link", { name: "Set up two-step sign-in anew" })).toBeVisible();
+  await expect(note.getByRole("link", { name: "Set up two-step sign-in again" })).toBeVisible();
   // when: they dismiss it
   await note.getByRole("button", { name: "Dismiss" }).click();
   // then: it is gone
@@ -171,14 +171,14 @@ test("new recovery codes are drawn for the password, and shown once", async ({ p
   await page.getByRole("menuitem", { name: "Security" }).click();
 
   // when: they draw new codes with their password
-  await page.getByRole("button", { name: "Draw new codes" }).click();
+  await page.getByRole("button", { name: "Create new codes" }).click();
   const asking = page.getByRole("main").locator("form");
   await asking.getByLabel("Your password, to be sure it’s you").fill(HER_PASSWORD);
-  await asking.getByRole("button", { name: "Draw new codes" }).click();
+  await asking.getByRole("button", { name: "Create new codes" }).click();
 
   // then: the new codes are shown, the old ones said to be over
   await expect(
-    page.getByText("New recovery codes are drawn. The old ones no longer work."),
+    page.getByText("New recovery codes were created. The old ones no longer work."),
   ).toBeVisible();
   await expect(page.getByRole("main").getByRole("listitem")).toHaveText(THE_NEW_RECOVERY_CODES);
 });

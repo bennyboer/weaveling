@@ -89,7 +89,7 @@ test("a wrong password says so and stays on signing in", async ({ page }) => {
 
   // then: she is told it does not sign in
   await expect(page.getByRole("alert")).toHaveText(
-    "This email address and password do not sign in.",
+    "The email address or the password is wrong.",
   );
   // and: she stays on signing in
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();

@@ -40,7 +40,7 @@ impl KeptHandler for RememberPeopleListener {
         SIGNED_UP_BY_INVITATION,
         accounts_contract::DELETED,
     ];
-    const WHEN_REFUSED: &'static str = "An account signed up or deleted did not reach the assets, so the operators may not find its storage by its name and address, or still find a deleted account's.";
+    const WHEN_REFUSED: &'static str = "An account's sign-up or deletion did not reach the assets feature. The storage overview may not show the account's name and address, or may still show a deleted account.";
 
     async fn take_in(
         &self,
@@ -106,7 +106,7 @@ impl RememberProjectNamesListener {
 impl KeptHandler for RememberProjectNamesListener {
     const NAME: &'static str = "assets-remember-project-names";
     const LISTENS_TO: &'static [&'static str] = &[STARTED, RENAMED, projects_contract::DELETED];
-    const WHEN_REFUSED: &'static str = "A project's name, or that it was deleted, did not reach the assets, so the operators may not find its storage by its name, or still find a deleted project's.";
+    const WHEN_REFUSED: &'static str = "A project's new name or its deletion did not reach the assets feature. The storage overview may show an old name, or still show a deleted project.";
 
     async fn take_in(
         &self,

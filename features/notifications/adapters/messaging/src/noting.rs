@@ -23,7 +23,7 @@ impl KeptHandler for NoteRoleChangedListener {
     const NAME: &'static str = "note-role-changed";
     const LISTENS_TO: &'static [&'static str] = &[ROLE_CHANGED];
     const WHEN_REFUSED: &'static str =
-        "Someone whose role in a project was changed was not told so in their notifications.";
+        "Someone's role in a project was changed, but they got no notification about it.";
 
     async fn take_in(
         &self,

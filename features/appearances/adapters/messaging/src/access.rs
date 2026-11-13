@@ -4,12 +4,12 @@ members_contract::access_roles_listener!(
     RememberRolesListener,
     AppearancesCore,
     "appearances-remember-roles",
-    "A change to a project's members did not reach the appearances, so who is told where its ideas appear is not as it should be."
+    "A change to a project's members did not reach the appearances feature. The wrong people may be shown where the project's ideas appear."
 );
 
 projects_contract::access_trash_listener!(
     RememberTrashListener,
     AppearancesCore,
     "appearances-remember-trash",
-    "A project put in the trash or restored did not reach the appearances, so where its ideas appear may be told when it should not, or not when it should."
+    "The appearances feature did not learn that a project was put in the trash or restored. Where its ideas appear may be shown while it is in the trash, or not shown after it was restored."
 );

@@ -21,7 +21,7 @@ impl JoinByAcceptedInvitationListener {
 impl KeptHandler for JoinByAcceptedInvitationListener {
     const NAME: &'static str = "join-by-accepted-invitation";
     const LISTENS_TO: &'static [&'static str] = &[ACCEPTED];
-    const WHEN_REFUSED: &'static str = "Someone who took up an invitation into a project did not join it, so it stays out of their reach.";
+    const WHEN_REFUSED: &'static str = "Someone accepted an invitation into a project but was not added to it. They cannot reach the project.";
 
     async fn take_in(
         &self,

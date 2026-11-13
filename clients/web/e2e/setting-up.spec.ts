@@ -134,7 +134,7 @@ test("the word under the heading stands apart from the first field", async ({
 
   // when: the word under the heading and the first fields are measured
   const hint = await page
-    .getByText("Nobody runs this Weaveling instance yet.")
+    .getByText("This Weaveling instance has no operator yet.")
     .boundingBox();
   const field = await page
     .locator(".field > span")
@@ -216,7 +216,7 @@ test("signed in where someone runs the instance, setting up says so", async ({
 
   // then: she is told it is set up already
   await expect(page.getByRole("main")).toContainText(
-    "This Weaveling instance is set up already",
+    "This Weaveling instance is already set up",
   );
   await expect(page.getByLabel("Code")).toHaveCount(0);
 });

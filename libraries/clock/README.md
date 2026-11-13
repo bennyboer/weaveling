@@ -21,10 +21,10 @@ assert_eq!(clock::text::serialize(clock.now()), "1970-01-01T01:00:00Z");
 assert_eq!(clock::text::written(clock.now()), "1970-01-01T01:00:00.000000000Z");
 ```
 
-A test writes a moment as **`clock::at(seconds)`**, that many seconds after the Unix epoch, rather than keeping a helper of its own.
+A test writes a moment as **`clock::at(seconds)`**, which is that many seconds after the Unix epoch. Tests use this instead of their own helpers.
 
-It matters most for event sourcing: an event's `occurred_at` is written once and replayed forever, so the moment has to come from somewhere a test can pin.
+It matters most for event sourcing. An event's `occurred_at` is written once and replayed forever. So the moment has to come from somewhere a test can pin.
 
-**`text` is how an instant is written down where a database has no time type of its own.** `text::written(at)` gives fixed-width UTC — `2026-10-07T11:22:33.123456789Z` — and `text::read` takes it back. Fixed width matters: SQLite compares these as strings, so a claim's expiry and a retention cut-off rely on text order being time order. It lives here because the event store, the outbox and the deliveries all write instants into SQLite, and `clock` is the one time library they all already depend on.
+**`text` is how an instant is stored in a database that has no time type of its own.** `text::written(at)` returns fixed-width UTC, such as `2026-10-07T11:22:33.123456789Z`. `text::read` parses it back. The fixed width matters: SQLite compares these values as strings. A claim's expiry and a retention cut-off rely on text order being the same as time order. It lives here because the event store, the outbox and the deliveries all write instants into SQLite. `clock` is the one time library they all already depend on.
 
-**`text::serialize(at)` is how an instant travels.** Every contract — a REST response, a published event, a refusal — carries instants as RFC 3339 strings such as `2026-10-07T11:22:33Z`, and `text::read` takes those back too. It is a separate function from `written` on purpose: storage wants fixed width for its sort order, a contract wants the common form, and either may change without the other.
+**`text::serialize(at)` is how an instant is sent to others.** Every contract (a REST response, a published event, a refusal) carries instants as RFC 3339 strings, such as `2026-10-07T11:22:33Z`. `text::read` parses those back too. It is a separate function from `written` on purpose. Storage needs fixed width for its sort order. A contract needs the common form. Either may change without the other.

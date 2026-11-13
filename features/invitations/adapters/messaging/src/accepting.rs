@@ -20,7 +20,7 @@ impl AcceptTakenUpInvitationListener {
 impl KeptHandler for AcceptTakenUpInvitationListener {
     const NAME: &'static str = "accept-taken-up-invitation";
     const LISTENS_TO: &'static [&'static str] = &[INVITATION_TAKEN_UP];
-    const WHEN_REFUSED: &'static str = "An invitation an account took up still shows as open, and nobody joins the project it was into.";
+    const WHEN_REFUSED: &'static str = "Someone accepted an invitation, but it still shows as open. Nobody was added to the project it invited into.";
 
     async fn take_in(
         &self,

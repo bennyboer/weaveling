@@ -1,12 +1,19 @@
 # serving
 
-The HTTP conventions every REST adapter shares, so that four features cannot drift apart on them.
+The HTTP conventions that every REST adapter shares. So the four features cannot drift apart on them.
 
-- **`demanded(headers)`** reads `If-Match` into an `Option<Version>` — absent or `*` means "no expectation", a quoted number means "only if it still stands at this version", anything else is `Unreadable` and becomes a `400`.
+- **`demanded(headers)`** reads `If-Match` into an `Option<Version>`.
+  - Missing or `*` means "no expectation".
+  - A quoted number means "only if it is still at this version".
+  - Anything else is `Unreadable` and becomes a `400`.
 - **`tag(version)`** writes the matching `ETag`.
-- **`Problem::of(&ServiceError<E>, refused)`** maps an event-sourcing failure onto a problem: not found is `404`, a stale version is `412`, anything else unexpected is logged and becomes a `500` that says nothing, and a domain refusal is the feature's own to word, `refused` turning it into a problem of its kind.
+- **`Problem::of(&ServiceError<E>, refused)`** maps an event-sourcing failure to a problem.
+  - Not found is a `404`.
+  - A stale version is a `412`.
+  - Anything else unexpected is logged and becomes a `500` that reveals nothing.
+  - A domain refusal is worded by the feature itself. `refused` turns it into a problem of the right kind.
 
-A route that renames an idea reads `If-Match`, answers with an `ETag`, and turns a refusal into a `Problem`:
+A route that renames an idea reads `If-Match`, responds with an `ETag`, and turns a refusal into a `Problem`:
 
 ```rust
 use axum::http::header::ETAG;
@@ -39,4 +46,4 @@ fn problem_of(refusal: IdeasError) -> Problem {
 }
 ```
 
-Small on purpose. Optimistic concurrency is only honest if every route spells it the same way, and a feature that hand-rolled its own `If-Match` parsing would be a feature whose conflicts behave differently from the rest.
+It is small on purpose. Optimistic concurrency is only honest if every route handles it the same way. A feature that parsed `If-Match` by hand would be a feature whose conflicts behave differently from the rest.

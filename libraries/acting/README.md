@@ -2,9 +2,9 @@
 
 Who acts in a request, and what they may do on the whole instance.
 
-`Acting { agent, operator }` is put into every request behind the gate, beside the `Agent` it holds, by the accounts' gate, which loads the signed-in account for every request anyway: to see that its session still counts, that it is not locked. Whether it is an operator is known at the same moment, at no cost, and always as it now stands, so taking the role away counts on the next request.
+`Acting { agent, operator }` is added to every request that passes the gate. It sits next to the `Agent` it contains. The accounts gate adds it. That gate loads the signed-in account on every request anyway, to check that its session is still valid and that the account is not locked. So whether the account is an operator is known at the same moment, at no extra cost. It is also always up to date, so when the operator role is taken away, this counts from the next request on.
 
-A route takes it as `Extension(acting): Extension<Acting>` and hands it on; the invitations ask it whether it is an operator:
+A route takes it as `Extension(acting): Extension<Acting>` and passes it on. The invitations feature asks it whether the account is an operator:
 
 ```rust
 use acting::Acting;
@@ -25,8 +25,8 @@ pub async fn invite_to_instance(
 }
 ```
 
-**Read from the request, not from another feature.** A feature may not ask accounts who is an operator; invitations, which only an operator may send, read it here as they read the `Agent`.
+**Read it from the request, not from another feature.** A feature may not ask the accounts feature who is an operator. Only an operator may send invitations to the instance. So the invitations feature reads the operator flag here, the same way it reads the `Agent`.
 
-**Only what holds for the whole instance.** A project's roles, owner, author, reader, differ from project to project, and come from the `Authorizer` asked about that one project, not from here.
+**It holds only what applies to the whole instance.** A project's roles (owner, author, reader) differ from project to project. They come from the `Authorizer`, asked about that one project, not from here.
 
-In local mode nothing reads it yet, and nothing puts it there; it comes when a route there wants it.
+In local mode nothing reads it yet, and nothing adds it to the request. It will be added once a route in local mode needs it.

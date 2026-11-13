@@ -24,7 +24,7 @@ impl WithdrawInvitationsOfDeletedProjectListener {
 impl Handler for WithdrawInvitationsOfDeletedProjectListener {
     const NAME: &'static str = "withdraw-invitations-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[SWEEP_PROJECT];
-    const WHEN_REFUSED: &'static str = "The open invitations into a deleted project were not withdrawn, so their links may still be taken up.";
+    const WHEN_REFUSED: &'static str = "The open invitations into a deleted project were not withdrawn. Their links may still be used to accept them.";
     const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Sweep;
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {

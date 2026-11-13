@@ -245,7 +245,7 @@ test("a refusal nobody has words for still says something", async ({
 
   // then: a general sentence stands in for them
   await expect(entries(page)).toContainText(
-    "A change did not reach everywhere it should have.",
+    "A change did not reach every part of Weaveling.",
   );
 });
 
@@ -324,7 +324,7 @@ test("a change too old to try again says so and offers only acknowledging", asyn
     entries(page).nth(1).getByRole("button", { name: "Try again" }),
   ).toHaveCount(0);
   await expect(entries(page).nth(1)).toContainText(
-    "This change happened over thirty days ago and is not tried again",
+    "This change is more than 30 days old and is not tried again",
   );
   await expect(
     entries(page).nth(1).getByRole("button", { name: "Acknowledge" }),

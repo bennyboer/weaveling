@@ -118,7 +118,7 @@ test("an operator sees how someone signs in, and turns off their authenticator a
   // then: the password is always kept, the app and the recovery codes listed
   await expect(dialog.getByRole("listitem").nth(0)).toContainText("Password");
   await expect(dialog.getByRole("listitem").nth(0)).toContainText(
-    "always kept",
+    "cannot be removed",
   );
   await expect(dialog).toContainText("Authenticator app");
   await expect(dialog).toContainText("10 of 10 left");
@@ -129,7 +129,7 @@ test("an operator sees how someone signs in, and turns off their authenticator a
   });
   // then: they are told what follows, and that it is recorded
   await expect(sure).toContainText(
-    "Grace Hopper will sign in with the password alone until they set up a second step again.",
+    "Grace Hopper will sign in with the password only, until they set up a second step again.",
   );
   await expect(sure).toContainText(
     "Their account’s history shows that you did this.",
@@ -182,7 +182,7 @@ test("an operator removes someone's lost key, the other way of the second step k
     name: "How Grace Hopper signs in",
   });
   await expect(dialog).toContainText("Passkey “MacBook”");
-  await expect(dialog).toContainText("signs in alone");
+  await expect(dialog).toContainText("signs in on its own");
   await expect(dialog).toContainText("Security key “YubiKey blue”");
   await expect(dialog).toContainText("7 of 10 left");
 
@@ -398,7 +398,7 @@ test("the last operator is told the role stays", async ({ page }) => {
 
   // then: they are told the role stays
   await expect(dialog.getByRole("alert")).toHaveText(
-    "The last operator keeps the role, or nobody could manage this Weaveling instance.",
+    "The last operator cannot give up the role, or nobody could manage this Weaveling instance.",
   );
   expect(server.operator).toBe(true);
 });
@@ -424,7 +424,7 @@ test("an operator giving up the role is no longer shown the instance", async ({
   // then: they are no longer shown the instance
   await expect(page).toHaveURL(/\/setup$/);
   await expect(page.getByRole("main")).toContainText(
-    "This Weaveling instance is set up already",
+    "This Weaveling instance is already set up",
   );
   expect(server.operator).toBe(false);
 });

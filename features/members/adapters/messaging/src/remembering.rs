@@ -20,7 +20,7 @@ impl RememberWhoSignedUpListener {
 impl KeptHandler for RememberWhoSignedUpListener {
     const NAME: &'static str = "remember-who-signed-up";
     const LISTENS_TO: &'static [&'static str] = &[SIGNED_UP, SIGNED_UP_BY_INVITATION];
-    const WHEN_REFUSED: &'static str = "Someone who signed up is not known by name, so the projects they join list them without it.";
+    const WHEN_REFUSED: &'static str = "The members feature did not learn the name of someone who signed up. The projects they join list them without a name.";
 
     async fn take_in(
         &self,

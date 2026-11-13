@@ -23,7 +23,7 @@ impl KeptHandler for RememberProjectMembersListener {
     const NAME: &'static str = "remember-project-members";
     const LISTENS_TO: &'static [&'static str] =
         &[FOUNDED, JOINED, ROLE_CHANGED, LEFT, REMOVED, DISBANDED];
-    const WHEN_REFUSED: &'static str = "A change to a project's members did not reach accounts, so an account may be deleted while the last owner of a project others are in, or be kept from it when it is not.";
+    const WHEN_REFUSED: &'static str = "A change to a project's members did not reach the accounts feature. An account may be deleted while it is still the last owner of a project that others are in. Or an account may be kept from being deleted although it is not such an owner.";
 
     async fn take_in(
         &self,

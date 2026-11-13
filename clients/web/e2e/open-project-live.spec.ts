@@ -111,7 +111,7 @@ test("an open project another author moves to the trash says so, and is followed
 
   // then: it says so
   await expect(page.getByRole("alert")).toContainText(
-    "This project was moved to the trash meanwhile.",
+    "This project has been moved to the trash in the meantime.",
   );
   // and: it is followed no longer
   await expect

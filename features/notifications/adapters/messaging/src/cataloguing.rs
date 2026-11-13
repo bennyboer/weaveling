@@ -19,7 +19,8 @@ impl CatalogueNoticeListener {
 impl KeptHandler for CatalogueNoticeListener {
     const NAME: &'static str = "catalogue-notice";
     const LISTENS_TO: &'static [&'static str] = &[NOTED, DISMISSED];
-    const WHEN_REFUSED: &'static str = "A notice did not reach its account's list of notices.";
+    const WHEN_REFUSED: &'static str =
+        "A new or dismissed notice did not reach the account's list of notices.";
 
     async fn take_in(
         &self,

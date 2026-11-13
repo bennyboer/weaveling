@@ -20,7 +20,7 @@ impl KeepInvitationTicketsListener {
 impl KeptHandler for KeepInvitationTicketsListener {
     const NAME: &'static str = "keep-invitation-tickets";
     const LISTENS_TO: &'static [&'static str] = &[ISSUED, WITHDRAWN, DECLINED, RETIRED];
-    const WHEN_REFUSED: &'static str = "An invitation did not reach accounts, so its link may not let its address sign up, or still may after being withdrawn or turned down.";
+    const WHEN_REFUSED: &'static str = "A new or changed invitation did not reach the accounts feature. Its link may not let the invited address sign up. Or the link may still work after the invitation was withdrawn or turned down.";
 
     async fn take_in(
         &self,

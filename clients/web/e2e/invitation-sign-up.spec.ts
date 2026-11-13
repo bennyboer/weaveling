@@ -50,7 +50,7 @@ test("a link that leads nowhere says so and lets the person sign in instead", as
 
   // then: it says so
   await expect(page.getByRole("alert")).toContainText(
-    "This invitation's link lets nobody sign up, or not any more.",
+    "This invitation link is invalid or no longer works.",
   );
   // when: signing in instead is chosen
   await page
@@ -188,7 +188,7 @@ test("a link for another address, opened signed in, says it is another's and sta
 
   // then: it says it is another's
   await expect(page.getByRole("alert")).toHaveText(
-    "This invitation was sent to another address. Sign in with the one it was sent to, to take it up.",
+    "This invitation was sent to another address. Sign in with that address to accept it.",
   );
   // and: stays
   await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
@@ -321,7 +321,7 @@ test("a link run out, opened signed in, says so on declining and stays", async (
 
   // then: it says it has run out
   await expect(page.getByRole("alert")).toContainText(
-    "This invitation has run out. Ask for a new one.",
+    "This invitation has expired. Ask for a new one.",
   );
   // and: stays
   await expect(page).toHaveURL(/\/invitation/);
@@ -340,7 +340,7 @@ test("whoever follows the link may decline it without an account", async ({
   // then: it is declined, without an account
   await expect(page.getByRole("heading", { name: "Invitation declined" })).toBeVisible();
   await expect(page.getByRole("main")).toContainText(
-    "Whoever invited you sees that, and the link signs nobody up any more.",
+    "The person who invited you will see that, and the link no longer works.",
   );
   expect(server.declinedByLink).toEqual([THE_INVITATION]);
   expect(server.signedIn).toBe(false);
@@ -363,7 +363,7 @@ test("a link that leads nowhere says so on declining and stays to be signed up t
 
   // then: it says it has run out
   await expect(page.getByRole("alert")).toContainText(
-    "This invitation has run out. Ask for a new one.",
+    "This invitation has expired. Ask for a new one.",
   );
   // and: stays to be signed up through
   await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();

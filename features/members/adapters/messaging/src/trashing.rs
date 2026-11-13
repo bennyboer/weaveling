@@ -20,7 +20,7 @@ impl RememberTrashedProjectsListener {
 impl KeptHandler for RememberTrashedProjectsListener {
     const NAME: &'static str = "members-remember-trashed-projects";
     const LISTENS_TO: &'static [&'static str] = &[TRASHED, RESTORED, DELETED];
-    const WHEN_REFUSED: &'static str = "A project put in the trash or restored did not reach its members, so who may read and write it is not as it should be.";
+    const WHEN_REFUSED: &'static str = "The members feature did not learn that a project was put in the trash or restored. So the rules for who may read and change the project may be wrong.";
 
     async fn take_in(
         &self,

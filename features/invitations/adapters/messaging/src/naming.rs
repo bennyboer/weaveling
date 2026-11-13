@@ -36,7 +36,7 @@ impl RememberProjectNamesListener {
 impl KeptHandler for RememberProjectNamesListener {
     const NAME: &'static str = "remember-project-names";
     const LISTENS_TO: &'static [&'static str] = &[STARTED, RENAMED, TRASHED, RESTORED, DELETED];
-    const WHEN_REFUSED: &'static str = "A project's name, or that it was deleted, did not reach invitations, so an invitation into it may name it wrongly.";
+    const WHEN_REFUSED: &'static str = "A project's new name or its deletion did not reach the invitations feature. An invitation into this project may show the wrong name.";
 
     async fn take_in(
         &self,

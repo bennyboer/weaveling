@@ -20,7 +20,7 @@ impl KeptHandler for CatalogueMembersListener {
     const NAME: &'static str = "catalogue-members";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_MEMBERS];
     const WHEN_REFUSED: &'static str =
-        "A change to a project's members did not reach the list of who may work where.";
+        "A change to a project's members did not reach the list of who may work in which project.";
 
     async fn take_in(
         &self,

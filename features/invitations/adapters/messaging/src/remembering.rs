@@ -21,7 +21,7 @@ impl RememberWhoSignedUpListener {
 impl KeptHandler for RememberWhoSignedUpListener {
     const NAME: &'static str = "invitations-remember-who-signed-up";
     const LISTENS_TO: &'static [&'static str] = &[SIGNED_UP, SIGNED_UP_BY_INVITATION];
-    const WHEN_REFUSED: &'static str = "Someone who signed up is not known to invitations, so invitations to their address and from them cannot say whose they are.";
+    const WHEN_REFUSED: &'static str = "The invitations feature did not learn about a new sign-up. Invitations sent to this person's address, or sent by them, cannot show whose they are.";
 
     async fn take_in(
         &self,
@@ -63,7 +63,7 @@ impl KeptHandler for ForgetDeletedAccountListener {
     const NAME: &'static str = "invitations-forget-deleted-account";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
     const WHEN_REFUSED: &'static str =
-        "A deleted account's name and address are still known to invitations.";
+        "The invitations feature still stores the name and address of a deleted account.";
 
     async fn take_in(
         &self,

@@ -42,7 +42,7 @@ impl<C: Channel> Listener for BroadcastIdeaChangesListener<C> {
     }
 
     fn when_refused(&self) -> &'static str {
-        "A change to an idea was not passed on to whoever has its project open."
+        "A change to an idea was not sent to the people who have its project open."
     }
 
     fn delivery(&self) -> Delivery {

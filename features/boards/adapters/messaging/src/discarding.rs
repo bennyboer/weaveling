@@ -109,8 +109,7 @@ impl RememberProjectsOfIdeasListener {
 impl KeptHandler for RememberProjectsOfIdeasListener {
     const NAME: &'static str = "boards-remember-projects-of-ideas";
     const LISTENS_TO: &'static [&'static str] = &[CAPTURED];
-    const WHEN_REFUSED: &'static str =
-        "An idea's project did not reach the boards, so a board of another project could pin it.";
+    const WHEN_REFUSED: &'static str = "The boards feature did not learn which project a new idea belongs to. So a board of a different project could pin this idea.";
 
     async fn take_in(
         &self,

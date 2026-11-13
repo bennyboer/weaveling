@@ -37,8 +37,7 @@ impl ProjectPinnedIdeasListener {
 impl KeptHandler for ProjectPinnedIdeasListener {
     const NAME: &'static str = "index-pinned-ideas";
     const LISTENS_TO: &'static [&'static str] = &[IDEA_PINNED, IDEA_UNPINNED];
-    const WHEN_REFUSED: &'static str =
-        "A pin did not reach the record of which ideas a board holds.";
+    const WHEN_REFUSED: &'static str = "An idea was pinned to a board or unpinned from it, but this was not recorded in the list of which ideas each board holds.";
 
     async fn take_in(
         &self,

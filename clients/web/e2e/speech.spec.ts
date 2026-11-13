@@ -140,7 +140,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     ).toHaveCount(1);
     // and: the quotation marks and the description speak german
     await expect(
-      asked.getByLabel("Anführungszeichen").getByRole("option").first(),
+      asked.getByLabel(/^Anführungszeichen/).getByRole("option").first(),
     ).toHaveText("Wie in der Sprache üblich, »…«");
     await expect(asked.getByLabel("Beschreibung")).toHaveAttribute(
       "placeholder",
@@ -174,7 +174,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     await page.getByRole("button", { name: "Projektdetails" }).click();
     const details = page.getByRole("dialog", { name: "Projektdetails" });
     await details
-      .getByLabel("Anführungszeichen")
+      .getByLabel(/^Anführungszeichen/)
       .selectOption({ label: "»…«" });
     await details.getByRole("button", { name: "Speichern" }).click();
 
@@ -418,7 +418,7 @@ test("the board speaks the language chosen, at once", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Noch nicht im Buch — kein Abschnitt vermerkt sie, keine Szene greift auf sie zurück.",
+      "Noch nicht im Buch. Kein Abschnitt und keine Szene verwendet sie.",
     ),
   ).toBeVisible();
   await expect(
@@ -669,7 +669,7 @@ test("the writing view's menus and questions speak the language chosen", async (
     name: "Das Gewählte entfernen?",
   });
   await expect(removing).toContainText(
-    "2 Szenen sind gewählt. Aus dem Buch genommen, warten die Szenen bei denen, die nicht darin stehen.",
+    "2 Szenen sind gewählt. Nimmst du sie aus dem Buch, kommen die Szenen zu denen, die nicht im Buch stehen.",
   );
   await expect(removing.getByRole("button")).toHaveText([
     "Abbrechen",
@@ -910,13 +910,13 @@ test.describe("a browser asking for German, about what went wrong", () => {
       name: "Änderungen, die nicht übernommen werden konnten",
     });
     await expect(refused).toContainText(
-      "Sie wurden gespeichert, kamen aber nicht überall an, wo sie hin sollten.",
+      "Diese Änderungen wurden gespeichert, aber nicht alle Teile von Weaveling haben sie erhalten.",
     );
     const entry = refused
       .getByRole("list", { name: "Abgewiesene Änderungen" })
       .getByRole("listitem");
     await expect(entry).toContainText(
-      "Eine Änderung kam nicht überall an, wo sie hin sollte.",
+      "Eine Änderung ist nicht in allen Teilen von Weaveling angekommen.",
     );
     await expect(entry.locator(".when")).toHaveText(
       /^Aufgegeben am 10\. Okt\. 2026, \d{2}:01$/,

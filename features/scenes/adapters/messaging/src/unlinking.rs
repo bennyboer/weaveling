@@ -52,8 +52,7 @@ impl RememberProjectsOfIdeasListener {
 impl KeptHandler for RememberProjectsOfIdeasListener {
     const NAME: &'static str = "scenes-remember-projects-of-ideas";
     const LISTENS_TO: &'static [&'static str] = &[CAPTURED];
-    const WHEN_REFUSED: &'static str =
-        "An idea's project did not reach the scenes, so a scene of another project could link it.";
+    const WHEN_REFUSED: &'static str = "The scenes feature did not learn which project a new idea belongs to. So a scene of a different project could link this idea.";
 
     async fn take_in(
         &self,

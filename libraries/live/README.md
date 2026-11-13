@@ -1,10 +1,17 @@
 # live
 
-What lets an open browser hear that something changed, without asking again and again.
+Lets an open browser learn that something changed, without asking again and again.
 
-**A `Broadcaster<C>` hands frames to whoever hears one of its channels,** and its type says what a channel is: a feature's own, named for what changes and holding whose: `Broadcaster<InvitationChanges>`, invitations to an address; `Broadcaster<IdeaChanges>`, a project's ideas; `Broadcaster<BoardChanges>`, a board; `Broadcaster<MembershipChanges>`, the one channel every member hears, sifted for each. Any `Clone + PartialEq` type that is `Send` and `Sync` is a `Channel`. `tell(channel, frame)` sends one, `hear(channel)` gives a `Hearing` to read them from; nobody listening is no error, and a hearer that falls too far behind is let go rather than hold up the rest. It is in memory and per process, which is all one server needs.
+**A `Broadcaster<C>` sends frames to everyone who listens to one of its channels.** Its type says what a channel is. Each feature has its own channel type. The type is named after what changes, and it holds whose changes they are:
 
-A board's changes are told from what was published, followed by whoever may read the board, and heard in a test as the browser hears them:
+- `Broadcaster<InvitationChanges>`: invitations to an address.
+- `Broadcaster<IdeaChanges>`: a project's ideas.
+- `Broadcaster<BoardChanges>`: a board.
+- `Broadcaster<MembershipChanges>`: the one channel that every member listens to. It is filtered for each member.
+
+Any `Clone + PartialEq` type that is `Send` and `Sync` is a `Channel`. `tell(channel, frame)` sends a frame. `hear(channel)` returns a `Hearing` to read frames from. It is not an error if nobody is listening. A listener that falls too far behind is dropped, so it does not hold up the others. It is in memory and per process. That is all one server needs.
+
+Here, a board's changes are sent based on what was published. Everyone who may read the board can follow them. A test receives them the same way the browser does:
 
 ```rust
 use std::sync::Arc;
@@ -42,24 +49,49 @@ ada.subscribe("board", "boards", &[("board", &board)]).await;
 assert_eq!(ada.frame().await["version"], 1);
 ```
 
-**The frames come from the outbox, not from the request that made the change.** `BroadcastChangesListener` is an ordinary listener on a feature's events, given the channels a published change is told on (a board's own; a project's own and the list of every project; the one of every membership), and `frame_of` turns what was published into what goes on the wire. So a frame tells only what was stored and published, in the order it was, and a change made by a listener reaches the browser the same way as one made by a click. `Teller` numbers frames itself, for what has no published version to carry.
+**The frames come from the outbox, not from the request that made the change.** `BroadcastChangesListener` is an ordinary listener on a feature's events. It is given the channels that a published change is sent on. Examples: a board's own channel; a project's own channel and the list of all projects; the channel of all memberships. `frame_of` turns what was published into what goes on the wire. So a frame only reports what was stored and published, in the order it happened. A change made by a listener reaches the browser the same way as a change made by a click. `Teller` numbers frames itself. It is for things that have no published version to carry.
 
-**A frame has one shape,** `FrameDTO` from [`live-contract`](../live-contract): what it is `of`, its `version`, when it happened, `at`, and its `event`. The server reads every frame it hears as one before telling it, so what it writes and what the client reads cannot drift apart.
+**A frame has one shape:** `FrameDTO` from [`live-contract`](../live-contract). It holds what the frame is `of`, its `version`, when it happened (`at`), and its `event`. The server parses every frame it receives as a `FrameDTO` before sending it on. So what the server writes and what the client reads cannot drift apart.
 
-**One socket for everything live, `live_socket`,** served at `/live` behind signing in; it is the only way to follow anything. Over it the client subscribes and unsubscribes, `AskedDTO` from `live-contract`: `subscribe` with an id of its own choosing, a topic and what it is about, `unsubscribe` with the id. Subscribing again under an id replaces what it followed; closing the socket ends them all.
+**There is one socket for everything live: `live_socket`.** It is served at `/live`, and it requires signing in. It is the only way to follow anything. Over it, the client subscribes and unsubscribes with `AskedDTO` from `live-contract`:
 
-**A feature hands over a `Topic`,** one a feature, `named` as the client asks for it. Its `subscribe` is given the agent and what the subscription is `About` (`{ "board": … }`, `{ "project": … }`, `{ "mine": "true" }`) and answers either `Refused` (`NotThere`, told alike whether there is nothing or nothing this agent may follow, or `Failed`, when that could not be told) or a `Subscribed`: the `Hearing`, and as it needs
+- `subscribe`, with an id the client chooses, a topic, and what the subscription is about,
+- `unsubscribe`, with the id.
 
-- **`standing_at`** the version it stands at, told first, so that a change made between reading and subscribing is not lost (boards and outlines begin hearing, then read, and say where they stand);
-- **`while_admitted`** an `Admission`, so that it follows only while it may: asked again whenever access may have changed, ended `access-lost` once it no longer may, told the notice `access-changed` when it still may, as its role may be another now;
-- **`sifted`** a `Sieve`, which lets each frame through or holds it back, so followers of one channel each hear only their own part of it (the list of projects, one's own members).
+Subscribing again under the same id replaces what that id followed. Closing the socket ends all subscriptions.
 
-**A `Gate` decides who may follow,** about what is followed as text, a project's id or a board's: `admits` answers yes, no, or an error when it cannot tell, and `watch` what wakes when that may have changed (by default nothing). **`admitted(gate, agent, about)`** watches first and then asks, so that no change slips in between, and answers the `Admission`, or `Refused`. A subscription awaits only the watch beside its frames; once it wakes, the gate is asked in the turn's own body, so a frame arriving while the gate answers cannot drop the question, *fixed 2026-11-02 from the integrity audit: a member removed, mostly with a frame on the same channel, went on hearing when the frame won the race against the gate's answer.* **A `GatedTopic`** is the topic of a feature that only asks a gate: its name, its broadcaster, how to read the channel from what it is about, and the gate; ideas, scenes, their quotation restylings, word counts and one project are such topics. Boards and outlines ask theirs the same way, and also say where they stand.
+**A feature hands over a `Topic`.** There is one topic per feature. It is `named` the way the client asks for it. Its `subscribe` receives the agent and what the subscription is `About`, for example `{ "board": … }`, `{ "project": … }` or `{ "mine": "true" }`. It returns one of two things:
 
-**Each subscription follows on its own,** so one that falls behind, loses its access or cannot be sifted ends alone, `ToldDTO::Ended` saying why (`behind`, `access-lost`, `failed`, `not-there`, `unknown-topic`), and the socket and the others go on. Whatever a subscription hears is told as a `ToldDTO::Frame` under its id. **When the session ends or the server closes** (`ending::Ends`, taken from the request), the socket is closed with `SESSION_ENDED` (4401, in `live-contract`), and the client asks no more but signs out, or with `SERVER_CLOSING` (1001), and the client opens it again later.
+- `Refused`. This is either `NotThere` or `Failed`. `NotThere` is returned both when the thing does not exist and when this agent may not follow it, so the two cases look the same. `Failed` is returned when this could not be decided.
+- `Subscribed`. This holds the `Hearing`, plus, as needed:
+  - **`standing_at`**: the version the subscription starts at. It is sent first, so that a change made between reading and subscribing is not lost. Boards and outlines start listening first, then read, and then report their version.
+  - **`while_admitted`**: an `Admission`, so the subscription follows only while it is allowed to. The admission is checked again whenever access may have changed. Once the agent is no longer allowed, the subscription ends with `access-lost`. If the agent is still allowed, it receives the notice `access-changed`, because its role may now be different.
+  - **`sifted`**: a `Sieve`. A sieve lets each frame through or holds it back. So the followers of one channel each receive only their own part of it. Examples: the list of projects, and one's own members.
 
-**Told once it is followed.** *Since 2026-11-04:* a subscription let in is told `following` under its id before anything else, once it hears its channel, and the client reads what it follows over REST only then, not on sending; a `GatedTopic` hears before it asks its gate, so a change while the gate is asked is told, not lost between the read and the hearing.
+**A `Gate` decides who may follow.** It receives what is followed as text, such as a project's id or a board's id. `admits` answers yes, no, or an error when it cannot decide. `watch` returns something that wakes up when the answer may have changed. By default it never wakes up. **`admitted(gate, agent, about)`** first starts watching and then asks, so no change can slip in between. It returns the `Admission`, or `Refused`.
 
-**A feature's tests follow as the browser does,** with `testing::Subscriber` (the `testing` feature): `on` a server serving `live_socket`, `subscribe` under an id, then `following` (waits for it), `frame`, `ended` (why), `told` (whatever came but `following`), `silent` or `nothing`, and `closed_as` for the code the socket was closed with.
+A subscription waits only for the watch, next to its frames. Once the watch wakes up, the gate is asked inside the loop's own body. So a frame that arrives while the gate is answering cannot cancel the question. *Fixed on 2026-11-02, from the integrity audit.* The bug was: a removed member kept receiving frames when a frame won the race against the gate's answer. This happened mostly when a frame arrived on the same channel.
 
-A feature decides what its topics are and who may follow them; this only carries the frames.
+**A `GatedTopic`** is the topic of a feature that only asks a gate. It holds its name, its broadcaster, how to get the channel from what the subscription is about, and the gate. These are such topics: ideas, scenes, their quotation restylings, word counts, and a single project. Boards and outlines ask their gates the same way, and also report their version.
+
+**Each subscription runs on its own.** A subscription that falls behind, loses its access, or cannot be filtered ends alone. It receives `ToldDTO::Ended` with the reason: `behind`, `access-lost`, `failed`, `not-there` or `unknown-topic`. The socket and the other subscriptions continue. Everything a subscription receives is sent as a `ToldDTO::Frame` under its id.
+
+**When the session ends or the server closes** (`ending::Ends`, taken from the request), the socket is closed:
+
+- with `SESSION_ENDED` (4401, in `live-contract`) when the session ends. The client then stops asking and signs out.
+- with `SERVER_CLOSING` (1001) when the server closes. The client then opens the socket again later.
+
+**A subscription is confirmed once it is following.** *Since 2026-11-04:* an admitted subscription first receives `following` under its id, before anything else. This is sent once it is listening to its channel. Only then does the client read the followed data over REST. It does not read it when it sends the subscription. A `GatedTopic` starts listening before it asks its gate. So a change made while the gate is being asked is sent, and is not lost between the read and the start of listening.
+
+**A feature's tests follow the same way the browser does,** with `testing::Subscriber` (behind the `testing` feature):
+
+- `on`: connect to a server that serves `live_socket`,
+- `subscribe`: subscribe under an id,
+- `following`: wait for the confirmation,
+- `frame`: the next frame,
+- `ended`: the reason a subscription ended,
+- `told`: whatever came, except `following`,
+- `silent` or `nothing`: nothing arrives for a short while (`silent` returns it, `nothing` asserts it),
+- `closed_as`: the code the socket was closed with.
+
+A feature decides what its topics are and who may follow them. This library only carries the frames.

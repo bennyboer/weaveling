@@ -516,7 +516,7 @@ test("a passkey used as the second step comes with recovery codes, and is made a
 
   // then: it is a passkey again, and the second step is off
   await expect(
-    page.getByText("The key is a passkey now and signs you in alone."),
+    page.getByText("The key is now a passkey and signs you in on its own."),
   ).toBeVisible();
   await expect(page.getByRole("main").getByRole("list").first()).toContainText(
     "Passkey “MacBook”",
