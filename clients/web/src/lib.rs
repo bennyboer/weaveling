@@ -3,6 +3,7 @@ mod act;
 mod app;
 mod appearances;
 mod asking;
+mod assets;
 mod avatar;
 mod boards;
 mod copy_button;

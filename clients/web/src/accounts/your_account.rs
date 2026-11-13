@@ -73,6 +73,11 @@ fn overview(session: CurrentSession, account: SignedInAccount) -> impl IntoView 
                 view! { <A href=route::SECURITY>{speech::said("security-heading")}</A> },
             ))
         }),
+        html::p().class("hint").child((
+            speech::said("your-account-storage"),
+            " ",
+            view! { <A href=route::STORAGE>{speech::said("storage-heading")}</A> },
+        )),
         html::section().class("deleting").child((
             html::h2().child(speech::said("your-account-delete-heading")),
             html::p()

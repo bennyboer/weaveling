@@ -29,7 +29,7 @@ use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::lazy::{
     BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
     InstanceRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute, OutlineRoute, ProjectRoute,
-    SecurityRoute, WriteRoute,
+    SecurityRoute, StorageRoute, WriteRoute,
 };
 use crate::app::missing::MissingPage;
 use crate::app::trash::{TrashPage, TrashPageProps};
@@ -93,6 +93,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/setup") view=SetUpPage />
             <Route path=path!("/account") view=YourAccountPage />
             <Route path=path!("/account/security") view={Lazy::<SecurityRoute>::new()} />
+            <Route path=path!("/account/storage") view={Lazy::<StorageRoute>::new()} />
             <Route path=path!("/instance") view={Lazy::<InstanceRoute>::new()} />
             <Route path=path!("/instance/accounts") view={Lazy::<InstanceAccountsRoute>::new()} />
             <Route path=path!("/instance/invitations") view={Lazy::<InstanceInvitationsRoute>::new()} />

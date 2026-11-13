@@ -81,6 +81,11 @@ fn account_menu(
                                 </A>
                             }
                         }),
+                        view! {
+                            <A href=route::STORAGE attr:role="menuitem">
+                                {speech::said("storage-heading")}
+                            </A>
+                        },
                         account.operator.then(|| {
                             view! {
                                 <A href=route::INSTANCE_ACCOUNTS attr:role="menuitem">

@@ -9,6 +9,7 @@ pub const INVITATION: &str = "/invitation";
 pub const SETUP: &str = "/setup";
 pub const ACCOUNT: &str = "/account";
 pub const SECURITY: &str = "/account/security";
+pub const STORAGE: &str = "/account/storage";
 pub const INSTANCE_ACCOUNTS: &str = "/instance/accounts";
 pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 

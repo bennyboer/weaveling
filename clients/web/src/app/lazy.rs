@@ -8,6 +8,7 @@ use crate::app::ideas::IdeasPage;
 use crate::app::members::{MembersInvitedPage, MembersPage};
 use crate::app::outline::OutlinePage;
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
+use crate::assets::storage_page::StoragePage;
 use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
 
 /// A project, opened at its first view.
@@ -162,6 +163,20 @@ impl LazyRoute for SecurityRoute {
 
     fn view(_: Self) -> AnyView {
         SecurityPage().into_any()
+    }
+}
+
+/// The account's uploads and the storage they use.
+pub struct StorageRoute;
+
+#[lazy_route]
+impl LazyRoute for StorageRoute {
+    fn data() -> Self {
+        Self
+    }
+
+    fn view(_: Self) -> AnyView {
+        StoragePage().into_any()
     }
 }
 

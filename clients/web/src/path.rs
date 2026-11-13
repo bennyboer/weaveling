@@ -118,6 +118,10 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
             said("path-account", Some(route::ACCOUNT.to_owned())),
             said("security-heading", None),
         ],
+        ["account", "storage"] => vec![
+            said("path-account", Some(route::ACCOUNT.to_owned())),
+            said("storage-heading", None),
+        ],
         ["instance", rest @ ..] => {
             let manage = said("account-menu-operator", Some("/instance".to_owned()));
             match rest {
@@ -267,6 +271,15 @@ mod tests {
                 Label::Home,
                 Label::Said("path-account"),
                 Label::Said("security-heading"),
+            ]
+        );
+        // and: storage under it
+        assert_eq!(
+            labels("/account/storage"),
+            vec![
+                Label::Home,
+                Label::Said("path-account"),
+                Label::Said("storage-heading"),
             ]
         );
     }
