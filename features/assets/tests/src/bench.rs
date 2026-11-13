@@ -11,6 +11,8 @@ use assets_core::{
 use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore, Version};
+use messaging::{FakePublisher, Message};
+use outbox::{InMemoryOutbox, Outbox};
 use transacting::{InMemoryTransactions, Transactions};
 
 pub const THE_LOOM: &str = "project_loom";
@@ -57,6 +59,9 @@ pub struct Bench {
     pub images: Arc<FakeImages>,
     pub contents: Arc<InMemoryContents>,
     pub catalog: Arc<InMemoryAssetCatalog>,
+    pub clock: Arc<FixedClock>,
+    pub outbox: Arc<InMemoryOutbox>,
+    published: Arc<FakePublisher>,
     account_limits: Arc<InMemoryAccountLimits>,
     transactions: Arc<InMemoryTransactions>,
 }
@@ -108,6 +113,8 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
         Arc::new(AllowingEverything)
     };
 
+    let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
+    let published = Arc::new(FakePublisher::default());
     let bench = Bench {
         assets: AssetsCore::new(
             Arc::new(InMemoryEventStore::new()),
@@ -118,12 +125,15 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
             contents.clone(),
             images.clone(),
             authorizer,
-            Arc::new(FixedClock::new(clock::at(1_700_000_000))),
+            clock.clone(),
         )
         .limited(limits),
         images,
         contents,
         catalog,
+        clock: clock.clone(),
+        outbox: Arc::new(InMemoryOutbox::new(published.clone(), clock)),
+        published,
         account_limits,
         transactions,
     };
@@ -148,6 +158,16 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
 }
 
 impl Bench {
+    /// Publishes the follow-ups the listeners queued, and returns every follow-up published so far.
+    pub async fn follow_ups(&self) -> Vec<Message> {
+        self.outbox
+            .deliver(100)
+            .await
+            .expect("delivering should succeed");
+
+        self.published.heard()
+    }
+
     /// Tells the assets feature that Ada runs the instance, as the accounts feature would.
     pub async fn ada_runs_the_instance(&self) {
         self.assets

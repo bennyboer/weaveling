@@ -8,7 +8,7 @@ use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents}
 use assets_images::WebpImages;
 use assets_messaging::{
     RememberOperatorsListener, RememberPeopleListener, RememberProjectNamesListener,
-    RememberRolesListener, RememberTrashListener,
+    RememberRolesListener, RememberTrashListener, SweepAssetsOfDeletedOwnerListener,
 };
 use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
@@ -73,8 +73,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(RememberRolesListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberTrashListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberOperatorsListener::new(assets.clone()))),
-            Arc::new(hearing.inboxed(RememberPeopleListener::new(assets.clone()))),
-            Arc::new(hearing.inboxed(RememberProjectNamesListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberPeopleListener::new(
+                assets.clone(),
+                ports.outbox.clone(),
+                context.clock.clone(),
+            ))),
+            Arc::new(hearing.inboxed(RememberProjectNamesListener::new(
+                assets.clone(),
+                ports.outbox.clone(),
+                context.clock.clone(),
+            ))),
+            Arc::new(SweepAssetsOfDeletedOwnerListener::new(assets.clone())),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

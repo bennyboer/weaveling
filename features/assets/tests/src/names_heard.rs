@@ -28,7 +28,7 @@ fn told(routing: &str, kind: &str, id: &str, version: u64, event: Value) -> Mess
     )
 }
 
-fn ada_signed_up(version: u64, named: &str, email: &str) -> Message {
+pub(crate) fn ada_signed_up(version: u64, named: &str, email: &str) -> Message {
     told(
         SIGNED_UP,
         "account",
@@ -42,7 +42,7 @@ fn ada_signed_up(version: u64, named: &str, email: &str) -> Message {
     )
 }
 
-fn ada_deleted(version: u64) -> Message {
+pub(crate) fn ada_deleted(version: u64) -> Message {
     told(
         accounts_contract::DELETED,
         "account",
@@ -52,7 +52,7 @@ fn ada_deleted(version: u64) -> Message {
     )
 }
 
-fn the_loom_named(routing: &str, version: u64, named: &str) -> Message {
+pub(crate) fn the_loom_named(routing: &str, version: u64, named: &str) -> Message {
     let told_as = if routing == STARTED {
         "STARTED"
     } else {
@@ -67,7 +67,7 @@ fn the_loom_named(routing: &str, version: u64, named: &str) -> Message {
     )
 }
 
-fn the_loom_deleted(version: u64) -> Message {
+pub(crate) fn the_loom_deleted(version: u64) -> Message {
     told(
         projects_contract::DELETED,
         "project",
@@ -77,7 +77,7 @@ fn the_loom_deleted(version: u64) -> Message {
     )
 }
 
-fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
+pub(crate) fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
     Inboxed::new(
         handler,
         Arc::new(InMemoryTransactions::new()),
@@ -87,8 +87,24 @@ fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
     )
 }
 
+pub(crate) fn people(bench: &Bench) -> RememberPeopleListener {
+    RememberPeopleListener::new(
+        bench.assets.clone(),
+        bench.outbox.clone(),
+        bench.clock.clone(),
+    )
+}
+
+pub(crate) fn project_names(bench: &Bench) -> RememberProjectNamesListener {
+    RememberProjectNamesListener::new(
+        bench.assets.clone(),
+        bench.outbox.clone(),
+        bench.clock.clone(),
+    )
+}
+
 async fn people_heard(bench: &Bench, messages: Vec<Message>) {
-    let listener = inboxed(RememberPeopleListener::new(bench.assets.clone()));
+    let listener = inboxed(people(bench));
     for message in messages {
         listener
             .handle(&message)
@@ -98,7 +114,7 @@ async fn people_heard(bench: &Bench, messages: Vec<Message>) {
 }
 
 async fn project_names_heard(bench: &Bench, messages: Vec<Message>) {
-    let listener = inboxed(RememberProjectNamesListener::new(bench.assets.clone()));
+    let listener = inboxed(project_names(bench));
     for message in messages {
         listener
             .handle(&message)
@@ -129,8 +145,8 @@ fn names(held: &[Held]) -> Vec<(Option<&str>, Option<&str>)> {
 async fn the_listeners_hear_every_word_on_names_and_deletions() {
     // given: the listeners
     let bench = bench::a_bench().await;
-    let people = inboxed(RememberPeopleListener::new(bench.assets.clone()));
-    let projects = inboxed(RememberProjectNamesListener::new(bench.assets.clone()));
+    let people = inboxed(people(&bench));
+    let projects = inboxed(project_names(&bench));
 
     // expect: each hears what names its holders and what deletes them
     for routing in [
@@ -278,7 +294,7 @@ async fn what_tells_no_name_nor_deletion_is_refused() {
 
     // expect: a word that tells neither fails
     assert!(
-        inboxed(RememberPeopleListener::new(bench.assets.clone()))
+        inboxed(people(&bench))
             .handle(&told(
                 SIGNED_UP,
                 "account",
@@ -291,7 +307,7 @@ async fn what_tells_no_name_nor_deletion_is_refused() {
         "a message the listener cannot act on belongs in dead letters"
     );
     assert!(
-        inboxed(RememberProjectNamesListener::new(bench.assets.clone()))
+        inboxed(project_names(&bench))
             .handle(&told(
                 STARTED,
                 "project",

@@ -11,6 +11,9 @@ eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 assets-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-assets-contract" }
 assets-core = { version = "0.1.0", path = "../../core", package = "weaveling-assets-core" }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
+serde = { workspace = true }
 inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
@@ -19,6 +22,3 @@ transacting = { version = "0.1.0", path = "../../../../libraries/transacting", p
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
-
-[dev-dependencies]
-clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

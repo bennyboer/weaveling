@@ -18,6 +18,7 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishing", package = "weaveling-eventpublishing", features = ["testing"] }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 serving = { version = "0.1.0", path = "../../../libraries/serving", package = "weaveling-serving" }
 

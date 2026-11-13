@@ -15,4 +15,6 @@ mod own_assets_seen;
 #[cfg(test)]
 mod own_uploads_listed;
 #[cfg(test)]
+mod owners_swept;
+#[cfg(test)]
 mod storage_overview;
