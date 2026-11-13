@@ -900,3 +900,4 @@ instance-storage-find-project-hint = Nom du projet
 instance-storage-no-projects = Aucun projet n'occupe encore d'espace.
 instance-storage-no-project-match = Aucun projet ne correspond.
 instance-storage-owners = Propriétaires : { $names }
+refused-picture-id-invalid = Ce n'est pas un identifiant d'image valide.

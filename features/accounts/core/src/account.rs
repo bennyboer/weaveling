@@ -9,6 +9,7 @@ use crate::deletion::{DeletionAskedBy, PendingDeletion};
 use crate::key::{Key, KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
+use crate::picture::PictureId;
 use crate::recovery_code::RecoveryCode;
 use crate::second_factor::{PreferredWay, SecondFactor, SecondStepWay, Totp};
 use crate::session::Stage;
@@ -35,6 +36,8 @@ const KEY_RENAMED: EventName = EventName::of("KEY_RENAMED");
 const KEY_REMOVED: EventName = EventName::of("KEY_REMOVED");
 const KEY_DEMOTED: EventName = EventName::of("KEY_DEMOTED");
 const PREFERRED_WAY_CHOSEN: EventName = EventName::of("PREFERRED_WAY_CHOSEN");
+const PICTURE_CHANGED: EventName = EventName::of("PICTURE_CHANGED");
+const PICTURE_REMOVED: EventName = EventName::of("PICTURE_REMOVED");
 const DELETION_ASKED: EventName = EventName::of("DELETION_ASKED");
 const DELETION_CALLED_OFF: EventName = EventName::of("DELETION_CALLED_OFF");
 const DELETED: EventName = EventName::of("DELETED");
@@ -81,6 +84,17 @@ pub enum AccountCommand {
         key: KeyId,
     },
     ChoosePreferredWay(PreferredWay),
+    /// Shows another image as the account's picture.
+    /// `drop_previous` asks for the image shown before to be deleted, where nothing else uses it.
+    ChangePicture {
+        picture: PictureId,
+        drop_previous: bool,
+    },
+    /// Shows no picture any more.
+    /// `drop` asks for the image to be deleted, where nothing else uses it.
+    RemovePicture {
+        drop: bool,
+    },
     AskDeletion {
         until: OffsetDateTime,
         by: DeletionAskedBy,
@@ -141,6 +155,15 @@ pub enum AccountEvent {
     PreferredWayChosen {
         way: PreferredWay,
     },
+    PictureChanged {
+        picture: PictureId,
+        previous: Option<PictureId>,
+        drop_previous: bool,
+    },
+    PictureRemoved {
+        picture: PictureId,
+        drop: bool,
+    },
     DeletionAsked {
         until: OffsetDateTime,
         by: DeletionAskedBy,
@@ -159,6 +182,7 @@ pub enum AccountEvent {
         keys: BTreeMap<KeyId, Key>,
         recovery_codes_left: usize,
         preferred_way: PreferredWay,
+        picture: Option<PictureId>,
         pending_deletion: Option<PendingDeletion>,
         gone: bool,
     },
@@ -177,6 +201,7 @@ pub struct Account {
     keys: BTreeMap<KeyId, Key>,
     recovery_codes_left: usize,
     preferred_way: PreferredWay,
+    picture: Option<PictureId>,
     pending_deletion: Option<PendingDeletion>,
     gone: bool,
 }
@@ -281,6 +306,11 @@ impl Account {
         self.preferred_way
     }
 
+    /// The image the account shows as its picture, if it shows one.
+    pub fn picture(&self) -> Option<&PictureId> {
+        self.picture.as_ref()
+    }
+
     /// The way the second step is asked for first.
     ///
     /// This is the way the account chose, or the way that answered last if the account prefers that.
@@ -376,6 +406,8 @@ impl Event for AccountEvent {
             Self::KeyRemoved { .. } => KEY_REMOVED,
             Self::KeyDemoted { .. } => KEY_DEMOTED,
             Self::PreferredWayChosen { .. } => PREFERRED_WAY_CHOSEN,
+            Self::PictureChanged { .. } => PICTURE_CHANGED,
+            Self::PictureRemoved { .. } => PICTURE_REMOVED,
             Self::DeletionAsked { .. } => DELETION_ASKED,
             Self::DeletionCalledOff => DELETION_CALLED_OFF,
             Self::Deleted => DELETED,
@@ -427,6 +459,8 @@ impl Aggregate for Account {
             | AccountCommand::RemoveKey { .. }
             | AccountCommand::DemoteKey { .. }
             | AccountCommand::ChoosePreferredWay(_)
+            | AccountCommand::ChangePicture { .. }
+            | AccountCommand::RemovePicture { .. }
             | AccountCommand::AskDeletion { .. }
             | AccountCommand::CallOffDeletion { .. }
             | AccountCommand::Delete => Err(AccountError::NotSignedUpYet),
@@ -447,6 +481,7 @@ impl Aggregate for Account {
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
+                picture: None,
                 pending_deletion: None,
                 gone: false,
             }),
@@ -462,6 +497,7 @@ impl Aggregate for Account {
                 keys: BTreeMap::new(),
                 recovery_codes_left: 0,
                 preferred_way: PreferredWay::default(),
+                picture: None,
                 pending_deletion: None,
                 gone: false,
             }),
@@ -477,6 +513,7 @@ impl Aggregate for Account {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                picture,
                 pending_deletion,
                 gone,
             } => Some(Self {
@@ -491,6 +528,7 @@ impl Aggregate for Account {
                 keys: keys.clone(),
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: *preferred_way,
+                picture: picture.clone(),
                 pending_deletion: *pending_deletion,
                 gone: *gone,
             }),
@@ -511,6 +549,8 @@ impl Aggregate for Account {
             | AccountEvent::KeyRemoved { .. }
             | AccountEvent::KeyDemoted { .. }
             | AccountEvent::PreferredWayChosen { .. }
+            | AccountEvent::PictureChanged { .. }
+            | AccountEvent::PictureRemoved { .. }
             | AccountEvent::DeletionAsked { .. }
             | AccountEvent::DeletionCalledOff
             | AccountEvent::Deleted => None,
@@ -622,6 +662,25 @@ impl Aggregate for Account {
             AccountCommand::ChoosePreferredWay(way) => {
                 Ok(vec![AccountEvent::PreferredWayChosen { way }])
             }
+            AccountCommand::ChangePicture { picture, .. }
+                if self.picture.as_ref() == Some(&picture) =>
+            {
+                Ok(vec![])
+            }
+            AccountCommand::ChangePicture {
+                picture,
+                drop_previous,
+            } => Ok(vec![AccountEvent::PictureChanged {
+                picture,
+                previous: self.picture.clone(),
+                drop_previous,
+            }]),
+            AccountCommand::RemovePicture { drop } => Ok(self
+                .picture
+                .clone()
+                .map(|picture| AccountEvent::PictureRemoved { picture, drop })
+                .into_iter()
+                .collect()),
             AccountCommand::AskDeletion { .. } if self.pending_deletion.is_some() => Ok(vec![]),
             AccountCommand::AskDeletion { until, by } if self.operator => Ok(vec![
                 AccountEvent::StoppedBeingOperator,
@@ -711,6 +770,8 @@ impl Aggregate for Account {
                 self.sessions_since = Some(metadata.occurred_at);
             }
             AccountEvent::PreferredWayChosen { way } => self.preferred_way = *way,
+            AccountEvent::PictureChanged { picture, .. } => self.picture = Some(picture.clone()),
+            AccountEvent::PictureRemoved { .. } => self.picture = None,
             AccountEvent::DeletionAsked { until, by } => {
                 self.pending_deletion = Some(PendingDeletion {
                     until: *until,
@@ -732,6 +793,7 @@ impl Aggregate for Account {
                     keys: BTreeMap::new(),
                     recovery_codes_left: 0,
                     preferred_way: PreferredWay::default(),
+                    picture: None,
                     pending_deletion: None,
                     gone: true,
                 };
@@ -748,6 +810,7 @@ impl Aggregate for Account {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                picture,
                 pending_deletion,
                 gone,
             } => {
@@ -762,6 +825,7 @@ impl Aggregate for Account {
                 self.keys = keys.clone();
                 self.recovery_codes_left = *recovery_codes_left;
                 self.preferred_way = *preferred_way;
+                self.picture = picture.clone();
                 self.pending_deletion = *pending_deletion;
                 self.gone = *gone;
             }
@@ -781,6 +845,7 @@ impl Aggregate for Account {
             keys: self.keys.clone(),
             recovery_codes_left: self.recovery_codes_left,
             preferred_way: self.preferred_way,
+            picture: self.picture.clone(),
             pending_deletion: self.pending_deletion,
             gone: self.gone,
         }

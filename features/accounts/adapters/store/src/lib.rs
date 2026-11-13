@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use accounts_core::{
     AccountEvent, AccountName, DeclineReason, DeletionAskedBy, EmailAddress, Key, KeyId, KeyName,
-    KeyRole, Lock, LockKind, LockReason, PendingDeletion, PreferredWay, SecondStepWay, Totp,
+    KeyRole, Lock, LockKind, LockReason, PendingDeletion, PictureId, PreferredWay, SecondStepWay,
+    Totp,
 };
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
@@ -58,6 +59,15 @@ enum StoredAccountEvent {
     PreferredWayChosen {
         way: StoredPreferredWay,
     },
+    PictureChanged {
+        picture: String,
+        previous: Option<String>,
+        drop_previous: bool,
+    },
+    PictureRemoved {
+        picture: String,
+        drop: bool,
+    },
     DeletionAsked {
         #[serde(with = "time::serde::rfc3339")]
         until: OffsetDateTime,
@@ -83,6 +93,8 @@ enum StoredAccountEvent {
         recovery_codes_left: usize,
         #[serde(default)]
         preferred_way: StoredPreferredWay,
+        #[serde(default)]
+        picture: Option<String>,
         #[serde(default)]
         pending_deletion: Option<StoredPendingDeletion>,
         #[serde(default)]
@@ -341,6 +353,19 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::PreferredWayChosen { way } => {
                 Self::PreferredWayChosen { way: (*way).into() }
             }
+            AccountEvent::PictureChanged {
+                picture,
+                previous,
+                drop_previous,
+            } => Self::PictureChanged {
+                picture: picture.to_string(),
+                previous: previous.as_ref().map(ToString::to_string),
+                drop_previous: *drop_previous,
+            },
+            AccountEvent::PictureRemoved { picture, drop } => Self::PictureRemoved {
+                picture: picture.to_string(),
+                drop: *drop,
+            },
             AccountEvent::DeletionAsked { until, by } => Self::DeletionAsked {
                 until: *until,
                 by: (*by).into(),
@@ -359,6 +384,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                picture,
                 pending_deletion,
                 gone,
             } => Self::Snapshotted {
@@ -388,6 +414,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                     .collect(),
                 recovery_codes_left: *recovery_codes_left,
                 preferred_way: (*preferred_way).into(),
+                picture: picture.as_ref().map(ToString::to_string),
                 pending_deletion: pending_deletion.map(Into::into),
                 gone: *gone,
             },
@@ -406,6 +433,10 @@ fn readable(
         EmailAddress::new(email).map_err(|_| UnreadableAccountEvent)?,
         AccountName::new(name).map_err(|_| UnreadableAccountEvent)?,
     ))
+}
+
+fn readable_picture(picture: &str) -> Result<PictureId, UnreadableAccountEvent> {
+    PictureId::new(picture).map_err(|_| UnreadableAccountEvent)
 }
 
 fn readable_reason(reason: &str) -> Result<LockReason, UnreadableAccountEvent> {
@@ -475,6 +506,19 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::PreferredWayChosen { way } => {
                 Self::PreferredWayChosen { way: way.into() }
             }
+            StoredAccountEvent::PictureChanged {
+                picture,
+                previous,
+                drop_previous,
+            } => Self::PictureChanged {
+                picture: readable_picture(&picture)?,
+                previous: previous.as_deref().map(readable_picture).transpose()?,
+                drop_previous,
+            },
+            StoredAccountEvent::PictureRemoved { picture, drop } => Self::PictureRemoved {
+                picture: readable_picture(&picture)?,
+                drop,
+            },
             StoredAccountEvent::DeletionAsked { until, by } => Self::DeletionAsked {
                 until,
                 by: by.into(),
@@ -493,6 +537,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 keys,
                 recovery_codes_left,
                 preferred_way,
+                picture,
                 pending_deletion,
                 gone,
             } => {
@@ -548,6 +593,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     keys,
                     recovery_codes_left,
                     preferred_way: preferred_way.into(),
+                    picture: picture.as_deref().map(readable_picture).transpose()?,
                     pending_deletion: pending_deletion.map(Into::into),
                     gone,
                 }
@@ -638,6 +684,20 @@ mod tests {
             AccountEvent::PreferredWayChosen {
                 way: PreferredWay::LastUsed,
             },
+            AccountEvent::PictureChanged {
+                picture: PictureId::new("asset_2").expect("a plain id"),
+                previous: Some(PictureId::new("asset_1").expect("a plain id")),
+                drop_previous: true,
+            },
+            AccountEvent::PictureChanged {
+                picture: PictureId::new("asset_1").expect("a plain id"),
+                previous: None,
+                drop_previous: false,
+            },
+            AccountEvent::PictureRemoved {
+                picture: PictureId::new("asset_2").expect("a plain id"),
+                drop: false,
+            },
             AccountEvent::DeletionAsked {
                 until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
                 by: DeletionAskedBy::Holder,
@@ -675,6 +735,7 @@ mod tests {
                 )]),
                 recovery_codes_left: 7,
                 preferred_way: PreferredWay::Chosen(SecondStepWay::Key),
+                picture: Some(PictureId::new("asset_2").expect("a plain id")),
                 pending_deletion: Some(PendingDeletion {
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(6_000),
                     asked_by: DeletionAskedBy::Operator,
@@ -736,6 +797,7 @@ mod tests {
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
             preferred_way: PreferredWay::LastUsed,
+            picture: None,
             pending_deletion: None,
             gone: false,
         });

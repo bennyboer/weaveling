@@ -112,6 +112,18 @@ pub struct SignedInDTO {
     pub second_factor: Option<SecondFactorDTO>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deletion: Option<DeletionDTO>,
+    /// The id of the asset the account shows as its picture, if it shows one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+}
+
+/// Shows another image as the signed-in account's picture.
+/// `drop_previous` asks for the image shown before to be deleted, where nothing else uses it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PictureRequest {
+    pub picture: String,
+    #[serde(default)]
+    pub drop_previous: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -263,6 +275,8 @@ pub const KEY_DEMOTED: &str = "account.key.demoted";
 pub const DELETION_ASKED: &str = "account.deletion.asked";
 pub const DELETION_CALLED_OFF: &str = "account.deletion.called.off";
 pub const DELETED: &str = "account.deleted";
+pub const PICTURE_CHANGED: &str = "account.picture.changed";
+pub const PICTURE_REMOVED: &str = "account.picture.removed";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
 pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -308,6 +322,14 @@ pub enum AccountEventDTO {
     KeyRemoved { key: String },
     #[serde(rename = "KEY_DEMOTED")]
     KeyDemoted { key: String },
+    #[serde(rename = "PICTURE_CHANGED")]
+    PictureChanged {
+        picture: String,
+        previous: Option<String>,
+        drop_previous: bool,
+    },
+    #[serde(rename = "PICTURE_REMOVED")]
+    PictureRemoved { picture: String, drop: bool },
     #[serde(rename = "DELETION_ASKED")]
     DeletionAsked { until: String, by: String },
     #[serde(rename = "DELETION_CALLED_OFF")]
@@ -405,12 +427,13 @@ pub mod refused {
     pub const TOO_MANY_KEYS: &str = "too-many-keys";
     pub const PASSWORD_WRONG: &str = "password-wrong";
     pub const PREFERRED_WAY_UNKNOWN: &str = "preferred-way-unknown";
+    pub const PICTURE_ID_INVALID: &str = "picture-id-invalid";
     pub const KEY_ROLE_UNKNOWN: &str = "key-role-unknown";
     pub const PROJECTS_TO_HAND_OVER: &str = "projects-to-hand-over";
     pub const NO_DELETION_PENDING: &str = "no-deletion-pending";
     pub const DELETION_ASKED_BY_THE_OPERATOR: &str = "deletion-asked-by-the-operator";
 
-    pub const EVERY: [&str; 56] = [
+    pub const EVERY: [&str; 57] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -463,6 +486,7 @@ pub mod refused {
         TOO_MANY_KEYS,
         PASSWORD_WRONG,
         PREFERRED_WAY_UNKNOWN,
+        PICTURE_ID_INVALID,
         KEY_ROLE_UNKNOWN,
         PROJECTS_TO_HAND_OVER,
         NO_DELETION_PENDING,

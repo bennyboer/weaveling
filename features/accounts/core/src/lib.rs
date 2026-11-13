@@ -13,6 +13,7 @@ mod lock;
 mod name;
 mod operator;
 mod password;
+mod picture;
 mod recovery_code;
 mod second_factor;
 mod secrets;
@@ -42,6 +43,7 @@ pub use lock::{InvalidLockReason, Lock, LockKind, LockReason};
 pub use name::{AccountName, InvalidAccountName};
 pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
+pub use picture::{InvalidPictureId, PictureId};
 pub use recovery_code::{RecoveryCode, RecoveryCodeHash};
 pub use second_factor::{PreferredWay, SecondFactor, SecondStepWay, Totp};
 pub use secrets::{

@@ -2,7 +2,7 @@ use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
     DeclineInvitationRequest, DeletionDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest,
     KeyDTO, LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
-    PasswordRequest, PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest,
+    PasswordRequest, PasswordResetRequest, PictureRequest, PreferredWayRequest, PromoteKeyRequest,
     RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
     SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
     TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, WaysInDTO, deletion_asked_by,
@@ -110,6 +110,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
         .route(
             "/accounts/current/second-step/preferred",
             routing::put(choose_preferred_way),
+        )
+        .route(
+            "/accounts/current/picture",
+            routing::put(change_picture).delete(remove_picture),
         )
         .route(
             "/accounts/current/keys/challenge",
@@ -942,6 +946,7 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
             && !signed_in.account.is_operator()
             && accounts.operator_wanted().await.map_err(problem_of)?,
         deletion: signed_in.account.pending_deletion().map(deletion_told),
+        picture: signed_in.account.picture().map(ToString::to_string),
         second_factor: signed_in.account.second_factor().zip(asked_way).map(
             |(factor, asked_way)| SecondFactorDTO {
                 since: text::serialize(factor.since),
@@ -1030,6 +1035,38 @@ async fn choose_preferred_way(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn change_picture(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<PictureRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .change_picture(&account, &request.picture, request.drop_previous)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct Dropping {
+    #[serde(default)]
+    drop: bool,
+}
+
+async fn remove_picture(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Query(dropping): Query<Dropping>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .remove_picture(&account, dropping.drop)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn holding(token: &SessionToken) -> String {
     format!(
         "{SESSION_COOKIE}={}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={}",
@@ -1069,6 +1106,9 @@ fn problem_of(refusal: AccountsError) -> Problem {
                     .with("actual", actual)
             }
         },
+        AccountsError::InvalidPicture(reason) => {
+            Problem::unprocessable(refused::PICTURE_ID_INVALID, reason)
+        }
         AccountsError::InvalidName(reason) => match reason {
             InvalidAccountName::Blank => Problem::unprocessable(refused::NAME_BLANK, reason),
             InvalidAccountName::ControlCharacter => {

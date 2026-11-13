@@ -64,6 +64,19 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
             }
             .to_owned(),
         },
+        AccountEvent::PictureChanged {
+            picture,
+            previous,
+            drop_previous,
+        } => AccountEventDTO::PictureChanged {
+            picture: picture.to_string(),
+            previous: previous.as_ref().map(ToString::to_string),
+            drop_previous: *drop_previous,
+        },
+        AccountEvent::PictureRemoved { picture, drop } => AccountEventDTO::PictureRemoved {
+            picture: picture.to_string(),
+            drop: *drop,
+        },
         AccountEvent::DeletionCalledOff => AccountEventDTO::DeletionCalledOff,
         AccountEvent::Deleted => AccountEventDTO::Deleted,
         AccountEvent::RecoveryCodesDrawn
@@ -107,10 +120,11 @@ mod tests {
     use accounts_contract::{
         BECAME_OPERATOR, DELETED, DELETION_ASKED, DELETION_CALLED_OFF, EMAIL_VERIFIED,
         EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP, KEY_ADDED, KEY_DEMOTED,
-        KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION,
-        STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED, UNLOCKED,
+        KEY_REMOVED, KEY_RENAMED, LOCKED, PASSWORD_RESET, PICTURE_CHANGED, PICTURE_REMOVED,
+        SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, TOTP_ADDED, TOTP_REMOVED,
+        UNLOCKED,
     };
-    use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason};
+    use accounts_core::{AccountId, KIND, KeyId, KeyName, LockReason, PictureId};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
 
@@ -207,6 +221,21 @@ mod tests {
                 KEY_RENAMED,
             ),
             (AccountEvent::KeyRemoved { key: a_key() }, KEY_REMOVED),
+            (
+                AccountEvent::PictureChanged {
+                    picture: PictureId::new("asset_2").expect("a plain id"),
+                    previous: Some(PictureId::new("asset_1").expect("a plain id")),
+                    drop_previous: true,
+                },
+                PICTURE_CHANGED,
+            ),
+            (
+                AccountEvent::PictureRemoved {
+                    picture: PictureId::new("asset_2").expect("a plain id"),
+                    drop: false,
+                },
+                PICTURE_REMOVED,
+            ),
             (AccountEvent::KeyDemoted { key: a_key() }, KEY_DEMOTED),
             (
                 AccountEvent::DeletionAsked {
@@ -423,6 +452,7 @@ mod tests {
             keys: BTreeMap::new(),
             recovery_codes_left: 0,
             preferred_way: accounts_core::PreferredWay::LastUsed,
+            picture: None,
             pending_deletion: None,
             gone: false,
         };

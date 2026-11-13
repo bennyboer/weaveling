@@ -12,6 +12,7 @@ use crate::deletion::{DeletionAskedBy, PendingDeletion};
 use crate::key::{KeyId, KeyName, KeyRole};
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
+use crate::picture::PictureId;
 use crate::second_factor::{PreferredWay, SecondFactor, SecondStepWay};
 
 fn herself() -> Agent {
@@ -1530,4 +1531,152 @@ fn an_account_nobody_asked_to_delete_is_not_deleted() {
         account.decide(AccountCommand::Delete, &Agent::System),
         Err(AccountError::NotAskedToBeDeleted)
     );
+}
+
+fn picture(id: &str) -> PictureId {
+    PictureId::new(id).expect("a plain id")
+}
+
+fn decided(account: &mut Account, command: AccountCommand, version: u64) -> Vec<AccountEvent> {
+    let events = account
+        .decide(command, &herself())
+        .expect("the command is taken");
+    for event in &events {
+        account.apply(event, &stamped(version, clock::at(5_000)));
+    }
+
+    events
+}
+
+#[test]
+fn a_picture_is_changed_naming_the_one_shown_before() {
+    // given: an account showing no picture
+    let mut account = a_signed_up_account();
+
+    // when: a first picture is shown
+    let first = decided(
+        &mut account,
+        AccountCommand::ChangePicture {
+            picture: picture("asset_1"),
+            drop_previous: true,
+        },
+        2,
+    );
+
+    // then: it is shown, with nothing shown before
+    assert_eq!(
+        first,
+        vec![AccountEvent::PictureChanged {
+            picture: picture("asset_1"),
+            previous: None,
+            drop_previous: true,
+        }]
+    );
+    assert_eq!(account.picture(), Some(&picture("asset_1")));
+    // when: another picture replaces it, the first to be kept
+    let second = decided(
+        &mut account,
+        AccountCommand::ChangePicture {
+            picture: picture("asset_2"),
+            drop_previous: false,
+        },
+        3,
+    );
+    // then: the change names the first as the one shown before
+    assert_eq!(
+        second,
+        vec![AccountEvent::PictureChanged {
+            picture: picture("asset_2"),
+            previous: Some(picture("asset_1")),
+            drop_previous: false,
+        }]
+    );
+    assert_eq!(account.picture(), Some(&picture("asset_2")));
+}
+
+#[test]
+fn showing_the_picture_already_shown_changes_nothing() {
+    // given: an account showing a picture
+    let mut account = a_signed_up_account();
+    decided(
+        &mut account,
+        AccountCommand::ChangePicture {
+            picture: picture("asset_1"),
+            drop_previous: false,
+        },
+        2,
+    );
+
+    // expect: showing it again changes nothing
+    assert_eq!(
+        account.decide(
+            AccountCommand::ChangePicture {
+                picture: picture("asset_1"),
+                drop_previous: true,
+            },
+            &herself()
+        ),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn a_picture_is_removed_once_and_removing_none_changes_nothing() {
+    // given: an account showing a picture
+    let mut account = a_signed_up_account();
+    decided(
+        &mut account,
+        AccountCommand::ChangePicture {
+            picture: picture("asset_1"),
+            drop_previous: false,
+        },
+        2,
+    );
+
+    // when: it is removed, to be deleted
+    let removed = decided(
+        &mut account,
+        AccountCommand::RemovePicture { drop: true },
+        3,
+    );
+
+    // then: the removal names it and whether to delete it
+    assert_eq!(
+        removed,
+        vec![AccountEvent::PictureRemoved {
+            picture: picture("asset_1"),
+            drop: true,
+        }]
+    );
+    assert_eq!(account.picture(), None);
+    // and: removing it again changes nothing
+    assert_eq!(
+        account.decide(AccountCommand::RemovePicture { drop: false }, &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn a_picture_survives_a_snapshot_and_goes_with_the_account() {
+    // given: an account showing a picture
+    let mut account = a_signed_up_account();
+    decided(
+        &mut account,
+        AccountCommand::ChangePicture {
+            picture: picture("asset_1"),
+            drop_previous: false,
+        },
+        2,
+    );
+
+    // when: the account is rebuilt from its snapshot
+    let rebuilt = Account::from_first(&account.snapshot(), &stamped(3, clock::at(6_000)))
+        .expect("a snapshot gives birth");
+
+    // then: it still shows the picture
+    assert_eq!(rebuilt.picture(), Some(&picture("asset_1")));
+    // when: the account is deleted
+    account.apply(&AccountEvent::Deleted, &stamped(4, clock::at(7_000)));
+    // then: it shows no picture any more
+    assert_eq!(account.picture(), None);
 }

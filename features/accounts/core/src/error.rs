@@ -12,6 +12,7 @@ use crate::key::InvalidKeyName;
 use crate::lock::InvalidLockReason;
 use crate::name::InvalidAccountName;
 use crate::password::InvalidPassword;
+use crate::picture::InvalidPictureId;
 use crate::secrets::SecretsError;
 use email::InvalidEmailAddress;
 
@@ -23,6 +24,8 @@ pub enum AccountsError {
     InvalidName(#[from] InvalidAccountName),
     #[error(transparent)]
     InvalidPassword(#[from] InvalidPassword),
+    #[error(transparent)]
+    InvalidPicture(#[from] InvalidPictureId),
     #[error("a key's name: {0}")]
     InvalidKeyName(InvalidKeyName),
     #[error("{0}")]

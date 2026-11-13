@@ -229,6 +229,14 @@ Members uses them to freeze the account's roles, and later to sweep it.
 - Both operator routes take `If-Match`, like the operator's other actions. A version the account has moved past is refused as `outdated`. An account that was already swept is not found.
 - The operators' list shows each account's pending deletion, `AccountSummaryDTO.deletion`. The catalog stores it as `deletion_until` and `deletion_asked_by` (*9e-2, 2026-11-10*).
 
+**An account can show a picture** (*slice 11a, 2026-11-14*).
+
+- The picture is an image kept by the assets feature. The account only holds its id, `PictureId`. Because this feature does not know the assets feature, the id is only checked to look like an id: letters, digits and underscores, at most 64 of them. Whether the image exists and is the account's own is for the assets feature to tell.
+- `PUT /accounts/current/picture` with `{ picture, drop_previous }` shows a picture. It answers `204`. Showing the picture already shown changes nothing. An id that does not look like one is refused with `422 picture-id-invalid`.
+- `DELETE /accounts/current/picture` shows no picture any more. `?drop=true` asks for the image to be deleted too. Removing a picture the account does not show changes nothing.
+- The events are `PictureChanged { picture, previous, drop_previous }` and `PictureRemoved { picture, drop }`, published as `account.picture.changed` and `account.picture.removed`. The assets feature deletes the image named by `previous` or `picture` when `drop_previous` or `drop` is set and nothing else uses it.
+- `GET /sessions/current` reports the picture as `picture`. A deleted account shows none.
+
 **Core owns each write's transaction.**
 `AccountsCore` begins every transaction from the feature's `Transactions`.
 

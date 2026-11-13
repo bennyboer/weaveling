@@ -4,6 +4,7 @@ mod invitations;
 mod keys;
 mod operating;
 mod passkeys;
+mod pictures;
 mod second_step;
 mod sessions;
 mod sign_ups;
