@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use access::{HearsAccess, HearsOperators, KeptAccess, Role};
@@ -13,13 +14,16 @@ use transacting::{Transaction, Transactions};
 
 use crate::account_limits::AccountLimits;
 use crate::asset::{Asset, AssetCommand, AssetEvent, KIND, Owner, ProjectLink};
-use crate::catalog::{AssetCatalog, AssetSummary};
+use crate::catalog::{
+    AssetCatalog, AssetSummary, Held, Holders, Person, Sorted, UploadMark, UploadsSorted,
+};
 use crate::contents::{Contents, Piece};
 use crate::error::AssetsError;
 use crate::id::AssetId;
 use crate::images::{Images, Prepared};
 use crate::limits::{Counted, Limits, MOST_COUNTED};
 use crate::preparing;
+use crate::storage::{AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectStorage};
 
 /// What an account's uploads take together, and the most they may, where they are held to any.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +246,148 @@ impl AssetsCore {
         })
     }
 
+    /// What the instance holds of every asset, and the most it may, for an operator alone.
+    pub async fn instance_storage(&self, agent: &Agent) -> Result<InstanceStorage, AssetsError> {
+        self.operating(agent).await?;
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let usage = self.catalog.usage_within(transaction, None, None).await?;
+
+            Ok::<_, AssetsError>(InstanceStorage {
+                used: usage.instance,
+                most: self.limits.instance,
+            })
+        })
+    }
+
+    /// What each account that uploaded holds, and the most it may, a page at a time, for an operator alone; those alone whose name or address holds the term, where one is given.
+    pub async fn accounts_storage(
+        &self,
+        sorted: Sorted,
+        after: Option<&Held>,
+        matching: Option<&str>,
+        at_most: u64,
+        agent: &Agent,
+    ) -> Result<Listed<AccountStorage>, AssetsError> {
+        self.operating(agent).await?;
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let held = self
+                .catalog
+                .held_by(
+                    transaction,
+                    Holders::Accounts,
+                    sorted,
+                    after,
+                    searched(matching),
+                    at_most,
+                )
+                .await?;
+            let mut listed = Vec::with_capacity(held.len());
+            for holding in &held {
+                let account = AccountId::from(holding.id.as_str());
+                let own = match self.limits.each_account {
+                    Some(_) => self.account_limits.limit_of(transaction, &account).await?,
+                    None => None,
+                };
+                listed.push(AccountStorage {
+                    account,
+                    name: holding.name.clone(),
+                    email: holding.email.clone(),
+                    used: holding.total,
+                    most: own.or(self.limits.each_account),
+                    own_limit: own.is_some(),
+                });
+            }
+
+            Ok::<_, AssetsError>(Listed::paged(listed, held.last().cloned(), at_most))
+        })
+    }
+
+    /// What each project holding anything holds, the most it may, and its owners, a page at a time, for an operator alone; those alone whose name holds the term, where one is given.
+    pub async fn projects_storage(
+        &self,
+        sorted: Sorted,
+        after: Option<&Held>,
+        matching: Option<&str>,
+        at_most: u64,
+        agent: &Agent,
+    ) -> Result<Listed<ProjectStorage>, AssetsError> {
+        self.operating(agent).await?;
+
+        let held = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(
+                self.catalog
+                    .held_by(
+                        transaction,
+                        Holders::Projects,
+                        sorted,
+                        after,
+                        searched(matching),
+                        at_most,
+                    )
+                    .await?,
+            )
+        })?;
+        let mut listed = Vec::with_capacity(held.len());
+        for holding in &held {
+            listed.push(ProjectStorage {
+                project: ProjectLink::from(holding.id.as_str()),
+                name: holding.name.clone(),
+                used: holding.total,
+                most: self.limits.each_project,
+                owners: self.access.owners_of(&holding.id).await?,
+            });
+        }
+
+        Ok(Listed::paged(listed, held.last().cloned(), at_most))
+    }
+
+    /// What the signed-in account uploaded, into projects and its own, a page at a time, each told whether it may delete it; refused where nobody is signed in, as without accounts.
+    pub async fn uploads_of(
+        &self,
+        sorted: UploadsSorted,
+        after: Option<&UploadMark>,
+        at_most: u64,
+        agent: &Agent,
+    ) -> Result<Listed<OwnUpload, UploadMark>, AssetsError> {
+        let Agent::Account(account) = agent else {
+            return Err(AssetsError::NoAccount);
+        };
+
+        let uploads = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(
+                self.catalog
+                    .uploaded_by(transaction, account, sorted, after, at_most)
+                    .await?,
+            )
+        })?;
+        let mut writable: HashMap<ProjectLink, bool> = HashMap::new();
+        let mut listed = Vec::with_capacity(uploads.len());
+        for upload in uploads {
+            let deletable = match &upload.owner {
+                Owner::Account(owner) => owner == account,
+                Owner::Project(project) => match writable.get(project) {
+                    Some(may) => *may,
+                    None => {
+                        let may = self
+                            .authorizer
+                            .may(agent, Act::Write, project.as_str())
+                            .await?;
+                        writable.insert(project.clone(), may);
+                        may
+                    }
+                },
+            };
+            listed.push(OwnUpload { upload, deletable });
+        }
+        let last = listed
+            .last()
+            .map(|own: &OwnUpload| UploadMark::from(&own.upload));
+
+        Ok(Listed::paged(listed, last, at_most))
+    }
+
     /// What the signed-in account's uploads take, wherever they went, and the most they may: its own limit, or the one of every account.
     pub async fn usage_of(&self, agent: &Agent) -> Result<OwnUsage, AssetsError> {
         let Agent::Account(account) = agent else {
@@ -262,18 +408,88 @@ impl AssetsCore {
         })
     }
 
-    /// Lets go of what only guarded against a word about who may do what heard late, once none may be any more.
+    /// Remembers an account's name and address as the accounts told them at a version, so the operators find it by them.
+    pub async fn remember_person(
+        &self,
+        within: Option<&mut Transaction>,
+        person: &Person,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_person(transaction, person, version)
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Forgets a deleted account's name and address, as the accounts told it at a version.
+    pub async fn forget_person(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .forget_person(transaction, account, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers a project's name as the projects told it at a version, so the operators find it by it.
+    pub async fn remember_project_name(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+        version: Version,
+        name: &str,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_project_name(transaction, project, version, name)
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Forgets a deleted project's name, as the projects told it at a version.
+    pub async fn forget_project_name(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .forget_project_name(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Lets go of what only guarded against a word heard late, about who may do what or whose name is what, once none may be any more.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, AssetsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            Ok::<_, AssetsError>(
-                self.access
-                    .forget_tombstones_laid_before(transaction, before, at_most)
-                    .await?,
-            )
+            let access = self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+            let names = self
+                .catalog
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+
+            Ok::<_, AssetsError>(access + names)
         })
     }
 
@@ -523,6 +739,11 @@ impl HearsOperators for AssetsCore {
             Ok::<_, AssetsError>(())
         })
     }
+}
+
+/// The term searched for, its spaces around it let go of; a term of nothing but spaces searches for nothing.
+fn searched(matching: Option<&str>) -> Option<&str> {
+    matching.map(str::trim).filter(|term| !term.is_empty())
 }
 
 fn not_found(id: &AssetId) -> AssetsError {

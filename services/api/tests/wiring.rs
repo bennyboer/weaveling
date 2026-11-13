@@ -783,7 +783,7 @@ async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
     // then: her account reaches the list of accounts as operator
     let mut listed = Value::Null;
     for _ in 0..1_000 {
-        listed = server.get("/api/instance/accounts").await.json();
+        listed = server.get("/api/accounts").await.json();
         if listed["accounts"][0]["operator"] == true {
             break;
         }

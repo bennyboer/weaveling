@@ -8,7 +8,7 @@ Who may do what, as far as a feature has heard. Each feature that asks whether s
 - `remember_disbanded(project, version, at)`: the project's members disbanded, its project deleted, so nobody is a member of it whatever is heard of it after.
 - `remember_trash(project, version, in_the_trash)`: whether the project is in the trash.
 - `remember_operator(account, version, operator, at)`: whether the account runs the instance.
-- `role_of`, `is_in_the_trash`, `projects_of` (neither disbanded nor in the trash), `share_a_project` and `operates` answer them.
+- `role_of`, `is_in_the_trash`, `projects_of` (neither disbanded nor in the trash), `share_a_project`, `operates` and `owners_of` (a project's owners, by id, none once it is disbanded) answer them.
 
 **Every word comes with the version of what it is about,** the project's members, the project or the account, and the newest heard wins, as a message refused may be tried again after newer ones: a word heard late or twice changes nothing. What has ended, a membership, an operator's running of the instance, a project disbanded, stays as a tombstone with when it ended, so an older word heard after it does not bring it back; `forget_tombstones_laid_before(before, at_most)` lets them go, for each feature's tombstone chore, once nothing can be heard late any more.
 

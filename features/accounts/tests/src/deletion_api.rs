@@ -42,14 +42,14 @@ impl Served {
 
     async fn marked_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
         self.server
-            .put(&format!("/instance/accounts/{account}/deletion"))
+            .put(&format!("/accounts/{account}/deletion"))
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
 
     async fn kept_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/deletion"))
+            .delete(&format!("/accounts/{account}/deletion"))
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
@@ -58,7 +58,7 @@ impl Served {
         self.wired.settle().await;
         let page: AccountPageDTO = self
             .server
-            .get("/instance/accounts")
+            .get("/accounts")
             .add_header(COOKIE, cookie.to_owned())
             .await
             .json();
@@ -385,7 +385,7 @@ async fn marking_or_keeping_from_a_version_the_account_moved_past_is_refused() {
     refused_as(
         &served
             .server
-            .put(&format!("/instance/accounts/{}/deletion", served.ada))
+            .put(&format!("/accounts/{}/deletion", served.ada))
             .add_header(COOKIE, grace_s.clone())
             .add_header("if-match", "\"1\"")
             .await,
@@ -400,7 +400,7 @@ async fn marking_or_keeping_from_a_version_the_account_moved_past_is_refused() {
     refused_as(
         &served
             .server
-            .delete(&format!("/instance/accounts/{}/deletion", served.ada))
+            .delete(&format!("/accounts/{}/deletion", served.ada))
             .add_header(COOKIE, grace_s.clone())
             .add_header("if-match", "\"1\"")
             .await,

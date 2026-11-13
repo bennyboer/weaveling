@@ -132,6 +132,11 @@ impl AccessCatalog for Faltering {
         self.reachable()?;
         self.kept.operates(account).await
     }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        self.reachable()?;
+        self.kept.owners_of(project).await
+    }
 }
 
 struct Guarded {

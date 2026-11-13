@@ -5275,8 +5275,10 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
+ "time",
  "weaveling-assets-contract",
  "weaveling-assets-core",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-serving",
 ]

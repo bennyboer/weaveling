@@ -112,6 +112,11 @@ impl KeptAccess {
     ) -> Result<bool, AccessError> {
         self.catalog.share_a_project(one, other).await
     }
+
+    /// The owners of a project not disbanded, by their accounts' ids.
+    pub async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        self.catalog.owners_of(project).await
+    }
 }
 
 #[async_trait]

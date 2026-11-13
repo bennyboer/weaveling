@@ -6,7 +6,10 @@ use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
 use assets_contents::{FolderContents, InMemoryContents};
 use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents};
 use assets_images::WebpImages;
-use assets_messaging::{RememberOperatorsListener, RememberRolesListener, RememberTrashListener};
+use assets_messaging::{
+    RememberOperatorsListener, RememberPeopleListener, RememberProjectNamesListener,
+    RememberRolesListener, RememberTrashListener,
+};
 use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -68,6 +71,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(RememberRolesListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberTrashListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberOperatorsListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberPeopleListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberProjectNamesListener::new(assets.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

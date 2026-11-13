@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use access::{HearsAccess, InMemoryAccess, KeptAccess, Role};
+use access::{HearsAccess, HearsOperators, InMemoryAccess, KeptAccess, Role};
 use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
 use assets_contents::InMemoryContents;
 use assets_core::{
-    AccountLimits, AssetCatalog, AssetsCore, Format, ImageRefused, Images, Limits, Picture,
-    Prepared, ProjectLink, Usage,
+    AccountLimits, AssetCatalog, AssetsCore, Format, Held, Holders, ImageRefused, Images, Limits,
+    Picture, Prepared, ProjectLink, Sorted, Usage,
 };
 use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
@@ -145,6 +145,14 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
 }
 
 impl Bench {
+    /// Tells the assets Ada runs the instance, as the accounts would.
+    pub async fn ada_runs_the_instance(&self) {
+        self.assets
+            .remember_operator(None, &AccountId::from("account_ada"), Version::of(3), true)
+            .await
+            .expect("remembering should succeed");
+    }
+
     /// Gives Ada a limit of her own, as the operator would, or takes hers back.
     pub async fn adas_own_limit(&self, most: Option<u64>) {
         let ada = AccountId::from("account_ada");
@@ -162,6 +170,26 @@ impl Bench {
             .finish()
             .await
             .expect("finishing should succeed");
+    }
+
+    /// The accounts or projects holding anything, by id, with their names as far as the assets heard; those alone found by the term, where one is given.
+    pub async fn held(&self, holders: Holders, matching: Option<&str>) -> Vec<Held> {
+        let mut transaction = self
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
+        let held = self
+            .catalog
+            .held_by(&mut transaction, holders, Sorted::ById, None, matching, 50)
+            .await
+            .expect("asking should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+
+        held
     }
 
     /// What the installation, Ada and the loom hold.

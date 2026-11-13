@@ -11,7 +11,8 @@ CREATE TABLE asset_summaries (
     uploaded_at    TIMESTAMPTZ      NOT NULL
 );
 
-CREATE INDEX asset_summaries_by_uploader ON asset_summaries (uploader);
+CREATE INDEX asset_summaries_by_uploader_largest ON asset_summaries (uploader, total_size DESC, id);
+CREATE INDEX asset_summaries_by_uploader_newest ON asset_summaries (uploader, uploaded_at DESC, id);
 CREATE INDEX asset_summaries_by_owner ON asset_summaries (owner_kind, owner);
 
 CREATE TABLE asset_usage (
@@ -21,7 +22,30 @@ CREATE TABLE asset_usage (
     PRIMARY KEY (bound, id)
 );
 
+CREATE INDEX asset_usage_by_total ON asset_usage (bound, total DESC, id);
+
 CREATE TABLE asset_account_limits (
     account  TEXT COLLATE "C" PRIMARY KEY,
     most     BIGINT           NOT NULL
 );
+
+CREATE TABLE asset_people (
+    account   TEXT COLLATE "C" PRIMARY KEY,
+    version   BIGINT           NOT NULL,
+    name      TEXT,
+    email     TEXT,
+    searched  TEXT,
+    gone_at   TIMESTAMPTZ     
+);
+
+CREATE INDEX asset_people_by_gone_at ON asset_people (gone_at);
+
+CREATE TABLE asset_project_names (
+    project   TEXT COLLATE "C" PRIMARY KEY,
+    version   BIGINT           NOT NULL,
+    name      TEXT,
+    searched  TEXT,
+    gone_at   TIMESTAMPTZ     
+);
+
+CREATE INDEX asset_project_names_by_gone_at ON asset_project_names (gone_at);

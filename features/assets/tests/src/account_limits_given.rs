@@ -224,14 +224,14 @@ async fn a_limit_past_what_can_be_counted_is_refused() {
 }
 
 #[tokio::test]
-async fn the_operator_gives_and_takes_back_a_limit_on_the_instance_s_accounts() {
+async fn the_operator_gives_and_takes_back_an_account_s_limit() {
     // given: Ada running the instance, and the routes for her and for Bo
     let bench = ada_running_the_instance().await;
     let serving = |acting: Agent| {
         TestServer::new(assets_rest::router(bench.assets.clone()).layer(Extension(acting)))
     };
     let (hers, his) = (serving(bench::ada()), serving(bench::bo()));
-    let at = format!("/instance/accounts/{BO}/asset-limit");
+    let at = format!("/assets/accounts/{BO}/limit");
 
     // when: Bo gives himself a gigabyte, Ada gives him one byte, and then more than can be counted
     let by_bo = his

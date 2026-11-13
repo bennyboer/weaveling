@@ -10,16 +10,21 @@ mod id;
 mod images;
 mod limits;
 mod preparing;
+mod storage;
 
 pub use account_limits::AccountLimits;
 pub use asset::{
     Asset, AssetCommand, AssetError, AssetEvent, Format, KIND, Owner, Picture, ProjectLink,
 };
 pub use assets::{AssetsCore, Content, OwnUsage};
-pub use catalog::{AssetCatalog, AssetSummary, CatalogError};
+pub use catalog::{
+    AssetCatalog, AssetSummary, CatalogError, Held, Holders, Person, Sorted, Upload, UploadMark,
+    UploadsSorted,
+};
 pub use contents::{Contents, ContentsError, Piece};
 pub use error::AssetsError;
 pub use id::AssetId;
 pub use images::{ImageRefused, Images, Prepared, WIDTHS, widths_for};
 pub use limits::{Bound, Counted, Limit, Limits, MOST_COUNTED, Usage};
 pub use preparing::PREPARED_AT_ONCE;
+pub use storage::{AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectStorage};

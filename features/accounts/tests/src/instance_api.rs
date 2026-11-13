@@ -110,14 +110,14 @@ impl Instance {
         self.wired.settle().await;
 
         self.server
-            .get("/instance/accounts")
+            .get("/accounts")
             .add_header(COOKIE, cookie)
             .await
     }
 
     async fn lock(&self, cookie: &str, account: &str, reason: &str) -> TestResponse {
         self.server
-            .put(&format!("/instance/accounts/{account}/lock"))
+            .put(&format!("/accounts/{account}/lock"))
             .add_header(COOKIE, cookie)
             .json(&LockRequest {
                 reason: reason.to_owned(),
@@ -127,7 +127,7 @@ impl Instance {
 
     async fn unlock(&self, cookie: &str, account: &str) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/lock"))
+            .delete(&format!("/accounts/{account}/lock"))
             .add_header(COOKIE, cookie)
             .await
     }
@@ -241,7 +241,7 @@ async fn nobody_signed_out_reaches_the_instance() {
 
     // then: the accounts are not listed without a session
     refused_as(
-        &instance.server.get("/instance/accounts").await,
+        &instance.server.get("/accounts").await,
         StatusCode::UNAUTHORIZED,
         refused::NOT_SIGNED_IN,
     );
@@ -331,7 +331,7 @@ async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
     refused_as(
         &instance
             .server
-            .get("/instance/accounts")
+            .get("/accounts")
             .add_query_param("after", "not-an-id")
             .add_header(COOKIE, &instance.grace_signed_in)
             .await,
@@ -387,7 +387,7 @@ async fn a_long_list_comes_a_page_at_a_time() {
     let after = first.next.clone().expect("more than a page means a next");
     let second: AccountPageDTO = instance
         .server
-        .get("/instance/accounts")
+        .get("/accounts")
         .add_query_param("after", &after)
         .add_header(COOKIE, &instance.grace_signed_in)
         .await
@@ -439,14 +439,14 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
 impl Instance {
     async fn appoint(&self, cookie: &str, account: &str) -> TestResponse {
         self.server
-            .put(&format!("/instance/accounts/{account}/operator"))
+            .put(&format!("/accounts/{account}/operator"))
             .add_header(COOKIE, cookie)
             .await
     }
 
     async fn dismiss(&self, cookie: &str, account: &str) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/operator"))
+            .delete(&format!("/accounts/{account}/operator"))
             .add_header(COOKIE, cookie)
             .await
     }
@@ -606,21 +606,16 @@ impl Instance {
     fn grace_on_ada(&self, act: OperatorAct) -> TestRequest {
         let ada = self.ada.to_string();
         let asked = match act {
-            OperatorAct::Lock => self
-                .server
-                .put(&format!("/instance/accounts/{ada}/lock"))
-                .json(&LockRequest {
-                    reason: "Sent spam.".to_owned(),
-                }),
-            OperatorAct::Unlock => self
-                .server
-                .delete(&format!("/instance/accounts/{ada}/lock")),
-            OperatorAct::Appoint => self
-                .server
-                .put(&format!("/instance/accounts/{ada}/operator")),
-            OperatorAct::Dismiss => self
-                .server
-                .delete(&format!("/instance/accounts/{ada}/operator")),
+            OperatorAct::Lock => {
+                self.server
+                    .put(&format!("/accounts/{ada}/lock"))
+                    .json(&LockRequest {
+                        reason: "Sent spam.".to_owned(),
+                    })
+            }
+            OperatorAct::Unlock => self.server.delete(&format!("/accounts/{ada}/lock")),
+            OperatorAct::Appoint => self.server.put(&format!("/accounts/{ada}/operator")),
+            OperatorAct::Dismiss => self.server.delete(&format!("/accounts/{ada}/operator")),
         };
 
         asked.add_header(COOKIE, &self.grace_signed_in)

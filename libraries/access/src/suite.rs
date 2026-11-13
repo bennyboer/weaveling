@@ -417,6 +417,53 @@ pub async fn what_is_told_in_a_transaction_that_is_dropped_is_not_kept<W: Workbe
     assert!(!operates(bench, &ada()).await);
 }
 
+pub async fn a_project_s_owners_are_its_members_holding_it_and_nobody_once_disbanded<
+    W: Workbench,
+>(
+    bench: &W,
+) {
+    // given: the members, Bo made an owner of the loom, and Grace an author in it who left
+    told(bench, the_members()).await;
+    told(
+        bench,
+        vec![
+            Word::Role(THE_LOOM, bo(), 3, Some(Role::Owner), 0),
+            Word::Role(THE_LOOM, grace(), 4, Some(Role::Owner), 0),
+            Word::Role(THE_LOOM, grace(), 5, None, 1_000),
+        ],
+    )
+    .await;
+
+    // expect: the loom's owners are Ada and Bo, by their ids, and the weft's Grace
+    assert_eq!(
+        bench
+            .store()
+            .owners_of(THE_LOOM)
+            .await
+            .expect("asking should succeed"),
+        [ada(), bo()]
+    );
+    assert_eq!(
+        bench
+            .store()
+            .owners_of(THE_WEFT)
+            .await
+            .expect("asking should succeed"),
+        [grace()]
+    );
+    // when: the loom is disbanded
+    told(bench, vec![Word::Disbanded(THE_LOOM, 6, 2_000)]).await;
+    // then: it has no owners
+    assert!(
+        bench
+            .store()
+            .owners_of(THE_LOOM)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+}
+
 #[macro_export]
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -435,6 +482,10 @@ macro_rules! conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::conformance_case!($workbench, nothing_heard_is_no_access);
+        $crate::conformance_case!(
+            $workbench,
+            a_project_s_owners_are_its_members_holding_it_and_nobody_once_disbanded
+        );
         $crate::conformance_case!($workbench, a_member_has_their_role_in_their_projects_alone);
         $crate::conformance_case!(
             $workbench,

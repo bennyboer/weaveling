@@ -253,6 +253,22 @@ impl AccessCatalog for InMemoryAccess {
             .get(&account.to_string())
             .is_some_and(|(_, operator, _)| *operator))
     }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        let kept = self.kept();
+        if kept.disbanded.contains_key(project) {
+            return Ok(Vec::new());
+        }
+        let mut owners: Vec<String> = kept
+            .roles
+            .iter()
+            .filter(|((held_in, _), (_, role, _))| held_in == project && *role == Some(Role::Owner))
+            .map(|((_, account), _)| account.clone())
+            .collect();
+        owners.sort();
+
+        Ok(owners.into_iter().map(AccountId::from).collect())
+    }
 }
 
 #[cfg(test)]

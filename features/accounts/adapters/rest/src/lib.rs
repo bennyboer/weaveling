@@ -127,29 +127,23 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             "/accounts/current/keys/{key}/demote",
             routing::post(demote_key),
         )
-        .route("/instance/accounts", routing::get(list_accounts))
+        .route("/accounts", routing::get(list_accounts))
+        .route("/accounts/{account}/totp", routing::delete(remove_totp))
+        .route("/accounts/{account}/ways-in", routing::get(ways_in))
         .route(
-            "/instance/accounts/{account}/totp",
-            routing::delete(remove_totp),
-        )
-        .route(
-            "/instance/accounts/{account}/ways-in",
-            routing::get(ways_in),
-        )
-        .route(
-            "/instance/accounts/{account}/keys/{key}",
+            "/accounts/{account}/keys/{key}",
             routing::delete(remove_key_of),
         )
         .route(
-            "/instance/accounts/{account}/lock",
+            "/accounts/{account}/lock",
             routing::put(lock).delete(unlock),
         )
         .route(
-            "/instance/accounts/{account}/operator",
+            "/accounts/{account}/operator",
             routing::put(appoint_operator).delete(dismiss_operator),
         )
         .route(
-            "/instance/accounts/{account}/deletion",
+            "/accounts/{account}/deletion",
             routing::put(mark_for_deletion).delete(keep_account_of),
         )
         .with_state(accounts)

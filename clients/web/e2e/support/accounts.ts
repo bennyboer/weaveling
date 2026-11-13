@@ -930,7 +930,10 @@ export async function aServerWithAccounts(
       return route.fulfill({ status: 204 });
     },
   );
-  await page.route(at("/api/instance/accounts"), async (route) => {
+  await page.route(at("/api/accounts"), async (route) => {
+    if (route.request().method() !== "GET") {
+      return route.fallback();
+    }
     if (!server.operator) {
       return refusing(route, 403, "not-an-operator");
     }
@@ -959,9 +962,9 @@ export async function aServerWithAccounts(
     return route.fulfill({ json: { accounts, next } });
   });
   await page.route(
-    (url) => /^\/api\/instance\/accounts\/[^/]+\/totp$/.test(url.pathname),
+    (url) => /^\/api\/accounts\/(?!current\/)[^/]+\/totp$/.test(url.pathname),
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const id = new URL(route.request().url()).pathname.split("/")[3];
       const account = server.listed.find((listed) => listed.id === id);
       if (!account) {
         return refusing(route, 404, "account-not-found");
@@ -972,9 +975,9 @@ export async function aServerWithAccounts(
     },
   );
   await page.route(
-    (url) => /^\/api\/instance\/accounts\/[^/]+\/ways-in$/.test(url.pathname),
+    (url) => /^\/api\/accounts\/(?!current\/)[^/]+\/ways-in$/.test(url.pathname),
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const id = new URL(route.request().url()).pathname.split("/")[3];
       const account = server.listed.find((listed) => listed.id === id);
       if (!account) {
         return refusing(route, 404, "account-not-found");
@@ -986,9 +989,9 @@ export async function aServerWithAccounts(
   );
   await page.route(
     (url) =>
-      /^\/api\/instance\/accounts\/[^/]+\/keys\/[^/]+$/.test(url.pathname),
+      /^\/api\/accounts\/(?!current\/)[^/]+\/keys\/[^/]+$/.test(url.pathname),
     async (route) => {
-      const [, , , , id, , key] = new URL(route.request().url()).pathname.split(
+      const [, , , id, , key] = new URL(route.request().url()).pathname.split(
         "/",
       );
       const account = server.listed.find((listed) => listed.id === id);
@@ -1007,9 +1010,9 @@ export async function aServerWithAccounts(
   );
   await page.route(
     (url) =>
-      /^\/api\/instance\/accounts\/[^/]+\/deletion$/.test(url.pathname),
+      /^\/api\/accounts\/(?!current\/)[^/]+\/deletion$/.test(url.pathname),
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const id = new URL(route.request().url()).pathname.split("/")[3];
       const account = server.listed.find((listed) => listed.id === id);
       if (!account) {
         return refusing(route, 404, "account-not-found");
@@ -1039,9 +1042,9 @@ export async function aServerWithAccounts(
     },
   );
   await page.route(
-    (url) => /^\/api\/instance\/accounts\/[^/]+\/lock$/.test(url.pathname),
+    (url) => /^\/api\/accounts\/(?!current\/)[^/]+\/lock$/.test(url.pathname),
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const id = new URL(route.request().url()).pathname.split("/")[3];
       const account = server.listed.find((listed) => listed.id === id);
       if (!account) {
         return refusing(route, 404, "account-not-found");
@@ -1065,9 +1068,9 @@ export async function aServerWithAccounts(
     },
   );
   await page.route(
-    (url) => /^\/api\/instance\/accounts\/[^/]+\/operator$/.test(url.pathname),
+    (url) => /^\/api\/accounts\/(?!current\/)[^/]+\/operator$/.test(url.pathname),
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const id = new URL(route.request().url()).pathname.split("/")[3];
       const yourself = id === ADA.account;
       const account = server.listed.find((listed) => listed.id === id);
       if (!yourself && !account) {

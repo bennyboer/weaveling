@@ -122,6 +122,11 @@ impl AccessCatalog for WhoMayDoWhat {
         self.reachable()?;
         self.kept.operates(account).await
     }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        self.reachable()?;
+        self.kept.owners_of(project).await
+    }
 }
 
 /// Who may do what as the scenes heard it, each word told newer than the last.

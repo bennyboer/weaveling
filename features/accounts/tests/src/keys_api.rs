@@ -88,7 +88,7 @@ impl Served {
 
     async fn ways_in_seen_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
         self.server
-            .get(&format!("/instance/accounts/{account}/ways-in"))
+            .get(&format!("/accounts/{account}/ways-in"))
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
@@ -101,7 +101,7 @@ impl Served {
         seen: u64,
     ) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/keys/{key}"))
+            .delete(&format!("/accounts/{account}/keys/{key}"))
             .add_header(COOKIE, cookie.to_owned())
             .add_header("if-match", format!("\"{seen}\""))
             .await

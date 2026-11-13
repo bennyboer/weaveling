@@ -154,6 +154,11 @@ impl AccessCatalog for Unreliable {
         self.reachable()?;
         self.kept.operates(account).await
     }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        self.reachable()?;
+        self.kept.owners_of(project).await
+    }
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {

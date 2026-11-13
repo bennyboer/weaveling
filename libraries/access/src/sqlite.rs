@@ -71,6 +71,13 @@ const SHARED: &str = "
 
 const OPERATES: &str = "SELECT operator FROM access_operators WHERE account = ?1";
 
+const OWNERS_OF: &str = "
+    SELECT account FROM access_roles
+    WHERE project = ?1 AND role = 'owner'
+      AND NOT EXISTS (SELECT 1 FROM access_disbanded WHERE access_disbanded.project = access_roles.project)
+    ORDER BY account
+";
+
 const OLD_DISBANDED: &str = "
     SELECT project FROM access_disbanded
     WHERE laid_at < ?1
@@ -337,6 +344,17 @@ impl AccessCatalog for SqliteAccess {
             .await
             .map_err(unreachable)?
             .unwrap_or(false))
+    }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        Ok(sqlx::query_scalar::<_, String>(OWNERS_OF)
+            .bind(project)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .into_iter()
+            .map(AccountId::from)
+            .collect())
     }
 }
 

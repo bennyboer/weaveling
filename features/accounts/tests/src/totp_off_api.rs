@@ -27,7 +27,7 @@ impl Served {
 
     async fn removed_by(&self, cookie: &str, account: &AccountId) -> TestResponse {
         self.server
-            .delete(&format!("/instance/accounts/{account}/totp"))
+            .delete(&format!("/accounts/{account}/totp"))
             .add_header(COOKIE, cookie.to_owned())
             .await
     }
@@ -36,7 +36,7 @@ impl Served {
         self.wired.settle().await;
         let listed: AccountPageDTO = self
             .server
-            .get("/instance/accounts")
+            .get("/accounts")
             .add_header(COOKIE, cookie.to_owned())
             .await
             .json();

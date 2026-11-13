@@ -1,6 +1,11 @@
-use assets_contract::{AccountLimitRequest, AssetDTO, OwnerDTO, UsageDTO, bound, format, refused};
+use assets_contract::{
+    AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, InstanceStorageDTO,
+    OwnerDTO, ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadsDTO, UsageDTO, bound,
+    format, refused, sort,
+};
 use assets_core::{
-    Asset, AssetError, AssetsCore, AssetsError, Bound, Format, ImageRefused, Limit, Owner,
+    Asset, AssetError, AssetsCore, AssetsError, Bound, Format, Held, ImageRefused, Limit, Listed,
+    Owner, Sorted, UploadMark, UploadsSorted,
 };
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
@@ -13,8 +18,10 @@ use axum::{Extension, Json, Router};
 use eventsourcing::{Agent, Standing};
 use serde::Deserialize;
 use serving::Problem;
+use time::OffsetDateTime;
 
 const KEPT_FOR_GOOD: &str = "private, max-age=31536000, immutable";
+const A_PAGE: u64 = 50;
 
 pub fn router(assets: AssetsCore) -> Router {
     let taken = match assets.limits().on_the_upload() {
@@ -23,12 +30,15 @@ pub fn router(assets: AssetsCore) -> Router {
     };
 
     Router::new()
-        .route("/assets", routing::post(upload).layer(taken))
+        .route("/assets", routing::post(upload).layer(taken).get(uploads))
         .route("/assets/usage", routing::get(usage))
+        .route("/assets/storage", routing::get(instance_storage))
+        .route("/assets/storage/accounts", routing::get(accounts_storage))
+        .route("/assets/storage/projects", routing::get(projects_storage))
         .route("/assets/{id}", routing::delete(delete))
         .route("/assets/{id}/content", routing::get(content))
         .route(
-            "/instance/accounts/{account}/asset-limit",
+            "/assets/accounts/{account}/limit",
             routing::put(give_account_limit).delete(take_back_account_limit),
         )
         .with_state(assets)
@@ -37,6 +47,113 @@ pub fn router(assets: AssetsCore) -> Router {
 #[derive(Deserialize)]
 struct IntoProject {
     project: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Paging {
+    sort: Option<String>,
+    after: Option<String>,
+    search: Option<String>,
+}
+
+impl Paging {
+    fn read(&self) -> Result<(Sorted, Option<Held>), Problem> {
+        let sorted = match self.sort.as_deref() {
+            None | Some(sort::MOST_USED) => Sorted::MostUsed,
+            Some(sort::ID) => Sorted::ById,
+            Some(unknown) => {
+                return Err(Problem::rejected(
+                    refused::SORT_UNKNOWN,
+                    format!("no sort {unknown}; take most-used or id"),
+                ));
+            }
+        };
+        let after = self
+            .after
+            .as_deref()
+            .map(|cursor| {
+                cursor
+                    .split_once('.')
+                    .and_then(|(total, id)| {
+                        Some(Held {
+                            id: id.to_owned(),
+                            total: total.parse().ok()?,
+                            name: None,
+                            email: None,
+                        })
+                    })
+                    .filter(|held| !held.id.is_empty())
+                    .ok_or_else(|| {
+                        Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
+                    })
+            })
+            .transpose()?;
+
+        Ok((sorted, after))
+    }
+}
+
+#[derive(Deserialize)]
+struct UploadsPaging {
+    sort: Option<String>,
+    after: Option<String>,
+}
+
+impl UploadsPaging {
+    fn read(&self) -> Result<(UploadsSorted, Option<UploadMark>), Problem> {
+        let sorted = match self.sort.as_deref() {
+            None | Some(sort::NEWEST) => UploadsSorted::Newest,
+            Some(sort::LARGEST) => UploadsSorted::Largest,
+            Some(unknown) => {
+                return Err(Problem::rejected(
+                    refused::SORT_UNKNOWN,
+                    format!("no sort {unknown}; take newest or largest"),
+                ));
+            }
+        };
+        let after = self
+            .after
+            .as_deref()
+            .map(|cursor| {
+                mark_read(cursor).ok_or_else(|| {
+                    Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
+                })
+            })
+            .transpose()?;
+
+        Ok((sorted, after))
+    }
+}
+
+/// The upload a page goes on after, read from its cursor: what it takes, when it was uploaded in nanoseconds, and its id.
+fn mark_read(cursor: &str) -> Option<UploadMark> {
+    let mut parts = cursor.splitn(3, '.');
+    let total_size = parts.next()?.parse().ok()?;
+    let uploaded_at =
+        OffsetDateTime::from_unix_timestamp_nanos(parts.next()?.parse().ok()?).ok()?;
+    let id = parts.next()?.parse().ok()?;
+
+    Some(UploadMark {
+        id,
+        total_size,
+        uploaded_at,
+    })
+}
+
+fn mark_written(mark: &UploadMark) -> String {
+    format!(
+        "{}.{}.{}",
+        mark.total_size,
+        mark.uploaded_at.unix_timestamp_nanos(),
+        mark.id
+    )
+}
+
+fn next_of<T>(listed: &Listed<T>) -> Option<String> {
+    listed
+        .next
+        .as_ref()
+        .map(|held| format!("{}.{}", held.total, held.id))
 }
 
 #[derive(Deserialize)]
@@ -129,6 +246,116 @@ async fn take_back_account_limit(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn instance_storage(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+) -> Result<Json<InstanceStorageDTO>, Problem> {
+    let storage = assets.instance_storage(&acting).await.map_err(problem_of)?;
+
+    Ok(Json(InstanceStorageDTO {
+        used: storage.used,
+        most: storage.most,
+    }))
+}
+
+async fn accounts_storage(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Query(paging): Query<Paging>,
+) -> Result<Json<AccountsStorageDTO>, Problem> {
+    let (sorted, after) = paging.read()?;
+    let listed = assets
+        .accounts_storage(
+            sorted,
+            after.as_ref(),
+            paging.search.as_deref(),
+            A_PAGE,
+            &acting,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(AccountsStorageDTO {
+        next: next_of(&listed),
+        accounts: listed
+            .listed
+            .into_iter()
+            .map(|account| AccountStorageDTO {
+                account: account.account.to_string(),
+                name: account.name,
+                email: account.email,
+                used: account.used,
+                most: account.most,
+                own_limit: account.own_limit,
+            })
+            .collect(),
+    }))
+}
+
+async fn projects_storage(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Query(paging): Query<Paging>,
+) -> Result<Json<ProjectsStorageDTO>, Problem> {
+    let (sorted, after) = paging.read()?;
+    let listed = assets
+        .projects_storage(
+            sorted,
+            after.as_ref(),
+            paging.search.as_deref(),
+            A_PAGE,
+            &acting,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(ProjectsStorageDTO {
+        next: next_of(&listed),
+        projects: listed
+            .listed
+            .into_iter()
+            .map(|project| ProjectStorageDTO {
+                project: project.project.to_string(),
+                name: project.name,
+                used: project.used,
+                most: project.most,
+                owners: project.owners.iter().map(ToString::to_string).collect(),
+            })
+            .collect(),
+    }))
+}
+
+async fn uploads(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Query(paging): Query<UploadsPaging>,
+) -> Result<Json<UploadsDTO>, Problem> {
+    let (sorted, after) = paging.read()?;
+    let listed = assets
+        .uploads_of(sorted, after.as_ref(), A_PAGE, &acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(UploadsDTO {
+        next: listed.next.as_ref().map(mark_written),
+        uploads: listed
+            .listed
+            .into_iter()
+            .map(|own| UploadDTO {
+                id: own.upload.id.to_string(),
+                owner: owner_told(&own.upload.owner),
+                project_name: own.upload.project_name,
+                format: format_told(own.upload.format).to_owned(),
+                width: own.upload.width,
+                height: own.upload.height,
+                total_size: own.upload.total_size,
+                uploaded_at: clock::text::serialize(own.upload.uploaded_at),
+                deletable: own.deletable,
+            })
+            .collect(),
+    }))
+}
+
 async fn delete(
     State(assets): State<AssetsCore>,
     Extension(acting): Extension<Agent>,
@@ -149,10 +376,7 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Asset>) -> Resp
         Json(AssetDTO {
             id: id.to_owned(),
             version: standing.version.count(),
-            owner: match asset.owner() {
-                Owner::Project(project) => OwnerDTO::Project(project.to_string()),
-                Owner::Account(account) => OwnerDTO::Account(account.to_string()),
-            },
+            owner: owner_told(asset.owner()),
             format: format_told(picture.format).to_owned(),
             width: picture.width,
             height: picture.height,
@@ -162,6 +386,13 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Asset>) -> Resp
         }),
     )
         .into_response()
+}
+
+fn owner_told(owner: &Owner) -> OwnerDTO {
+    match owner {
+        Owner::Project(project) => OwnerDTO::Project(project.to_string()),
+        Owner::Account(account) => OwnerDTO::Account(account.to_string()),
+    }
 }
 
 fn format_told(told: Format) -> &'static str {

@@ -1,14 +1,20 @@
-use assets_core::{AssetCatalog, AssetId, AssetSummary, CatalogError, ProjectLink, Usage};
+use assets_core::{
+    AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Person, ProjectLink, Sorted,
+    Upload, UploadMark, UploadsSorted, Usage,
+};
 use async_trait::async_trait;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Version};
+use sqlx::AssertSqlSafe;
 use sqlx::Row;
 use sqlx::migrate::Migrator;
+use time::OffsetDateTime;
 use transacting::Transaction;
 use transacting::postgres::{Connection, connection};
 
 use crate::written::{
-    ACCOUNT, INSTANCE, PROJECT, bounds_of, format_written, owner_written, size_written,
-    unreachable, usage_of,
+    ACCOUNT, INSTANCE, PROJECT, bounds_of, format_read, format_written, holdings_asked, owner_read,
+    owner_written, pattern_of, person_searched, project_searched, size_written, unreachable,
+    uploads_asked, usage_of,
 };
 
 const REMEMBER: &str = "
@@ -45,6 +51,46 @@ const USAGE: &str = "
        OR (bound = $2 AND id = $3)
        OR (bound = $4 AND id = $5)
 ";
+
+const PERSON: &str = "
+    INSERT INTO asset_people (account, version, name, email, searched, gone_at)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (account) DO UPDATE
+    SET version = excluded.version, name = excluded.name, email = excluded.email,
+        searched = excluded.searched, gone_at = excluded.gone_at
+    WHERE asset_people.version < excluded.version
+";
+
+const PROJECT_NAME: &str = "
+    INSERT INTO asset_project_names (project, version, name, searched, gone_at)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (project) DO UPDATE
+    SET version = excluded.version, name = excluded.name,
+        searched = excluded.searched, gone_at = excluded.gone_at
+    WHERE asset_project_names.version < excluded.version
+";
+
+const FORGET_OLD_PEOPLE: &str = "
+    DELETE FROM asset_people WHERE account IN (
+        SELECT account FROM asset_people
+        WHERE gone_at < $1
+        ORDER BY gone_at, account
+        LIMIT $2
+    )
+";
+
+const FORGET_OLD_PROJECT_NAMES: &str = "
+    DELETE FROM asset_project_names WHERE project IN (
+        SELECT project FROM asset_project_names
+        WHERE gone_at < $1
+        ORDER BY gone_at, project
+        LIMIT $2
+    )
+";
+
+fn placeholder(nth: usize) -> String {
+    format!("${nth}")
+}
 
 const LEDGER: &str = "_sqlx_migrations_asset_summaries";
 
@@ -188,6 +234,199 @@ impl AssetCatalog for PostgresAssetCatalog {
                 .collect::<Result<Vec<_>, sqlx::Error>>()
                 .map_err(unreachable)?,
         )
+    }
+
+    async fn held_by(
+        &self,
+        transaction: &mut Transaction,
+        holders: Holders,
+        sorted: Sorted,
+        after: Option<&Held>,
+        matching: Option<&str>,
+        at_most: u64,
+    ) -> Result<Vec<Held>, CatalogError> {
+        let bound = match holders {
+            Holders::Accounts => ACCOUNT,
+            Holders::Projects => PROJECT,
+        };
+        let asked = holdings_asked(placeholder, holders, sorted, after, matching.is_some());
+        let mut asking = sqlx::query(AssertSqlSafe(asked))
+            .bind(bound)
+            .bind(i64::try_from(at_most).map_err(unreachable)?);
+        if let Some(last) = after {
+            if sorted == Sorted::MostUsed {
+                asking = asking.bind(size_written(last.total)?);
+            }
+            asking = asking.bind(last.id.clone());
+        }
+        if let Some(term) = matching {
+            asking = asking.bind(pattern_of(term));
+        }
+        let rows = asking
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let total: i64 = row.try_get("total").map_err(unreachable)?;
+                Ok(Held {
+                    id: row.try_get("id").map_err(unreachable)?,
+                    total: u64::try_from(total).map_err(unreachable)?,
+                    name: row.try_get("name").map_err(unreachable)?,
+                    email: row.try_get("email").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn uploaded_by(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        sorted: UploadsSorted,
+        after: Option<&UploadMark>,
+        at_most: u64,
+    ) -> Result<Vec<Upload>, CatalogError> {
+        let asked = uploads_asked(placeholder, sorted, after.is_some());
+        let mut asking = sqlx::query(AssertSqlSafe(asked))
+            .bind(account.to_string())
+            .bind(i64::try_from(at_most).map_err(unreachable)?);
+        if let Some(last) = after {
+            asking = match sorted {
+                UploadsSorted::Largest => asking.bind(size_written(last.total_size)?),
+                UploadsSorted::Newest => asking.bind(last.uploaded_at),
+            };
+            asking = asking.bind(last.id.to_string());
+        }
+        let rows = asking
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let id: String = row.try_get("id").map_err(unreachable)?;
+                let owner_kind: String = row.try_get("owner_kind").map_err(unreachable)?;
+                let owner: String = row.try_get("owner").map_err(unreachable)?;
+                let format: String = row.try_get("format").map_err(unreachable)?;
+                let width: i64 = row.try_get("width").map_err(unreachable)?;
+                let height: i64 = row.try_get("height").map_err(unreachable)?;
+                let total_size: i64 = row.try_get("total_size").map_err(unreachable)?;
+                Ok(Upload {
+                    id: id.parse().map_err(unreachable)?,
+                    owner: owner_read(&owner_kind, &owner)?,
+                    project_name: row.try_get("project_name").map_err(unreachable)?,
+                    format: format_read(&format)?,
+                    width: u32::try_from(width).map_err(unreachable)?,
+                    height: u32::try_from(height).map_err(unreachable)?,
+                    total_size: u64::try_from(total_size).map_err(unreachable)?,
+                    uploaded_at: row.try_get("uploaded_at").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+        version: Version,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(PERSON)
+            .bind(person.account.to_string())
+            .bind(size_written(version.count())?)
+            .bind(&person.name)
+            .bind(&person.email)
+            .bind(person_searched(&person.name, &person.email))
+            .bind(None::<OffsetDateTime>)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_person(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(PERSON)
+            .bind(account.to_string())
+            .bind(size_written(version.count())?)
+            .bind(None::<String>)
+            .bind(None::<String>)
+            .bind(None::<String>)
+            .bind(Some(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        name: &str,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(PROJECT_NAME)
+            .bind(project.to_string())
+            .bind(size_written(version.count())?)
+            .bind(name)
+            .bind(project_searched(name))
+            .bind(None::<OffsetDateTime>)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_project_name(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(PROJECT_NAME)
+            .bind(project.to_string())
+            .bind(size_written(version.count())?)
+            .bind(None::<String>)
+            .bind(None::<String>)
+            .bind(Some(at))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let at_most = i64::try_from(at_most).map_err(unreachable)?;
+        let mut forgotten = 0;
+        for forgetting in [FORGET_OLD_PEOPLE, FORGET_OLD_PROJECT_NAMES] {
+            forgotten += sqlx::query(forgetting)
+                .bind(before)
+                .bind(at_most)
+                .execute(connection(transaction).map_err(unreachable)?)
+                .await
+                .map_err(unreachable)?
+                .rows_affected();
+        }
+
+        Ok(forgotten)
     }
 }
 

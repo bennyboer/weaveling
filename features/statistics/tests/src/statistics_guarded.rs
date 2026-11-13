@@ -131,6 +131,11 @@ impl AccessCatalog for Reachable {
         self.reached()?;
         self.heard.operates(account).await
     }
+
+    async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
+        self.reached()?;
+        self.heard.owners_of(project).await
+    }
 }
 
 struct Guarded {
