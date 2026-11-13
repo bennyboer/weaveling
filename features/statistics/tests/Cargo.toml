@@ -7,6 +7,7 @@ edition.workspace = true
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
 axum = { workspace = true }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 axum-test = { workspace = true, features = ["ws"] }
@@ -14,6 +15,7 @@ serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
+eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishing", package = "weaveling-eventpublishing", features = ["testing"] }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
@@ -28,4 +30,6 @@ statistics-rest = { version = "0.1.0", path = "../adapters/rest", package = "wea
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 scenes-contract = { version = "0.1.0", path = "../../scenes/contract", package = "weaveling-scenes-contract" }

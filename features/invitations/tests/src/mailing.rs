@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use invitations_catalog::InMemoryInvitationCatalog;
@@ -116,6 +117,7 @@ async fn a_mail_that_could_not_be_sent_is_refused_and_sent_when_the_issue_is_off
         Arc::new(InMemoryThrottles::default()),
         Arc::new(InMemoryInvitationCatalog::new()),
         down_once.clone(),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         wired.clock.clone(),
     )));

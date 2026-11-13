@@ -2,6 +2,8 @@ mod purging;
 
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
+use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -10,7 +12,10 @@ use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
 use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
-use projects_messaging::{CatalogueProjectsListener, DeleteAbandonedProjectListener};
+use projects_messaging::{
+    CatalogueProjectsListener, DeleteAbandonedProjectListener, RememberRolesListener,
+    RememberTrashListener,
+};
 use transacting::Transactions;
 use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -24,17 +29,25 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn ProjectCatalog>,
     pub trash: Arc<dyn Trash>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    };
+
     ProjectsCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
         ports.trash.clone(),
-        context.authorizer.clone(),
+        ports.access.clone(),
+        authorizer,
         context.clock.clone(),
     )
 }
@@ -61,6 +74,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(broadcast),
             Arc::new(hearing.inboxed(CatalogueProjectsListener::new(projects.clone()))),
             Arc::new(hearing.inboxed(DeleteAbandonedProjectListener::new(projects.clone()))),
+            Arc::new(hearing.inboxed(RememberRolesListener::new(projects.clone()))),
+            Arc::new(hearing.inboxed(RememberTrashListener::new(projects.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(PurgeTheTrash::new(
@@ -104,6 +119,7 @@ impl Feature for ProjectFeature {
             transactions,
             catalog: Arc::new(InMemoryProjectCatalog::new()),
             trash: Arc::new(InMemoryTrash::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -126,7 +142,8 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool.clone())),
-            trash: Arc::new(trash::PostgresTrash::new(pool)),
+            trash: Arc::new(trash::PostgresTrash::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -140,6 +157,7 @@ impl Feature for ProjectFeature {
             projects_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
             trash::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -160,7 +178,8 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool.clone())),
-            trash: Arc::new(trash::SqliteTrash::new(pool)),
+            trash: Arc::new(trash::SqliteTrash::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -174,6 +193,7 @@ impl Feature for ProjectFeature {
             projects_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
             trash::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 

@@ -44,6 +44,7 @@ fn a_listener_cataloguing_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<Catalogu
             catalog,
             Arc::new(InMemoryQuotationRestylingTasks::new()),
             Arc::new(InMemoryBelongings::new()),
+            crate::kept::heard_of_nobody(),
             Arc::new(AllowingEverything),
             clock.clone(),
         )),
@@ -376,6 +377,7 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         bench.catalog.clone(),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

@@ -1,120 +1,38 @@
-use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use async_trait::async_trait;
-use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
+use access::Role;
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent};
+use eventsourcing::{AccountId, Agent, Version};
 use live::testing::Subscriber;
 use live_contract::{ACCESS_CHANGED, ToldDTO};
-use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
+use projects_contract::{CreateProjectRequest, ProjectDTO};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
 use crate::wiring;
 use crate::wiring::Wired;
 
-#[derive(Default)]
-struct Readers {
-    readable: Mutex<BTreeSet<String>>,
-    restorable: Mutex<BTreeSet<String>>,
-    down: Mutex<bool>,
-    changes: AccessChanges,
-}
-
-impl Readers {
-    fn let_restore(&self, project: &str) {
-        self.restorable
-            .lock()
-            .expect("never poisoned")
-            .insert(project.to_owned());
-    }
-
-    fn let_read(&self, project: &str) {
-        self.readable
-            .lock()
-            .expect("never poisoned")
-            .insert(project.to_owned());
-    }
-
-    fn stop_reading(&self, project: &str) {
-        self.readable
-            .lock()
-            .expect("never poisoned")
-            .remove(project);
-        self.access_changed(project);
-    }
-
-    fn go_down(&self) {
-        *self.down.lock().expect("never poisoned") = true;
-    }
-}
-
-#[async_trait]
-impl Authorizer for Readers {
-    async fn may(&self, _agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-
-        Ok(match act {
-            Act::Read => self
-                .readable
-                .lock()
-                .expect("never poisoned")
-                .contains(project),
-            Act::Restore => self
-                .restorable
-                .lock()
-                .expect("never poisoned")
-                .contains(project),
-            Act::Write | Act::Manage => true,
-        })
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Only(
-            self.readable.lock().expect("never poisoned").clone(),
-        ))
-    }
-
-    fn access_changed(&self, project: &str) {
-        self.changes.tell(project);
-    }
-
-    fn watch_access(&self, project: &str) -> AccessWatch {
-        self.changes.watch(project)
-    }
-}
+const ADA: &str = "account_ada";
 
 struct Guarded {
     wired: Wired,
     server: TestServer,
-    readers: Arc<Readers>,
 }
 
 fn ada() -> Agent {
-    Agent::Account(AccountId::from("account_ada"))
+    Agent::Account(AccountId::from(ADA))
 }
 
 fn guarded() -> Guarded {
-    let readers = Arc::new(Readers::default());
-    let wired = wiring::wired_guarded_by(
-        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-        readers.clone(),
-    );
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let server = TestServer::builder()
         .http_transport()
         .build(wired.routes.clone().layer(Extension(ada())));
 
-    Guarded {
-        wired,
-        server,
-        readers,
-    }
+    Guarded { wired, server }
 }
 
 async fn started(server: &TestServer, name: &str) -> ProjectDTO {
@@ -132,14 +50,28 @@ async fn started(server: &TestServer, name: &str) -> ProjectDTO {
     response.json()
 }
 
-async fn renaming(server: &TestServer, project: &ProjectDTO, name: &str) {
-    server
-        .patch(&format!("/projects/{}", project.id))
-        .json(&RenameProjectRequest {
-            name: name.to_owned(),
-        })
+async fn renaming(wired: &Wired, project: &ProjectDTO, name: &str) {
+    wired
+        .projects
+        .rename(&project.id, name, None, &Agent::System)
         .await
-        .assert_status_ok();
+        .expect("the system renames any project");
+}
+
+async fn trashing(wired: &Wired, project: &ProjectDTO) {
+    wired
+        .projects
+        .trash(&project.id, None, &Agent::System)
+        .await
+        .expect("the system trashes any project");
+}
+
+async fn trash_heard(wired: &Wired, project: &ProjectDTO) {
+    wired
+        .projects
+        .remember_trash(None, &project.id, Version::of(2), true)
+        .await
+        .expect("remembering the trash should succeed");
 }
 
 async fn following(server: &TestServer, about: &[(&str, &str)]) -> Subscriber {
@@ -161,11 +93,11 @@ async fn whoever_follows_the_projects_is_told_only_of_those_they_may_read() {
     // and: two projects, of which they may read one
     let loom = started(&guarded.server, "The Loom").await;
     let weft = started(&guarded.server, "The Weft").await;
-    guarded.readers.let_read(&loom.id);
+    guarded.wired.give(&loom.id, ADA, Some(Role::Reader)).await;
 
     // when: both are renamed
-    renaming(&guarded.server, &weft, "The Warp").await;
-    renaming(&guarded.server, &loom, "The Heddle").await;
+    renaming(&guarded.wired, &weft, "The Warp").await;
+    renaming(&guarded.wired, &loom, "The Heddle").await;
     guarded.wired.settle().await;
 
     // then: they are told only of the one they may read
@@ -189,16 +121,14 @@ async fn whoever_may_restore_a_project_from_the_trash_is_told_of_it_though_they_
     // and: two projects, of which they may restore one but read neither
     let loom = started(&guarded.server, "The Loom").await;
     let weft = started(&guarded.server, "The Weft").await;
-    guarded.readers.let_restore(&loom.id);
+    guarded.wired.give(&loom.id, ADA, Some(Role::Owner)).await;
 
     // when: both are trashed
     for project in [&weft, &loom] {
-        guarded
-            .server
-            .delete(&format!("/projects/{}", project.id))
-            .await
-            .assert_status(StatusCode::NO_CONTENT);
+        trashing(&guarded.wired, project).await;
     }
+    // and: the loom's trash is heard before its trashing is told, so it may only be restored
+    trash_heard(&guarded.wired, &loom).await;
     guarded.wired.settle().await;
 
     // then: they are told only of the one they may restore
@@ -223,7 +153,7 @@ async fn the_list_followed_ends_once_whom_to_tell_cannot_be_known() {
     started(&guarded.server, "The Loom").await;
 
     // when: whom to tell can no longer be learned
-    guarded.readers.go_down();
+    guarded.wired.access.go_down();
     guarded.wired.settle().await;
 
     // then: their following ends as failed
@@ -240,7 +170,7 @@ async fn whoever_follows_one_project_hears_it_but_only_if_they_may_read_it() {
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;
     let weft = started(&guarded.server, "The Weft").await;
-    guarded.readers.let_read(&loom.id);
+    guarded.wired.give(&loom.id, ADA, Some(Role::Reader)).await;
     guarded.wired.settle().await;
 
     // expect: following the other ends as not there
@@ -254,7 +184,7 @@ async fn whoever_follows_one_project_hears_it_but_only_if_they_may_read_it() {
 
     // when: the readable one is followed and renamed
     let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
-    renaming(&guarded.server, &loom, "The Heddle").await;
+    renaming(&guarded.wired, &loom, "The Heddle").await;
     guarded.wired.settle().await;
 
     // then: its renaming is told
@@ -268,7 +198,7 @@ async fn whether_one_may_follow_a_project_not_being_known_is_a_failure() {
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;
     // and: who may read it cannot be learned
-    guarded.readers.go_down();
+    guarded.wired.access.go_down();
 
     // expect: following it ends as failed
     assert_eq!(
@@ -285,11 +215,11 @@ async fn whoever_may_no_longer_read_the_project_they_follow_is_closed_out() {
     // given: someone following a project they may read
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;
-    guarded.readers.let_read(&loom.id);
+    guarded.wired.give(&loom.id, ADA, Some(Role::Reader)).await;
     let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
 
-    // when: they may no longer read it
-    guarded.readers.stop_reading(&loom.id);
+    // when: they may no longer read it, having left it
+    guarded.wired.give(&loom.id, ADA, None).await;
 
     // then: their following ends as access lost
     assert_eq!(socket.ended().await, "access-lost");
@@ -300,13 +230,14 @@ async fn whoever_may_restore_the_project_they_follow_hears_it_trashed_though_rea
     // given: someone following a project they may read and restore
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;
-    guarded.readers.let_read(&loom.id);
-    guarded.readers.let_restore(&loom.id);
+    guarded.wired.give(&loom.id, ADA, Some(Role::Owner)).await;
     guarded.wired.settle().await;
     let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
 
-    // when: they may no longer read it
-    guarded.readers.stop_reading(&loom.id);
+    // when: it is trashed
+    trashing(&guarded.wired, &loom).await;
+    // and: its trash is heard before its trashing is told, so they may no longer read it
+    trash_heard(&guarded.wired, &loom).await;
     // then: they are told their access changed
     assert_eq!(
         socket.told().await,
@@ -316,19 +247,22 @@ async fn whoever_may_restore_the_project_they_follow_hears_it_trashed_though_rea
         }
     );
 
-    // when: it is trashed
-    guarded
-        .server
-        .delete(&format!("/projects/{}", loom.id))
-        .await
-        .assert_status(StatusCode::NO_CONTENT);
+    // when: its trashing is told
     guarded.wired.settle().await;
 
-    // then: they are told of it
-    let frame = told(&mut socket).await;
+    // then: they are told of it, its trash heard once more on the way
+    let frame = loop {
+        match socket.told().await {
+            ToldDTO::Frame { frame, .. } => {
+                break serde_json::to_value(frame).expect("a frame is plain data");
+            }
+            ToldDTO::Notice { notice, .. } if notice == ACCESS_CHANGED => {}
+            other => panic!("a frame, not {other:?}"),
+        }
+    };
     assert_eq!(
         json!([frame["of"], frame["event"]["name"]]),
         json!([loom.id, "TRASHED"]),
-        "its members hear of the trash apart from the project, so an owner's reading may end before the trash is told"
+        "who may do what hears of the trash apart from the project's followers, so an owner's reading may end before the trash is told"
     );
 }

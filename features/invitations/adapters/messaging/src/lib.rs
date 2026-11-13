@@ -1,4 +1,5 @@
 mod accepting;
+mod access;
 mod cataloguing;
 mod declining;
 mod mailing;
@@ -8,6 +9,7 @@ mod remembering;
 mod sweeping;
 
 pub use accepting::AcceptTakenUpInvitationListener;
+pub use access::{RememberRolesListener, RememberTrashListener};
 pub use cataloguing::{
     CatalogueInvitationsListener, WITHDRAW_IF_PROJECT_GONE, WithdrawIfProjectGoneDTO,
     WithdrawIfProjectGoneListener,

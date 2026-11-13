@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use eventsourcing::{
     AggregateId, EventStore, FailsAppending, RefusesAppending, ServiceError, StoreError, Version,
@@ -27,6 +28,7 @@ fn core_committing_with(
         Arc::new(InMemoryThrottles::default()),
         wired.catalog.clone(),
         wired.mailbox.clone(),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         wired.clock.clone(),
     )

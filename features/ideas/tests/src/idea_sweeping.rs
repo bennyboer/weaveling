@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::FixedClock;
@@ -55,6 +56,7 @@ fn a_workbench(at_most: usize) -> Wired {
         Arc::new(InMemoryEventStore::new()),
         Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         authorizer.clone(),
         clock.clone(),
     );

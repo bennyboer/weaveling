@@ -18,7 +18,6 @@ pub use postgres::{Databases, ServerDatabases};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use authorizing::Authorizer;
 use axum::Router;
 use chores::Chore;
 use clock::Clock;
@@ -28,7 +27,8 @@ use messaging::{Listener, Publisher};
 pub struct Context {
     pub clock: Arc<dyn Clock>,
     pub publisher: Arc<dyn Publisher>,
-    pub authorizer: Arc<dyn Authorizer>,
+    /// Whether there are accounts: a feature then asks who may do what of what it heard itself, and otherwise allows everyone.
+    pub with_accounts: bool,
 }
 
 #[async_trait]

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use belonging::InMemoryBelongings;
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
@@ -443,6 +444,7 @@ async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_starte
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(InMemoryBelongings::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         clock,
     );
@@ -489,6 +491,7 @@ async fn an_idea_pinned_while_losing_races(
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(InMemoryBelongings::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         clock,
     );

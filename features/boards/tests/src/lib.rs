@@ -17,6 +17,9 @@ mod boards_core;
 mod boards_live;
 
 #[cfg(test)]
+mod roles_heard;
+
+#[cfg(test)]
 mod wiring;
 
 #[cfg(test)]

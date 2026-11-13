@@ -34,6 +34,7 @@ async fn scenes_followed(project: &str) -> ScenesFollowed {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );

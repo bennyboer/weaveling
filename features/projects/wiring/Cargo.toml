@@ -10,6 +10,8 @@ chores = { version = "0.1.0", path = "../../../libraries/chores", package = "wea
 sqlx = { workspace = true, optional = true }
 
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
@@ -28,5 +30,5 @@ inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weave
 trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "trash/postgres", "projects-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "trash/sqlite", "projects-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "trash/postgres", "access/postgres", "projects-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "trash/sqlite", "access/sqlite", "projects-catalog/sqlite"]

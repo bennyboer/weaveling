@@ -1,4 +1,10 @@
 #[cfg(test)]
+mod access_kept;
+
+#[cfg(test)]
+mod allowing;
+
+#[cfg(test)]
 mod keeping;
 
 #[cfg(test)]

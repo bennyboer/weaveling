@@ -124,10 +124,11 @@ impl Adapters {
             Some(members) => members.authorizer.clone(),
             None => Arc::new(AllowingEverything),
         };
+        let with_accounts = accounts == Accounts::On;
         let context = Context {
+            with_accounts,
             clock: clock.clone(),
             publisher: dispatcher.clone(),
-            authorizer: authorizer.clone(),
         };
 
         let mut features = vec![

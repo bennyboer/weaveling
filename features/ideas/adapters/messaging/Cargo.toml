@@ -7,6 +7,7 @@ edition.workspace = true
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 async-trait = { workspace = true }
+access = { version = "0.1.0", path = "../../../../libraries/access", package = "weaveling-access" }
 serde_json = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 
@@ -21,4 +22,5 @@ ideas-core = { version = "0.1.0", path = "../../core", package = "weaveling-idea
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }

@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 time = { workspace = true }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 sqlx = { workspace = true, optional = true }
@@ -26,10 +28,9 @@ outline-store = { version = "0.1.0", path = "../adapters/store", package = "weav
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "registry/postgres", "belonging/postgres", "outline-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "registry/sqlite", "belonging/sqlite", "outline-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "access/postgres", "registry/postgres", "belonging/postgres", "outline-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "access/sqlite", "registry/sqlite", "belonging/sqlite", "outline-catalog/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
-authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

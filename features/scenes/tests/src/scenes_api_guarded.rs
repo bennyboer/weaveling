@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use async_trait::async_trait;
-use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
+use access::Role;
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
@@ -18,82 +17,37 @@ use serde_json::{Value, json};
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
 
+use crate::kept::Kept;
+
 const PROJECT: &str = "project_1";
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
-const READER: [Act; 1] = [Act::Read];
-
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<String, Vec<Act>>>,
-    down: Mutex<bool>,
-    changes: AccessChanges,
-}
-
-impl Roles {
-    fn give(&self, account: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert(account.to_owned(), acts.to_vec());
-    }
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(project == PROJECT
-            && self
-                .held
-                .lock()
-                .expect("never poisoned")
-                .get(account.as_str())
-                .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-
-    fn access_changed(&self, project: &str) {
-        self.changes.tell(project);
-    }
-
-    fn watch_access(&self, project: &str) -> AccessWatch {
-        self.changes.watch(project)
-    }
-}
 
 struct Wired {
-    roles: Arc<Roles>,
+    kept: Kept,
+    scenes: ScenesCore,
     ada: TestServer,
     grace: TestServer,
     scene: String,
 }
 
 async fn a_workbench() -> Wired {
-    let roles = Arc::new(Roles::default());
-    roles.give("account_ada", &OWNER);
+    let kept = Kept::default();
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
-        roles.clone(),
+        kept.access.clone(),
+        kept.authorizer(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    kept.give(&scenes, PROJECT, "account_ada", Some(Role::Owner))
+        .await;
     let routes = scenes_rest::router(scenes.clone())
         .merge(scenes_rest::quotation_restylings(scenes.clone()))
         .merge(live::live_socket(live::Topics::of(vec![
             scenes_rest::scenes_topic(scenes.clone(), Broadcaster::new()),
-            scenes_rest::restylings_topic(scenes, Broadcaster::new()),
+            scenes_rest::restylings_topic(scenes.clone(), Broadcaster::new()),
         ])));
     let as_account = |account: &str| {
         TestServer::builder().http_transport().build(
@@ -120,7 +74,8 @@ async fn a_workbench() -> Wired {
     Wired {
         grace: as_account("account_grace"),
         ada,
-        roles,
+        kept,
+        scenes,
         scene,
     }
 }
@@ -202,7 +157,10 @@ async fn a_project_s_scenes_are_not_there_for_whoever_may_not_read_it() {
 async fn a_reader_reads_and_follows_the_scenes_and_is_told_only_an_author_may_change_them() {
     // given: a project with a scene, and a reader of it
     let wired = a_workbench().await;
-    wired.roles.give("account_grace", &READER);
+    wired
+        .kept
+        .give(&wired.scenes, PROJECT, "account_grace", Some(Role::Reader))
+        .await;
 
     // when: the reader reads its scenes
     let [listed, read, restyled] = reads_by(&wired, &wired.grace).await;
@@ -240,7 +198,10 @@ async fn a_reader_reads_and_follows_the_scenes_and_is_told_only_an_author_may_ch
 async fn an_author_creates_retitles_links_unlinks_and_deletes() {
     // given: a project with a scene, and an author of it
     let wired = a_workbench().await;
-    wired.roles.give("account_grace", &[Act::Read, Act::Write]);
+    wired
+        .kept
+        .give(&wired.scenes, PROJECT, "account_grace", Some(Role::Author))
+        .await;
 
     // when: the author changes its scenes
     let [created, retitled, linked, unlinked, deleted] = changes_by(&wired, &wired.grace).await;
@@ -263,7 +224,7 @@ async fn an_author_creates_retitles_links_unlinks_and_deletes() {
 async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // given: a project whose roles cannot be learned
     let wired = a_workbench().await;
-    *wired.roles.down.lock().expect("never poisoned") = true;
+    wired.kept.who.down.store(true, Ordering::Release);
 
     // then: its owner's reads fail
     for answered in reads_by(&wired, &wired.ada).await {
@@ -280,12 +241,17 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
     // given: a reader following a project's scenes
     let wired = a_workbench().await;
-    wired.roles.give("account_grace", &READER);
+    wired
+        .kept
+        .give(&wired.scenes, PROJECT, "account_grace", Some(Role::Reader))
+        .await;
     let mut hers = following(&wired.grace).await;
 
     // when: her role is taken away
-    wired.roles.give("account_grace", &[]);
-    wired.roles.access_changed(PROJECT);
+    wired
+        .kept
+        .give(&wired.scenes, PROJECT, "account_grace", None)
+        .await;
 
     // then: each following ends as access lost
     for _ in FOLLOWED {

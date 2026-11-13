@@ -29,19 +29,17 @@ pub struct Ports {
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
     pub limits: Limits,
-    pub with_accounts: bool,
 }
 
-/// What the operator chose for assets: the limits they are held to, and a folder of their own to keep them in, in place of the database or the data's own folder; and whether there are accounts, who may do what then being asked of what the assets heard, and otherwise allowed everyone.
+/// What the operator chose for assets: the limits they are held to, and a folder of their own to keep them in, in place of the database or the data's own folder.
 #[derive(Debug, Clone, Default)]
 pub struct Keeping {
     pub limits: Limits,
     pub folder: Option<PathBuf>,
-    pub with_accounts: bool,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
-    let authorizer: Arc<dyn Authorizer> = if ports.with_accounts {
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
         Arc::new(AllowingEverything)
@@ -73,7 +71,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
-                "forget-old-asset-access-tombstones",
+                "forget-old-asset-tombstones",
                 chores::tombstones_by(move |before, at_most| {
                     let assets = assets.clone();
                     async move { assets.forget_tombstones_laid_before(before, at_most).await }
@@ -92,7 +90,6 @@ pub async fn assembled_assets(
     let ports = wiring::ports::<AssetFeature>(storage, context).await?;
     let ports = Ports {
         limits: keeping.limits,
-        with_accounts: keeping.with_accounts,
         contents: match keeping.folder {
             Some(folder) => Arc::new(FolderContents::new(folder)),
             None => ports.contents,
@@ -144,7 +141,6 @@ impl Feature for AssetFeature {
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
-            with_accounts: false,
         }
     }
 
@@ -171,7 +167,6 @@ impl Feature for AssetFeature {
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
-            with_accounts: false,
         })
     }
 
@@ -211,7 +206,6 @@ impl Feature for AssetFeature {
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
             limits: Limits::default(),
-            with_accounts: false,
         })
     }
 

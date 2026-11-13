@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishing", package = "weaveling-eventpublishing", features = ["testing"] }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
@@ -33,6 +34,7 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }

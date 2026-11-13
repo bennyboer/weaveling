@@ -2,8 +2,9 @@ mod counting;
 
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
-
+use authorizing::{AllowingEverything, Authorizer};
 use belonging::{Belongings, InMemoryBelongings};
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -13,7 +14,8 @@ use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneStore, ScenesCore};
 use scenes_messaging::{
     CatalogueScenesListener, DeleteOnProjectDeletedListener, RememberProjectsOfIdeasListener,
-    RestyleOnQuotationChangedListener, UnlinkOnDiscardListener,
+    RememberRolesListener, RememberTrashListener, RestyleOnQuotationChangedListener,
+    UnlinkOnDiscardListener,
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
@@ -28,6 +30,7 @@ pub struct Ports {
     pub catalog: Arc<dyn SceneCatalog>,
     pub quotation_restyling_tasks: Arc<dyn QuotationRestylingTasks>,
     pub belongings: Arc<dyn Belongings>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -45,13 +48,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             ports.quotation_restyling_tasks.clone(),
             restylings.clone(),
         ));
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    };
     let core = ScenesCore::new(
         ports.store.clone(),
         ports.transactions.clone(),
         catalog,
         tasks,
         ports.belongings.clone(),
-        context.authorizer.clone(),
+        ports.access.clone(),
+        authorizer,
         context.clock.clone(),
     );
 
@@ -64,6 +73,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
     let catalogue = hearing.inboxed(CatalogueScenesListener::new(core.clone()));
+    let remember_roles = hearing.inboxed(RememberRolesListener::new(core.clone()));
+    let remember_trash = hearing.inboxed(RememberTrashListener::new(core.clone()));
     let live = LiveScenes::new(core.clone());
     let restyle = RestyleOnQuotationChangedListener::new(
         core.clone(),
@@ -87,15 +98,20 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(remember_projects_of_ideas),
         Arc::new(catalogue),
         Arc::new(restyle),
+        Arc::new(remember_roles),
+        Arc::new(remember_trash),
     ])
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live.clone()))])
     .doing_chores(vec![
         Arc::new(CountTheUncounted::of(live)),
         Arc::new(ForgetOldTombstones::new(
             "forget-old-scene-tombstones",
-            chores::tombstones_by(move |before, at_most| {
+            chores::tombstones_by({
                 let core = core.clone();
-                async move { core.forget_tombstones_laid_before(before, at_most).await }
+                move |before, at_most| {
+                    let core = core.clone();
+                    async move { core.forget_tombstones_laid_before(before, at_most).await }
+                }
             }),
             context.clock.clone(),
         )),
@@ -135,6 +151,7 @@ impl Feature for SceneFeature {
             catalog: Arc::new(InMemorySceneCatalog::new()),
             quotation_restyling_tasks: Arc::new(InMemoryQuotationRestylingTasks::new()),
             belongings: Arc::new(InMemoryBelongings::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -153,6 +170,7 @@ impl Feature for SceneFeature {
                 scenes_catalog::PostgresQuotationRestylingTasks::new(pool.clone()),
             ),
             belongings: Arc::new(belonging::PostgresBelongings::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool.clone()))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::PostgresOutbox::new(
                 pool,
@@ -170,6 +188,7 @@ impl Feature for SceneFeature {
             scenes_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
             belonging::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -186,6 +205,7 @@ impl Feature for SceneFeature {
                 scenes_catalog::SqliteQuotationRestylingTasks::new(pool.clone()),
             ),
             belongings: Arc::new(belonging::SqliteBelongings::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool.clone()))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::SqliteOutbox::new(
                 pool,
@@ -203,6 +223,7 @@ impl Feature for SceneFeature {
             scenes_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
             belonging::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 
@@ -219,7 +240,6 @@ impl Feature for SceneFeature {
 mod tests {
     use std::sync::Arc;
 
-    use authorizing::AllowingEverything;
     use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
@@ -232,13 +252,13 @@ mod tests {
 
     fn a_context() -> Context {
         Context {
+            with_accounts: false,
             clock: Arc::new(FixedClock::new(
                 NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
             )),
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
-            authorizer: Arc::new(AllowingEverything),
         }
     }
 
@@ -276,11 +296,21 @@ mod tests {
             panic!("the feature hands over three chores");
         };
 
-        // then: they count, forget tombstones and forget hearings
+        // then: they count, forget tombstones, their own and those of who may do what, and forget hearings
         assert_eq!(counting.named(), "count-scenes-left-uncounted");
         assert_eq!(tombstones.named(), "forget-old-scene-tombstones");
         assert_eq!(hearings.named(), "forget-old-scene-hearings");
-        // and: forgetting tombstones forgets only the old one
+        // and: who may do what is heard from the members and the projects
+        for listening in ["scenes-remember-roles", "scenes-remember-trash"] {
+            assert!(
+                wired
+                    .listeners
+                    .iter()
+                    .any(|listener| listener.named().as_str() == listening),
+                "{listening}"
+            );
+        }
+        // and: forgetting tombstones forgets only the old one, no membership having ended
         assert_eq!(
             tombstones
                 .carry_out()

@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
@@ -24,6 +25,8 @@ pub enum InvitationsError {
     InvitationExpired,
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error(transparent)]
     InvalidEmail(#[from] InvalidEmailAddress),
     #[error("too many invitations to this address; wait {wait} before inviting it again")]

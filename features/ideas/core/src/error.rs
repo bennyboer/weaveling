@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use ids::InvalidId;
@@ -20,6 +21,8 @@ pub enum IdeasError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error("there is no such project")]
     ProjectNotThere,
     #[error("only an author of the project may do this")]

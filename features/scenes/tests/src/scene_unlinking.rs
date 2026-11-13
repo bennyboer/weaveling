@@ -31,6 +31,7 @@ fn a_workbench() -> Wired {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         clock.clone(),
     );

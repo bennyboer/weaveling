@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{
-    AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
-};
-use authorizing::AllowingEverything;
+use appearances_core::{IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject};
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
@@ -19,10 +16,9 @@ fn an_idea(id: &str) -> Subject {
 
 fn served(catalog: Arc<InMemoryAppearanceCatalog>) -> TestServer {
     TestServer::new(
-        appearances_rest::router(AppearancesCore::new(
+        appearances_rest::router(crate::allowing::everyone(
             Arc::new(InMemoryTransactions::new()),
             catalog,
-            Arc::new(AllowingEverything),
         ))
         .layer(Extension(Agent::Local)),
     )

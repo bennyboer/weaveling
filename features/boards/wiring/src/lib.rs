@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
+use authorizing::{AllowingEverything, Authorizer};
 use belonging::{Belongings, InMemoryBelongings};
 use boards_catalog::InMemoryBoardCatalog;
 use boards_contract::EVERY_BOARD;
@@ -7,7 +9,8 @@ use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, LetGoOfDiscardedIdeaListener,
     LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, RememberDeletedProjectsListener,
-    RememberProjectsOfIdeasListener, UnpinOnDiscardListener,
+    RememberProjectsOfIdeasListener, RememberRolesListener, RememberTrashListener,
+    UnpinOnDiscardListener,
 };
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -26,18 +29,26 @@ pub struct Ports {
     pub catalog: Arc<dyn BoardCatalog>,
     pub registry: Arc<dyn Registry>,
     pub belongings: Arc<dyn Belongings>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    };
+
     BoardsCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
         ports.belongings.clone(),
-        context.authorizer.clone(),
+        ports.access.clone(),
+        authorizer,
         context.clock.clone(),
     )
 }
@@ -65,6 +76,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.outbox.clone(),
         context.clock.clone(),
     ));
+    let remember_roles = hearing.inboxed(RememberRolesListener::new(boards.clone()));
+    let remember_trash = hearing.inboxed(RememberTrashListener::new(boards.clone()));
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -86,14 +99,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(let_go_of_the_gone),
             Arc::new(remember_projects_of_ideas),
             Arc::new(remember_deleted_projects),
+            Arc::new(remember_roles),
+            Arc::new(remember_trash),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-board-tombstones",
-                chores::tombstones_by(move |before, at_most| {
+                chores::tombstones_by({
                     let boards = boards.clone();
-                    async move { boards.forget_tombstones_laid_before(before, at_most).await }
+                    move |before, at_most| {
+                        let boards = boards.clone();
+                        async move { boards.forget_tombstones_laid_before(before, at_most).await }
+                    }
                 }),
                 context.clock.clone(),
             )),
@@ -121,6 +139,7 @@ impl Feature for BoardFeature {
             catalog: Arc::new(InMemoryBoardCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
             belongings: Arc::new(InMemoryBelongings::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -144,7 +163,8 @@ impl Feature for BoardFeature {
             transactions,
             catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool.clone())),
             registry: Arc::new(registry::PostgresRegistry::new(pool.clone())),
-            belongings: Arc::new(belonging::PostgresBelongings::new(pool)),
+            belongings: Arc::new(belonging::PostgresBelongings::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -159,6 +179,7 @@ impl Feature for BoardFeature {
             registry::postgres::migrations(),
             belonging::postgres::migrations(),
             inbox::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -180,7 +201,8 @@ impl Feature for BoardFeature {
             transactions,
             catalog: Arc::new(boards_catalog::SqliteBoardCatalog::new(pool.clone())),
             registry: Arc::new(registry::SqliteRegistry::new(pool.clone())),
-            belongings: Arc::new(belonging::SqliteBelongings::new(pool)),
+            belongings: Arc::new(belonging::SqliteBelongings::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -195,6 +217,7 @@ impl Feature for BoardFeature {
             registry::sqlite::migrations(),
             belonging::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 
@@ -211,7 +234,6 @@ impl Feature for BoardFeature {
 mod tests {
     use std::sync::Arc;
 
-    use authorizing::AllowingEverything;
     use chores::TOMBSTONES_KEPT_FOR;
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
@@ -223,13 +245,13 @@ mod tests {
 
     fn a_context() -> Context {
         Context {
+            with_accounts: false,
             clock: Arc::new(FixedClock::new(
                 NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
             )),
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
-            authorizer: Arc::new(AllowingEverything),
         }
     }
 
@@ -256,8 +278,7 @@ mod tests {
 
         // then: one forgets old hearings
         assert_eq!(hearings.named(), "forget-old-board-hearings");
-
-        // and: one forgets the tombstones past keeping
+        // and: one forgets the tombstones past keeping, its own and those of who may do what
         assert_eq!(chore.named(), "forget-old-board-tombstones");
         assert_eq!(
             chore

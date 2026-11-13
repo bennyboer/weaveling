@@ -9,7 +9,6 @@ use accounts_core::{
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
 use async_trait::async_trait;
-use authorizing::AllowingEverything;
 use axum::Router;
 use chores::Chore;
 use clock::FixedClock;
@@ -82,9 +81,9 @@ pub fn wired() -> Wired {
         outbox: told.clone(),
     };
     let context = Context {
+        with_accounts: false,
         clock: clock.clone(),
         publisher: dispatcher.clone(),
-        authorizer: Arc::new(AllowingEverything),
     };
     let wired = accounts_wiring::wire(&ports, &context);
     for listener in &wired.listeners {

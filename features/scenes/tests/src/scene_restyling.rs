@@ -91,6 +91,7 @@ fn a_workbench(at_most: usize) -> Wired {
         Arc::new(InMemorySceneCatalog::new()),
         tasks.clone(),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

@@ -1,13 +1,16 @@
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
-use eventsourcing::{Agent, AggregateId, EventStore, Version};
+use access::{InMemoryAccess, KeptAccess, Role};
+use async_trait::async_trait;
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use belonging::InMemoryBelongings;
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
-use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
+use boards_core::{BoardCatalog, BoardEvent, BoardId, BoardsCore, IdeaLink, KIND, Size, Spot};
 use boards_messaging::{
-    LET_GO_EVERYWHERE, LET_GO_OF_THE_GONE, LetGoEverywhereDTO, LetGoOfTheGoneDTO,
-    UnpinOnDiscardListener,
+    LET_GO_EVERYWHERE, LET_GO_OF_THE_GONE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener,
+    LetGoOfTheGoneDTO, UnpinOnDiscardListener,
 };
 use clock::FixedClock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
@@ -17,14 +20,34 @@ use serde_json::json;
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
-use crate::wiring::{TheSystemAndTheAuthor, Wired};
+use crate::wiring::Wired;
 
-fn a_workbench() -> Wired {
-    a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
+/// Whom to let in cannot be known.
+struct Unknowable;
+
+#[async_trait]
+impl Authorizer for Unknowable {
+    async fn may(
+        &self,
+        _agent: &Agent,
+        _act: Act,
+        _project: &str,
+    ) -> Result<bool, AuthorizerError> {
+        Err(AuthorizerError::Unreachable("the list is down".into()))
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Err(AuthorizerError::Unreachable("the list is down".into()))
+    }
 }
 
-fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
-    wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), authorizer)
+async fn a_workbench() -> Wired {
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    wired
+        .give("project_1", &AccountId::from("author-7"), Some(Role::Owner))
+        .await;
+
+    wired
 }
 
 fn an_idea(named: &str) -> IdeaLink {
@@ -109,7 +132,7 @@ async fn pinned_on(wired: &Wired, board: &BoardId) -> Vec<String> {
 #[tokio::test]
 async fn an_idea_discarded_before_its_pin_was_indexed_still_leaves_the_board() {
     // given: an idea pinned to a board
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = wired
         .boards
         .open("project_1", &eventsourcing::an_author())
@@ -147,7 +170,7 @@ async fn an_idea_discarded_before_its_pin_was_indexed_still_leaves_the_board() {
 #[tokio::test]
 async fn pinning_an_idea_puts_it_in_the_index() {
     // given: an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     // when: a board holds it
     let board = a_board_holding(&wired, &["idea_1"]).await;
@@ -167,7 +190,7 @@ async fn pinning_an_idea_puts_it_in_the_index() {
 #[tokio::test]
 async fn unpinning_an_idea_takes_it_out_of_the_index() {
     // given: a board holding an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
 
     // when: the idea is unpinned
@@ -197,7 +220,7 @@ async fn unpinning_an_idea_takes_it_out_of_the_index() {
 #[tokio::test]
 async fn a_discarded_idea_is_taken_off_the_board() {
     // given: a board holding two ideas
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1", "idea_2"]).await;
 
     // when: one of them is discarded
@@ -219,7 +242,7 @@ async fn a_discarded_idea_is_taken_off_the_board() {
 #[tokio::test]
 async fn hearing_the_same_discard_twice_is_harmless() {
     // given: a board holding an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
 
     // when: its discard is heard twice
@@ -242,7 +265,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 #[tokio::test]
 async fn discarding_an_idea_nobody_pinned_is_harmless() {
     // given: a board holding an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     a_board_holding(&wired, &["idea_1"]).await;
 
     // then: hearing of the discard of an idea nobody pinned succeeds
@@ -269,7 +292,7 @@ async fn pinned_as_published(wired: &Wired, board: &BoardId) -> Message {
 #[tokio::test]
 async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
     // given: a board holding an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
 
     // when: the idea is discarded
@@ -299,19 +322,30 @@ async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
 #[tokio::test]
 async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() {
     // given: a board holding an idea
-    let authorizer = Arc::new(TheSystemAndTheAuthor::default());
-    let wired = a_workbench_guarded_by(authorizer.clone());
+    let wired = a_workbench().await;
     a_board_holding(&wired, &["idea_1"]).await;
     // and: who may do what cannot be known
-    authorizer.down.store(true, Ordering::Release);
+    let unknowing = BoardsCore::new(
+        wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        wired.registry.clone(),
+        Arc::new(InMemoryBelongings::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
+        Arc::new(Unknowable),
+        wired.clock.clone(),
+    );
 
     // then: letting go of the idea everywhere fails
     assert!(
-        wired
-            .letting_go_everywhere
-            .handle(&asked_to_let_go_everywhere("idea_1"))
-            .await
-            .is_err(),
+        Inboxed::new(
+            LetGoOfDiscardedIdeaListener::new(unknowing),
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryInbox::new(wired.clock.clone())),
+        )
+        .handle(&asked_to_let_go_everywhere("idea_1"))
+        .await
+        .is_err(),
         "a discarded idea left pinned for good is worse than a message tried again"
     );
 }
@@ -319,7 +353,7 @@ async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() 
 #[tokio::test]
 async fn a_late_pin_does_not_bring_back_the_ideas_of_a_discarded_board() {
     // given: a discarded board that held an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
     let late = pinned_as_published(&wired, &board).await;
     wired
@@ -351,7 +385,7 @@ async fn a_late_pin_does_not_bring_back_the_ideas_of_a_discarded_board() {
 #[tokio::test]
 async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
     // given: a discarded board the index still says holds an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
     wired
         .boards
@@ -392,7 +426,7 @@ async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
 #[tokio::test]
 async fn a_discard_that_is_not_a_published_event_is_refused() {
     // given: a discard that is not a published event
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let nonsense = Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
@@ -409,7 +443,7 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
 #[tokio::test]
 async fn the_index_hears_pinning_and_unpinning_and_nothing_else() {
     // given: the index
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     // then: it hears pinning and unpinning
     for pinning in [IDEA_PINNED, IDEA_UNPINNED] {
@@ -434,7 +468,7 @@ async fn the_index_hears_pinning_and_unpinning_and_nothing_else() {
 #[tokio::test]
 async fn the_discard_listener_hears_only_discards() {
     // given: the discard listener
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     // then: it hears discards
     assert!(
@@ -468,7 +502,7 @@ async fn what_the_discard_message_says_matches_the_published_shape() {
 #[tokio::test]
 async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
     // given: an idea's discard heard
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     wired
         .on_idea_discarded
         .handle(&discarded("idea_1"))
@@ -496,7 +530,7 @@ async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
 #[tokio::test]
 async fn a_discard_lays_the_tombstone_and_leaves_letting_go_to_a_follow_up() {
     // given: a board holding an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1"]).await;
 
     // when: the idea's discard is heard
@@ -523,7 +557,7 @@ async fn a_discard_lays_the_tombstone_and_leaves_letting_go_to_a_follow_up() {
 #[tokio::test]
 async fn a_discard_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_nothing() {
     // given: a hearing that does not commit
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let listener = Inboxed::new(
         UnpinOnDiscardListener::new(
             wired.boards.clone(),
@@ -557,7 +591,7 @@ async fn a_discard_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_noth
 #[tokio::test]
 async fn a_board_holding_several_gone_ideas_lets_go_of_them_one_hearing_after_another() {
     // given: a board holding three ideas
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let board = a_board_holding(&wired, &["idea_1", "idea_2", "idea_3"]).await;
     // and: two of them gone
     for idea in ["idea_1", "idea_2"] {

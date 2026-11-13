@@ -4,11 +4,9 @@ use std::time::Duration;
 use ::time::OffsetDateTime;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
-    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink,
-    Subject,
+    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
 use appearances_rest::TellingAppearances;
-use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
@@ -51,11 +49,7 @@ async fn followed(ideas: &[&str]) -> Followed {
     let server = TestServer::builder().http_transport().build(
         live::live_socket(live::Topics::of(vec![Arc::new(
             appearances_rest::AppearancesTopic::new(
-                AppearancesCore::new(
-                    Arc::new(InMemoryTransactions::new()),
-                    kept,
-                    Arc::new(AllowingEverything),
-                ),
+                crate::allowing::everyone(Arc::new(InMemoryTransactions::new()), kept),
                 broadcaster,
             ),
         )]))

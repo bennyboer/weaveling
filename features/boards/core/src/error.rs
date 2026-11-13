@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use belonging::BelongingsError;
 use eventsourcing::ServiceError;
@@ -21,6 +22,8 @@ pub enum BoardsError {
     Registry(#[from] RegistryError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error(transparent)]
     Belongings(#[from] BelongingsError),
     #[error("there is no such project")]

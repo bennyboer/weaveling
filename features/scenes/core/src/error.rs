@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use belonging::BelongingsError;
 use eventsourcing::Version;
@@ -21,6 +22,8 @@ pub enum ScenesError {
     Tasks(#[from] QuotationRestylingTaskError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error(transparent)]
     Belongings(#[from] BelongingsError),
     #[error("there is no such project")]

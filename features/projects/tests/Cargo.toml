@@ -9,6 +9,7 @@ chores = { version = "0.1.0", path = "../../../libraries/chores", package = "wea
 trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 axum = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }

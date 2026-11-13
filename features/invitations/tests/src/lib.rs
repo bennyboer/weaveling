@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod access_heard;
+
+#[cfg(test)]
 mod accepting;
 
 #[cfg(test)]

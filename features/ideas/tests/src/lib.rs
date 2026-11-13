@@ -17,4 +17,7 @@ mod ideas_core;
 mod ideas_live;
 
 #[cfg(test)]
+mod roles_heard;
+
+#[cfg(test)]
 mod wiring;

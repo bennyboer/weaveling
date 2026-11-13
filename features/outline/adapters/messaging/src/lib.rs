@@ -1,3 +1,4 @@
+mod access;
 mod attaching;
 mod belonging;
 mod cataloguing;
@@ -5,6 +6,7 @@ mod detaching;
 mod publishing;
 mod sweeping;
 
+pub use access::{RememberRolesListener, RememberTrashListener};
 pub use attaching::{
     DETACH_THE_GONE, DetachGoneAttachmentsListener, DetachTheGoneDTO, IndexAttachmentsListener,
 };

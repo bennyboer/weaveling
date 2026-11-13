@@ -1,3 +1,4 @@
+use access::AccessError;
 use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use ids::InvalidId;
@@ -28,6 +29,8 @@ pub enum ProjectsError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error("only an owner of the project may do this")]
     NotAnOwner,
     #[error("the transaction around the change failed")]

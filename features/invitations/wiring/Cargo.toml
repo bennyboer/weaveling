@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 async-trait = { workspace = true }
 time = { workspace = true }
 sqlx = { workspace = true, optional = true }
@@ -26,11 +28,10 @@ invitations-store = { version = "0.1.0", path = "../adapters/store", package = "
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres", "inbox/postgres"]
-sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite", "inbox/sqlite"]
+postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres", "inbox/postgres", "access/postgres"]
+sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite", "inbox/sqlite", "access/sqlite"]
 
 [dev-dependencies]
-authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }

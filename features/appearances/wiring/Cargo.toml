@@ -10,6 +10,8 @@ time = { workspace = true }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
@@ -20,11 +22,11 @@ appearances-messaging = { version = "0.1.0", path = "../adapters/messaging", pac
 appearances-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-appearances-rest" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "appearances-catalog/postgres", "transacting/postgres", "inbox/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "appearances-catalog/sqlite", "transacting/sqlite", "inbox/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "appearances-catalog/postgres", "transacting/postgres", "inbox/postgres", "access/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "appearances-catalog/sqlite", "transacting/sqlite", "inbox/sqlite", "access/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
-authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

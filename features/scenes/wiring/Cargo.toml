@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 belonging = { version = "0.1.0", path = "../../../libraries/belonging", package = "weaveling-belonging" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
@@ -27,10 +29,9 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres", "scenes-catalog/postgres", "transacting/postgres", "inbox/postgres", "belonging/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite", "scenes-catalog/sqlite", "transacting/sqlite", "inbox/sqlite", "belonging/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres", "scenes-catalog/postgres", "transacting/postgres", "inbox/postgres", "belonging/postgres", "access/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite", "scenes-catalog/sqlite", "transacting/sqlite", "inbox/sqlite", "belonging/sqlite", "access/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
-authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

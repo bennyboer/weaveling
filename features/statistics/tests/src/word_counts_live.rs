@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
@@ -9,7 +8,7 @@ use live::Broadcaster;
 use live::testing::Subscriber;
 use serde_json::{Value, json};
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
 use statistics_rest::TellingWordCounts;
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction, Transactions};
@@ -28,10 +27,9 @@ async fn counts_followed(project: &str) -> CountsFollowed {
     );
     let server = TestServer::builder().http_transport().build(
         live::live_socket(live::Topics::of(vec![statistics_rest::topic(
-            StatisticsCore::new(
+            crate::allowing::everyone(
                 Arc::new(InMemoryTransactions::new()),
                 Arc::new(InMemoryWordCountCatalog::new()),
-                Arc::new(AllowingEverything),
             ),
             broadcaster,
         )]))

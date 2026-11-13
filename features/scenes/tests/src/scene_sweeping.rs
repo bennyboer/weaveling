@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use access::Role;
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use belonging::InMemoryBelongings;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
@@ -19,24 +19,13 @@ use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use transacting::{InMemoryTransactions, Transaction};
 
+use crate::kept::Kept;
+
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
 
-struct TheSystemAndAda;
-
 fn ada() -> Agent {
     Agent::Account(AccountId::from("account_ada"))
-}
-
-#[async_trait]
-impl Authorizer for TheSystemAndAda {
-    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
-        Ok(*agent == Agent::System || *agent == ada())
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
 }
 
 struct Wavering {
@@ -172,7 +161,8 @@ struct Wired {
     overheard: Arc<FakePublisher>,
 }
 
-fn a_workbench(at_most: usize) -> Wired {
+/// Scenes where accounts are kept, Ada owning both projects and nobody else a member.
+async fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
     let store = Arc::new(Wavering {
@@ -181,15 +171,21 @@ fn a_workbench(at_most: usize) -> Wired {
         failing: AtomicBool::new(false),
         created: AtomicUsize::new(0),
     });
+    let kept = Kept::default();
     let scenes = ScenesCore::new(
         store.clone(),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
-        Arc::new(TheSystemAndAda),
+        kept.access.clone(),
+        kept.authorizer(),
         clock.clone(),
     );
+    for project in [A_PROJECT, ANOTHER_PROJECT] {
+        kept.give(&scenes, project, "account_ada", Some(Role::Owner))
+            .await;
+    }
 
     Wired {
         sweep: DeleteOnProjectDeletedListener::new(scenes.clone(), overheard.clone(), clock)
@@ -266,7 +262,7 @@ fn deleted(project: &str) -> Message {
 #[tokio::test]
 async fn deleting_a_project_takes_its_prose_with_it() {
     // given: a project holding scenes
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 3).await;
 
     // when: its deletion is heard
@@ -287,7 +283,7 @@ async fn deleting_a_project_takes_its_prose_with_it() {
 #[tokio::test]
 async fn a_scene_gone_before_the_sweep_reaches_it_is_passed_over() {
     // given: a project holding scenes
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 2).await;
     // and: one of them gone before the sweep reaches it
     *wired.store.gone_meanwhile.lock().expect("never poisoned") =
@@ -308,7 +304,7 @@ async fn a_scene_gone_before_the_sweep_reaches_it_is_passed_over() {
 #[tokio::test]
 async fn a_store_failing_while_sweeping_fails_the_sweep_so_it_is_tried_again() {
     // given: a project holding scenes
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 2).await;
     // and: a store failing to delete
     wired.store.failing.store(true, Ordering::Release);
@@ -323,7 +319,7 @@ async fn a_store_failing_while_sweeping_fails_the_sweep_so_it_is_tried_again() {
 #[tokio::test]
 async fn a_project_smaller_than_one_batch_does_not_carry_on() {
     // given: a project holding fewer scenes than a batch
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 3).await;
 
     // when: its deletion is heard
@@ -343,7 +339,7 @@ async fn a_project_smaller_than_one_batch_does_not_carry_on() {
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
     // given: a project holding several batches of scenes
-    let wired = a_workbench(2);
+    let wired = a_workbench(2).await;
     wired.holding(A_PROJECT, 7).await;
 
     // when: its deletion is swept through
@@ -366,7 +362,7 @@ async fn a_project_larger_than_one_batch_is_swept_batch_by_batch() {
 #[tokio::test]
 async fn a_continuation_stays_in_the_conversation_the_deletion_opened() {
     // given: a project holding more than a batch
-    let wired = a_workbench(2);
+    let wired = a_workbench(2).await;
     wired.holding(A_PROJECT, 4).await;
     let asked = deleted(A_PROJECT);
 
@@ -387,7 +383,7 @@ async fn a_continuation_stays_in_the_conversation_the_deletion_opened() {
 #[tokio::test]
 async fn a_continuation_starts_after_the_scene_it_names() {
     // given: a project holding more than a batch
-    let wired = a_workbench(2);
+    let wired = a_workbench(2).await;
     let written = wired.holding(A_PROJECT, 4).await;
 
     // when: its deletion is heard
@@ -411,7 +407,7 @@ async fn a_continuation_starts_after_the_scene_it_names() {
 #[tokio::test]
 async fn another_project_keeps_its_prose() {
     // given: two projects holding scenes
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 2).await;
     let theirs = wired.holding(ANOTHER_PROJECT, 2).await;
 
@@ -433,7 +429,7 @@ async fn another_project_keeps_its_prose() {
 #[tokio::test]
 async fn hearing_the_same_deletion_twice_is_harmless() {
     // given: a project holding scenes
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired.holding(A_PROJECT, 3).await;
 
     // when: its deletion is heard twice
@@ -452,7 +448,7 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
 #[tokio::test]
 async fn a_deleted_project_takes_no_new_scene() {
     // given: a deleted project
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     wired
         .sweep
         .handle(&deleted(A_PROJECT))
@@ -480,7 +476,7 @@ async fn a_deleted_project_takes_no_new_scene() {
 #[tokio::test]
 async fn a_continuation_of_the_sweep_lays_no_tombstone() {
     // given: a project never deleted
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
 
     // when: a continuation of a sweep of it is heard
     wired
@@ -503,7 +499,7 @@ async fn a_continuation_of_the_sweep_lays_no_tombstone() {
 #[tokio::test]
 async fn a_message_about_no_project_at_all_is_refused() {
     // given: a message about no project at all
-    let wired = a_workbench(4);
+    let wired = a_workbench(4).await;
     let nonsense = Message::opening(
         RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),

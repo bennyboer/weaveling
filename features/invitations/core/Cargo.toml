@@ -11,6 +11,7 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }

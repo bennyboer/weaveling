@@ -21,14 +21,10 @@ use serde_json::json;
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
-use crate::wiring::{TheSystemAndTheAuthor, Wired};
+use crate::wiring::Wired;
 
-fn a_workbench() -> Wired {
-    a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
-}
-
-fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
-    wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), authorizer)
+async fn a_workbench() -> Wired {
+    wiring::wired_where_the_author_owns(Arc::new(FixedClock::new(clock::at(1_000)))).await
 }
 
 fn a_scene(named: &str) -> Attachment {
@@ -125,7 +121,7 @@ async fn a_book_holding(wired: &Wired, scenes: &[&str]) -> (OutlineId, SectionId
 #[tokio::test]
 async fn attaching_a_scene_puts_it_in_the_index() {
     // given: no book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     // when: a scene is attached to a book
     let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
@@ -144,7 +140,7 @@ async fn attaching_a_scene_puts_it_in_the_index() {
 #[tokio::test]
 async fn detaching_a_scene_takes_it_out_of_the_index() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
 
     // when: the scene is detached
@@ -174,7 +170,7 @@ async fn detaching_a_scene_takes_it_out_of_the_index() {
 #[tokio::test]
 async fn removing_a_section_takes_its_scenes_out_of_the_index() {
     // given: a book holding a scene in a chapter
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_holding(&wired, &["scene_1"]).await;
 
     // when: the chapter is removed
@@ -205,7 +201,7 @@ async fn removing_a_section_takes_its_scenes_out_of_the_index() {
 #[tokio::test]
 async fn the_index_hears_everything_that_changes_what_the_book_holds() {
     // expect: the index hears everything that changes what a book holds
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     for changing in [ATTACHED, DETACHED, SECTION_REMOVED] {
         assert!(
@@ -229,7 +225,7 @@ async fn the_index_hears_everything_that_changes_what_the_book_holds() {
 #[tokio::test]
 async fn the_catalog_projector_hears_only_a_book_being_started() {
     // expect: the catalog hears a book being started
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     assert!(
         wired
@@ -270,7 +266,7 @@ async fn a_book_noting(wired: &Wired, idea: &str) -> (OutlineId, SectionId) {
 #[tokio::test]
 async fn a_note_is_in_the_index_so_its_idea_can_find_it_again() {
     // given: a book noting an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, _) = a_book_noting(&wired, "idea_1").await;
 
     // when: books holding the idea are looked for
@@ -292,7 +288,7 @@ async fn a_note_is_in_the_index_so_its_idea_can_find_it_again() {
 #[tokio::test]
 async fn a_discarded_idea_leaves_the_book() {
     // given: a book noting an idea beside a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 
     // when: the idea's discard is heard
@@ -319,7 +315,7 @@ async fn a_discarded_idea_leaves_the_book() {
 #[tokio::test]
 async fn discarding_an_idea_leaves_the_scenes_alone() {
     // given: a book noting an idea beside a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 
     // when: the idea's discard is heard
@@ -349,7 +345,7 @@ async fn discarding_an_idea_leaves_the_scenes_alone() {
 #[tokio::test]
 async fn hearing_the_same_discard_twice_is_harmless() {
     // given: a book noting an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     a_book_noting(&wired, "idea_1").await;
 
     // then: hearing its discard twice succeeds each time
@@ -365,7 +361,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 #[tokio::test]
 async fn discarding_an_idea_no_book_ever_noted_is_harmless() {
     // given: a book noting an idea
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     a_book_noting(&wired, "idea_1").await;
 
     // then: hearing the discard of another idea succeeds
@@ -392,7 +388,7 @@ async fn attached_as_published(wired: &Wired, outline: &OutlineId) -> Message {
 #[tokio::test]
 async fn a_deleted_scene_is_let_go_of_in_the_system_s_name() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
 
     // when: the scene's deletion is heard
@@ -420,31 +416,39 @@ async fn a_deleted_scene_is_let_go_of_in_the_system_s_name() {
 }
 
 #[tokio::test]
-async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() {
+async fn letting_go_in_the_system_s_name_does_not_wait_on_knowing_whom_to_let_in() {
     // given: a book holding a scene
-    let authorizer = Arc::new(TheSystemAndTheAuthor::default());
-    let wired = a_workbench_guarded_by(authorizer.clone());
+    let wired = a_workbench().await;
     a_book_holding(&wired, &["scene_1"]).await;
     // and: whom to let in cannot be known
-    authorizer.down.store(true, Ordering::Release);
+    wired.access.down.store(true, Ordering::Release);
 
-    // then: letting go of the scene everywhere fails
+    // when: the scene is let go of everywhere
+    wired
+        .detaching_everywhere
+        .handle(&asked_to_detach_everywhere(AttachmentDTO::Scene {
+            id: "scene_1".to_owned(),
+        }))
+        .await
+        .expect("the system may let go whatever is known of who else may");
+    wired.settle().await;
+
+    // then: the index finds no book by the scene
     assert!(
         wired
-            .detaching_everywhere
-            .handle(&asked_to_detach_everywhere(AttachmentDTO::Scene {
-                id: "scene_1".to_owned()
-            }))
+            .catalog
+            .outlines_holding(&a_scene("scene_1"))
             .await
-            .is_err(),
-        "a deleted scene left in the outline for good is worse than a message tried again"
+            .expect("looking should succeed")
+            .is_empty(),
+        "a deleted scene left in the outline for good would wait on a list it never needed"
     );
 }
 
 #[tokio::test]
 async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
     // and: its attaching as published
     let late = attached_as_published(&wired, &outline).await;
@@ -478,7 +482,7 @@ async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
 #[tokio::test]
 async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
     // given: a discarded book
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, _) = a_book_holding(&wired, &[]).await;
     wired
         .outlines
@@ -521,7 +525,7 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
 #[tokio::test]
 async fn a_discard_that_is_not_a_published_event_is_refused() {
     // given: a discard that is no published event
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let nonsense = Message::opening(
         RoutingKey::parse(IDEA_DISCARDED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
@@ -549,7 +553,7 @@ fn scene_deleted(scene: &str) -> Message {
 #[tokio::test]
 async fn a_deleted_scene_is_taken_out_of_the_book() {
     // given: a book holding two scenes
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_holding(&wired, &["scene_1", "scene_2"]).await;
 
     // when: the deletion of one is heard
@@ -600,7 +604,7 @@ async fn placed_but_not_yet_indexed(wired: &Wired, held: Attachment) -> (Outline
 #[tokio::test]
 async fn a_scene_deleted_before_its_placement_was_indexed_still_leaves_the_book() {
     // given: a scene placed in a book before the index heard of it
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = placed_but_not_yet_indexed(&wired, a_scene("scene_1")).await;
 
     // when: its deletion is heard
@@ -626,7 +630,7 @@ async fn a_scene_deleted_before_its_placement_was_indexed_still_leaves_the_book(
 #[tokio::test]
 async fn an_idea_discarded_before_its_placement_was_indexed_still_leaves_the_book() {
     // given: an idea placed in a book before the index heard of it
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = placed_but_not_yet_indexed(&wired, an_idea("idea_1")).await;
 
     // when: its discard is heard
@@ -652,7 +656,7 @@ async fn an_idea_discarded_before_its_placement_was_indexed_still_leaves_the_boo
 #[tokio::test]
 async fn hearing_the_same_scene_deletion_twice_is_harmless() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     a_book_holding(&wired, &["scene_1"]).await;
 
     // then: hearing its deletion twice succeeds each time
@@ -668,7 +672,7 @@ async fn hearing_the_same_scene_deletion_twice_is_harmless() {
 #[tokio::test]
 async fn deleting_a_scene_no_book_held_is_harmless() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     a_book_holding(&wired, &["scene_1"]).await;
 
     // then: hearing the deletion of a scene no book holds succeeds
@@ -682,7 +686,7 @@ async fn deleting_a_scene_no_book_held_is_harmless() {
 #[tokio::test]
 async fn a_scene_deletion_that_is_not_shaped_like_one_is_refused() {
     // given: a scene deletion that is no published event
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let nonsense = Message::opening(
         RoutingKey::parse(SCENE_DELETED).expect("a declared routing key is fine"),
         json!({ "nothing": "useful" }),
@@ -696,7 +700,7 @@ async fn a_scene_deletion_that_is_not_shaped_like_one_is_refused() {
 #[tokio::test]
 async fn the_scene_deletion_listener_hears_only_deletions() {
     // expect: scene deletions are heard
-    let wired = a_workbench();
+    let wired = a_workbench().await;
 
     assert!(
         wired
@@ -715,7 +719,7 @@ async fn the_scene_deletion_listener_hears_only_deletions() {
 #[tokio::test]
 async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() {
     // given: a discarded idea and a deleted scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     wired
         .on_idea_discarded
         .handle(&discarded("idea_1"))
@@ -748,7 +752,7 @@ async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() 
 #[tokio::test]
 async fn a_deletion_lays_the_tombstone_and_leaves_detaching_to_a_follow_up() {
     // given: a book holding a scene
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_holding(&wired, &["scene_1"]).await;
 
     // when: the scene's deletion is heard
@@ -781,7 +785,7 @@ async fn a_deletion_lays_the_tombstone_and_leaves_detaching_to_a_follow_up() {
 #[tokio::test]
 async fn a_deletion_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_nothing() {
     // given: a scene deletion listener whose hearings do not commit
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let listener = Inboxed::new(
         DetachOnSceneDeletedListener::new(
             wired.outlines.clone(),
@@ -815,7 +819,7 @@ async fn a_deletion_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_not
 #[tokio::test]
 async fn a_book_holding_several_gone_scenes_lets_go_of_them_one_hearing_after_another() {
     // given: a book holding three scenes, two of them gone
-    let wired = a_workbench();
+    let wired = a_workbench().await;
     let (outline, chapter) = a_book_holding(&wired, &["scene_1", "scene_2", "scene_3"]).await;
     for scene in ["scene_1", "scene_2"] {
         wired

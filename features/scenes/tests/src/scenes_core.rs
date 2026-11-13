@@ -23,6 +23,7 @@ fn a_core_with(clock: Arc<FixedClock>) -> ScenesCore {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         clock,
     )
@@ -253,6 +254,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );
@@ -263,6 +265,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

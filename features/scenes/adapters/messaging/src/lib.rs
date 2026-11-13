@@ -1,9 +1,11 @@
+mod access;
 mod cataloguing;
 mod publishing;
 mod restyling;
 mod sweeping;
 mod unlinking;
 
+pub use access::{RememberRolesListener, RememberTrashListener};
 pub use cataloguing::CatalogueScenesListener;
 pub use publishing::message_for;
 pub use restyling::RestyleOnQuotationChangedListener;

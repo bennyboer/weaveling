@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use access::{KeptAccess, Role};
 use authorizing::{Act, Authorizer};
-use eventsourcing::Agent;
+use clock::Clock;
+use eventsourcing::{AccountId, Agent, Version};
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
@@ -14,19 +16,25 @@ use crate::link::{IdeaLink, ProjectLink};
 pub struct AppearancesCore {
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn AppearanceCatalog>,
+    access: KeptAccess,
     authorizer: Arc<dyn Authorizer>,
+    clock: Arc<dyn Clock>,
 }
 
 impl AppearancesCore {
     pub fn new(
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn AppearanceCatalog>,
+        access: KeptAccess,
         authorizer: Arc<dyn Authorizer>,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             transactions,
             catalog,
+            access,
             authorizer,
+            clock,
         }
     }
 
@@ -159,8 +167,70 @@ impl AppearancesCore {
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
+            let access = self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-            Ok(forgotten)
+            Ok(forgotten + access)
+        })
+    }
+
+    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    pub async fn remember_role(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_role(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    role,
+                    self.clock.now(),
+                )
+                .await?;
+
+            Ok::<_, AppearancesError>(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    pub async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_disbanded(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AppearancesError>(())
+        })
+    }
+
+    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok::<_, AppearancesError>(())
         })
     }
 

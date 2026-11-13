@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use access::{KeptAccess, Role};
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Standing, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Standing, Version};
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
@@ -18,6 +19,7 @@ pub struct IdeasCore {
     service: IdeaService,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn IdeaCatalog>,
+    access: KeptAccess,
     authorizer: Arc<dyn Authorizer>,
 }
 
@@ -26,6 +28,7 @@ impl IdeasCore {
         store: Arc<dyn EventStore<IdeaEvent>>,
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn IdeaCatalog>,
+        access: KeptAccess,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -34,6 +37,7 @@ impl IdeasCore {
             transactions,
             clock,
             catalog,
+            access,
             authorizer,
         }
     }
@@ -142,10 +146,74 @@ impl IdeasCore {
         at_most: u64,
     ) -> Result<u64, IdeasError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            Ok(self
+            let ideas = self
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
-                .await?)
+                .await?;
+            let access = self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+
+            Ok::<_, IdeasError>(ideas + access)
+        })
+    }
+
+    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see and change its ideas follows.
+    pub async fn remember_role(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_role(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    role,
+                    self.clock.now(),
+                )
+                .await?;
+
+            Ok::<_, IdeasError>(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    pub async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_disbanded(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, IdeasError>(())
+        })
+    }
+
+    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok::<_, IdeasError>(())
         })
     }
 

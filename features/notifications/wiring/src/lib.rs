@@ -176,7 +176,7 @@ impl Feature for NotificationsFeature {
 
 #[cfg(test)]
 mod tests {
-    use authorizing::AllowingEverything;
+
     use clock::SystemClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
 
@@ -188,7 +188,7 @@ mod tests {
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
-            authorizer: Arc::new(AllowingEverything),
+            with_accounts: false,
         }
     }
 

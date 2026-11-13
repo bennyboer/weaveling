@@ -1,8 +1,10 @@
+mod access;
 mod discarding;
 mod pinning;
 mod publishing;
 mod sweeping;
 
+pub use access::{RememberRolesListener, RememberTrashListener};
 pub use discarding::{
     LET_GO_EVERYWHERE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener,
     RememberProjectsOfIdeasListener, UnpinOnDiscardListener,

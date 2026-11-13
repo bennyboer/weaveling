@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_contract::WordCountDTO;
-use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transactions};
 
@@ -14,10 +13,9 @@ use transacting::{InMemoryTransactions, Transactions};
 async fn a_project_nobody_counted_answers_with_nothing() {
     // given: nothing counted
     let server = TestServer::new(
-        statistics_rest::router(StatisticsCore::new(
+        statistics_rest::router(crate::allowing::everyone(
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryWordCountCatalog::new()),
-            Arc::new(AllowingEverything),
         ))
         .layer(Extension(Agent::Local)),
     );
@@ -61,10 +59,9 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
             .expect("finishing should succeed");
     }
     let server = TestServer::new(
-        statistics_rest::router(StatisticsCore::new(
+        statistics_rest::router(crate::allowing::everyone(
             Arc::new(InMemoryTransactions::new()),
             catalog,
-            Arc::new(AllowingEverything),
         ))
         .layer(Extension(Agent::Local)),
     );
@@ -95,10 +92,9 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
 async fn asking_without_a_project_is_a_bad_request() {
     // given: the statistics
     let server = TestServer::new(
-        statistics_rest::router(StatisticsCore::new(
+        statistics_rest::router(crate::allowing::everyone(
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryWordCountCatalog::new()),
-            Arc::new(AllowingEverything),
         ))
         .layer(Extension(Agent::Local)),
     );

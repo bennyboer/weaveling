@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
@@ -52,6 +53,7 @@ fn listing() -> Listing {
         Arc::new(InMemoryThrottles::default()),
         catalog.clone(),
         wired.mailbox.clone(),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         wired.clock.clone(),
     );

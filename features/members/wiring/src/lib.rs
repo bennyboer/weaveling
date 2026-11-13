@@ -26,6 +26,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<MembersEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn MembershipCatalog>,
+    pub authorizer: Arc<dyn Authorizer>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -35,7 +36,7 @@ pub fn core(ports: &Ports, context: &Context) -> MembersCore {
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
-        context.authorizer.clone(),
+        ports.authorizer.clone(),
         context.clock.clone(),
     )
 }
@@ -50,23 +51,14 @@ pub async fn assembled_members(
     clock: Arc<dyn Clock>,
     publisher: Arc<dyn Publisher>,
 ) -> Result<AssembledMembers, Unprepared> {
-    let knowing_nobody = Context {
-        clock: clock.clone(),
-        publisher: publisher.clone(),
-        authorizer: Arc::new(MembersAuthorizer::new(Arc::new(
-            InMemoryMembershipCatalog::new(),
-        ))),
+    let context = Context {
+        with_accounts: true,
+        clock,
+        publisher,
     };
-    let ports = wiring::ports::<MembersFeature>(storage, &knowing_nobody).await?;
-    let authorizer: Arc<dyn Authorizer> = Arc::new(MembersAuthorizer::new(ports.catalog.clone()));
-    let wired = MembersFeature::wire(
-        &ports,
-        &Context {
-            clock,
-            publisher,
-            authorizer: authorizer.clone(),
-        },
-    );
+    let ports = wiring::ports::<MembersFeature>(storage, &context).await?;
+    let authorizer = ports.authorizer.clone();
+    let wired = MembersFeature::wire(&ports, &context);
 
     Ok(AssembledMembers {
         assembled: Assembled {
@@ -95,11 +87,13 @@ impl Feature for MembersFeature {
             transactions,
             outbox,
         } = EventSourced::in_memory(members_messaging::message_for, context);
+        let catalog: Arc<dyn MembershipCatalog> = Arc::new(InMemoryMembershipCatalog::new());
 
         Ports {
             events,
             transactions,
-            catalog: Arc::new(InMemoryMembershipCatalog::new()),
+            catalog: catalog.clone(),
+            authorizer: Arc::new(MembersAuthorizer::new(catalog)),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -117,11 +111,14 @@ impl Feature for MembersFeature {
             members_messaging::message_for,
             context,
         );
+        let catalog: Arc<dyn MembershipCatalog> =
+            Arc::new(members_catalog::PostgresMembershipCatalog::new(pool));
 
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(members_catalog::PostgresMembershipCatalog::new(pool)),
+            catalog: catalog.clone(),
+            authorizer: Arc::new(MembersAuthorizer::new(catalog)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -149,11 +146,14 @@ impl Feature for MembersFeature {
             members_messaging::message_for,
             context,
         );
+        let catalog: Arc<dyn MembershipCatalog> =
+            Arc::new(members_catalog::SqliteMembershipCatalog::new(pool));
 
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(members_catalog::SqliteMembershipCatalog::new(pool)),
+            catalog: catalog.clone(),
+            authorizer: Arc::new(MembersAuthorizer::new(catalog)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -219,7 +219,7 @@ impl Feature for MembersFeature {
 
 #[cfg(test)]
 mod tests {
-    use authorizing::AllowingEverything;
+
     use clock::SystemClock;
     use eventsourcing::{AccountId, Version};
     use members_core::{Member, ProjectLink, ProjectMembers, Role};
@@ -229,11 +229,11 @@ mod tests {
 
     pub(super) fn a_context() -> Context {
         Context {
+            with_accounts: false,
             clock: Arc::new(SystemClock),
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
-            authorizer: Arc::new(AllowingEverything),
         }
     }
 

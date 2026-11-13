@@ -8,6 +8,7 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }

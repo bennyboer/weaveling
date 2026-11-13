@@ -1,9 +1,5 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
+use access::Role as MemberRole;
 use acting::Acting;
-use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
@@ -18,56 +14,22 @@ use crate::wiring;
 use crate::wiring::{ORIGIN as INSTANCE, Wired};
 
 const PROJECT: &str = "project_loom";
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
-const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
 const BO: &str = "bo@example.com";
-
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<String, Vec<Act>>>,
-    down: Mutex<bool>,
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(project == PROJECT
-            && self
-                .held
-                .lock()
-                .expect("never poisoned")
-                .get(account.as_str())
-                .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-}
 
 struct Guarded {
     wired: Wired,
-    roles: Arc<Roles>,
 }
 
-fn guarded() -> Guarded {
-    let roles = Arc::new(Roles::default());
-    roles.held.lock().expect("never poisoned").extend([
-        ("account_ada".to_owned(), OWNER.to_vec()),
-        ("account_grace".to_owned(), AUTHOR.to_vec()),
-    ]);
+async fn guarded() -> Guarded {
+    let wired = wiring::a_workbench_with_accounts();
+    wired
+        .give(PROJECT, "account_ada", Some(MemberRole::Owner))
+        .await;
+    wired
+        .give(PROJECT, "account_grace", Some(MemberRole::Author))
+        .await;
 
-    Guarded {
-        wired: wiring::a_workbench_guarded_by(roles.clone()),
-        roles,
-    }
+    Guarded { wired }
 }
 
 fn acting(account: &str, operator: bool) -> Acting {
@@ -120,7 +82,7 @@ async fn events_of(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
 #[tokio::test]
 async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
     // given: a project ada owns
-    let guarded = guarded();
+    let guarded = guarded().await;
 
     // when: she invites into it for a role
     let response = inviting(&served_to(&guarded, ada()), role::AUTHOR).await;
@@ -161,7 +123,7 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
 #[tokio::test]
 async fn an_invitation_issued_is_answered_with_who_issued_it() {
     // given: a project ada owns
-    let guarded = guarded();
+    let guarded = guarded().await;
 
     // when: she invites into it
     let issued = guarded
@@ -178,7 +140,7 @@ async fn an_invitation_issued_is_answered_with_who_issued_it() {
 #[tokio::test]
 async fn an_owner_who_runs_the_instance_issues_an_invitation_that_may_bring_in_a_new_address() {
     // given: a project ada owns
-    let guarded = guarded();
+    let guarded = guarded().await;
 
     // when: she invites into it while running the instance
     let response = inviting(
@@ -206,7 +168,7 @@ async fn an_owner_who_runs_the_instance_issues_an_invitation_that_may_bring_in_a
 #[tokio::test]
 async fn only_an_owner_invites_and_whoever_may_not_read_the_project_finds_it_not_there() {
     // given: a project ada owns and grace authors
-    let guarded = guarded();
+    let guarded = guarded().await;
 
     // then: grace inviting into it is refused as no owner
     refused_as(
@@ -233,7 +195,7 @@ async fn only_an_owner_invites_and_whoever_may_not_read_the_project_finds_it_not
 #[tokio::test]
 async fn an_invitation_into_a_project_names_a_role_there_is() {
     // given: a project ada owns
-    let guarded = guarded();
+    let guarded = guarded().await;
     let server = served_to(&guarded, ada());
 
     // then: inviting for a role there is not is refused
@@ -247,8 +209,8 @@ async fn an_invitation_into_a_project_names_a_role_there_is() {
 #[tokio::test]
 async fn whom_to_let_invite_not_being_known_is_a_failure_not_a_no() {
     // given: a project whose roles cannot be told
-    let guarded = guarded();
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    let guarded = guarded().await;
+    guarded.wired.access.go_down();
 
     // then: inviting into it is a failure
     inviting(&served_to(&guarded, ada()), role::READER)
@@ -290,7 +252,7 @@ async fn listed_by(guarded: &Guarded, acting: Acting, path: &str) -> TestRespons
 #[tokio::test]
 async fn an_owner_lists_the_project_s_invitations_and_the_operators_list_keeps_to_the_instance() {
     // given: a listed invitation into a project and one to the instance
-    let guarded = guarded();
+    let guarded = guarded().await;
     let (into_the_project, to_the_instance) = issued_and_listed(&guarded).await;
 
     // when: the project's owner lists the project's invitations
@@ -330,7 +292,7 @@ async fn an_owner_lists_the_project_s_invitations_and_the_operators_list_keeps_t
 #[tokio::test]
 async fn only_an_owner_lists_a_project_s_invitations() {
     // given: a listed invitation into a project ada owns and grace authors
-    let guarded = guarded();
+    let guarded = guarded().await;
     issued_and_listed(&guarded).await;
     let at = format!("/invitations?project={PROJECT}");
 
@@ -351,7 +313,7 @@ async fn only_an_owner_lists_a_project_s_invitations() {
 #[tokio::test]
 async fn an_owner_withdraws_a_project_s_invitation_which_nobody_else_may() {
     // given: a listed invitation into a project ada owns and grace authors
-    let guarded = guarded();
+    let guarded = guarded().await;
     let (into_the_project, _) = issued_and_listed(&guarded).await;
     let at = format!("/invitations/{into_the_project}");
 

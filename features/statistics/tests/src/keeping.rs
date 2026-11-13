@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use authorizing::AllowingEverything;
 use clock::FixedClock;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCount, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transactions};
@@ -25,10 +24,9 @@ fn a_workbench_hearing_in(hearings: InMemoryTransactions) -> Wired {
 
     Wired {
         projector: Inboxed::new(
-            ProjectWordCountsListener::new(StatisticsCore::new(
+            ProjectWordCountsListener::new(crate::allowing::everyone(
                 Arc::new(InMemoryTransactions::new()),
                 catalog.clone(),
-                Arc::new(AllowingEverything),
             )),
             Arc::new(hearings),
             Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
@@ -152,11 +150,8 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
     // given: a deletion heard
     let bench = a_workbench();
     bench.hears(deleted("scene_1")).await;
-    let statistics = StatisticsCore::new(
-        Arc::new(InMemoryTransactions::new()),
-        bench.catalog.clone(),
-        Arc::new(AllowingEverything),
-    );
+    let statistics =
+        crate::allowing::everyone(Arc::new(InMemoryTransactions::new()), bench.catalog.clone());
 
     // then: no tombstone was laid before the deletion
     assert_eq!(

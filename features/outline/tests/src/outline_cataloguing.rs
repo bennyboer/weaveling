@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use belonging::InMemoryBelongings;
 use clock::FixedClock;
@@ -390,6 +391,7 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(InMemoryBelongings::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );
@@ -446,6 +448,7 @@ async fn a_section_added_while_losing_races(
         wired.catalog.clone(),
         wired.registry.clone(),
         Arc::new(InMemoryBelongings::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_000))),
     );

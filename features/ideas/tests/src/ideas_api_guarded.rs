@@ -1,79 +1,162 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+use access::{AccessCatalog, AccessError, InMemoryAccess, Role};
 use async_trait::async_trait;
-use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent};
+use eventsourcing::{AccountId, Agent, Version};
 use live::testing::Subscriber;
 use live_contract::{ACCESS_CHANGED, ToldDTO};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::wiring;
 use crate::wiring::Wired;
 
 const PROJECT: &str = "project_1";
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
-const READER: [Act; 1] = [Act::Read];
 
+/// Who may do what, kept in memory, that can be made unreachable.
 #[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<String, Vec<Act>>>,
-    down: Mutex<bool>,
-    changes: AccessChanges,
+struct Faltering {
+    kept: InMemoryAccess,
+    down: AtomicBool,
 }
 
-impl Roles {
-    fn give(&self, account: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert(account.to_owned(), acts.to_vec());
+impl Faltering {
+    fn reachable(&self) -> Result<(), AccessError> {
+        if self.down.load(Ordering::Acquire) {
+            return Err(AccessError::Backend("the list is down".into()));
+        }
+
+        Ok(())
     }
 }
 
 #[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(project == PROJECT
-            && self
-                .held
-                .lock()
-                .expect("never poisoned")
-                .get(account.as_str())
-                .is_some_and(|acts| acts.contains(&act)))
+impl AccessCatalog for Faltering {
+    async fn remember_role(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.kept
+            .remember_role(transaction, project, account, version, role, at)
+            .await
     }
 
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
+    async fn remember_disbanded(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.kept
+            .remember_disbanded(transaction, project, version, at)
+            .await
     }
 
-    fn access_changed(&self, project: &str) {
-        self.changes.tell(project);
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), AccessError> {
+        self.kept
+            .remember_trash(transaction, project, version, in_the_trash)
+            .await
     }
 
-    fn watch_access(&self, project: &str) -> AccessWatch {
-        self.changes.watch(project)
+    async fn remember_operator(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        operator: bool,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.kept
+            .remember_operator(transaction, account, version, operator, at)
+            .await
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, AccessError> {
+        self.kept
+            .forget_tombstones_laid_before(transaction, before, at_most)
+            .await
+    }
+
+    async fn role_of(
+        &self,
+        project: &str,
+        account: &AccountId,
+    ) -> Result<Option<Role>, AccessError> {
+        self.reachable()?;
+        self.kept.role_of(project, account).await
+    }
+
+    async fn is_in_the_trash(&self, project: &str) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.is_in_the_trash(project).await
+    }
+
+    async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {
+        self.reachable()?;
+        self.kept.projects_of(account).await
+    }
+
+    async fn share_a_project(
+        &self,
+        one: &AccountId,
+        other: &AccountId,
+    ) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.share_a_project(one, other).await
+    }
+
+    async fn operates(&self, account: &AccountId) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.operates(account).await
     }
 }
 
 struct Guarded {
     wired: Wired,
-    roles: Arc<Roles>,
+    access: Arc<Faltering>,
+    told: AtomicU64,
     ada: TestServer,
     grace: TestServer,
     idea: String,
+}
+
+impl Guarded {
+    async fn give(&self, account: &str, role: Option<Role>) {
+        self.wired
+            .ideas
+            .remember_role(
+                None,
+                PROJECT,
+                &AccountId::from(account),
+                Version::of(self.told.fetch_add(1, Ordering::AcqRel) + 1),
+                role,
+            )
+            .await
+            .expect("remembering a role should succeed");
+    }
 }
 
 fn as_account(wired: &Wired, account: &str) -> TestServer {
@@ -86,14 +169,23 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 }
 
 async fn an_idea_in_ada_s_project() -> Guarded {
-    let roles = Arc::new(Roles::default());
-    roles.give("account_ada", &OWNER);
-    let wired = wiring::wired_guarded_by(
+    let access = Arc::new(Faltering::default());
+    let wired = wiring::wired_keeping(
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-        roles.clone(),
+        access.clone(),
+        true,
     );
-    let ada = as_account(&wired, "account_ada");
-    let captured = ada
+    let guarded = Guarded {
+        grace: as_account(&wired, "account_grace"),
+        ada: as_account(&wired, "account_ada"),
+        access,
+        told: AtomicU64::new(0),
+        wired,
+        idea: String::new(),
+    };
+    guarded.give("account_ada", Some(Role::Owner)).await;
+    let captured = guarded
+        .ada
         .post("/ideas")
         .json(&json!({ "project": PROJECT, "title": "A girl in a wood" }))
         .await;
@@ -102,15 +194,9 @@ async fn an_idea_in_ada_s_project() -> Guarded {
         .as_str()
         .expect("an idea has an id")
         .to_owned();
-    wired.settle().await;
+    guarded.wired.settle().await;
 
-    Guarded {
-        grace: as_account(&wired, "account_grace"),
-        ada,
-        roles,
-        wired,
-        idea,
-    }
+    Guarded { idea, ..guarded }
 }
 
 async fn title_of(guarded: &Guarded) -> Value {
@@ -163,7 +249,7 @@ async fn the_ideas_of_a_project_are_not_there_for_whoever_may_not_read_it() {
 async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_change_them() {
     // given: an idea in a project grace may read
     let guarded = an_idea_in_ada_s_project().await;
-    guarded.roles.give("account_grace", &READER);
+    guarded.give("account_grace", Some(Role::Reader)).await;
     let at = format!("/ideas/{}", guarded.idea);
 
     // then: she can list and fetch its ideas
@@ -204,9 +290,7 @@ async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_cha
 async fn an_author_captures_retitles_and_discards() {
     // given: an idea in a project grace may write in
     let guarded = an_idea_in_ada_s_project().await;
-    guarded
-        .roles
-        .give("account_grace", &[Act::Read, Act::Write]);
+    guarded.give("account_grace", Some(Role::Author)).await;
     let at = format!("/ideas/{}", guarded.idea);
 
     // then: she may capture an idea
@@ -236,7 +320,7 @@ async fn an_author_captures_retitles_and_discards() {
 async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow_on() {
     // given: grace and the owner following a project's ideas
     let guarded = an_idea_in_ada_s_project().await;
-    guarded.roles.give("account_grace", &READER);
+    guarded.give("account_grace", Some(Role::Reader)).await;
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
@@ -246,8 +330,7 @@ async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow
         .await;
 
     // when: grace's role is taken away
-    guarded.roles.give("account_grace", &[]);
-    guarded.roles.access_changed(PROJECT);
+    guarded.give("account_grace", None).await;
 
     // then: she is closed out
     assert_eq!(
@@ -281,7 +364,7 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // given: an idea
     let guarded = an_idea_in_ada_s_project().await;
     // and: whom to let in not known
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    guarded.access.down.store(true, Ordering::Release);
 
     // then: reading its ideas fails
     for answered in [

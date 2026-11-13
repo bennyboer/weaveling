@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use async_trait::async_trait;
-use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
+use access::Role;
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
@@ -16,60 +15,9 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 const PROJECT: &str = "project_1";
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
-const READER: [Act; 1] = [Act::Read];
-
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<String, Vec<Act>>>,
-    down: Mutex<bool>,
-    changes: AccessChanges,
-}
-
-impl Roles {
-    fn give(&self, account: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert(account.to_owned(), acts.to_vec());
-    }
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(project == PROJECT
-            && self
-                .held
-                .lock()
-                .expect("never poisoned")
-                .get(account.as_str())
-                .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-
-    fn access_changed(&self, project: &str) {
-        self.changes.tell(project);
-    }
-
-    fn watch_access(&self, project: &str) -> AccessWatch {
-        self.changes.watch(project)
-    }
-}
 
 struct Guarded {
-    _wired: Wired,
-    roles: Arc<Roles>,
+    wired: Wired,
     ada: TestServer,
     grace: TestServer,
     outline: String,
@@ -86,12 +34,8 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 }
 
 async fn an_outline_ada_owns() -> Guarded {
-    let roles = Arc::new(Roles::default());
-    roles.give("account_ada", &OWNER);
-    let wired = wiring::wired_guarded_by(
-        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-        roles.clone(),
-    );
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    wired.give(PROJECT, "account_ada", Some(Role::Owner)).await;
     let ada = as_account(&wired, "account_ada");
     let opened = ada
         .post("/outlines")
@@ -116,8 +60,7 @@ async fn an_outline_ada_owns() -> Guarded {
     Guarded {
         grace: as_account(&wired, "account_grace"),
         ada,
-        roles,
-        _wired: wired,
+        wired,
         outline,
         section,
     }
@@ -198,7 +141,10 @@ async fn a_project_s_outline_is_not_there_for_whoever_may_not_read_it() {
 async fn a_reader_opens_reads_and_follows_the_outline_and_is_told_only_an_author_may_change_it() {
     // given: an outline of a project grace may read
     let guarded = an_outline_ada_owns().await;
-    guarded.roles.give("account_grace", &READER);
+    guarded
+        .wired
+        .give(PROJECT, "account_grace", Some(Role::Reader))
+        .await;
 
     // when: she opens it
     let opened = guarded
@@ -234,8 +180,9 @@ async fn an_author_adds_retitles_attaches_and_removes() {
     // given: an outline of a project grace may write
     let guarded = an_outline_ada_owns().await;
     guarded
-        .roles
-        .give("account_grace", &[Act::Read, Act::Write]);
+        .wired
+        .give(PROJECT, "account_grace", Some(Role::Author))
+        .await;
 
     // when: she adds, retitles, attaches and removes
     let [adding, retitling, attaching, removing] = changes_by(&guarded, &guarded.grace).await;
@@ -254,7 +201,7 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // given: an outline
     let guarded = an_outline_ada_owns().await;
     // and: whom to let in cannot be known
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    guarded.wired.access.down.store(true, Ordering::Release);
 
     // then: opening and reading it fail
     for answered in [
@@ -283,15 +230,17 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
     // given: an outline grace follows as a reader
     let guarded = an_outline_ada_owns().await;
-    guarded.roles.give("account_grace", &READER);
+    guarded
+        .wired
+        .give(PROJECT, "account_grace", Some(Role::Reader))
+        .await;
     let mut hers = Subscriber::on(&guarded.grace).await;
     hers.subscribe("outline", "outlines", &[("outline", &guarded.outline)])
         .await;
     hers.frame().await;
 
     // when: her role is taken away
-    guarded.roles.give("account_grace", &[]);
-    guarded.roles.access_changed(PROJECT);
+    guarded.wired.give(PROJECT, "account_grace", None).await;
 
     // then: her following ends as access lost
     assert_eq!(hers.ended().await, "access-lost");

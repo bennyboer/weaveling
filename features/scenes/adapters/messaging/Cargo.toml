@@ -11,6 +11,7 @@ sha2 = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true }
 
+access = { version = "0.1.0", path = "../../../../libraries/access", package = "weaveling-access" }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
@@ -25,5 +26,6 @@ scenes-core = { version = "0.1.0", path = "../../core", package = "weaveling-sce
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 ideas-contract = { version = "0.1.0", path = "../../../ideas/contract", package = "weaveling-ideas-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }

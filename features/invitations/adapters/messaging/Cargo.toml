@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+access = { version = "0.1.0", path = "../../../../libraries/access", package = "weaveling-access" }
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
@@ -14,6 +15,7 @@ messaging = { version = "0.1.0", path = "../../../../libraries/messaging", packa
 outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
+members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 time = { workspace = true }

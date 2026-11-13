@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
+use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeasCore};
 use ideas_messaging::{
     BroadcastIdeaChangesListener, CatalogueIdeasListener, DiscardOnProjectDeletedListener,
+    RememberRolesListener, RememberTrashListener,
 };
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -17,16 +20,24 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<IdeaEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn IdeaCatalog>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn core(ports: &Ports, context: &Context) -> IdeasCore {
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    };
+
     IdeasCore::new(
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
-        context.authorizer.clone(),
+        ports.access.clone(),
+        authorizer,
         context.clock.clone(),
     )
 }
@@ -52,14 +63,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![
             Arc::new(broadcast),
             Arc::new(hearing.inboxed(CatalogueIdeasListener::new(ideas.clone()))),
+            Arc::new(hearing.inboxed(RememberRolesListener::new(ideas.clone()))),
+            Arc::new(hearing.inboxed(RememberTrashListener::new(ideas.clone()))),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-idea-tombstones",
-                chores::tombstones_by(move |before, at_most| {
+                chores::tombstones_by({
                     let ideas = ideas.clone();
-                    async move { ideas.forget_tombstones_laid_before(before, at_most).await }
+                    move |before, at_most| {
+                        let ideas = ideas.clone();
+                        async move { ideas.forget_tombstones_laid_before(before, at_most).await }
+                    }
                 }),
                 context.clock.clone(),
             )),
@@ -85,6 +101,7 @@ impl Feature for IdeaFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryIdeaCatalog::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -106,7 +123,8 @@ impl Feature for IdeaFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(ideas_catalog::PostgresIdeaCatalog::new(pool)),
+            catalog: Arc::new(ideas_catalog::PostgresIdeaCatalog::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -119,6 +137,7 @@ impl Feature for IdeaFeature {
             outbox::postgres::migrations(),
             ideas_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -138,7 +157,8 @@ impl Feature for IdeaFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(ideas_catalog::SqliteIdeaCatalog::new(pool)),
+            catalog: Arc::new(ideas_catalog::SqliteIdeaCatalog::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -151,6 +171,7 @@ impl Feature for IdeaFeature {
             outbox::sqlite::migrations(),
             ideas_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 

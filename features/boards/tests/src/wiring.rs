@@ -1,14 +1,13 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use async_trait::async_trait;
-use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
+use access::{AccessCatalog, InMemoryAccess, KeptAccess, Role};
 use axum::Router;
 use belonging::InMemoryBelongings;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardsCore};
 use clock::Clock;
-use eventsourcing::{AccountId, Agent, InMemoryEventStore};
+use eventsourcing::{AccountId, InMemoryEventStore, Version};
 use inbox::InMemoryInbox;
 use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
@@ -23,26 +22,6 @@ const UNPINNING_DISCARDED_IDEAS: &str = "unpin-discarded-idea";
 const LETTING_GO_EVERYWHERE: &str = "let-go-of-discarded-idea-everywhere";
 const LETTING_GO_OF_THE_GONE: &str = "let-go-of-gone-ideas";
 const REMEMBERING_PROJECTS_OF_IDEAS: &str = "boards-remember-projects-of-ideas";
-
-#[derive(Default)]
-pub struct TheSystemAndTheAuthor {
-    pub down: AtomicBool,
-}
-
-#[async_trait]
-impl Authorizer for TheSystemAndTheAuthor {
-    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
-        if self.down.load(Ordering::Acquire) {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-
-        Ok(*agent == Agent::System || *agent == Agent::Account(AccountId::from("author-7")))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-}
 
 pub struct Wired {
     pub boards: BoardsCore,
@@ -60,13 +39,24 @@ pub struct Wired {
     pub letting_go_of_the_gone: Arc<dyn Listener>,
     pub remembering_projects_of_ideas: Arc<dyn Listener>,
     pub clock: Arc<dyn Clock>,
+    told: AtomicU64,
 }
 
+/// Boards without accounts, where everyone may do everything.
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    wired_guarded_by(clock, Arc::new(AllowingEverything))
+    wired_keeping(clock, Arc::new(InMemoryAccess::new()), false)
 }
 
-pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) -> Wired {
+/// Boards with accounts, who may do what kept in their own access.
+pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
+    wired_keeping(clock, Arc::new(InMemoryAccess::new()), true)
+}
+
+pub fn wired_keeping(
+    clock: Arc<dyn Clock>,
+    access: Arc<dyn AccessCatalog>,
+    with_accounts: bool,
+) -> Wired {
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
@@ -82,13 +72,14 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         catalog: catalog.clone(),
         registry: registry.clone(),
         belongings: Arc::new(InMemoryBelongings::new()),
+        access: KeptAccess::new(access),
         inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
     let context = Context {
+        with_accounts,
         clock,
         publisher: dispatcher.clone(),
-        authorizer,
     };
     let wired = boards_wiring::wire(&ports, &context);
 
@@ -129,10 +120,25 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         letting_go_of_the_gone,
         remembering_projects_of_ideas,
         clock: context.clock.clone(),
+        told: AtomicU64::new(0),
     }
 }
 
 impl Wired {
+    /// Tells the boards an account's role in a project, or that it is a member no more, each told newer than the last.
+    pub async fn give(&self, project: &str, account: &AccountId, role: Option<Role>) {
+        self.boards
+            .remember_role(
+                None,
+                project,
+                account,
+                Version::of(self.told.fetch_add(1, Ordering::AcqRel) + 1),
+                role,
+            )
+            .await
+            .expect("remembering a role should succeed");
+    }
+
     pub async fn settle(&self) {
         loop {
             let published = self

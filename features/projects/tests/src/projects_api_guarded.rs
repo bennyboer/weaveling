@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use access::Role;
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
@@ -14,51 +12,8 @@ use time::OffsetDateTime;
 use crate::wiring;
 use crate::wiring::Wired;
 
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<(String, String), Vec<Act>>>,
-    down: Mutex<bool>,
-}
-
-impl Roles {
-    fn give(&self, account: &str, project: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert((account.to_owned(), project.to_owned()), acts.to_vec());
-    }
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(self
-            .held
-            .lock()
-            .expect("never poisoned")
-            .get(&(account.to_string(), project.to_owned()))
-            .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-}
-
-const OWNER: [Act; 4] = [Act::Read, Act::Write, Act::Manage, Act::Restore];
-const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
-const READER: [Act; 1] = [Act::Read];
-
 struct Guarded {
-    _wired: Wired,
-    roles: Arc<Roles>,
+    wired: Wired,
     ada: TestServer,
     grace: TestServer,
 }
@@ -73,16 +28,11 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 }
 
 async fn a_project_ada_owns() -> (Guarded, String) {
-    let roles = Arc::new(Roles::default());
-    let wired = wiring::wired_guarded_by(
-        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-        roles.clone(),
-    );
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let guarded = Guarded {
         ada: as_account(&wired, "account_ada"),
         grace: as_account(&wired, "account_grace"),
-        roles,
-        _wired: wired,
+        wired,
     };
     let started = guarded
         .ada
@@ -94,7 +44,10 @@ async fn a_project_ada_owns() -> (Guarded, String) {
         .as_str()
         .expect("a project has an id")
         .to_owned();
-    guarded.roles.give("account_ada", &project, &OWNER);
+    guarded
+        .wired
+        .give(&project, "account_ada", Some(Role::Owner))
+        .await;
 
     (guarded, project)
 }
@@ -151,7 +104,10 @@ async fn whoever_may_read_but_not_manage_reads_and_is_told_only_an_owner_may_cha
     // given: a project ada owns
     let (guarded, project) = a_project_ada_owns().await;
     // and: grace an author of it
-    guarded.roles.give("account_grace", &project, &AUTHOR);
+    guarded
+        .wired
+        .give(&project, "account_grace", Some(Role::Author))
+        .await;
     let at = format!("/projects/{project}");
 
     // expect: grace reads it
@@ -182,7 +138,10 @@ async fn whoever_may_only_read_reads_the_project() {
     // given: a project ada owns
     let (guarded, project) = a_project_ada_owns().await;
     // and: grace a reader of it
-    guarded.roles.give("account_grace", &project, &READER);
+    guarded
+        .wired
+        .give(&project, "account_grace", Some(Role::Reader))
+        .await;
 
     // expect: grace reads it
     guarded
@@ -233,7 +192,7 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // given: a project ada owns
     let (guarded, project) = a_project_ada_owns().await;
     // and: who may do what cannot be learned
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    guarded.wired.access.go_down();
 
     // expect: reading it fails
     guarded

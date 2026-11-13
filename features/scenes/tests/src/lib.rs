@@ -2,6 +2,9 @@
 mod committed;
 
 #[cfg(test)]
+mod kept;
+
+#[cfg(test)]
 mod live_scene_eviction;
 
 #[cfg(test)]
@@ -9,6 +12,9 @@ mod live_scenes;
 
 #[cfg(test)]
 mod one_connection;
+
+#[cfg(test)]
+mod scene_access;
 
 #[cfg(test)]
 mod one_connection_guarded;

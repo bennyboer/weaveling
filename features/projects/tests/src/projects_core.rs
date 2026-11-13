@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{Agent, FailsAppending, InMemoryEventStore, ServiceError, StoreError, Version};
@@ -404,6 +405,7 @@ async fn renaming_a_project_while(
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryProjectCatalog::new()),
             Arc::new(InMemoryTrash::new()),
+            KeptAccess::new(Arc::new(InMemoryAccess::new())),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(clock::at(1_000))),
         )

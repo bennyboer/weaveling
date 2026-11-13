@@ -1,48 +1,146 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use access::{AccessCatalog, AccessError, InMemoryAccess, KeptAccess, Role};
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
 use appearances_core::{AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject};
 use appearances_rest::TellingAppearances;
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use eventsourcing::{AccountId, Agent};
+use clock::FixedClock;
+use eventsourcing::{AccountId, Agent, Version};
 use live::Broadcaster;
 use live::testing::Subscriber;
-use transacting::InMemoryTransactions;
+use time::OffsetDateTime;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::committed::Committed;
 
 const READABLE: &str = "project_ada";
 const UNREADABLE: &str = "project_kept";
 
+/// Who may do what as the feature heard it, which can be made unreachable.
 #[derive(Default)]
-struct OneProject {
-    down: Mutex<bool>,
+struct Reachable {
+    heard: InMemoryAccess,
+    down: AtomicBool,
+}
+
+impl Reachable {
+    fn reached(&self) -> Result<(), AccessError> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(AccessError::Backend("the list is down".into()));
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
-impl Authorizer for OneProject {
-    async fn may(&self, _agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-
-        Ok(act == Act::Read && project == READABLE)
+impl AccessCatalog for Reachable {
+    async fn remember_role(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.heard
+            .remember_role(transaction, project, account, version, role, at)
+            .await
     }
 
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
+    async fn remember_disbanded(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.heard
+            .remember_disbanded(transaction, project, version, at)
+            .await
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), AccessError> {
+        self.heard
+            .remember_trash(transaction, project, version, in_the_trash)
+            .await
+    }
+
+    async fn remember_operator(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        operator: bool,
+        at: OffsetDateTime,
+    ) -> Result<(), AccessError> {
+        self.heard
+            .remember_operator(transaction, account, version, operator, at)
+            .await
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, AccessError> {
+        self.heard
+            .forget_tombstones_laid_before(transaction, before, at_most)
+            .await
+    }
+
+    async fn role_of(
+        &self,
+        project: &str,
+        account: &AccountId,
+    ) -> Result<Option<Role>, AccessError> {
+        self.reached()?;
+        self.heard.role_of(project, account).await
+    }
+
+    async fn is_in_the_trash(&self, project: &str) -> Result<bool, AccessError> {
+        self.reached()?;
+        self.heard.is_in_the_trash(project).await
+    }
+
+    async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {
+        self.reached()?;
+        self.heard.projects_of(account).await
+    }
+
+    async fn share_a_project(
+        &self,
+        one: &AccountId,
+        other: &AccountId,
+    ) -> Result<bool, AccessError> {
+        self.reached()?;
+        self.heard.share_a_project(one, other).await
+    }
+
+    async fn operates(&self, account: &AccountId) -> Result<bool, AccessError> {
+        self.reached()?;
+        self.heard.operates(account).await
     }
 }
 
 struct Guarded {
     kept: Arc<InMemoryAppearanceCatalog>,
     telling: TellingAppearances,
-    authorizer: Arc<OneProject>,
+    access: Arc<Reachable>,
     server: TestServer,
 }
 
@@ -53,12 +151,25 @@ fn an_idea(id: &str) -> Subject {
 async fn guarded() -> Guarded {
     let broadcaster = Broadcaster::new();
     let kept = Arc::new(InMemoryAppearanceCatalog::new());
-    let authorizer = Arc::new(OneProject::default());
+    let access = Arc::new(Reachable::default());
+    let kept_access = KeptAccess::new(access.clone());
     let appearances = AppearancesCore::new(
         Arc::new(InMemoryTransactions::new()),
         kept.clone(),
-        authorizer.clone(),
+        kept_access.clone(),
+        Arc::new(kept_access),
+        Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     );
+    appearances
+        .remember_role(
+            None,
+            READABLE,
+            &AccountId::from("account_ada"),
+            Version::of(2),
+            Some(Role::Reader),
+        )
+        .await
+        .expect("remembering should succeed");
     let server = TestServer::builder().http_transport().build(
         appearances_rest::router(appearances.clone())
             .merge(live::live_socket(live::Topics::of(vec![Arc::new(
@@ -81,7 +192,7 @@ async fn guarded() -> Guarded {
     Guarded {
         telling: TellingAppearances::around(kept.clone(), broadcaster),
         kept,
-        authorizer,
+        access,
         server,
     }
 }
@@ -210,7 +321,7 @@ async fn a_followed_idea_ends_once_whom_to_tell_cannot_be_known() {
     let mut socket = following(&guarded.server, "idea_ada").await;
 
     // when: whom to let in cannot be known
-    *guarded.authorizer.down.lock().expect("never poisoned") = true;
+    guarded.access.down.store(true, Ordering::SeqCst);
     // and: the idea is placed somewhere new
     guarded
         .telling
@@ -235,7 +346,7 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // given: an idea
     let guarded = guarded().await;
     // when: whom to let in cannot be known
-    *guarded.authorizer.down.lock().expect("never poisoned") = true;
+    guarded.access.down.store(true, Ordering::SeqCst);
 
     // then: asking where it appears fails
     guarded

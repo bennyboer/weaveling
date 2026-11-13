@@ -2,14 +2,12 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
-    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink,
-    Subject,
+    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
 use appearances_messaging::{
     ForgetDeletedProjectListener, ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener,
     ProjectSceneAppearancesListener, RememberIdeaProjectListener,
 };
-use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
@@ -35,11 +33,7 @@ fn a_workbench() -> Wired {
     let inbox = Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
         OffsetDateTime::UNIX_EPOCH,
     ))));
-    let appearances = AppearancesCore::new(
-        transactions.clone(),
-        catalog.clone(),
-        Arc::new(AllowingEverything),
-    );
+    let appearances = crate::allowing::everyone(transactions.clone(), catalog.clone());
 
     Wired {
         outline: Inboxed::new(
@@ -696,11 +690,8 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
     // when: tombstones are forgotten before that moment, after it, and after it again
-    let appearances = AppearancesCore::new(
-        Arc::new(InMemoryTransactions::new()),
-        wired.catalog.clone(),
-        Arc::new(AllowingEverything),
-    );
+    let appearances =
+        crate::allowing::everyone(Arc::new(InMemoryTransactions::new()), wired.catalog.clone());
     let mut forgotten = Vec::new();
     for moment in [clock::at(1_000), clock::at(1_001), clock::at(1_001)] {
         forgotten.push(

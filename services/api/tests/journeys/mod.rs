@@ -217,8 +217,20 @@ impl<B: Backend> Journey<B> {
         self.backend.cleanup().await;
     }
 
+    /// Posts and expects the answer, waiting while a feature has not heard yet who may act in a project, as each hears it some milliseconds after the members tell it.
     pub async fn posted(&self, path: &str, body: Value, answered: StatusCode) -> Value {
-        let response = self.server.post(path).json(&body).await;
+        let mut response = self.server.post(path).json(&body).await;
+        for _ in 0..1_000 {
+            let unheard = matches!(
+                response.status_code(),
+                StatusCode::NOT_FOUND | StatusCode::FORBIDDEN
+            );
+            if !unheard || response.status_code() == answered {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            response = self.server.post(path).json(&body).await;
+        }
         response.assert_status(answered);
 
         response.json()
@@ -891,14 +903,16 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         "its owner may invite once the members have heard of her"
     );
     // and: an account invited into it as author
-    server
-        .post("/api/invitations")
-        .json(&json!({
-            "email": "grace@example.com",
-            "scope": { "kind": "project", "project": project, "role": "author" },
-        }))
-        .await
-        .assert_status(StatusCode::CREATED);
+    journey
+        .posted(
+            "/api/invitations",
+            json!({
+                "email": "grace@example.com",
+                "scope": { "kind": "project", "project": project, "role": "author" },
+            }),
+            StatusCode::CREATED,
+        )
+        .await;
     // and: the link mailed to it
     let drop = journey
         .drop
@@ -998,14 +1012,16 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
         "its owner may invite once the members have heard of her"
     );
     // and: an account invited into it as author
-    server
-        .post("/api/invitations")
-        .json(&json!({
-            "email": "grace@example.com",
-            "scope": { "kind": "project", "project": project, "role": "author" },
-        }))
-        .await
-        .assert_status(StatusCode::CREATED);
+    journey
+        .posted(
+            "/api/invitations",
+            json!({
+                "email": "grace@example.com",
+                "scope": { "kind": "project", "project": project, "role": "author" },
+            }),
+            StatusCode::CREATED,
+        )
+        .await;
 
     // when: the invited account signs in
     journey.signed_in_as_another("grace@example.com").await;
@@ -1078,14 +1094,16 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         "its owner may invite once the members have heard of her"
     );
     // and: an account invited into it as author
-    server
-        .post("/api/invitations")
-        .json(&json!({
-            "email": "grace@example.com",
-            "scope": { "kind": "project", "project": project, "role": "author" },
-        }))
-        .await
-        .assert_status(StatusCode::CREATED);
+    journey
+        .posted(
+            "/api/invitations",
+            json!({
+                "email": "grace@example.com",
+                "scope": { "kind": "project", "project": project, "role": "author" },
+            }),
+            StatusCode::CREATED,
+        )
+        .await;
 
     // and: the invited account signed in and told of it
     journey.signed_in_as_another("grace@example.com").await;
@@ -1176,14 +1194,16 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
         .await
         .assert_status_ok();
     // and: an invitation mailed to that address
-    server
-        .post("/api/invitations")
-        .json(&json!({
-            "email": "grace@example.com",
-            "scope": { "kind": "project", "project": project, "role": "author" },
-        }))
-        .await
-        .assert_status(StatusCode::CREATED);
+    journey
+        .posted(
+            "/api/invitations",
+            json!({
+                "email": "grace@example.com",
+                "scope": { "kind": "project", "project": project, "role": "author" },
+            }),
+            StatusCode::CREATED,
+        )
+        .await;
     let token = crate::mail_drop::invitation_token_mailed_to(
         journey
             .drop

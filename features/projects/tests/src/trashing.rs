@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use async_trait::async_trait;
-use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
+use access::{InMemoryAccess, KeptAccess, Role};
+use authorizing::AllowingEverything;
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
@@ -31,44 +30,6 @@ fn local() -> Agent {
 fn an_account(id: &str) -> Agent {
     Agent::Account(AccountId::from(id))
 }
-
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<(String, String), Vec<Act>>>,
-}
-
-impl Roles {
-    fn give(&self, account: &str, project: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert((account.to_owned(), project.to_owned()), acts.to_vec());
-    }
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(self
-            .held
-            .lock()
-            .expect("never poisoned")
-            .get(&(account.to_string(), project.to_owned()))
-            .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-}
-
-const OWNER: [Act; 4] = [Act::Read, Act::Write, Act::Manage, Act::Restore];
-const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
-const IN_THE_TRASH_AN_OWNER_MAY: [Act; 1] = [Act::Restore];
 
 struct Bench {
     wired: Wired,
@@ -223,6 +184,7 @@ async fn a_trashing_that_does_not_commit_leaves_neither_the_event_nor_the_entry(
             Arc::new(transactions),
             Arc::new(InMemoryProjectCatalog::new()),
             trash.clone(),
+            KeptAccess::new(Arc::new(InMemoryAccess::new())),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(clock::at(1_000))),
         )
@@ -395,9 +357,7 @@ async fn a_purge_of_a_project_restored_meanwhile_only_takes_its_entry_out() {
 #[tokio::test]
 async fn only_an_owner_trashes_restores_and_sees_the_trash() {
     // given: a project ada owns and grace authors
-    let roles = Arc::new(Roles::default());
-    let wired =
-        wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), roles.clone());
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))
@@ -405,8 +365,8 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
         .expect("starting should succeed")
         .0
         .to_string();
-    roles.give(ADA, &id, &OWNER);
-    roles.give(GRACE, &id, &AUTHOR);
+    wired.give(&id, ADA, Some(Role::Owner)).await;
+    wired.give(&id, GRACE, Some(Role::Author)).await;
 
     // expect: grace may not trash it
     assert!(matches!(
@@ -421,7 +381,6 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
         .await
         .expect("an owner trashes");
     wired.settle().await;
-    roles.give(ADA, &id, &IN_THE_TRASH_AN_OWNER_MAY);
 
     // then: ada sees it in the trash and grace does not
     let seen_by = |account: &'static str| {
@@ -436,11 +395,14 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
     };
     assert_eq!(seen_by(ADA).await, 1);
     assert_eq!(seen_by(GRACE).await, 0, "an author does not see the trash");
-    // and: grace may not restore it
-    assert!(matches!(
-        wired.projects.restore(&id, &an_account(GRACE)).await,
-        Err(ProjectsError::NotAnOwner)
-    ));
+    // and: grace may not restore it, nor learn it is in the trash
+    assert!(
+        matches!(
+            wired.projects.restore(&id, &an_account(GRACE)).await,
+            Err(ProjectsError::Events(ServiceError::NotFound { .. }))
+        ),
+        "a project in the trash is read by nobody, so an author learns nothing of it"
+    );
     // and: ada restores it
     wired
         .projects
@@ -452,9 +414,7 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
 #[tokio::test]
 async fn an_owner_changing_a_project_in_the_trash_hears_it_is_there_and_others_that_it_is_gone() {
     // given: a project ada owns, trashed
-    let roles = Arc::new(Roles::default());
-    let wired =
-        wiring::wired_guarded_by(Arc::new(FixedClock::new(clock::at(1_000))), roles.clone());
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))
@@ -462,16 +422,15 @@ async fn an_owner_changing_a_project_in_the_trash_hears_it_is_there_and_others_t
         .expect("starting should succeed")
         .0
         .to_string();
-    roles.give(ADA, &id, &OWNER);
+    wired.give(&id, ADA, Some(Role::Owner)).await;
     wired
         .projects
         .trash(&id, None, &an_account(ADA))
         .await
         .expect("an owner trashes");
     wired.settle().await;
-    roles.give(ADA, &id, &IN_THE_TRASH_AN_OWNER_MAY);
     // and: grace with no say in it
-    roles.give(GRACE, &id, &[]);
+    wired.give(&id, GRACE, None).await;
 
     // expect: ada's renaming is refused as in the trash
     assert!(

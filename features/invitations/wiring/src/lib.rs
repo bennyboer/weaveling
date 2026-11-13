@@ -2,6 +2,8 @@ mod retiring;
 
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
+use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -12,8 +14,8 @@ use invitations_core::{
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
     ForgetDeletedAccountListener, MailIssuedInvitationListener, RememberProjectNamesListener,
-    RememberWhoSignedUpListener, WithdrawIfProjectGoneListener,
-    WithdrawInvitationsOfDeletedProjectListener,
+    RememberRolesListener, RememberTrashListener, RememberWhoSignedUpListener,
+    WithdrawIfProjectGoneListener, WithdrawInvitationsOfDeletedProjectListener,
 };
 use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
@@ -31,11 +33,20 @@ pub struct Ports {
     pub keys: Arc<dyn TokenKeys>,
     pub throttles: Arc<dyn Throttles>,
     pub catalog: Arc<dyn InvitationCatalog>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
     pub links_to: Option<String>,
     pub invitations_each_hour: u32,
+}
+
+fn authorizer(ports: &Ports, context: &Context) -> Arc<dyn Authorizer> {
+    if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(AllowingEverything)
+    }
 }
 
 pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
@@ -46,7 +57,8 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
         ports.throttles.clone(),
         ports.catalog.clone(),
         ports.mailer.clone(),
-        context.authorizer.clone(),
+        ports.access.clone(),
+        crate::authorizer(ports, context),
         context.clock.clone(),
     );
 
@@ -103,6 +115,7 @@ impl Feature for InvitationFeature {
             keys: Arc::new(InMemoryTokenKeys::new()),
             throttles: Arc::new(InMemoryThrottles::default()),
             catalog: Arc::new(InMemoryInvitationCatalog::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
@@ -129,7 +142,10 @@ impl Feature for InvitationFeature {
             transactions,
             keys: Arc::new(invitations_catalog::PostgresTokenKeys::new(pool.clone())),
             throttles: Arc::new(throttling::PostgresThrottles::new(pool.clone())),
-            catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
+            catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(
+                pool.clone(),
+            )),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
@@ -146,6 +162,7 @@ impl Feature for InvitationFeature {
             throttling::postgres::migrations(),
             invitations_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
+            access::postgres::migrations(),
         ]
     }
 
@@ -167,7 +184,10 @@ impl Feature for InvitationFeature {
             transactions,
             keys: Arc::new(invitations_catalog::SqliteTokenKeys::new(pool.clone())),
             throttles: Arc::new(throttling::SqliteThrottles::new(pool.clone())),
-            catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
+            catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(
+                pool.clone(),
+            )),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             links_to: None,
@@ -184,6 +204,7 @@ impl Feature for InvitationFeature {
             throttling::sqlite::migrations(),
             invitations_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
         ]
     }
 
@@ -204,7 +225,8 @@ impl Feature for InvitationFeature {
                 broadcaster.clone(),
             )),
             ports.mailer.clone(),
-            context.authorizer.clone(),
+            ports.access.clone(),
+            crate::authorizer(ports, context),
             context.clock.clone(),
         );
         let invitations = invitations.capping_invitations(ports.invitations_each_hour);
@@ -243,6 +265,8 @@ impl Feature for InvitationFeature {
                 Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
                     invitations.clone(),
                 )),
+                Arc::new(hearing.inboxed(RememberRolesListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(RememberTrashListener::new(invitations.clone()))),
             ])
             .doing_chores(vec![
                 Arc::new(RetireDueInvitations::new(invitations.clone())),
@@ -273,7 +297,7 @@ impl Feature for InvitationFeature {
 #[cfg(test)]
 mod tests {
     use acting::Acting;
-    use authorizing::AllowingEverything;
+
     use clock::SystemClock;
     use email::EmailAddress;
     use eventsourcing::Version;
@@ -288,11 +312,11 @@ mod tests {
 
     pub(super) fn a_context() -> Context {
         Context {
+            with_accounts: false,
             clock: Arc::new(SystemClock),
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
-            authorizer: Arc::new(AllowingEverything),
         }
     }
 
@@ -480,6 +504,8 @@ mod tests {
             "invitations-forget-deleted-account",
             "remember-project-names",
             "withdraw-invitations-of-deleted-project",
+            "invitations-remember-roles",
+            "invitations-remember-trash",
         ] {
             assert!(
                 wired

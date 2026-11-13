@@ -2,6 +2,9 @@
 mod cost_per_change;
 
 #[cfg(test)]
+mod outline_access;
+
+#[cfg(test)]
 mod outline_api;
 
 #[cfg(test)]

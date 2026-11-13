@@ -8,6 +8,7 @@ eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishin
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 axum = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
@@ -21,6 +22,7 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 ideas-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-ideas-catalog" }
 ideas-contract = { version = "0.1.0", path = "../contract", package = "weaveling-ideas-contract" }

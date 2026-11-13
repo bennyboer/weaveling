@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use acting::Acting;
 use authorizing::AllowingEverything;
 use axum::Extension;
@@ -41,6 +42,7 @@ fn a_workbench() -> Told {
                 broadcaster.clone(),
             )),
             Arc::new(FakeMailbox::default()),
+            KeptAccess::new(Arc::new(InMemoryAccess::new())),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(clock::at(1_700_000_000))),
         ),

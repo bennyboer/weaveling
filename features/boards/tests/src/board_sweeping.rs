@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use access::Role;
 use boards_core::{BoardCatalog, BoardsError, KIND, ProjectLink};
 use boards_messaging::{
     DiscardBoardsOnProjectDeletedListener, RememberDeletedProjectsListener, SWEEP_PROJECT,
     SweepProjectDTO,
 };
 use clock::FixedClock;
-use eventsourcing::{Agent, AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -15,13 +16,15 @@ use serde_json::json;
 use transacting::InMemoryTransactions;
 
 use crate::wiring;
-use crate::wiring::{TheSystemAndTheAuthor, Wired};
+use crate::wiring::Wired;
 
-fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeletedListener) {
-    let wired = wiring::wired_guarded_by(
-        Arc::new(FixedClock::new(clock::at(1_000))),
-        Arc::new(TheSystemAndTheAuthor::default()),
-    );
+async fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeletedListener) {
+    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    for project in ["project_1", "project_2"] {
+        wired
+            .give(project, &AccountId::from("author-7"), Some(Role::Owner))
+            .await;
+    }
     let sweep = DiscardBoardsOnProjectDeletedListener::new(wired.boards.clone());
 
     (wired, sweep)
@@ -40,7 +43,7 @@ fn asked_to_sweep(project: &str) -> Message {
 #[tokio::test]
 async fn a_board_is_discarded_in_the_system_s_name() {
     // given: an open board
-    let (wired, sweep) = a_workbench();
+    let (wired, sweep) = a_workbench().await;
     let opened = wired
         .boards
         .open("project_1", &eventsourcing::an_author())
@@ -74,7 +77,7 @@ async fn a_board_is_discarded_in_the_system_s_name() {
 #[tokio::test]
 async fn a_board_the_catalog_has_not_heard_of_yet_is_still_swept() {
     // given: an open board
-    let (wired, sweep) = a_workbench();
+    let (wired, sweep) = a_workbench().await;
     let opened = wired
         .boards
         .open("project_1", &eventsourcing::an_author())
@@ -113,7 +116,7 @@ async fn a_board_the_catalog_has_not_heard_of_yet_is_still_swept() {
 #[tokio::test]
 async fn a_project_that_never_opened_a_board_is_swept_without_complaint() {
     // given: a project that never opened a board
-    let (_wired, sweep) = a_workbench();
+    let (_wired, sweep) = a_workbench().await;
 
     // then: sweeping it succeeds
     sweep
@@ -125,7 +128,7 @@ async fn a_project_that_never_opened_a_board_is_swept_without_complaint() {
 #[tokio::test]
 async fn hearing_the_same_deletion_twice_is_harmless() {
     // given: an open board
-    let (wired, sweep) = a_workbench();
+    let (wired, sweep) = a_workbench().await;
     wired
         .boards
         .open("project_1", &eventsourcing::an_author())
@@ -144,7 +147,7 @@ async fn hearing_the_same_deletion_twice_is_harmless() {
 #[tokio::test]
 async fn only_the_deleted_project_loses_its_board() {
     // given: another project's board
-    let (wired, sweep) = a_workbench();
+    let (wired, sweep) = a_workbench().await;
     let kept = wired
         .boards
         .open("project_2", &eventsourcing::an_author())
@@ -173,7 +176,7 @@ async fn only_the_deleted_project_loses_its_board() {
 #[tokio::test]
 async fn a_swept_board_leaves_the_catalog() {
     // given: a catalogued board
-    let (wired, sweep) = a_workbench();
+    let (wired, sweep) = a_workbench().await;
     wired
         .boards
         .open("project_1", &eventsourcing::an_author())
@@ -243,7 +246,7 @@ async fn buried(wired: &Wired, project: &str) -> bool {
 #[tokio::test]
 async fn a_deletion_lays_the_project_s_tombstone_and_asks_for_the_sweep() {
     // given: a project
-    let (wired, _sweep) = a_workbench();
+    let (wired, _sweep) = a_workbench().await;
 
     // when: its deletion is heard
     remembering(&wired, InMemoryTransactions::new())
@@ -264,7 +267,7 @@ async fn a_deletion_lays_the_project_s_tombstone_and_asks_for_the_sweep() {
 #[tokio::test]
 async fn a_deletion_heard_in_a_hearing_that_does_not_commit_lays_nothing_and_asks_nothing() {
     // given: a project
-    let (wired, _sweep) = a_workbench();
+    let (wired, _sweep) = a_workbench().await;
 
     // when: its deletion is heard in a hearing that does not commit
     remembering(&wired, InMemoryTransactions::refusing_commits())
@@ -281,7 +284,7 @@ async fn a_deletion_heard_in_a_hearing_that_does_not_commit_lays_nothing_and_ask
 #[tokio::test]
 async fn a_deleted_project_opens_no_board() {
     // given: a deleted project
-    let (wired, _sweep) = a_workbench();
+    let (wired, _sweep) = a_workbench().await;
     wired
         .boards
         .lay_project_tombstone(None, "project_1", clock::at(900))
@@ -311,7 +314,7 @@ async fn a_deleted_project_opens_no_board() {
 #[tokio::test]
 async fn a_board_opened_before_the_deletion_is_discarded_once_the_sweep_it_asks_for_comes() {
     // given: an open board
-    let (wired, _sweep) = a_workbench();
+    let (wired, _sweep) = a_workbench().await;
     let opened = wired
         .boards
         .open("project_1", &eventsourcing::an_author())

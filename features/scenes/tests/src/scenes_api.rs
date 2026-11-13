@@ -52,6 +52,7 @@ fn a_core_of(
         catalog,
         tasks,
         Arc::new(InMemoryBelongings::new()),
+        crate::kept::heard_of_nobody(),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     )

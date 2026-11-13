@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::wiring;
 use crate::wiring::Wired;
+use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{
@@ -421,6 +422,7 @@ async fn an_idea_retitled_while_failing(
             store,
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryIdeaCatalog::new()),
+            KeptAccess::new(Arc::new(InMemoryAccess::new())),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(clock::at(1_000))),
         )

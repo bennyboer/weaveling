@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration as Wait, Instant};
 
+use access::Role;
 use async_trait::async_trait;
-use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
+use authorizing::Authorizer;
 use axum::Extension;
 use axum_test::{TestServer, WsMessage};
 use belonging::InMemoryBelongings;
@@ -22,87 +23,37 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
+use crate::kept::Kept;
+
 const PROJECT: &str = "project_1";
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
-const READER: [Act; 1] = [Act::Read];
-
-#[derive(Default)]
-struct Roles {
-    held: Mutex<HashMap<String, Vec<Act>>>,
-    down: Mutex<bool>,
-    changes: AccessChanges,
-}
-
-impl Roles {
-    fn give(&self, account: &str, acts: &[Act]) {
-        self.held
-            .lock()
-            .expect("never poisoned")
-            .insert(account.to_owned(), acts.to_vec());
-    }
-
-    fn change(&self, account: &str, acts: &[Act]) {
-        self.give(account, acts);
-        self.access_changed(PROJECT);
-    }
-}
-
-#[async_trait]
-impl Authorizer for Roles {
-    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        if *self.down.lock().expect("never poisoned") {
-            return Err(AuthorizerError::Unreachable("the list is down".into()));
-        }
-        let Agent::Account(account) = agent else {
-            return Ok(false);
-        };
-
-        Ok(project == PROJECT
-            && self
-                .held
-                .lock()
-                .expect("never poisoned")
-                .get(account.as_str())
-                .is_some_and(|acts| acts.contains(&act)))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Ok(Readable::Everything)
-    }
-
-    fn access_changed(&self, project: &str) {
-        self.changes.tell(project);
-    }
-
-    fn watch_access(&self, project: &str) -> AccessWatch {
-        self.changes.watch(project)
-    }
-}
 
 fn account(name: &str) -> Agent {
     Agent::Account(AccountId::from(name))
 }
 
 struct Guarded {
-    roles: Arc<Roles>,
+    kept: Kept,
     service: ScenesCore,
     live: LiveScenes,
     scene: String,
 }
 
 async fn a_guarded_scene() -> Guarded {
-    let roles = Arc::new(Roles::default());
-    roles.give("account_ada", &OWNER);
-    roles.give("account_bo", &READER);
+    let kept = Kept::default();
     let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(InMemoryBelongings::new()),
-        roles.clone(),
+        kept.access.clone(),
+        kept.authorizer(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    kept.give(&service, PROJECT, "account_ada", Some(Role::Owner))
+        .await;
+    kept.give(&service, PROJECT, "account_bo", Some(Role::Reader))
+        .await;
     let scene = service
         .create(PROJECT, &account("account_ada"))
         .await
@@ -111,7 +62,7 @@ async fn a_guarded_scene() -> Guarded {
         .to_string();
 
     Guarded {
-        roles,
+        kept,
         live: LiveScenes::new(service.clone()),
         service,
         scene,
@@ -119,6 +70,16 @@ async fn a_guarded_scene() -> Guarded {
 }
 
 impl Guarded {
+    async fn made(&self, name: &str, role: Role) {
+        self.kept
+            .give(&self.service, PROJECT, name, Some(role))
+            .await;
+    }
+
+    async fn removed(&self, name: &str) {
+        self.kept.give(&self.service, PROJECT, name, None).await;
+    }
+
     async fn joined_as(&self, name: &str) -> (Connection, UnboundedReceiver<Vec<u8>>) {
         let (to_client, heard) = mpsc::unbounded_channel();
         let mut connection = Connection::new(self.live.clone(), account(name), to_client);
@@ -241,7 +202,7 @@ async fn when_who_may_join_cannot_be_asked_the_scene_is_refused() {
     // given: a scene in a project with members
     let guarded = a_guarded_scene().await;
     // and: who may join cannot be asked
-    *guarded.roles.down.lock().expect("never poisoned") = true;
+    guarded.kept.who.down.store(true, Ordering::Release);
 
     // when: the owner joins it
     let (_, mut heard_by_ada) = guarded.joined_as("account_ada").await;
@@ -365,7 +326,7 @@ async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more
     everything(&mut heard_by_bo).await;
 
     // when: the member is removed and both connections ask again
-    guarded.roles.change("account_bo", &[]);
+    guarded.removed("account_bo").await;
     asking_again(&mut bo).await;
     asking_again(&mut ada).await;
 
@@ -404,7 +365,7 @@ async fn a_reader_made_an_author_writes_and_an_author_made_a_reader_no_longer_do
     everything(&mut heard_by_bo).await;
 
     // when: the reader is made an author
-    guarded.roles.change("account_bo", &[Act::Read, Act::Write]);
+    guarded.made("account_bo", Role::Author).await;
     asking_again(&mut bo).await;
     // and: edits the scene
     send(
@@ -417,7 +378,7 @@ async fn a_reader_made_an_author_writes_and_an_author_made_a_reader_no_longer_do
     assert_eq!(guarded.text().await, "Bo writes now.");
 
     // when: the author is made a reader again
-    guarded.roles.change("account_bo", &READER);
+    guarded.made("account_bo", Role::Reader).await;
     asking_again(&mut bo).await;
     // and: edits the scene
     send(
@@ -438,8 +399,8 @@ async fn when_who_may_stay_cannot_be_asked_the_scene_is_refused() {
     everything(&mut heard_by_bo).await;
 
     // when: the members change while who may stay cannot be asked
-    *guarded.roles.down.lock().expect("never poisoned") = true;
-    guarded.roles.access_changed(PROJECT);
+    guarded.kept.who.down.store(true, Ordering::Release);
+    guarded.kept.access.access_changed(PROJECT);
     asking_again(&mut bo).await;
 
     // then: the scene is refused
@@ -475,7 +436,7 @@ async fn the_socket_asks_again_when_the_members_change() {
         .expect("greeted while it is fresh");
 
     // when: the member is removed
-    guarded.roles.change("account_bo", &[]);
+    guarded.removed("account_bo").await;
 
     // then: the socket refuses the scene
     let bytes = tokio::time::timeout(Wait::from_secs(1), socket.receive_bytes())
