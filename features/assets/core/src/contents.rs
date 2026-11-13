@@ -33,6 +33,14 @@ pub trait Contents: Send + Sync {
     /// Removes every piece of an asset.
     /// Removing pieces that were never stored does not fail.
     async fn forget(&self, asset: &AssetId) -> Result<(), ContentsError>;
+
+    /// Returns the ids of the assets that have pieces stored, in id order.
+    /// Starts after the given id, and returns at most `at_most` ids.
+    async fn stored(
+        &self,
+        after: Option<&AssetId>,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, ContentsError>;
 }
 
 impl Piece {

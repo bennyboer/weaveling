@@ -48,6 +48,35 @@ impl Contents for FolderContents {
             _ => Ok(()),
         }
     }
+
+    async fn stored(
+        &self,
+        after: Option<&AssetId>,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, ContentsError> {
+        let mut entries = match fs::read_dir(&self.root).await {
+            Ok(entries) => entries,
+            Err(failure) if failure.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(failure) => return Err(unreachable(failure)),
+        };
+        let after = after.map(ToString::to_string);
+        let mut stored = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(unreachable)? {
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if after.as_ref().is_some_and(|last| name <= *last) {
+                continue;
+            }
+            if let Ok(asset) = name.parse::<AssetId>() {
+                stored.push((name, asset));
+            }
+        }
+        stored.sort_by(|one, other| one.0.cmp(&other.0));
+        stored.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        Ok(stored.into_iter().map(|(_, asset)| asset).collect())
+    }
 }
 
 async fn read_if_there(path: &Path) -> Result<Option<Vec<u8>>, ContentsError> {

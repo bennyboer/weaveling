@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::error::Error;
 
 use async_trait::async_trait;
@@ -145,6 +146,14 @@ pub trait AssetCatalog: Send + Sync {
         matching: Option<&str>,
         at_most: u64,
     ) -> Result<Vec<Held>, CatalogError>;
+
+    /// Returns which of the given assets the catalog holds.
+    /// An asset is held from its upload until it is deleted.
+    async fn held_of(
+        &self,
+        transaction: &mut Transaction,
+        ids: &[AssetId],
+    ) -> Result<HashSet<AssetId>, CatalogError>;
 
     /// Returns the ids of an owner's assets, ordered by id, at most `at_most` of them.
     async fn owned_by(

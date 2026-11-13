@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use assets_core::{
@@ -200,6 +200,20 @@ impl AssetCatalog for InMemoryAssetCatalog {
             .into_iter()
             .filter(past)
             .take(usize::try_from(at_most).unwrap_or(usize::MAX))
+            .collect())
+    }
+
+    async fn held_of(
+        &self,
+        _transaction: &mut Transaction,
+        ids: &[AssetId],
+    ) -> Result<HashSet<AssetId>, CatalogError> {
+        let kept = self.kept();
+
+        Ok(ids
+            .iter()
+            .filter(|id| kept.summaries.contains_key(id))
+            .copied()
             .collect())
     }
 

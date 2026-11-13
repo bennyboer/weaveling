@@ -41,6 +41,22 @@ impl Contents for InMemoryContents {
 
         Ok(())
     }
+
+    async fn stored(
+        &self,
+        after: Option<&AssetId>,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, ContentsError> {
+        let mut stored: Vec<AssetId> = self.kept().keys().map(|(asset, _)| *asset).collect();
+        stored.sort_by_key(ToString::to_string);
+        stored.dedup();
+
+        Ok(stored
+            .into_iter()
+            .filter(|asset| after.is_none_or(|last| asset.to_string() > last.to_string()))
+            .take(usize::try_from(at_most).unwrap_or(usize::MAX))
+            .collect())
+    }
 }
 
 #[cfg(test)]

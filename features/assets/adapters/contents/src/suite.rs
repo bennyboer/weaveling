@@ -134,6 +134,49 @@ pub async fn an_asset_forgotten_takes_every_piece_along_and_leaves_the_others(
         .expect("forgetting what was never kept is harmless");
 }
 
+async fn stored(contents: &impl Contents, after: Option<&AssetId>, at_most: u64) -> Vec<AssetId> {
+    contents
+        .stored(after, at_most)
+        .await
+        .expect("listing should succeed")
+}
+
+pub async fn the_assets_stored_are_listed_in_id_order_a_page_at_a_time(contents: &impl Contents) {
+    // given: nothing stored
+    // expect: nothing is listed
+    assert!(stored(contents, None, 10).await.is_empty());
+
+    // given: three assets, one of them with two pieces, stored out of order
+    let assets = [an_asset(1_000), an_asset(2_000), an_asset(3_000)];
+    for (asset, piece) in [
+        (&assets[2], Piece::Original),
+        (&assets[0], Piece::Original),
+        (&assets[0], Piece::Width(384)),
+        (&assets[1], Piece::Original),
+    ] {
+        contents
+            .keep(asset, piece, b"some bytes")
+            .await
+            .expect("keeping should succeed");
+    }
+    let mut in_order = assets.to_vec();
+    in_order.sort_by_key(ToString::to_string);
+
+    // expect: each is listed once, in id order
+    assert_eq!(stored(contents, None, 10).await, in_order);
+    // and: a page goes on after the last one listed
+    let first = stored(contents, None, 2).await;
+    assert_eq!(first, in_order[..2]);
+    assert_eq!(stored(contents, first.last(), 2).await, in_order[2..]);
+    // when: one is forgotten
+    contents
+        .forget(&in_order[1])
+        .await
+        .expect("forgetting should succeed");
+    // then: it is listed no more
+    assert_eq!(stored(contents, None, 10).await, [in_order[0], in_order[2]]);
+}
+
 #[macro_export]
 macro_rules! contents_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -160,6 +203,10 @@ macro_rules! conformance_tests {
         $crate::contents_conformance_case!(
             $workbench,
             an_asset_forgotten_takes_every_piece_along_and_leaves_the_others
+        );
+        $crate::contents_conformance_case!(
+            $workbench,
+            the_assets_stored_are_listed_in_id_order_a_page_at_a_time
         );
     };
 }

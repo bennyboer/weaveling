@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
+time = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 
 access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }

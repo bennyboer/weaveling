@@ -45,6 +45,9 @@ const VARIANTS_ARE: &str = "image/webp";
 /// How many assets a sweep deletes in one transaction.
 pub const SWEPT_AT_ONCE: u64 = 50;
 
+/// How many assets with stored pieces are checked against the catalog at once.
+const STRAYS_CHECKED_AT_ONCE: u64 = 200;
+
 #[derive(Clone)]
 pub struct AssetsCore {
     events: Arc<EventSourcingService<Asset>>,
@@ -260,6 +263,43 @@ impl AssetsCore {
             if (deleted.len() as u64) < SWEPT_AT_ONCE {
                 return Ok(swept);
             }
+        }
+    }
+
+    /// Removes stored pieces that belong to no asset any more.
+    ///
+    /// Such pieces are left behind when the process stops between deleting an asset and removing its bytes.
+    /// They are also left by an upload that failed half way.
+    /// Only pieces of assets whose id was made before `made_before` are removed.
+    /// That keeps an upload in progress safe, because its pieces are stored before the asset is recorded.
+    /// Returns how many assets' pieces were removed.
+    pub async fn forget_stray_contents(
+        &self,
+        made_before: OffsetDateTime,
+    ) -> Result<u64, AssetsError> {
+        let mut forgotten = 0;
+        let mut after: Option<AssetId> = None;
+        loop {
+            let stored = self
+                .contents
+                .stored(after.as_ref(), STRAYS_CHECKED_AT_ONCE)
+                .await?;
+            let old: Vec<AssetId> = stored
+                .iter()
+                .filter(|id| made_at(id).is_some_and(|made| made < made_before))
+                .copied()
+                .collect();
+            let held = transacting::retrying!(&*self.transactions, |transaction| {
+                Ok::<_, AssetsError>(self.catalog.held_of(transaction, &old).await?)
+            })?;
+            for stray in old.iter().filter(|id| !held.contains(id)) {
+                self.contents.forget(stray).await?;
+                forgotten += 1;
+            }
+            if (stored.len() as u64) < STRAYS_CHECKED_AT_ONCE {
+                return Ok(forgotten);
+            }
+            after = stored.last().copied();
         }
     }
 
@@ -825,6 +865,14 @@ impl HearsOperators for AssetsCore {
 /// A term that is empty or only spaces means no search at all.
 fn searched(matching: Option<&str>) -> Option<&str> {
     matching.map(str::trim).filter(|term| !term.is_empty())
+}
+
+/// Returns when an asset's id was made, which is just before its pieces were stored.
+fn made_at(id: &AssetId) -> Option<OffsetDateTime> {
+    let (seconds, nanoseconds) = id.as_uuid().get_timestamp()?.to_unix();
+    let made = OffsetDateTime::from_unix_timestamp(i64::try_from(seconds).ok()?).ok()?;
+
+    Some(made + time::Duration::nanoseconds(i64::from(nanoseconds)))
 }
 
 fn not_found(id: &AssetId) -> AssetsError {

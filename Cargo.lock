@@ -5331,7 +5331,9 @@ dependencies = [
 name = "weaveling-assets-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
  "weaveling-access",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
@@ -5342,6 +5344,7 @@ dependencies = [
  "weaveling-assets-store",
  "weaveling-authorizing",
  "weaveling-chores",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-inbox",
  "weaveling-outbox",

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Format, Held, Holders, Owner, Person,
     ProjectLink, Sorted, Upload, UploadMark, UploadsSorted, Usage,
@@ -825,6 +827,41 @@ async fn owned<W: Workbench>(bench: &W, owner: &Owner, at_most: u64) -> Vec<Asse
     owned
 }
 
+async fn held_of<W: Workbench>(bench: &W, ids: &[AssetId]) -> HashSet<AssetId> {
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .map_err(unreachable)
+        .expect("beginning should succeed");
+    let held = bench
+        .store()
+        .held_of(&mut transaction, ids)
+        .await
+        .expect("asking should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    held
+}
+
+pub async fn only_the_assets_held_are_told_held<W: Workbench>(bench: &W) {
+    // given: what Ada and Bo uploaded, the upload into the loom forgotten
+    let [loom, own, weft, _] = adas_uploads_kept(bench).await;
+    forgotten(bench, &loom).await;
+    let never = an_asset(99);
+
+    // when: the catalog is asked about those and one never uploaded
+    let held = held_of(bench, &[loom, own, weft, never]).await;
+
+    // then: only the two still held are told held
+    assert_eq!(held, HashSet::from([own, weft]));
+    // and: asking about none tells none
+    assert!(held_of(bench, &[]).await.is_empty());
+}
+
 pub async fn an_owner_s_assets_are_found_by_id_at_most_so_many<W: Workbench>(bench: &W) {
     // given: what Ada and Bo uploaded
     let [loom, own, _, own_last] = adas_uploads_kept(bench).await;
@@ -1108,6 +1145,7 @@ macro_rules! conformance_tests {
             $workbench,
             an_owner_s_assets_are_found_by_id_at_most_so_many
         );
+        $crate::catalog_conformance_case!($workbench, only_the_assets_held_are_told_held);
         $crate::catalog_conformance_case!(
             $workbench,
             what_each_bound_holds_is_the_sum_of_its_assets

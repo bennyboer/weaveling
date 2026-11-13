@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
     Sorted, Upload, UploadMark, UploadsSorted, Usage,
@@ -286,6 +288,38 @@ impl AssetCatalog for SqliteAssetCatalog {
                     name: row.try_get("name").map_err(unreachable)?,
                     email: row.try_get("email").map_err(unreachable)?,
                 })
+            })
+            .collect()
+    }
+
+    async fn held_of(
+        &self,
+        transaction: &mut Transaction,
+        ids: &[AssetId],
+    ) -> Result<HashSet<AssetId>, CatalogError> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let asked = format!(
+            "SELECT id FROM asset_summaries WHERE id IN ({})",
+            (1..=ids.len())
+                .map(placeholder)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let mut asking = sqlx::query(AssertSqlSafe(asked));
+        for id in ids {
+            asking = asking.bind(id.to_string());
+        }
+        let rows = asking
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let id: String = row.try_get("id").map_err(unreachable)?;
+                id.parse().map_err(unreachable)
             })
             .collect()
     }

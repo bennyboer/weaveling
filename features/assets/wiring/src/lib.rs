@@ -1,5 +1,7 @@
+use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use access::{InMemoryAccess, KeptAccess};
 use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
@@ -10,8 +12,10 @@ use assets_messaging::{
     RememberOperatorsListener, RememberPeopleListener, RememberProjectNamesListener,
     RememberRolesListener, RememberTrashListener, SweepAssetsOfDeletedOwnerListener,
 };
+use async_trait::async_trait;
 use authorizing::{AllowingEverything, Authorizer};
-use chores::ForgetOldTombstones;
+use chores::{Chore, ForgetOldTombstones};
+use clock::Clock;
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
@@ -21,6 +25,34 @@ use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wir
 pub use assets_core::Limits;
 
 const FOLDER: &str = "assets";
+
+/// How old an asset's id must be before its stored pieces may be removed as strays.
+/// An upload stores its pieces within seconds of making its id, so an hour is plenty.
+const STRAYS_OLDER_THAN: time::Duration = time::Duration::HOUR;
+
+/// Once a day, removes stored pieces that belong to no asset any more.
+struct ForgetStrayContents {
+    assets: AssetsCore,
+    clock: Arc<dyn Clock>,
+}
+
+#[async_trait]
+impl Chore for ForgetStrayContents {
+    fn named(&self) -> &'static str {
+        "forget-stray-asset-contents"
+    }
+
+    fn every(&self) -> Duration {
+        Duration::from_secs(24 * 60 * 60)
+    }
+
+    async fn carry_out(&self) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        Ok(self
+            .assets
+            .forget_stray_contents(self.clock.now() - STRAYS_OLDER_THAN)
+            .await?)
+    }
+}
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<AssetEvent>>,
@@ -86,6 +118,10 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(SweepAssetsOfDeletedOwnerListener::new(assets.clone())),
         ])
         .doing_chores(vec![
+            Arc::new(ForgetStrayContents {
+                assets: assets.clone(),
+                clock: context.clock.clone(),
+            }),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-asset-tombstones",
                 chores::tombstones_by(move |before, at_most| {

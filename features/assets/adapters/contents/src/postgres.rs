@@ -14,6 +14,13 @@ const READ: &str = "SELECT bytes FROM asset_contents WHERE asset = $1 AND piece 
 
 const FORGET: &str = "DELETE FROM asset_contents WHERE asset = $1";
 
+const STORED: &str = "
+    SELECT DISTINCT asset FROM asset_contents
+    WHERE asset > $1
+    ORDER BY asset
+    LIMIT $2
+";
+
 const LEDGER: &str = "_sqlx_migrations_asset_contents";
 
 pub fn migrations() -> Migrator {
@@ -64,6 +71,24 @@ impl Contents for PostgresContents {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn stored(
+        &self,
+        after: Option<&AssetId>,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, ContentsError> {
+        let stored: Vec<String> = sqlx::query_scalar(STORED)
+            .bind(after.map(ToString::to_string).unwrap_or_default())
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        stored
+            .iter()
+            .map(|asset| asset.parse().map_err(unreachable))
+            .collect()
     }
 }
 

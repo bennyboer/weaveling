@@ -18,3 +18,5 @@ mod own_uploads_listed;
 mod owners_swept;
 #[cfg(test)]
 mod storage_overview;
+#[cfg(test)]
+mod stray_contents;

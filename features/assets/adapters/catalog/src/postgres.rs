@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
     Sorted, Upload, UploadMark, UploadsSorted, Usage,
@@ -34,6 +36,8 @@ const REMEMBER: &str = "
 ";
 
 const FORGET: &str = "DELETE FROM asset_summaries WHERE id = $1";
+
+const HELD_OF: &str = "SELECT id FROM asset_summaries WHERE id = ANY($1)";
 
 const OWNED: &str = "
     SELECT id FROM asset_summaries
@@ -286,6 +290,25 @@ impl AssetCatalog for PostgresAssetCatalog {
                     name: row.try_get("name").map_err(unreachable)?,
                     email: row.try_get("email").map_err(unreachable)?,
                 })
+            })
+            .collect()
+    }
+
+    async fn held_of(
+        &self,
+        transaction: &mut Transaction,
+        ids: &[AssetId],
+    ) -> Result<HashSet<AssetId>, CatalogError> {
+        let rows = sqlx::query(HELD_OF)
+            .bind(ids.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let id: String = row.try_get("id").map_err(unreachable)?;
+                id.parse().map_err(unreachable)
             })
             .collect()
     }
