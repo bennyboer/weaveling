@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use access::{AccessCatalog, InMemoryAccess, KeptAccess, Role};
+use access::{AccessCatalog, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use axum::Router;
 use belonging::InMemoryBelongings;
 use boards_catalog::InMemoryBoardCatalog;

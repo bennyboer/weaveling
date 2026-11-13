@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use access::{KeptAccess, Role};
+use access::{HearsAccess, KeptAccess, Role};
+use async_trait::async_trait;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, Version};
@@ -114,9 +115,14 @@ impl StatisticsCore {
             Ok(forgotten + access)
         })
     }
+}
+
+#[async_trait]
+impl HearsAccess for StatisticsCore {
+    type Refused = StatisticsError;
 
     /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
-    pub async fn remember_role(
+    async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
@@ -141,7 +147,7 @@ impl StatisticsCore {
     }
 
     /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
-    pub async fn remember_disbanded(
+    async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
@@ -157,7 +163,7 @@ impl StatisticsCore {
     }
 
     /// Remembers whether a project is in the trash, as the projects told it at a version.
-    pub async fn remember_trash(
+    async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,
         project: &str,

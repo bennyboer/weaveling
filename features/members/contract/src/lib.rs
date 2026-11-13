@@ -1,3 +1,5 @@
+mod hearing;
+
 use serde::{Deserialize, Serialize};
 
 pub const FOUNDED: &str = "members.founded";

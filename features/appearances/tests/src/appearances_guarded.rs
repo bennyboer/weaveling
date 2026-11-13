@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use access::{AccessCatalog, AccessError, InMemoryAccess, KeptAccess, Role};
+use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
 use appearances_core::{AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject};

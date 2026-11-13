@@ -1,3 +1,4 @@
+mod hearing;
 mod kept;
 mod memory;
 #[cfg(test)]
@@ -9,6 +10,7 @@ pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+pub use hearing::{HearsAccess, HearsOperators};
 pub use kept::KeptAccess;
 pub use memory::InMemoryAccess;
 

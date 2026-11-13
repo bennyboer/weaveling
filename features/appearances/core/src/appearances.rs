@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use access::{KeptAccess, Role};
+use access::{HearsAccess, KeptAccess, Role};
+use async_trait::async_trait;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, Version};
@@ -176,8 +177,25 @@ impl AppearancesCore {
         })
     }
 
+    async fn may_read(&self, idea: &str, agent: &Agent) -> Result<Option<bool>, AppearancesError> {
+        let Some(project) = self.catalog.project_of(&an_idea(idea)).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(
+            self.authorizer
+                .may(agent, Act::Read, project.as_str())
+                .await?,
+        ))
+    }
+}
+
+#[async_trait]
+impl HearsAccess for AppearancesCore {
+    type Refused = AppearancesError;
+
     /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
-    pub async fn remember_role(
+    async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
@@ -202,7 +220,7 @@ impl AppearancesCore {
     }
 
     /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
-    pub async fn remember_disbanded(
+    async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
@@ -218,7 +236,7 @@ impl AppearancesCore {
     }
 
     /// Remembers whether a project is in the trash, as the projects told it at a version.
-    pub async fn remember_trash(
+    async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,
         project: &str,
@@ -232,18 +250,6 @@ impl AppearancesCore {
 
             Ok::<_, AppearancesError>(())
         })
-    }
-
-    async fn may_read(&self, idea: &str, agent: &Agent) -> Result<Option<bool>, AppearancesError> {
-        let Some(project) = self.catalog.project_of(&an_idea(idea)).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(
-            self.authorizer
-                .may(agent, Act::Read, project.as_str())
-                .await?,
-        ))
     }
 }
 

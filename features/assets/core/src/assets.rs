@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use access::{KeptAccess, Role};
+use access::{HearsAccess, HearsOperators, KeptAccess, Role};
+use async_trait::async_trait;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{
@@ -223,81 +224,6 @@ impl AssetsCore {
         })
     }
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
-    pub async fn remember_role(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        account: &AccountId,
-        version: Version,
-        role: Option<Role>,
-    ) -> Result<(), AssetsError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_role(
-                    transaction,
-                    project,
-                    account,
-                    version,
-                    role,
-                    self.clock.now(),
-                )
-                .await?;
-
-            Ok::<_, AssetsError>(())
-        })
-    }
-
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
-    pub async fn remember_disbanded(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        version: Version,
-    ) -> Result<(), AssetsError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_disbanded(transaction, project, version, self.clock.now())
-                .await?;
-
-            Ok::<_, AssetsError>(())
-        })
-    }
-
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
-    pub async fn remember_trash(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        version: Version,
-        in_the_trash: bool,
-    ) -> Result<(), AssetsError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_trash(transaction, project, version, in_the_trash)
-                .await?;
-
-            Ok::<_, AssetsError>(())
-        })
-    }
-
-    /// Remembers whether an account runs the instance, as the accounts told it at a version.
-    pub async fn remember_operator(
-        &self,
-        within: Option<&mut Transaction>,
-        account: &AccountId,
-        version: Version,
-        operator: bool,
-    ) -> Result<(), AssetsError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_operator(transaction, account, version, operator, self.clock.now())
-                .await?;
-
-            Ok::<_, AssetsError>(())
-        })
-    }
-
     /// Lets go of what only guarded against a word about who may do what heard late, once none may be any more.
     pub async fn forget_tombstones_laid_before(
         &self,
@@ -465,6 +391,91 @@ impl AssetsCore {
         } else {
             Err(otherwise())
         }
+    }
+}
+
+#[async_trait]
+impl HearsAccess for AssetsCore {
+    type Refused = AssetsError;
+
+    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    async fn remember_role(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_role(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    role,
+                    self.clock.now(),
+                )
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_disbanded(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+}
+
+#[async_trait]
+impl HearsOperators for AssetsCore {
+    type Refused = AssetsError;
+
+    /// Remembers whether an account runs the instance, as the accounts told it at a version.
+    async fn remember_operator(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        operator: bool,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_operator(transaction, account, version, operator, self.clock.now())
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
     }
 }
 

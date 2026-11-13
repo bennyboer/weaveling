@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use access::{KeptAccess, Role};
+use access::{HearsAccess, KeptAccess, Role};
+use async_trait::async_trait;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Standing, Version};
@@ -159,64 +160,6 @@ impl IdeasCore {
         })
     }
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see and change its ideas follows.
-    pub async fn remember_role(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        account: &AccountId,
-        version: Version,
-        role: Option<Role>,
-    ) -> Result<(), IdeasError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_role(
-                    transaction,
-                    project,
-                    account,
-                    version,
-                    role,
-                    self.clock.now(),
-                )
-                .await?;
-
-            Ok::<_, IdeasError>(())
-        })
-    }
-
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
-    pub async fn remember_disbanded(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        version: Version,
-    ) -> Result<(), IdeasError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_disbanded(transaction, project, version, self.clock.now())
-                .await?;
-
-            Ok::<_, IdeasError>(())
-        })
-    }
-
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
-    pub async fn remember_trash(
-        &self,
-        within: Option<&mut Transaction>,
-        project: &str,
-        version: Version,
-        in_the_trash: bool,
-    ) -> Result<(), IdeasError> {
-        transacting::joining!(&*self.transactions, within, |transaction| {
-            self.access
-                .remember_trash(transaction, project, version, in_the_trash)
-                .await?;
-
-            Ok::<_, IdeasError>(())
-        })
-    }
-
     pub async fn catalogue(
         &self,
         within: Option<&mut Transaction>,
@@ -317,6 +260,69 @@ impl IdeasCore {
         } else {
             Err(otherwise())
         }
+    }
+}
+
+#[async_trait]
+impl HearsAccess for IdeasCore {
+    type Refused = IdeasError;
+
+    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see and change its ideas follows.
+    async fn remember_role(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        account: &AccountId,
+        version: Version,
+        role: Option<Role>,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_role(
+                    transaction,
+                    project,
+                    account,
+                    version,
+                    role,
+                    self.clock.now(),
+                )
+                .await?;
+
+            Ok::<_, IdeasError>(())
+        })
+    }
+
+    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    async fn remember_disbanded(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_disbanded(transaction, project, version, self.clock.now())
+                .await?;
+
+            Ok::<_, IdeasError>(())
+        })
+    }
+
+    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), IdeasError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.access
+                .remember_trash(transaction, project, version, in_the_trash)
+                .await?;
+
+            Ok::<_, IdeasError>(())
+        })
     }
 }
 

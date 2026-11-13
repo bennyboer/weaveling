@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use access::{AccessCatalog, AccessError, InMemoryAccess, Role};
+use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, Role};
 use async_trait::async_trait;
 use axum::Extension;
 use axum::http::StatusCode;

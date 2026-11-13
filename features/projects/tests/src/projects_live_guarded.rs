@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use access::Role;
+use access::{HearsAccess, Role};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
