@@ -829,3 +829,27 @@ members-hand-over = Transmettre et quitter
 members-alone-heading = Personne d’autre n’en fait partie
 members-alone-hint = Ce projet n’a pas d’autres membres, donc si vous le quittiez, il n’y resterait personne. Mettez-le plutôt à la corbeille, où il peut être restauré pendant 30 jours, ou invitez quelqu’un et transmettez-le d’abord.
 members-trash-project = Mettre le projet à la corbeille
+
+decimal-point = { "," }
+size-bytes = { $amount }{ "\u00A0" }o
+size-kilobytes = { $amount }{ "\u00A0" }Ko
+size-megabytes = { $amount }{ "\u00A0" }Mo
+size-gigabytes = { $amount }{ "\u00A0" }Go
+size-terabytes = { $amount }{ "\u00A0" }To
+
+refused-asset-id-invalid = Ce n'est pas un identifiant d'image valide.
+refused-asset-not-an-image = Ce fichier n'est pas une image que Weaveling peut utiliser. Envoyez une image JPEG, PNG, GIF ou WebP.
+refused-asset-image-unreadable = Cette image n'a pas pu être lue. Elle est peut-être endommagée.
+refused-asset-image-too-large = Cette image a trop de pixels. Elle peut en avoir 50 mégapixels au plus.
+refused-asset-limit-reached =
+    { $bound ->
+        [upload] Une image peut peser { $most } au plus.
+        [instance] Cette instance de Weaveling n'a plus de place pour cette image. Elle occupe { $used } sur { $most }.
+        [account] Vous n'avez plus de place pour cette image. Vous occupez { $used } sur { $most }.
+        [project] Ce projet n'a plus de place pour cette image. Il occupe { $used } sur { $most }.
+       *[other] Il n'y a plus de place pour cette image.
+    }
+refused-asset-no-account = Seul un compte connecté peut avoir ses propres images.
+refused-asset-limit-uncountable = Cette limite est trop grande.
+refused-asset-sort-unknown = La liste ne peut pas être triée ainsi.
+refused-asset-cursor-invalid = La liste ne peut pas continuer à partir de là. Rechargez-la.

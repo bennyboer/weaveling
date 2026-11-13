@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::http::{ApiError, Particular, Refusal};
+use crate::size;
 use crate::speech;
 use crate::speech::Speech;
 
@@ -48,6 +49,15 @@ fn about(message: &str, subject: &'static str, speech: Speech) -> String {
     speech.say_with(message, &args)
 }
 
+/// The particulars of a refusal that are sizes in bytes, so they are told as sizes.
+const SIZES: [(&str, &[&str]); 1] = [(assets_contract::refused::LIMIT_REACHED, &["most", "used"])];
+
+fn is_a_size(kind: Option<&str>, name: &str) -> bool {
+    SIZES
+        .iter()
+        .any(|(refusal, sizes)| Some(*refusal) == kind && sizes.contains(&name))
+}
+
 fn refused(refusal: &Refusal, speech: Speech) -> String {
     let message = refusal
         .kind
@@ -60,6 +70,10 @@ fn refused(refusal: &Refusal, speech: Speech) -> String {
     let mut args = FluentArgs::new();
     for (name, particular) in &refusal.particulars {
         match particular {
+            Particular::Count(count) if is_a_size(refusal.kind.as_deref(), name) => args.set(
+                name.clone(),
+                size::told(u64::try_from(*count).unwrap_or(0), speech.language()),
+            ),
             Particular::Count(count) => args.set(name.clone(), *count),
             Particular::Text(text) => args.set(name.clone(), text.clone()),
             Particular::Texts(texts) => args.set(name.clone(), texts.join(", ")),

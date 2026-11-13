@@ -317,7 +317,8 @@ mod tests {
             .chain(ideas_contract::refused::EVERY)
             .chain(outline_contract::refused::EVERY)
             .chain(scenes_contract::refused::EVERY)
-            .chain(messaging_contract::refused::EVERY);
+            .chain(messaging_contract::refused::EVERY)
+            .chain(assets_contract::refused::EVERY);
 
         // then: english words each of them
         for kind in every {

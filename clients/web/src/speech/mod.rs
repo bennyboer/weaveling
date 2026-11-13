@@ -1,4 +1,4 @@
-mod catalogue;
+pub(crate) mod catalogue;
 pub mod language;
 pub mod picker;
 

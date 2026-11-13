@@ -5558,6 +5558,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "weaveling-accounts-contract",
  "weaveling-appearances-contract",
+ "weaveling-assets-contract",
  "weaveling-boards-contract",
  "weaveling-ideas-contract",
  "weaveling-invitations-contract",

@@ -30,6 +30,7 @@ mod route;
 mod scenes;
 mod setup;
 mod shell;
+mod size;
 mod speech;
 mod statistics;
 mod theme;

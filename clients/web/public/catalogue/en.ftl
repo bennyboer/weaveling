@@ -829,3 +829,27 @@ members-hand-over = Hand over and leave
 members-alone-heading = Nobody else is in it
 members-alone-hint = This project has no other members, so if you left, nobody would be left in it. Move it to the trash instead, where it can be restored for 30 days, or invite someone and hand it over first.
 members-trash-project = Move the project to the trash
+
+decimal-point = { "." }
+size-bytes = { $amount }{ "\u00A0" }B
+size-kilobytes = { $amount }{ "\u00A0" }KB
+size-megabytes = { $amount }{ "\u00A0" }MB
+size-gigabytes = { $amount }{ "\u00A0" }GB
+size-terabytes = { $amount }{ "\u00A0" }TB
+
+refused-asset-id-invalid = That is not a valid image ID.
+refused-asset-not-an-image = This file is not an image Weaveling can use. Upload a JPEG, PNG, GIF or WebP image.
+refused-asset-image-unreadable = This image could not be read. It may be damaged.
+refused-asset-image-too-large = This image has too many pixels. It can have at most 50 megapixels.
+refused-asset-limit-reached =
+    { $bound ->
+        [upload] An image can be at most { $most } large.
+        [instance] This Weaveling instance has no room left for this image. It holds { $used } of { $most }.
+        [account] You have no room left for this image. You use { $used } of { $most }.
+        [project] This project has no room left for this image. It uses { $used } of { $most }.
+       *[other] There is no room left for this image.
+    }
+refused-asset-no-account = Only a signed-in account can keep images of its own.
+refused-asset-limit-uncountable = That limit is too large.
+refused-asset-sort-unknown = The list cannot be sorted that way.
+refused-asset-cursor-invalid = The list cannot go on from there. Load it again.
