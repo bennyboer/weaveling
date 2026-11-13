@@ -1,7 +1,7 @@
 use assets_contract::{
     AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, InstanceStorageDTO,
-    OwnerDTO, ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadsDTO, UsageDTO, bound,
-    format, refused, sort,
+    OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadsDTO,
+    UsageDTO, bound, format, refused, sort,
 };
 use assets_core::{
     Asset, AssetError, AssetsCore, AssetsError, Bound, Format, Held, ImageRefused, Limit, Listed,
@@ -320,7 +320,15 @@ async fn projects_storage(
                 name: project.name,
                 used: project.used,
                 most: project.most,
-                owners: project.owners.iter().map(ToString::to_string).collect(),
+                owners: project
+                    .owners
+                    .into_iter()
+                    .map(|owner| ProjectOwnerDTO {
+                        account: owner.account.to_string(),
+                        name: owner.name,
+                        email: owner.email,
+                    })
+                    .collect(),
             })
             .collect(),
     }))

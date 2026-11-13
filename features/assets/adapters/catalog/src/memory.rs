@@ -290,6 +290,26 @@ impl AssetCatalog for InMemoryAssetCatalog {
         Ok(uploads)
     }
 
+    async fn people(
+        &self,
+        _transaction: &mut Transaction,
+        accounts: &[AccountId],
+    ) -> Result<Vec<Person>, CatalogError> {
+        let kept = self.kept();
+
+        Ok(accounts
+            .iter()
+            .filter_map(|account| {
+                let named = kept.people.get(account.as_str())?;
+                Some(Person {
+                    account: account.clone(),
+                    name: named.name.clone()?,
+                    email: named.email.clone()?,
+                })
+            })
+            .collect())
+    }
+
     async fn remember_person(
         &self,
         transaction: &mut Transaction,

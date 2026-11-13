@@ -847,6 +847,55 @@ async fn held_of<W: Workbench>(bench: &W, ids: &[AssetId]) -> HashSet<AssetId> {
     held
 }
 
+async fn people<W: Workbench>(bench: &W, accounts: &[AccountId]) -> Vec<Person> {
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .map_err(unreachable)
+        .expect("beginning should succeed");
+    let mut people = bench
+        .store()
+        .people(&mut transaction, accounts)
+        .await
+        .expect("asking should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+    people.sort_by(|one, other| one.account.as_str().cmp(other.account.as_str()));
+
+    people
+}
+
+pub async fn the_people_asked_for_are_told_by_name_and_address_if_known<W: Workbench>(bench: &W) {
+    // given: Ada and Bo named, Bo then deleted, and Grace never named
+    named_as(
+        bench,
+        vec![
+            Naming::Person("account_ada", "Ada Lovelace", "ada@example.com", 1),
+            Naming::Person("account_bo", "Bo Jürgensen", "bo@example.org", 1),
+            Naming::PersonGone("account_bo", 2, 1_700_000_100),
+        ],
+    )
+    .await;
+
+    // when: all three are asked for
+    let told = people(bench, &[ada(), bo(), grace()]).await;
+
+    // then: only Ada is told, with her name and address
+    assert_eq!(
+        told,
+        [Person {
+            account: ada(),
+            name: "Ada Lovelace".to_owned(),
+            email: "ada@example.com".to_owned(),
+        }]
+    );
+    // and: asking for nobody tells nobody
+    assert!(people(bench, &[]).await.is_empty());
+}
+
 pub async fn only_the_assets_held_are_told_held<W: Workbench>(bench: &W) {
     // given: what Ada and Bo uploaded, the upload into the loom forgotten
     let [loom, own, weft, _] = adas_uploads_kept(bench).await;
@@ -1146,6 +1195,10 @@ macro_rules! conformance_tests {
             an_owner_s_assets_are_found_by_id_at_most_so_many
         );
         $crate::catalog_conformance_case!($workbench, only_the_assets_held_are_told_held);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_people_asked_for_are_told_by_name_and_address_if_known
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             what_each_bound_holds_is_the_sum_of_its_assets

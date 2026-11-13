@@ -39,6 +39,11 @@ const FORGET: &str = "DELETE FROM asset_summaries WHERE id = $1";
 
 const HELD_OF: &str = "SELECT id FROM asset_summaries WHERE id = ANY($1)";
 
+const PEOPLE: &str = "
+    SELECT account, name, email FROM asset_people
+    WHERE account = ANY($1) AND name IS NOT NULL
+";
+
 const OWNED: &str = "
     SELECT id FROM asset_summaries
     WHERE owner_kind = $1 AND owner = $2
@@ -378,6 +383,29 @@ impl AssetCatalog for PostgresAssetCatalog {
                     height: u32::try_from(height).map_err(unreachable)?,
                     total_size: u64::try_from(total_size).map_err(unreachable)?,
                     uploaded_at: row.try_get("uploaded_at").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn people(
+        &self,
+        transaction: &mut Transaction,
+        accounts: &[AccountId],
+    ) -> Result<Vec<Person>, CatalogError> {
+        let rows = sqlx::query(PEOPLE)
+            .bind(accounts.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let account: String = row.try_get("account").map_err(unreachable)?;
+                Ok(Person {
+                    account: AccountId::from(account),
+                    name: row.try_get("name").map_err(unreachable)?,
+                    email: row.try_get("email").map_err(unreachable)?,
                 })
             })
             .collect()

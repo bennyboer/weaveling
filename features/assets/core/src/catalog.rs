@@ -174,6 +174,14 @@ pub trait AssetCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<Vec<Upload>, CatalogError>;
 
+    /// Returns the names and emails stored for the given accounts.
+    /// Accounts whose name was never heard, or was removed, are left out.
+    async fn people(
+        &self,
+        transaction: &mut Transaction,
+        accounts: &[AccountId],
+    ) -> Result<Vec<Person>, CatalogError>;
+
     /// Stores an account's name and email at a version.
     /// It is ignored if a newer version is already stored.
     async fn remember_person(

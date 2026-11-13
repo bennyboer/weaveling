@@ -27,4 +27,6 @@ pub use id::AssetId;
 pub use images::{ImageRefused, Images, Prepared, WIDTHS, widths_for};
 pub use limits::{Bound, Counted, Limit, Limits, MOST_COUNTED, Usage};
 pub use preparing::PREPARED_AT_ONCE;
-pub use storage::{AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectStorage};
+pub use storage::{
+    AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
+};

@@ -1,5 +1,5 @@
 use assets_contract::{AccountsStorageDTO, InstanceStorageDTO, ProjectsStorageDTO, refused};
-use assets_core::{AssetsError, Limits, Person, ProjectLink, Sorted};
+use assets_core::{AssetsError, Limits, Person, ProjectLink, ProjectOwner, Sorted};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
@@ -148,7 +148,14 @@ async fn the_operator_is_told_each_project_s_name_holding_and_owners() {
     assert_eq!(loom.project, ProjectLink::from(THE_LOOM));
     assert_eq!(loom.name.as_deref(), Some("Loom"));
     assert_eq!((loom.used, loom.most), (2 * one, Some(10 << 20)));
-    assert_eq!(loom.owners, [AccountId::from("account_ada")]);
+    assert_eq!(
+        loom.owners,
+        [ProjectOwner {
+            account: AccountId::from("account_ada"),
+            name: Some("Ada Lovelace".to_owned()),
+            email: Some("ada@example.com".to_owned()),
+        }]
+    );
     // and: nothing more to go on to
     assert_eq!(listed.next, None);
 }
@@ -285,7 +292,11 @@ async fn the_routes_list_a_page_and_go_on_from_its_cursor() {
         ["account_ada", "account_bo"]
     );
     assert_eq!(accounts.next, None, "a page holds fifty");
-    assert_eq!(projects.projects[0].owners, ["account_ada"]);
+    assert_eq!(projects.projects[0].owners[0].account, "account_ada");
+    assert_eq!(
+        projects.projects[0].owners[0].name.as_deref(),
+        Some("Ada Lovelace")
+    );
     assert_eq!(after_ada.accounts.len(), 1);
     assert_eq!(after_ada.accounts[0].account, "account_bo");
     // when: she searches the accounts and the projects

@@ -397,6 +397,42 @@ impl AssetCatalog for SqliteAssetCatalog {
             .collect()
     }
 
+    async fn people(
+        &self,
+        transaction: &mut Transaction,
+        accounts: &[AccountId],
+    ) -> Result<Vec<Person>, CatalogError> {
+        if accounts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let asked = format!(
+            "SELECT account, name, email FROM asset_people WHERE name IS NOT NULL AND account IN ({})",
+            (1..=accounts.len())
+                .map(placeholder)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let mut asking = sqlx::query(AssertSqlSafe(asked));
+        for account in accounts {
+            asking = asking.bind(account.to_string());
+        }
+        let rows = asking
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let account: String = row.try_get("account").map_err(unreachable)?;
+                Ok(Person {
+                    account: AccountId::from(account),
+                    name: row.try_get("name").map_err(unreachable)?,
+                    email: row.try_get("email").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
     async fn remember_person(
         &self,
         transaction: &mut Transaction,

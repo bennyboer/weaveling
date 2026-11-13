@@ -23,7 +23,9 @@ use crate::id::AssetId;
 use crate::images::{Images, Prepared};
 use crate::limits::{Counted, Limits, MOST_COUNTED};
 use crate::preparing;
-use crate::storage::{AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectStorage};
+use crate::storage::{
+    AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
+};
 
 /// How many bytes an account's uploads use together, and their limit.
 /// The limit is missing if there is none.
@@ -433,16 +435,33 @@ impl AssetsCore {
                     .await?,
             )
         })?;
-        let mut listed = Vec::with_capacity(held.len());
+        let mut owners = Vec::with_capacity(held.len());
         for holding in &held {
-            listed.push(ProjectStorage {
+            owners.push(self.access.owners_of(&holding.id).await?);
+        }
+        let everyone: Vec<AccountId> = owners.iter().flatten().cloned().collect();
+        let people = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(self.catalog.people(transaction, &everyone).await?)
+        })?;
+        let owner = |account: AccountId| {
+            let known = people.iter().find(|person| person.account == account);
+            ProjectOwner {
+                name: known.map(|person| person.name.clone()),
+                email: known.map(|person| person.email.clone()),
+                account,
+            }
+        };
+        let listed = held
+            .iter()
+            .zip(owners)
+            .map(|(holding, owners)| ProjectStorage {
                 project: ProjectLink::from(holding.id.as_str()),
                 name: holding.name.clone(),
                 used: holding.total,
                 most: self.limits.each_project,
-                owners: self.access.owners_of(&holding.id).await?,
-            });
-        }
+                owners: owners.into_iter().map(owner).collect(),
+            })
+            .collect();
 
         Ok(Listed::paged(listed, held.last().cloned(), at_most))
     }

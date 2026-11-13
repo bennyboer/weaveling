@@ -109,7 +109,15 @@ pub struct ProjectStorageDTO {
     pub name: Option<String>,
     pub used: u64,
     pub most: Option<u64>,
-    pub owners: Vec<String>,
+    pub owners: Vec<ProjectOwnerDTO>,
+}
+
+/// An owner of a project, with their name and email, both missing if the assets feature never heard them.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ProjectOwnerDTO {
+    pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
 }
 
 /// A page of the accounts that store anything, and the cursor for the next page.

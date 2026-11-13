@@ -32,7 +32,16 @@ pub struct ProjectStorage {
     pub name: Option<String>,
     pub used: u64,
     pub most: Option<u64>,
-    pub owners: Vec<AccountId>,
+    pub owners: Vec<ProjectOwner>,
+}
+
+/// An owner of a project, with their name and email.
+/// Name and email are missing if the assets feature never heard them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectOwner {
+    pub account: AccountId,
+    pub name: Option<String>,
+    pub email: Option<String>,
 }
 
 /// One of an account's uploads, and whether the account may delete it.
