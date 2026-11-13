@@ -35,6 +35,10 @@ pub enum AssetsError {
     NotAnAuthor,
     #[error("only an account keeps assets of its own")]
     NoAccount,
+    #[error("only an operator gives an account a limit of its own")]
+    NotAnOperator,
+    #[error("a limit of more than can be counted")]
+    LimitUncountable,
     #[error("the upload would pass a limit on what may be kept")]
     LimitReached(Limit),
     #[error("the asset is told kept, yet the bytes for it are not there")]

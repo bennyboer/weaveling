@@ -1,4 +1,4 @@
-use assets_contract::{AssetDTO, OwnerDTO, UsageDTO, bound, format, refused};
+use assets_contract::{AccountLimitRequest, AssetDTO, OwnerDTO, UsageDTO, bound, format, refused};
 use assets_core::{
     Asset, AssetError, AssetsCore, AssetsError, Bound, Format, ImageRefused, Limit, Owner,
 };
@@ -27,6 +27,10 @@ pub fn router(assets: AssetsCore) -> Router {
         .route("/assets/usage", routing::get(usage))
         .route("/assets/{id}", routing::delete(delete))
         .route("/assets/{id}/content", routing::get(content))
+        .route(
+            "/instance/accounts/{account}/asset-limit",
+            routing::put(give_account_limit).delete(take_back_account_limit),
+        )
         .with_state(assets)
 }
 
@@ -96,6 +100,33 @@ async fn usage(
         used: own.used,
         most: own.most,
     }))
+}
+
+async fn give_account_limit(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(account): Path<String>,
+    Json(request): Json<AccountLimitRequest>,
+) -> Result<StatusCode, Problem> {
+    assets
+        .give_account_limit(&account, request.most, &acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn take_back_account_limit(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(account): Path<String>,
+) -> Result<StatusCode, Problem> {
+    assets
+        .take_back_account_limit(&account, &acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete(
@@ -176,6 +207,12 @@ fn problem_of(refusal: AssetsError) -> Problem {
             Problem::forbidden(refused::NOT_AN_AUTHOR, AssetsError::NotAnAuthor)
         }
         AssetsError::NoAccount => Problem::forbidden(refused::NO_ACCOUNT, AssetsError::NoAccount),
+        AssetsError::NotAnOperator => {
+            Problem::forbidden(refused::NOT_AN_OPERATOR, AssetsError::NotAnOperator)
+        }
+        AssetsError::LimitUncountable => {
+            Problem::unprocessable(refused::LIMIT_UNCOUNTABLE, AssetsError::LimitUncountable)
+        }
         unserveable => Problem::unexpected(unserveable),
     }
 }

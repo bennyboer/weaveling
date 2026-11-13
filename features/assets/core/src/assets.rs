@@ -18,7 +18,7 @@ use crate::contents::{Contents, Piece};
 use crate::error::AssetsError;
 use crate::id::AssetId;
 use crate::images::{Images, Prepared};
-use crate::limits::{Counted, Limits};
+use crate::limits::{Counted, Limits, MOST_COUNTED};
 use crate::preparing;
 
 /// What an account's uploads take together, and the most they may, where they are held to any.
@@ -204,6 +204,44 @@ impl AssetsCore {
         Ok(self.contents.forget(&id).await?)
     }
 
+    /// Gives an account a limit of its own, in place of the one of every account, for an operator alone.
+    pub async fn give_account_limit(
+        &self,
+        account: &str,
+        most: u64,
+        agent: &Agent,
+    ) -> Result<(), AssetsError> {
+        self.operating(agent).await?;
+        if most > MOST_COUNTED {
+            return Err(AssetsError::LimitUncountable);
+        }
+        let account = AccountId::from(account);
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.account_limits
+                .give(transaction, &account, most)
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Takes an account's own limit back, holding it to the one of every account again, for an operator alone.
+    pub async fn take_back_account_limit(
+        &self,
+        account: &str,
+        agent: &Agent,
+    ) -> Result<(), AssetsError> {
+        self.operating(agent).await?;
+        let account = AccountId::from(account);
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.account_limits.take_back(transaction, &account).await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
     /// What the signed-in account's uploads take, wherever they went, and the most they may: its own limit, or the one of every account.
     pub async fn usage_of(&self, agent: &Agent) -> Result<OwnUsage, AssetsError> {
         let Agent::Account(account) = agent else {
@@ -337,6 +375,14 @@ impl AssetsCore {
                 None => self.limits,
             },
         )
+    }
+
+    async fn operating(&self, agent: &Agent) -> Result<(), AssetsError> {
+        if self.authorizer.operates(agent).await? {
+            Ok(())
+        } else {
+            Err(AssetsError::NotAnOperator)
+        }
     }
 
     async fn standing(&self, id: &AssetId) -> Result<Standing<Asset>, AssetsError> {

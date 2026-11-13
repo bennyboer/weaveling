@@ -48,6 +48,12 @@ pub struct UsageDTO {
     pub most: Option<u64>,
 }
 
+/// The limit an operator gives an account of its own, in bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AccountLimitRequest {
+    pub most: u64,
+}
+
 pub mod refused {
     pub const ID_INVALID: &str = "asset-id-invalid";
     pub const NOT_AN_IMAGE: &str = "asset-not-an-image";
@@ -56,8 +62,10 @@ pub mod refused {
     pub const LIMIT_REACHED: &str = "asset-limit-reached";
     pub const NOT_AN_AUTHOR: &str = "not-an-author";
     pub const NO_ACCOUNT: &str = "asset-no-account";
+    pub const NOT_AN_OPERATOR: &str = "not-an-operator";
+    pub const LIMIT_UNCOUNTABLE: &str = "asset-limit-uncountable";
 
-    pub const EVERY: [&str; 7] = [
+    pub const EVERY: [&str; 9] = [
         ID_INVALID,
         NOT_AN_IMAGE,
         IMAGE_UNREADABLE,
@@ -65,6 +73,8 @@ pub mod refused {
         LIMIT_REACHED,
         NOT_AN_AUTHOR,
         NO_ACCOUNT,
+        NOT_AN_OPERATOR,
+        LIMIT_UNCOUNTABLE,
     ];
 }
 

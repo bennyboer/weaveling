@@ -97,7 +97,7 @@ fn is_not_found(seen: &Result<Content, AssetsError>) -> bool {
 #[tokio::test]
 async fn the_listener_hears_who_joins_goes_and_changes_role_but_not_abandoning() {
     // given: the listener
-    let listener = heard_by(&bench::a_bench());
+    let listener = heard_by(&bench::a_bench().await);
 
     // expect: it hears every word on who is a member
     for routing in [FOUNDED, JOINED, ROLE_CHANGED, LEFT, REMOVED, DISBANDED] {
@@ -113,7 +113,7 @@ async fn the_listener_hears_who_joins_goes_and_changes_role_but_not_abandoning()
 #[tokio::test]
 async fn an_account_s_own_portrait_is_seen_by_whoever_shares_a_project_with_it_alone() {
     // given: Ada and Bo in the loom, Grace in the weft, as the members told the assets
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     the_members_heard(&heard_by(&bench)).await;
     // and: a portrait of Ada's own
     let portrait = adas_portrait(&bench).await;
@@ -134,7 +134,7 @@ async fn an_account_s_own_portrait_is_seen_by_whoever_shares_a_project_with_it_a
 #[tokio::test]
 async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more() {
     // given: Ada and Bo in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let listener = heard_by(&bench);
     the_members_heard(&listener).await;
     let portrait = adas_portrait(&bench).await;
@@ -190,7 +190,7 @@ async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more()
 #[tokio::test]
 async fn a_joining_heard_after_the_leaving_that_followed_it_shows_nothing() {
     // given: Ada in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let listener = heard_by(&bench);
     the_members_heard(&listener).await;
     let portrait = adas_portrait(&bench).await;
@@ -208,7 +208,7 @@ async fn a_joining_heard_after_the_leaving_that_followed_it_shows_nothing() {
 #[tokio::test]
 async fn a_project_in_the_trash_is_shared_by_nobody_until_restored() {
     // given: Ada and Bo in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     the_members_heard(&heard_by(&bench)).await;
     let portrait = adas_portrait(&bench).await;
     let trash = Inboxed::new(

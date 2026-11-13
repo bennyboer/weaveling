@@ -3,7 +3,9 @@ use assets_core::{
 };
 use eventsourcing::{AccountId, Agent, ServiceError};
 
-use crate::bench::{THE_LOOM, a_bench, a_bench_limited, a_bench_refusing, ada, bo, grace};
+use crate::bench::{
+    THE_LOOM, a_bench, a_bench_limited, a_bench_refusing, a_bench_without_accounts, ada, bo, grace,
+};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
@@ -17,7 +19,7 @@ fn is_not_found<T: std::fmt::Debug>(result: &Result<T, AssetsError>) -> bool {
 #[tokio::test]
 async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_what_they_take() {
     // given: Ada, an owner of the loom
-    let bench = a_bench();
+    let bench = a_bench().await;
 
     // when: she uploads a photo into it
     let (id, standing) = bench
@@ -59,7 +61,7 @@ async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_wha
 async fn whoever_reads_the_project_sees_the_narrowest_variant_as_wide_as_asked_and_never_the_original()
  {
     // given: a photo of 1,280 pixels in the loom, made into 384, 768 and 1,280
-    let bench = a_bench();
+    let bench = a_bench().await;
     let (id, _) = bench
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
@@ -94,7 +96,7 @@ async fn whoever_reads_the_project_sees_the_narrowest_variant_as_wide_as_asked_a
 async fn whoever_may_not_read_the_project_finds_no_asset_nor_project_and_a_reader_changes_nothing()
 {
     // given: a photo in the loom
-    let bench = a_bench();
+    let bench = a_bench().await;
     let (id, _) = bench
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
@@ -136,7 +138,8 @@ async fn an_upload_past_its_own_limit_is_refused_before_anything_is_made_of_it()
     let bench = a_bench_limited(Limits {
         each_upload: Some(10),
         ..Limits::default()
-    });
+    })
+    .await;
 
     // when: eleven bytes are uploaded
     let refused = bench
@@ -170,7 +173,7 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
  {
     // given: what one photo takes
     let one = {
-        let bench = a_bench();
+        let bench = a_bench().await;
         bench
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
@@ -205,7 +208,7 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
         ),
     ] {
         // given: room for one photo and a half under one limit, one photo uploaded
-        let bench = a_bench_limited(limits);
+        let bench = a_bench_limited(limits).await;
         bench
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
@@ -236,10 +239,11 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
 #[tokio::test]
 async fn without_accounts_nobody_is_held_to_an_accounts_limit() {
     // given: an account's limit of one byte, and nobody signed in, as in local mode
-    let bench = a_bench_limited(Limits {
+    let bench = a_bench_without_accounts(Limits {
         each_account: Some(1),
         ..Limits::default()
-    });
+    })
+    .await;
 
     // expect: an upload is taken
     bench
@@ -252,7 +256,7 @@ async fn without_accounts_nobody_is_held_to_an_accounts_limit() {
 #[tokio::test]
 async fn an_upload_that_is_no_image_is_refused_as_such_and_kept_nowhere() {
     // given: images that take nothing
-    let bench = a_bench_refusing(ImageRefused::NotAnImage);
+    let bench = a_bench_refusing(ImageRefused::NotAnImage).await;
 
     // when: something is uploaded
     let refused = bench
@@ -273,7 +277,7 @@ async fn an_upload_that_is_no_image_is_refused_as_such_and_kept_nowhere() {
 #[tokio::test]
 async fn a_deleted_asset_is_seen_no_more_its_pieces_gone_and_counted_nowhere() {
     // given: a photo in the loom
-    let bench = a_bench();
+    let bench = a_bench().await;
     let (id, _) = bench
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
@@ -304,7 +308,7 @@ async fn a_deleted_asset_is_seen_no_more_its_pieces_gone_and_counted_nowhere() {
 #[tokio::test]
 async fn an_id_of_no_asset_is_not_found() {
     // given: no asset
-    let bench = a_bench();
+    let bench = a_bench().await;
 
     // expect: an id never given and one that is no id are both not there
     assert!(is_not_found(
@@ -325,7 +329,8 @@ async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project
     let bench = a_bench_limited(Limits {
         each_account: Some(1_000),
         ..Limits::default()
-    });
+    })
+    .await;
 
     // when: she uploads a photo of her own
     let (id, standing) = bench
@@ -363,7 +368,7 @@ async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project
 #[tokio::test]
 async fn an_account_s_own_photo_is_changed_by_it_alone() {
     // given: a photo of Ada's own
-    let bench = a_bench();
+    let bench = a_bench().await;
     let (id, _) = bench
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &ada())
@@ -383,7 +388,7 @@ async fn an_account_s_own_photo_is_changed_by_it_alone() {
 #[tokio::test]
 async fn nobody_keeps_photos_of_their_own_without_accounts() {
     // given: the instance without accounts
-    let bench = a_bench();
+    let bench = a_bench().await;
 
     // when: a photo is uploaded as one's own
     let refused = bench
@@ -404,7 +409,7 @@ async fn nobody_keeps_photos_of_their_own_without_accounts() {
 async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_account_s() {
     // given: what one photo takes, and every account held to one photo and a half
     let one = {
-        let bench = a_bench();
+        let bench = a_bench().await;
         bench
             .assets
             .upload_as_own(A_PHOTO.to_vec(), &ada())
@@ -417,7 +422,8 @@ async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_acc
     let bench = a_bench_limited(Limits {
         each_account: Some(one * 3 / 2),
         ..Limits::default()
-    });
+    })
+    .await;
     // and: Ada given room for three photos of her own
     bench.adas_own_limit(Some(one * 3)).await;
 
@@ -464,7 +470,8 @@ async fn an_account_whose_own_limit_was_taken_back_is_held_to_every_account_s_ag
     let bench = a_bench_limited(Limits {
         each_account: Some(1),
         ..Limits::default()
-    });
+    })
+    .await;
     bench.adas_own_limit(Some(1 << 30)).await;
     bench.adas_own_limit(None).await;
 
@@ -488,7 +495,7 @@ async fn an_account_whose_own_limit_was_taken_back_is_held_to_every_account_s_ag
 #[tokio::test]
 async fn without_accounts_a_limit_given_an_account_holds_nobody() {
     // given: no account held to any limit, as in local mode, and Ada given one byte nonetheless
-    let bench = a_bench();
+    let bench = a_bench().await;
     bench.adas_own_limit(Some(1)).await;
 
     // expect: her upload is taken

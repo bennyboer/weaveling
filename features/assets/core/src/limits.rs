@@ -1,3 +1,6 @@
+/// The most any limit may be, in bytes: what every backend counts.
+pub const MOST_COUNTED: u64 = i64::MAX as u64;
+
 /// What a limit bounds: one upload, every asset of the installation, all an account uploaded, or all a project holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bound {

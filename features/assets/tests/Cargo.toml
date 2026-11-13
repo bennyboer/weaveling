@@ -28,5 +28,6 @@ assets-core = { version = "0.1.0", path = "../core", package = "weaveling-assets
 assets-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-assets-rest" }
 assets-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-assets-messaging" }
 
+accounts-contract = { version = "0.1.0", path = "../../accounts/contract", package = "weaveling-accounts-contract" }
 members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

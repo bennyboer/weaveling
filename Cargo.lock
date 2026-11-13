@@ -5303,6 +5303,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-access",
+ "weaveling-accounts-contract",
  "weaveling-assets-catalog",
  "weaveling-assets-contents",
  "weaveling-assets-contract",

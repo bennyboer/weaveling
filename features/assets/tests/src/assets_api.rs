@@ -34,7 +34,7 @@ async fn uploaded(server: &TestServer, project: &str) -> TestResponse {
 #[tokio::test]
 async fn an_upload_into_a_project_is_answered_with_what_was_made_of_it() {
     // given: Ada, an owner of the loom
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let server = serving(&bench, bench::ada());
 
     // when: she uploads an image into it
@@ -56,7 +56,7 @@ async fn an_upload_into_a_project_is_answered_with_what_was_made_of_it() {
 #[tokio::test]
 async fn the_content_is_the_variant_asked_for_kept_by_the_browser_for_good() {
     // given: an image uploaded into the loom
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let server = serving(&bench, bench::ada());
     let asset: AssetDTO = uploaded(&server, THE_LOOM).await.json();
 
@@ -81,7 +81,7 @@ async fn the_content_is_the_variant_asked_for_kept_by_the_browser_for_good() {
 #[tokio::test]
 async fn a_reader_may_not_upload_and_someone_outside_the_project_finds_nothing() {
     // given: Bo, a reader of the loom, and Grace, no member of it
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let asset: AssetDTO = uploaded(&serving(&bench, bench::ada()), THE_LOOM)
         .await
         .json();
@@ -105,7 +105,7 @@ async fn a_reader_may_not_upload_and_someone_outside_the_project_finds_nothing()
 #[tokio::test]
 async fn an_upload_that_is_no_image_says_so() {
     // given: images refused as none
-    let bench = bench::a_bench_refusing(ImageRefused::NotAnImage);
+    let bench = bench::a_bench_refusing(ImageRefused::NotAnImage).await;
 
     // when: something is uploaded
     let response = uploaded(&serving(&bench, bench::ada()), THE_LOOM).await;
@@ -124,7 +124,8 @@ async fn an_upload_past_its_limit_is_refused_before_it_is_read_naming_the_limit(
     let bench = bench::a_bench_limited(Limits {
         each_upload: Some(10),
         ..Limits::default()
-    });
+    })
+    .await;
 
     // when: twenty bytes are uploaded
     let response = uploaded(&serving(&bench, bench::ada()), THE_LOOM).await;
@@ -146,7 +147,8 @@ async fn an_upload_past_what_a_project_may_keep_names_the_project_s_limit_and_wh
     let bench = bench::a_bench_limited(Limits {
         each_project: Some(100),
         ..Limits::default()
-    });
+    })
+    .await;
     let server = serving(&bench, bench::ada());
     uploaded(&server, THE_LOOM)
         .await
@@ -170,7 +172,7 @@ async fn an_upload_past_what_a_project_may_keep_names_the_project_s_limit_and_wh
 #[tokio::test]
 async fn a_deleted_image_is_found_no_more() {
     // given: an image uploaded into the loom
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let server = serving(&bench, bench::ada());
     let asset: AssetDTO = uploaded(&server, THE_LOOM).await.json();
 
@@ -189,7 +191,7 @@ async fn a_deleted_image_is_found_no_more() {
 #[tokio::test]
 async fn an_id_that_is_none_is_refused_and_one_never_given_is_not_found() {
     // given: Ada
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
     let server = serving(&bench, bench::ada());
 
     // when: an image is asked for by no id and by one never given
@@ -207,8 +209,9 @@ async fn an_upload_is_taken_up_to_its_limit_however_far_past_what_a_request_take
     let limited = bench::a_bench_limited(Limits {
         each_upload: Some(3 * 1024 * 1024),
         ..Limits::default()
-    });
-    let unlimited = bench::a_bench();
+    })
+    .await;
+    let unlimited = bench::a_bench().await;
     let large = vec![7; 5 * 1024 * 1024 / 2];
 
     // when: two and a half megabytes are uploaded into each
@@ -229,7 +232,7 @@ async fn an_upload_is_taken_up_to_its_limit_however_far_past_what_a_request_take
 #[tokio::test]
 async fn an_upload_into_no_project_is_the_account_s_own_and_refused_without_one() {
     // given: Ada, and the instance without accounts
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
 
     // when: she uploads into no project, and so does the local agent
     let hers = serving(&bench, bench::ada())
@@ -254,7 +257,8 @@ async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_mos
     let bench = bench::a_bench_limited(Limits {
         each_account: Some(1 << 20),
         ..Limits::default()
-    });
+    })
+    .await;
     bench.adas_own_limit(Some(2 << 20)).await;
     // and: an image of hers in the loom and one of her own
     let server = serving(&bench, bench::ada());
@@ -292,7 +296,7 @@ async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_mos
 #[tokio::test]
 async fn without_an_account_there_is_no_usage_of_one_s_own() {
     // given: nobody signed in, as without accounts
-    let bench = bench::a_bench();
+    let bench = bench::a_bench().await;
 
     // when: what one's uploads take is asked
     let response = serving(&bench, Agent::Local).get("/assets/usage").await;
