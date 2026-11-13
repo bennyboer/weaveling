@@ -107,7 +107,7 @@ async fn project_names_heard(bench: &Bench, messages: Vec<Message>) {
     }
 }
 
-/// Ada with a photo in the loom, so both she and the loom hold something.
+/// Ada uploads a photo into the loom, so both she and the loom use some storage.
 async fn ada_holding_a_photo() -> Bench {
     let bench = bench::a_bench().await;
     bench

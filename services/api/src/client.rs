@@ -12,14 +12,16 @@ const PAGE: &str = "page.html";
 const LIVE_RELOAD_AT: &str = "/live-reload.js";
 const LIVE_RELOAD: &str = include_str!("client/live_reload.js");
 
-/// The built client this server hands out beside `/api`, and the port `cargo leptos watch` tells of changes on, while it watches.
+/// The built client this server serves next to `/api`.
+/// It also holds the port that `cargo leptos watch` reports changes on, while it is watching.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedClient {
     pub dir: PathBuf,
     pub changes_told_at: Option<u16>,
 }
 
-/// Hands out the client's files, and its page for every other address, so the client's own routes open where they are linked to.
+/// Serves the client's files, and the client's page for every other address.
+/// This way the client's own routes open when someone follows a link to them.
 pub fn serving_the_client(routes: Router, client: ServedClient) -> Router {
     let page = routing::get(page).with_state(client.clone());
     let routes = match client.changes_told_at {

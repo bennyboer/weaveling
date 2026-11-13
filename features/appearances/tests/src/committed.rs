@@ -9,7 +9,7 @@ fn unreachable(failure: Failure) -> CatalogError {
 
 #[async_trait]
 pub trait Committed {
-    /// Remembered in a place of the idea's own project, when that is known.
+    /// Stores a subject as appearing in a place of the subject's own project, if that project is known.
     async fn remember_committed(
         &self,
         subject: &Subject,

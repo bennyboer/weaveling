@@ -104,7 +104,8 @@ pub struct SignedInDTO {
     pub email: String,
     pub stage: String,
     pub operator: bool,
-    /// Whether nobody runs the instance yet, told only to an account signed in all the way, so nobody else learns it is unclaimed.
+    /// Whether nobody runs the instance yet.
+    /// It is only set for an account that is fully signed in, so nobody else learns that the instance is unclaimed.
     #[serde(default)]
     pub operator_wanted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -171,7 +172,8 @@ pub struct KeyDTO {
     pub since: String,
 }
 
-/// An account's ways in as the operator sees them; the password, always kept, goes without saying.
+/// The ways an account can sign in, as an operator sees them.
+/// The password is not listed, because every account always has one.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct WaysInDTO {
     pub version: u64,
@@ -239,8 +241,9 @@ pub struct PasswordRequest {
     pub password: String,
 }
 
-/// Named with `__Host-`, so browsers take it only from this host itself, over https, for every path and no other domain:
-/// no sibling subdomain sets a session of its own in its place.
+/// The name starts with `__Host-`.
+/// Browsers then accept this cookie only from this host itself, only over https, and only when it is valid for every path and no other domain.
+/// So no sibling subdomain can set a session cookie of its own in its place.
 pub const SESSION_COOKIE: &str = "__Host-weaveling_session";
 
 pub const SIGNED_UP: &str = "account.signed.up";

@@ -112,7 +112,8 @@ impl Structure {
         self.unanswered.try_get_untracked().unwrap_or(true)
     }
 
-    /// Tells a refusal of a change the author waited on, as one nobody waited on is told: overtaken, in a quiet note, otherwise as a problem.
+    /// Reports the refusal of a change the author waited on, the same way as one nobody waited on.
+    /// If another change got in first, a quiet note is shown; otherwise it is shown as a problem.
     pub fn refused(self, failure: ApiError) {
         crate::writing::structure::told_refused(failure, self.overtaken, self.problems);
     }
@@ -386,7 +387,9 @@ impl Structure {
         self.working.intend(Intent::Retitle { section, title });
     }
 
-    /// Adds an untitled section, answering with it once the server made it, or with what it was refused for. `named` hears it as soon as the server named it, before it is shown.
+    /// Adds an untitled section.
+    /// Returns the section once the server created it, or the reason it was refused.
+    /// `named` is called with the section's id as soon as the server assigned it, before the section is shown.
     pub fn added(
         self,
         under: Option<SectionId>,

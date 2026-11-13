@@ -1,6 +1,7 @@
 use time::OffsetDateTime;
 
-/// An account's second step: since when it has one, how many recovery codes are left, and what else answers it.
+/// An account's second step.
+/// It holds since when the account has one, how many recovery codes are left, and what else answers it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SecondFactor {
     pub since: OffsetDateTime,
@@ -9,14 +10,16 @@ pub struct SecondFactor {
     pub answered_by_key: bool,
 }
 
-/// A way of answering the second step, recovery codes aside, which are never asked first.
+/// A way of answering the second step.
+/// Recovery codes are not included, because they are never asked for first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SecondStepWay {
     Totp,
     Key,
 }
 
-/// Which way the second step is asked first, as the account chose: one way, or whichever answered it last.
+/// Which way the second step is asked for first, as the account chose.
+/// It is either one fixed way, or whichever way answered last.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum PreferredWay {
     Chosen(SecondStepWay),

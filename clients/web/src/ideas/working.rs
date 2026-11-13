@@ -4,7 +4,8 @@ use crate::ideas::service;
 use crate::working_copy;
 use crate::working_copy::{Versioned, WorkingCopies};
 
-/// The ideas the author works on, each a working copy of its own: an idea is its own aggregate, so a change to one never waits for another.
+/// The ideas the author works on, each with its own working copy.
+/// Each idea is its own aggregate, so a change to one never waits for a change to another.
 pub type Ideas = WorkingCopies<IdeaId, Idea, Intent>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12,7 +13,8 @@ pub enum Intent {
     Retitle { title: String },
 }
 
-/// Built where the view that changes the ideas lives, as every signal belongs to the owner current when it is made.
+/// Creates the working copies of the ideas.
+/// Call it in the view that changes the ideas, because every signal belongs to the owner that is current when it is made.
 pub fn copies(failed: impl Fn(ApiError) + 'static) -> Ideas {
     WorkingCopies::new(
         |_, on: Idea, intent: Intent| async move { intent.made_on(&on).await },

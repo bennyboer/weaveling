@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{Broadcaster, Channel};
 
-/// Tells frames it numbers itself, for changes that carry no published version.
+/// Sends frames that it numbers itself, for changes that carry no published version.
 pub struct Teller<C> {
     broadcaster: Broadcaster<C>,
     told: Mutex<u64>,
@@ -39,7 +39,9 @@ impl<C: Channel> Teller<C> {
         );
     }
 
-    /// Tells what `read` finds, reading one at a time, so a state read before a newer change is told before it rather than last; nothing when it finds nothing.
+    /// Sends what `read` finds, reading one at a time.
+    /// So a state read before a newer change is sent before that change, not after it.
+    /// Sends nothing when `read` finds nothing.
     pub async fn tell_latest<E: Serialize>(
         &self,
         channel: C,

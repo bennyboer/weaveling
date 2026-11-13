@@ -18,7 +18,7 @@ const INVITING: &str = "inviting";
 const INVITING_RULE: Rule = Rule::free(3);
 const INVITING_BY: &str = "inviting-by";
 
-/// The invitations one account may have mailed each hour, unless the instance is told otherwise.
+/// How many invitations one account may have mailed each hour, unless the instance is configured otherwise.
 pub const INVITATIONS_EACH_HOUR: u32 = 20;
 
 #[derive(Clone)]
@@ -222,7 +222,10 @@ impl InvitationService {
         Self { each_hour, ..self }
     }
 
-    /// Whether an invitation may be mailed: to this address, a few at most, and by this account, so many each hour, so nobody mails strangers in bulk by inviting them.
+    /// Checks whether an invitation may be mailed.
+    /// Only a few invitations may be mailed to the same address.
+    /// The same account may only have so many mailed each hour.
+    /// This stops anyone from mailing strangers in bulk through invitations.
     pub async fn admitted(&self, to: &EmailAddress, by: &Agent) -> Result<(), InvitationsError> {
         let now = self.clock.now();
         if let Admission::Wait(wait) = self

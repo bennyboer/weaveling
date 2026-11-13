@@ -40,7 +40,8 @@ impl Idea {
     }
 }
 
-/// What a change told of one idea says the ideas must show before a reading of them is taken in.
+/// Returns what the ideas must contain after a change to one idea, as reported by the server.
+/// A new reading of the ideas is used only once it contains this.
 pub fn awaited(told: &FrameDTO) -> Option<Awaited<IdeaId>> {
     let id = IdeaId::from(told.of.clone()?);
 
@@ -55,7 +56,8 @@ pub fn awaited(told: &FrameDTO) -> Option<Awaited<IdeaId>> {
     )
 }
 
-/// What a change told of one idea makes of it, given the idea as held, if held at all.
+/// What a change reported by the server does to one idea.
+/// It is worked out from the idea as currently held, if it is held at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Told {
     Changed(Idea),

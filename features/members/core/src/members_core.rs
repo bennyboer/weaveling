@@ -235,7 +235,9 @@ impl MembersCore {
         })
     }
 
-    /// Remembers until when an account is leaving, none where it is kept after all, as accounts tell it by the account's version.
+    /// Stores until when an account is leaving.
+    /// It is none if the account is kept after all.
+    /// The accounts feature reports this with the account's version.
     pub async fn remember_leaving(
         &self,
         within: Option<&mut Transaction>,
@@ -252,7 +254,8 @@ impl MembersCore {
         })
     }
 
-    /// Forgets the accounts no longer leaving since before then, once no word about their leaving may be retried.
+    /// Forgets the accounts that stopped leaving before the given time.
+    /// By then, no message about their leaving can be retried any more.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -268,7 +271,9 @@ impl MembersCore {
         })
     }
 
-    /// Lets a deleted account go from every project it is in, as of its version, and forgets who it was; where it was the last owner, the longest-standing other member is made owner, and a project it was alone in is abandoned.
+    /// Removes a deleted account from every project it is in, as of its version, and forgets who it was.
+    /// Where it was the last owner, the longest-standing other member is made owner.
+    /// A project it was alone in is abandoned.
     pub async fn let_go_of(
         &self,
         within: Option<&mut Transaction>,

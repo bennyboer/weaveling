@@ -29,7 +29,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     wired_keeping(clock, Arc::new(InMemoryAccess::new()), false)
 }
 
-/// Ideas with accounts, who may do what kept in their own access.
+/// Ideas with accounts, where who may do what is stored in the ideas' own access records.
 pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
     wired_keeping(clock, Arc::new(InMemoryAccess::new()), true)
 }

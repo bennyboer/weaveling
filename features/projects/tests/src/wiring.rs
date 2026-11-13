@@ -37,7 +37,8 @@ pub struct Wired {
     versions: AtomicU64,
 }
 
-/// Who may do what, kept in memory, which can be made unreachable.
+/// Who may do what, stored in memory.
+/// It can be made unreachable.
 #[derive(Default)]
 pub struct Unreliable {
     kept: InMemoryAccess,
@@ -165,7 +166,8 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     wired_with(clock, false)
 }
 
-/// Wired with accounts: who may do what is what the feature heard of the members, or was given by `give`.
+/// Wired with accounts.
+/// Who may do what follows what the feature heard from the members feature, or what was given by `give`.
 pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
     wired_with(clock, true)
 }
@@ -239,7 +241,7 @@ fn wired_with(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
 }
 
 impl Wired {
-    /// Gives an account a role in a project, or takes it away with none, as the members would tell it.
+    /// Gives an account a role in a project, or takes the role away with none, as the members feature would report it.
     pub async fn give(&self, project: &str, account: &str, role: Option<Role>) {
         let version = self.versions.fetch_add(1, Ordering::SeqCst) + 1;
         self.projects

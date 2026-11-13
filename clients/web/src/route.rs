@@ -14,7 +14,8 @@ pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 
 const SLUG_CHARS: usize = 60;
 
-/// The security page as one who just signed up first sees it, offered a passkey or a second step.
+/// The security page as someone who just signed up sees it first.
+/// It offers to set up a passkey or a second step.
 pub fn welcomed() -> String {
     format!("{SECURITY}?welcome")
 }

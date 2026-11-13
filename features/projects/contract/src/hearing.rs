@@ -1,4 +1,7 @@
-/// Lays out a feature's listener hearing which projects are in the trash, put there and restored, for its core to keep through `access::HearsAccess`. The feature's messaging crate depends on `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`, which the listener is written in.
+/// Defines a feature's listener that hears which projects are in the trash, as they are put there and restored.
+/// The listener passes this to the feature's core through `access::HearsAccess`.
+///
+/// The feature's messaging crate must depend on `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`, because the listener's code uses them.
 #[macro_export]
 macro_rules! access_trash_listener {
     ($listener:ident, $core:ty, $name:literal, $when_refused:literal) => {

@@ -76,7 +76,9 @@ extern "C" {
 
 }
 
-/// Fetches the editor, ProseMirror and Yjs, which only the writing view needs, before anything makes a `ProseEditor` or a `SyncConnection`.
+/// Fetches the editor code, ProseMirror and Yjs.
+/// Only the writing view needs it.
+/// It must be fetched before anything makes a `ProseEditor` or a `SyncConnection`.
 pub async fn editor_loaded() {
     if let Err(failed) = editor_fetched().await {
         warn!("the editor could not be fetched: {failed:?}");

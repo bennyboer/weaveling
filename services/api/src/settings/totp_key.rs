@@ -26,7 +26,8 @@ impl Settings {
     }
 }
 
-/// A secret given either itself or as the path of a file holding it, so it need not stand in a variable or in the settings file.
+/// A secret, given either directly or as the path of a file that holds it.
+/// This way the secret need not be put in a variable or in the settings file.
 pub(super) fn secret(
     given: Option<Setting>,
     in_file: Option<Setting>,

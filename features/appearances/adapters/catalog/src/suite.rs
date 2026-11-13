@@ -54,7 +54,8 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
         self.catalog
     }
 
-    /// Remembered as an idea of `PROJECT` in a place of `PROJECT`, as nearly every case has it.
+    /// Stores a subject as appearing in a place, both of `PROJECT`.
+    /// Nearly every case uses this setup.
     pub async fn remember(
         &self,
         subject: &Subject,

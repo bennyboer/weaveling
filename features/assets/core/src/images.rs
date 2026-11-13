@@ -2,10 +2,11 @@ use thiserror::Error;
 
 use crate::asset::Picture;
 
-/// The widths an image is made into, those narrower than it, and its own where it is narrower than the widest.
+/// The widths an image is made into.
+/// An image gets those narrower than itself, plus its own width if it is narrower than the widest.
 pub const WIDTHS: [u32; 4] = [384, 768, 1_536, 3_072];
 
-/// Why what was uploaded is not taken as an image.
+/// Why an upload is not accepted as an image.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ImageRefused {
     #[error("this is no image the instance takes: JPEG, PNG, GIF or WebP")]
@@ -16,20 +17,23 @@ pub enum ImageRefused {
     TooLarge,
 }
 
-/// An upload prepared for keeping: the image as it was uploaded, read and checked, and the variants made of it, each by its width, narrowest first.
+/// An upload prepared for storing.
+/// It holds the image as it was uploaded, read and checked, and the variants made from it.
+/// The variants are listed by width, narrowest first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepared {
     pub picture: Picture,
     pub variants: Vec<(u32, Vec<u8>)>,
 }
 
-/// Reads an upload as an image, set upright, and makes its variants; slow, so it is asked beside the async runtime, few at once.
+/// Reads an upload as an image, turns it upright, and makes its variants.
+/// This is slow, so it runs outside the async runtime, only a few at once.
 pub trait Images: Send + Sync {
     fn prepared(&self, uploaded: &[u8]) -> Result<Prepared, ImageRefused>;
 }
 
 impl Prepared {
-    /// Every byte kept for the image: the original and its variants.
+    /// Returns all bytes stored for the image: the original and its variants.
     pub fn total_size(&self) -> u64 {
         self.picture.original_size
             + self
@@ -40,7 +44,9 @@ impl Prepared {
     }
 }
 
-/// The widths an image this wide is made into: those of `WIDTHS` narrower than it, and its own where it is narrower than the widest of them, so none is wider than the image.
+/// Returns the widths an image of this width is made into.
+/// These are the widths in `WIDTHS` narrower than the image, plus the image's own width if it is narrower than the widest of them.
+/// So no variant is wider than the image.
 pub fn widths_for(width: u32) -> Vec<u32> {
     let mut widths: Vec<u32> = WIDTHS.into_iter().filter(|each| *each < width).collect();
     let widest = WIDTHS[WIDTHS.len() - 1];

@@ -44,7 +44,8 @@ async fn heard(bench: &Bench, message: Message) {
     .expect("a change to who runs the instance is taken in");
 }
 
-/// Every account held to a megabyte, and Ada running the instance as the accounts told it.
+/// Every account has a limit of one megabyte.
+/// Ada runs the instance, as reported by the accounts feature.
 async fn ada_running_the_instance() -> Bench {
     let bench = bench::a_bench_limited(Limits {
         each_account: Some(1 << 20),

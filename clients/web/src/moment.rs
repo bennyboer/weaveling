@@ -9,7 +9,7 @@ pub fn human_time(moment: OffsetDateTime) -> String {
     told(moment.to_offset(here))
 }
 
-/// The day a moment falls on, where the page is read.
+/// The day a moment falls on, in the reader's local time zone.
 pub fn human_day(moment: OffsetDateTime) -> String {
     let here = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
     let moment = moment.to_offset(here);

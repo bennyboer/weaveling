@@ -36,7 +36,8 @@ struct Refusals {
     clock: Arc<dyn Clock>,
 }
 
-/// The refusals followed live, by anyone in local mode and only by an operator where there are accounts.
+/// The refusals, followed live.
+/// In local mode anyone may follow them; when there are accounts, only an operator may.
 pub struct RefusalsTopic {
     pub broadcaster: Broadcaster<RefusalChanges>,
     pub operators: Option<AccountsCore>,
@@ -62,7 +63,8 @@ impl Topic for RefusalsTopic {
     }
 }
 
-/// Lets only an operator through to the refusals, where there are accounts: they tell what went wrong inside, and acknowledging or retrying them is the operator's.
+/// Lets only an operator reach the refusals, when there are accounts.
+/// The refusals show what went wrong inside, and acknowledging or retrying them is the operator's job.
 pub fn for_operators(refusals: Router, accounts: AccountsCore) -> Router {
     refusals.route_layer(middleware::from_fn_with_state(accounts, operators_only))
 }

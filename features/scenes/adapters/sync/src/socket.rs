@@ -10,7 +10,9 @@ use tokio::sync::mpsc;
 use crate::connection::Connection;
 use crate::live_scenes::LiveScenes;
 
-/// The most a client sends at once: a scene's whole text when it comes back with what it wrote away, a novel's chapter many times over, and still nobody fills the server's memory with one message.
+/// The largest message a client may send at once.
+/// It fits a scene's whole text, which a client sends when it comes back with what it wrote while away.
+/// That is many times a novel's chapter, but still no single message can fill the server's memory.
 pub const LARGEST_SENT: usize = 8 * 1024 * 1024;
 
 pub fn router(live: LiveScenes) -> Router {

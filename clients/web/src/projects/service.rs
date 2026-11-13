@@ -42,7 +42,8 @@ pub async fn one(id: &ProjectId) -> Result<Project, ApiError> {
     as_listed(http::parsed(response, SUBJECT).await?)
 }
 
-/// One listed project read again, refused as moved to the trash rather than as unknown when that is where it went.
+/// Reads a listed project again.
+/// If the project was moved to the trash, the error says so instead of saying it is unknown.
 pub async fn still_listed(id: &ProjectId) -> Result<Project, ApiError> {
     match one(id).await {
         Err(ApiError::NotFound(subject)) => match in_the_trash().await {

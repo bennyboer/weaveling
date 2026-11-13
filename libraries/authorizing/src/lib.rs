@@ -35,7 +35,8 @@ pub trait Authorizer: Send + Sync {
 
     async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError>;
 
-    /// Whether the agent runs the instance; nobody does unless told.
+    /// Whether the agent runs the instance.
+    /// By default nobody does.
     async fn operates(&self, _agent: &Agent) -> Result<bool, AuthorizerError> {
         Ok(false)
     }

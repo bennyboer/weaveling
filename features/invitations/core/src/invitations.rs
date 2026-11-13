@@ -60,7 +60,8 @@ impl InvitationsCore {
         }
     }
 
-    /// Where the instance is served, as it is configured, so an invitation's link leads there and nowhere a request names.
+    /// Sets the URL the instance is served at, as configured.
+    /// An invitation's link leads there, and never to a host named in a request.
     pub fn linking_to(self, public_url: &str) -> Self {
         Self {
             links_to: Some(public_url.trim().trim_end_matches('/').to_owned()),
@@ -68,7 +69,7 @@ impl InvitationsCore {
         }
     }
 
-    /// Caps the invitations one account may have mailed at so many each hour.
+    /// Limits how many invitations one account may have mailed each hour.
     pub fn capping_invitations(self, each_hour: u32) -> Self {
         Self {
             service: self.service.capping(each_hour),
@@ -76,7 +77,8 @@ impl InvitationsCore {
         }
     }
 
-    /// Where an invitation's link leads, none where the instance does not know where it is served.
+    /// Returns where an invitation's link leads.
+    /// Returns none if the instance does not know the URL it is served at.
     pub fn links_to(&self) -> Option<&str> {
         self.links_to.as_deref()
     }
@@ -554,7 +556,9 @@ impl InvitationsCore {
 impl HearsAccess for InvitationsCore {
     type Refused = InvitationsError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may invite into it follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may invite people into the project.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -579,7 +583,8 @@ impl HearsAccess for InvitationsCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -595,7 +600,9 @@ impl HearsAccess for InvitationsCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version, so nobody invites into it there; the list of invitations remembers it apart.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
+    /// Nobody may invite people into a project in the trash.
+    /// The list of invitations stores this separately.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

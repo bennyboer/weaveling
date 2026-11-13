@@ -6,12 +6,16 @@ use transacting::Transaction;
 
 use crate::Role;
 
-/// What a feature's core is told of who may do what in its projects, by the listeners the members' and the projects' contracts lay out for it: so every feature hears alike, and the compiler holds each core to it.
+/// The access updates a feature's core receives: who may do what in its projects.
+///
+/// The listeners laid out by the members' and the projects' contracts call these methods.
+/// This way every feature receives the updates in the same way, and the compiler checks that each core handles them.
 #[async_trait]
 pub trait HearsAccess: Send + Sync {
     type Refused: Error + Send + Sync + 'static;
 
-    /// An account's role in a project, or with none that it is a member no more, as the project's members told it at a version.
+    /// An account's role in a project, as the project's members reported it at a version.
+    /// No role means the account is no longer a member.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -21,7 +25,7 @@ pub trait HearsAccess: Send + Sync {
         role: Option<Role>,
     ) -> Result<(), Self::Refused>;
 
-    /// A project's members disbanded, its project deleted.
+    /// The members of a project were disbanded, because the project was deleted.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -29,7 +33,7 @@ pub trait HearsAccess: Send + Sync {
         version: Version,
     ) -> Result<(), Self::Refused>;
 
-    /// Whether a project is in the trash, as the projects told it at a version.
+    /// Whether a project is in the trash, as the projects reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,
@@ -39,12 +43,14 @@ pub trait HearsAccess: Send + Sync {
     ) -> Result<(), Self::Refused>;
 }
 
-/// What a feature's core is told of who runs the instance, by the listener the accounts' contract lays out for it, where the feature asks it.
+/// The updates a feature's core receives about who runs the instance.
+///
+/// The listener laid out by the accounts' contract calls this, in features that ask for it.
 #[async_trait]
 pub trait HearsOperators: Send + Sync {
     type Refused: Error + Send + Sync + 'static;
 
-    /// Whether an account runs the instance, as the accounts told it at a version.
+    /// Whether an account runs the instance, as the accounts reported it at a version.
     async fn remember_operator(
         &self,
         within: Option<&mut Transaction>,

@@ -20,7 +20,9 @@ use crate::key::{KeyId, KeyRole};
 use crate::secrets::KeyCredential;
 use crate::session::{TokenDigest, hex};
 
-/// Adding keys and passkeys and signing in with them, for this instance: every key is bound to the domain it is served at, so moving it voids every key.
+/// Adds keys and passkeys, and signs in with them, for this instance.
+/// Every key is bound to the domain the instance is served at.
+/// So moving the instance to another domain makes every key invalid.
 #[derive(Debug, Clone)]
 pub struct KeyCeremonies {
     webauthn: Webauthn,
@@ -30,11 +32,17 @@ pub struct KeyCeremonies {
     signed_in: Arc<Mutex<HashMap<SigningIn, OffsetDateTime>>>,
 }
 
-/// What the server keeps of a ceremony between asking the browser and hearing back, by the account it is for, the session owing a second step, or a drawn id where nobody is known yet: never written down, so a restart only asks for it to begin again.
+/// What the server keeps of a ceremony, between asking the browser and getting its answer.
+/// It is keyed by the account the ceremony is for, or by the session that owes a second step.
+/// A sign-in before anybody is known is not kept here; it is sealed and handed to the browser instead.
+/// It is never written to storage, so after a restart the ceremony just has to begin again.
 #[derive(Debug)]
 struct UnderWay<K, S>(Mutex<HashMap<K, (S, OffsetDateTime)>>);
 
-/// A sign-in by passkey under way, before anybody is known: what webauthn-rs asked, and when, sealed by a key drawn at start and handed to the browser to bring back, so the server holds nothing for it and nobody can crowd it out.
+/// A sign-in by passkey in progress, before anybody is known.
+/// It holds what webauthn-rs asked, and when.
+/// Both are sealed with a random key drawn at startup, and handed to the browser, which brings them back.
+/// So the server stores nothing for it, and nobody can crowd it out.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SigningIn(String);
 
@@ -119,7 +127,8 @@ impl<K, S> Default for UnderWay<K, S> {
 }
 
 impl<K: Clone + Eq + Hash, S> UnderWay<K, S> {
-    /// Holds a ceremony begun, in place of the one before by the same; the oldest gives way when too many are under way.
+    /// Holds a ceremony that has begun, replacing an earlier one with the same key.
+    /// If too many are in progress, the oldest one is dropped.
     fn hold(&self, by: &K, state: S, now: OffsetDateTime) {
         let mut held = self.0.lock().expect("the ceremonies are not poisoned");
         held.retain(|_, (_, begun)| now - *begun < KeyCeremonies::LASTS);
@@ -134,7 +143,8 @@ impl<K: Clone + Eq + Hash, S> UnderWay<K, S> {
         held.insert(by.clone(), (state, now));
     }
 
-    /// The ceremony, once, if it is still in time.
+    /// Takes out the ceremony, so it can be used only once.
+    /// It must still be in time.
     fn take(&self, by: &K, now: OffsetDateTime) -> Result<S, CeremonyFailed> {
         self.0
             .lock()
@@ -165,7 +175,8 @@ impl KeyCeremonies {
     const LASTS: Duration = Duration::minutes(5);
     const MOST_UNDER_WAY: usize = 1_000;
 
-    /// The ceremonies of an instance served at this address, which is where the browser shows it, not where the server listens.
+    /// The ceremonies of an instance served at this public address.
+    /// That is the address the browser shows, not the one the server listens on.
     pub fn serving_at(public_url: &str) -> Result<Self, InvalidPublicUrl> {
         let url = Url::parse(public_url.trim()).map_err(|_| InvalidPublicUrl::NoUrl)?;
         if !url.has_host() {
@@ -199,7 +210,16 @@ impl KeyCeremonies {
             .map_err(|_| InvalidPublicUrl::NoUrl)
     }
 
-    /// Asks the browser to make a key in its role, none of the keys the account holds already; a begun adding replaces the one before. A passkey signs in alone, so it must check its user and be kept on the device, found without an address typed. A key for the second step is asked for without credProtect, which browsers refuse for a key that is not resident and only prefers checking its user, and which a second step after the password does not need.
+    /// Asks the browser to make a key in the given role.
+    /// The new key must not be one of the keys the account already holds.
+    /// Beginning to add a key replaces any earlier adding that has begun.
+    ///
+    /// A passkey signs in alone.
+    /// So it must verify its user, and be stored on the device so it can be found without typing an address.
+    ///
+    /// A key for the second step is asked for without credProtect.
+    /// Browsers refuse credProtect for a key that is not resident and only prefers to verify its user.
+    /// A second step after the password does not need it anyway.
     pub(crate) fn begin_adding(
         &self,
         account: &AccountId,
@@ -258,7 +278,8 @@ impl KeyCeremonies {
         asked
     }
 
-    /// Finishes the account's adding with the browser's answer, once: the credential to keep, or why there is none.
+    /// Finishes the account's adding with the browser's answer, once.
+    /// Returns the credential to keep, or why there is none.
     pub(crate) fn finish_adding(
         &self,
         account: &AccountId,
@@ -293,7 +314,9 @@ impl KeyCeremonies {
         ))
     }
 
-    /// Asks the browser for a touch of one of the keys held, to answer the second step this session owes: held by the session, so another signed in by the password asks nothing in its place.
+    /// Asks the browser for a touch of one of the held keys, to answer the second step this session owes.
+    /// The ceremony is held by the session.
+    /// So another session, signed in with the password, cannot replace it by asking too.
     pub(crate) fn begin_answering(
         &self,
         owing: &TokenDigest,
@@ -314,7 +337,8 @@ impl KeyCeremonies {
         Ok(serde_json::to_value(asked).expect("what a browser is asked is plain data"))
     }
 
-    /// Finishes the session's answering with the browser's answer, once: the key that answered, and its credential as it is now, its counter moved on.
+    /// Finishes the session's answering with the browser's answer, once.
+    /// Returns the key that answered, and its updated credential with the counter moved on.
     pub(crate) fn finish_answering(
         &self,
         owing: &TokenDigest,
@@ -345,7 +369,9 @@ impl KeyCeremonies {
 }
 
 impl KeyCeremonies {
-    /// Asks the browser for any passkey it holds for this instance, nobody named: the id the sign-in goes by, and what the browser is asked. The options do not ask for the browser's autofill, which webauthn-rs sets, so a button can ask too.
+    /// Asks the browser for any passkey it holds for this instance, without naming anybody.
+    /// Returns the id of the sign-in, and what the browser is asked.
+    /// The options do not ask for the browser's autofill, which webauthn-rs sets, so a button can ask too.
     pub(crate) fn begin_signing_in(&self, now: OffsetDateTime) -> (SigningIn, Value) {
         let (asked, state) = self
             .webauthn
@@ -358,7 +384,8 @@ impl KeyCeremonies {
         (SigningIn::sealed(&self.sealing, &state, now), asked)
     }
 
-    /// Whose passkey the browser's answer names, and which credential of theirs, before anything is checked.
+    /// Whose passkey the browser's answer names, and which of their credentials.
+    /// Nothing is checked yet.
     pub(crate) fn named_by(&self, answer: &Value) -> Result<(AccountId, Vec<u8>), CeremonyFailed> {
         let answer: PublicKeyCredential =
             serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
@@ -370,8 +397,12 @@ impl KeyCeremonies {
         Ok((AccountId::from(user), credential.to_vec()))
     }
 
-    /// Finishes the sign-in with the browser's answer and the passkey it names, once: its credential as it is now, its counter moved on.
-    /// What was asked is brought back sealed, so it is kept only once it has signed someone in, until it would have run out: only a passkey's answer fills it.
+    /// Finishes the sign-in with the browser's answer and the passkey it names, once.
+    /// Returns the passkey's updated credential, with its counter moved on.
+    ///
+    /// What was asked comes back sealed from the browser, so the server does not keep it while the sign-in is in progress.
+    /// The server keeps it only after it has signed someone in, until it would have run out, so it cannot be used again.
+    /// Only a valid passkey answer adds to what is kept.
     pub(crate) fn finish_signing_in(
         &self,
         signing_in: &SigningIn,

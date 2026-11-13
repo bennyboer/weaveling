@@ -1,11 +1,15 @@
 use tokio::sync::Semaphore;
 
-/// How many uploads are prepared at once, each holding a thread and the whole image in memory, a photo of fifty million pixels some 200 MB.
+/// How many uploads are prepared at once.
+/// Each one holds a thread and the whole image in memory.
+/// A photo of fifty million pixels takes about 200 MB.
 pub const PREPARED_AT_ONCE: usize = 2;
 
 static PREPARING: Semaphore = Semaphore::const_new(PREPARED_AT_ONCE);
 
-/// Prepares an upload beside the async runtime, so a request waiting on it holds no worker, and at most `PREPARED_AT_ONCE` at a time, so a flood of them waits its turn rather than taking every thread and the memory.
+/// Prepares an upload outside the async runtime, so a request waiting on it does not hold a worker.
+/// At most `PREPARED_AT_ONCE` uploads are prepared at a time.
+/// So a flood of uploads waits its turn instead of taking every thread and all the memory.
 pub(crate) async fn aside<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
     let _turn = PREPARING
         .acquire()

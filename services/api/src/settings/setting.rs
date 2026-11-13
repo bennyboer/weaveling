@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-/// A setting's value and its source, a variable or a key in the settings file, so a value that cannot be read says where to mend it.
+/// A setting's value and its source: an environment variable or a key in the settings file.
+/// So when a value cannot be read, the error says where to fix it.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Setting {
     pub value: String,

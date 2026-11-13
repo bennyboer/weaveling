@@ -22,7 +22,8 @@ use crate::committed::Committed;
 const READABLE: &str = "project_ada";
 const UNREADABLE: &str = "project_kept";
 
-/// Who may do what as the feature heard it, which can be made unreachable.
+/// Who may do what, as the feature heard it.
+/// It can be made unreachable.
 #[derive(Default)]
 struct Reachable {
     heard: InMemoryAccess,

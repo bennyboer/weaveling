@@ -33,7 +33,9 @@ pub trait Throttles: Send + Sync {
 
     async fn clear(&self, guarded: &str, about: &str) -> Result<(), ThrottlesError>;
 
-    /// Forgets, at most so many, the counts whose last try was before then, oldest first; a count a day old is forgotten on the next try anyway, so this only takes away whom it was about.
+    /// Forgets at most `at_most` counts whose last try was before `before`, the oldest first.
+    /// A count a day old is reset on the next try anyway.
+    /// So this only removes the record of whom the count was about.
     async fn forget_tried_before(
         &self,
         before: OffsetDateTime,

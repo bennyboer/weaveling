@@ -9,7 +9,7 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// So many tries free, then a wait doubling up to an hour.
+    /// The given number of free tries, then a wait that doubles up to an hour.
     pub const fn free(free: u32) -> Self {
         Self {
             free,
@@ -18,7 +18,9 @@ impl Rule {
         }
     }
 
-    /// So many tries free, and then none until the count is forgotten: a cap rather than a wait, kept by the hour with `hour_of`.
+    /// The given number of free tries, then no more tries until the count is forgotten.
+    /// This is a cap rather than a wait.
+    /// Use it with `hour_of` to count by the hour.
     pub const fn capped(free: u32) -> Self {
         Self {
             free,
@@ -27,7 +29,7 @@ impl Rule {
         }
     }
 
-    /// The same, the wait growing up to the one given instead.
+    /// The same rule, but the wait grows up to the given duration instead.
     pub const fn waiting_at_most(self, longest_wait: Duration) -> Self {
         Self {
             longest_wait,
@@ -36,7 +38,8 @@ impl Rule {
     }
 }
 
-/// What a count kept by the hour is about at this moment, the hour named beside it, so each hour is counted afresh; and how long until the next hour begins.
+/// The key for a count kept by the hour: `about` with the current hour added, so each hour is counted afresh.
+/// Also returns how long until the next hour begins.
 pub fn hour_of(about: &str, at: OffsetDateTime) -> (String, Duration) {
     let began = at
         .replace_minute(0)

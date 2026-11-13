@@ -27,7 +27,9 @@ use messaging::{Listener, Publisher};
 pub struct Context {
     pub clock: Arc<dyn Clock>,
     pub publisher: Arc<dyn Publisher>,
-    /// Whether there are accounts: a feature then asks who may do what of what it heard itself, and otherwise allows everyone.
+    /// Whether there are accounts.
+    /// If there are, a feature decides who may do what from the access updates it received itself.
+    /// If there are none, it allows everyone.
     pub with_accounts: bool,
 }
 

@@ -7,7 +7,8 @@ use tokio::sync::broadcast::{self, Receiver, Sender, error::RecvError};
 
 const BACKLOG: usize = 256;
 
-/// What a broadcaster's frames are told on: a feature's own type, named for whose changes they are, `IdeaChanges(project)`.
+/// What a broadcaster's frames are sent on.
+/// Each feature has its own type, named for whose changes it carries, for example `IdeaChanges(project)`.
 pub trait Channel: Clone + PartialEq + Send + Sync + 'static {}
 
 impl<T: Clone + PartialEq + Send + Sync + 'static> Channel for T {}
@@ -18,18 +19,21 @@ struct Told<C> {
     frame: Arc<str>,
 }
 
-/// Hands each frame told on a channel to whoever hears that channel; in memory and per process, and whoever falls too far behind is let go rather than hold the others up.
+/// Hands each frame sent on a channel to everyone listening on that channel.
+/// It works in memory, per process.
+/// A listener that falls too far behind is dropped, so it does not hold up the others.
 pub struct Broadcaster<C> {
     told: Sender<Told<C>>,
 }
 
-/// The frames told on one channel, from when it began to hear.
+/// The frames sent on one channel, starting from when the listening began.
 pub struct Hearing<C> {
     channel: C,
     told: Receiver<Told<C>>,
 }
 
-/// Frames one after another, whatever the channel they are heard on; none once the hearer fell behind or nobody tells any more.
+/// Frames one after another, whatever channel they arrive on.
+/// Returns none once the listener fell behind, or once nobody sends any more.
 #[async_trait]
 pub trait Frames: Send {
     async fn next(&mut self) -> Option<Arc<str>>;

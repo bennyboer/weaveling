@@ -36,7 +36,8 @@ fn jpeg(image: &RgbImage) -> Vec<u8> {
     bytes
 }
 
-/// A JPEG telling, as a phone's camera does, that it was taken turned a quarter, to be shown turned back.
+/// Returns the JPEG with a tag saying it was taken turned by a quarter, as a phone's camera does.
+/// Such an image has to be shown turned back.
 fn turned_by_its_camera(jpeg: &[u8]) -> Vec<u8> {
     let exif = [
         b"Exif\0\0".as_slice(),
@@ -86,7 +87,8 @@ fn chunk(kind: &[u8], data: &[u8]) -> Vec<u8> {
     .concat()
 }
 
-/// A PNG that only claims to be so large, a token of data behind its header.
+/// Returns a PNG whose header claims the given size.
+/// Only a token amount of data follows the header.
 fn a_png_claiming(width: u32, height: u32) -> Vec<u8> {
     let header = [
         &width.to_be_bytes()[..],

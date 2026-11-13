@@ -8,7 +8,9 @@ use crate::icons::Icon;
 use crate::route;
 use crate::speech;
 
-/// After signing in by a recovery code: how many are left, and the way to a new phone, more urgently at the last.
+/// A note shown after signing in with a recovery code.
+/// It says how many codes are left and links to setting up a new phone.
+/// When the last code was used, the note is shown more urgently.
 pub fn recovery_note() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
 

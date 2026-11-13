@@ -34,7 +34,7 @@ fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
     )
 }
 
-/// The feature as with accounts, and nobody heard of yet.
+/// The feature with accounts, where no member has been heard of yet.
 fn heard() -> Heard {
     let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let statistics = StatisticsCore::new(

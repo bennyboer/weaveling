@@ -10,7 +10,7 @@ pub enum Agent {
     Account(AccountId),
 }
 
-/// The one author a test acts as, wherever who acted is not the point.
+/// The one author a test acts as, when it does not matter who acted.
 #[cfg(any(test, feature = "testing"))]
 pub fn an_author() -> Agent {
     Agent::Account(AccountId::from("author-7"))

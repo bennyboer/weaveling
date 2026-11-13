@@ -29,25 +29,38 @@ enum ReadingAgain {
     OnceMore,
 }
 
-/// An aggregate as the server confirmed it, at the version it stands at.
+/// An aggregate as the server confirmed it, with its current version.
 pub trait Versioned: Clone + Send + Sync + 'static {
     fn version(&self) -> u64;
 }
 
-/// What the author means to do to an aggregate: shown at once, sent in its turn, and laid over the confirmed state until the server takes it in or refuses it. Not a change the server tells, which is confirmed and carries a version.
+/// A change the author wants to make to an aggregate.
+///
+/// It is shown at once and sent when its turn comes.
+/// Until the server accepts or refuses it, it is laid over the confirmed state.
+/// It is not the same as a change reported by the server, which is confirmed and has a version.
 pub trait Intent<A>: Clone + Send + Sync + 'static {
     fn lay_over(&self, on: &mut A);
 
-    /// This intent and the one waiting before it, as one, where the newer makes the older's sending needless: a card nudged twice is sent once, where it ended up.
+    /// Merges this intent with the one waiting before it, if the newer one makes sending the older one unnecessary.
+    /// For example, a card moved twice is sent only once, with its final position.
     fn merged_after(&self, earlier: &Self) -> Option<Self>;
 
-    /// Whether this intent still makes sense on the version it is about to be sent on, checked before each sending: one that no longer does is refused as it says, and not tried again.
+    /// Checks whether this intent still makes sense on the version it is about to be sent on.
+    /// It is checked before every send.
+    /// An intent that no longer fits is refused with the returned error and not tried again.
     fn still_fits(&self, _on: &A) -> Result<(), ApiError> {
         Ok(())
     }
 }
 
-/// What the author works on: the aggregate as the server last confirmed it, with the author's own intents laid over it until each is answered. They go out one at a time and in the order they were made, each built on the version it was worked out from and refused if another author got in between, and an intent waiting to go is merged with the next where it can be, so a held key sends what it ended at rather than every step.
+/// What the author works on.
+///
+/// It is the aggregate as the server last confirmed it, with the author's own intents laid over it until each one is answered.
+/// Intents are sent one at a time, in the order they were made.
+/// Each one is based on the version it was made on, and it is refused if another author changed the aggregate in between.
+/// An intent that is still waiting is merged with the next one where possible.
+/// So a held key sends only the final state, not every step.
 pub struct WorkingCopy<A: Send + Sync + 'static, I: Send + Sync + 'static> {
     confirmed: RwSignal<Option<A>>,
     pending: RwSignal<Vec<I>>,
@@ -70,7 +83,9 @@ impl<A: Send + Sync + 'static, I: Send + Sync + 'static> Clone for WorkingCopy<A
 impl<A: Send + Sync + 'static, I: Send + Sync + 'static> Copy for WorkingCopy<A, I> {}
 
 impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
-    /// `send` carries out one intent on the version it is given, `read` asks for the aggregate whole, and `failed` hears what was refused of an intent nobody waits on, and a reading that failed.
+    /// `send` carries out one intent on the version it is given.
+    /// `read` fetches the whole aggregate.
+    /// `failed` is called with the refusal of an intent that nobody waits on, and with a failed reading.
     pub fn new<Sent, Read>(
         send: impl Fn(A, I) -> Sent + 'static,
         read: impl Fn() -> Read + 'static,
@@ -98,13 +113,20 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         }
     }
 
-    /// Hears every change of others taken in, told or read, with what was held before and what is held after, `taking_in` being the taking in itself for `noticed` to wrap, as keeping the cursor does; the answers to the author's own intents are never heard. As a change told back could be the author's own, one told while any of theirs is unanswered is held back, and the aggregate read once all of them are answered.
+    /// Calls `noticed` for every change by other authors that is taken in, whether reported by the server or read.
+    ///
+    /// `noticed` gets the state before, the state after, and a function that does the actual taking in.
+    /// `noticed` can wrap that function, for example to keep the cursor in place.
+    /// Answers to the author's own intents never call `noticed`.
+    /// A reported change could be the author's own, so changes reported while any of the author's intents are unanswered are held back.
+    /// The aggregate is read again once all of them are answered.
     pub fn noticing_others(self, noticed: impl Fn(&A, &A, &mut dyn FnMut()) + 'static) {
         let noticed: Noticing<A> = Rc::new(noticed);
         _ = self.noticing.try_set_value(Some(noticed));
     }
 
-    /// The aggregate as the author sees it: confirmed, with every intent of theirs not yet answered laid over it.
+    /// The aggregate as the author sees it.
+    /// It is the confirmed state with every unanswered intent of the author laid over it.
     pub fn shown(self) -> Option<A> {
         self.confirmed.get().map(|mut shown| {
             self.pending.with(|pending| {
@@ -121,7 +143,8 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         self.confirmed.get()
     }
 
-    /// Whether any intent of the author's is still on its way or waiting to go: what a button shows as busy, and what saving waits for.
+    /// Whether any of the author's intents is still being sent or waiting to be sent.
+    /// Buttons use this to show as busy, and saving waits for it.
     pub fn unanswered(self) -> bool {
         self.pending.with(|pending| !pending.is_empty())
     }
@@ -153,7 +176,12 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         self.send_next();
     }
 
-    /// Intends as `intend` does, and answers once the server took it in, or with what it was refused for, after the aggregate was read again where it was overtaken; never merged, as what waits on it has to hear of this one, and a refusal is told to it alone.
+    /// Queues an intent like `intend` does, and returns a future for its answer.
+    ///
+    /// The future resolves once the server accepted the intent, or with the reason it was refused.
+    /// If it was refused because another change got in first, the aggregate is read again before the answer is given.
+    /// This intent is never merged, because the caller waits for this exact one.
+    /// A refusal is reported only to the caller.
     pub fn intended(self, intent: I) -> Landed {
         let landing = Rc::new(Landing::default());
         self.queue(intent, Some(landing.clone()));
@@ -168,7 +196,8 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
             .update_value(|awaited| awaited.push(landing.map(Lander)));
     }
 
-    /// Takes in the aggregate at a version the server told, older or repeated versions changing nothing.
+    /// Takes in the aggregate at a version reported by the server.
+    /// An older or repeated version changes nothing.
     pub fn take_in(self, told: A) {
         let Some(newer) = self.confirmed.try_with_untracked(|held| {
             held.as_ref()
@@ -183,7 +212,11 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         self.send_next();
     }
 
-    /// Asks for the aggregate whole, as when a told change cannot be taken in on what is held. At most one reading is on its way: asked again meanwhile, exactly one more follows it, however often it was asked.
+    /// Reads the whole aggregate again.
+    /// This is used, for example, when a reported change cannot be applied to what is held.
+    ///
+    /// At most one reading is in progress at a time.
+    /// If it is asked for again meanwhile, exactly one more reading follows, no matter how often it was asked for.
     pub fn read_again(self) {
         match self.reading_again.try_get_value() {
             Some(ReadingAgain::Not) => {}
@@ -250,7 +283,11 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         noticing && unanswered
     }
 
-    /// Hears a change the server told: an older or repeated version changes nothing, the next one is taken in as `taken_in` works it out on what is held, and any other, a version skipped or a change not understood, has the aggregate read again.
+    /// Handles a change reported by the server.
+    ///
+    /// An older or repeated version changes nothing.
+    /// The next version is applied to what is held, using `taken_in`.
+    /// In any other case, such as a skipped version or a change that cannot be understood, the aggregate is read again.
     pub fn heard<E: DeserializeOwned>(
         self,
         told: FrameDTO,
@@ -268,7 +305,9 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
         }
     }
 
-    /// Follows what the server tells of the aggregate from the moment it is first confirmed, on `topic` about what `about` names it by, each change heard as `heard` hears it.
+    /// Subscribes to the server's changes of the aggregate, starting when it is first confirmed.
+    /// The subscription is on `topic`, for the name and id that `about` returns.
+    /// Each change is handled like `heard` handles it.
     pub fn following<E: DeserializeOwned>(
         self,
         topic: &'static str,
@@ -403,7 +442,8 @@ impl<A: Versioned, I: Intent<A>> WorkingCopy<A, I> {
     }
 }
 
-/// What a told change makes of what is held, when it is the very next version and understood; `None` when it cannot be taken in on what is held, and the aggregate has to be read again.
+/// Applies a reported change to what is held, if it is the very next version and can be understood.
+/// Returns `None` if it cannot be applied, and the aggregate must then be read again.
 pub fn told_next<A: Versioned, E: DeserializeOwned>(
     held: A,
     told: FrameDTO,
@@ -415,7 +455,8 @@ pub fn told_next<A: Versioned, E: DeserializeOwned>(
         .and_then(|event| taken_in(held, event))
 }
 
-/// What a told change says the list must show before a reading of it is taken in: an item at that version or newer, or an item gone.
+/// What the list must contain after a reported change, before a new reading of the list is used.
+/// It is either an item at that version or newer, or an item that is gone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Awaited<K> {
     Held { id: K, at_least: u64 },
@@ -437,7 +478,12 @@ type SendingTo<K, A, I> = Rc<dyn Fn(K, A, I) -> Answer<A>>;
 type ReadingOne<K, A> = Rc<dyn Fn(K) -> Answer<A>>;
 type Copies<K, A, I> = Vec<(K, WorkingCopy<A, I>, Owner)>;
 
-/// A list of aggregates each kept as a `WorkingCopy` of its own, the ideas of a project or the projects of an account: every item has its own version, its own intents and its own turn, so a change to one never waits for another. The list itself is what was last read, each item shown with the author's intents laid over it.
+/// A list of aggregates, each kept in its own `WorkingCopy`.
+/// Examples are the ideas of a project or the projects of an account.
+///
+/// Every item has its own version, its own intents and its own sending order.
+/// So a change to one item never waits for a change to another.
+/// The list itself is what was last read, and each item is shown with the author's intents laid over it.
 pub struct WorkingCopies<
     K: Send + Sync + 'static,
     A: Send + Sync + 'static,
@@ -472,7 +518,11 @@ where
     A: Versioned,
     I: Intent<A>,
 {
-    /// `send` carries out one intent on the item it names, at the version it is given; `read` asks for one item whole. Like every signal it belongs to the reactive owner current when it is made, and so do the copies it keeps.
+    /// `send` carries out one intent on the item it names, at the version it is given.
+    /// `read` fetches one whole item.
+    ///
+    /// Like every signal, the list belongs to the reactive owner that is current when it is made.
+    /// The working copies it keeps belong to that owner too.
     pub fn new<Sent, Read>(
         send: impl Fn(K, A, I) -> Sent + 'static,
         read: impl Fn(K) -> Read + 'static,
@@ -499,7 +549,11 @@ where
         }
     }
 
-    /// Takes in the list as it was read: an item kept takes in its newer version, a new one gets a copy of its own, and one no longer listed is let go with whatever it still intended.
+    /// Takes in the list as it was read.
+    ///
+    /// An item that is still listed takes in its newer version.
+    /// A new item gets its own working copy.
+    /// An item that is no longer listed is dropped, together with any intents it still had.
     pub fn take_in_all(self, listed: Vec<(K, A)>) {
         let keys: Vec<K> = listed.iter().map(|(about, _)| about.clone()).collect();
         let gone: Vec<Owner> = self
@@ -526,7 +580,12 @@ where
         _ = self.has_been_read.try_set(true);
     }
 
-    /// Reads the list whole and takes it in as `take_in_all` does, answering with the failure if it could not be read. Read again before the answer came, only the newest reading is taken in; and a reading that does not show yet what was `awaited` is asked again a few times first, as a catalog may lag a moment behind what was told.
+    /// Reads the whole list and takes it in like `take_in_all` does.
+    /// Returns the error if the list could not be read.
+    ///
+    /// If the list is read again before the answer came, only the newest reading is taken in.
+    /// If a reading does not yet contain what was `awaited`, it is repeated a few times first.
+    /// This is because a catalog can lag a moment behind what the server reported.
     pub fn read_all<Read>(
         self,
         read: impl Fn() -> Read + 'static,
@@ -555,7 +614,8 @@ where
         }
     }
 
-    /// Takes in one item at a version the server told, as `take_in_all` would, adding it to the end of the list when it is new.
+    /// Takes in one item at a version reported by the server, like `take_in_all` would.
+    /// A new item is added to the end of the list.
     pub fn take_in(self, about: K, told: A) {
         self.copy_of(&about).take_in(told);
         _ = self.listed.try_update(|listed| {
@@ -565,7 +625,10 @@ where
         });
     }
 
-    /// Reads one item whole and takes it in, holding it from now on; let go before the answer came, it is not taken back, nor is its failure told. Reads crossing need no ordering: the item takes in only what is newer.
+    /// Reads one whole item and takes it in, and keeps it from now on.
+    ///
+    /// If the item is dropped before the answer comes, it is not added back and a failure is not reported.
+    /// Overlapping reads need no ordering, because the item only takes in newer versions.
     pub fn read_again(
         self,
         about: &K,
@@ -584,14 +647,15 @@ where
         }
     }
 
-    /// Tells a failure as a refusal of an intent nobody waits on is told, as when the list could not be read.
+    /// Reports a failure the same way as the refusal of an intent that nobody waits on.
+    /// This is used, for example, when the list could not be read.
     pub fn fail(self, failure: ApiError) {
         if let Some(failed) = self.failed.try_get_value() {
             failed(failure);
         }
     }
 
-    /// Lets one item go, as when it was deleted.
+    /// Drops one item, for example when it was deleted.
     pub fn forget(self, about: &K) {
         let gone = self
             .copies
@@ -614,7 +678,8 @@ where
         }
     }
 
-    /// Intends as the item's own `intended` does; an item not held refuses it at once.
+    /// Queues an intent like the item's own `intended` does.
+    /// If the item is not held, the intent is refused at once.
     pub fn intended(self, about: &K, intent: I) -> Landed {
         match self.held(about) {
             Some(copy) => copy.intended(intent),
@@ -622,7 +687,12 @@ where
         }
     }
 
-    /// Intends what ends an item, a withdrawal, a dismissal, a trashing, and lets the item go once it landed, answering whether it did; ignored while the item is not listed or a change to it is still unanswered, so a second press never sends it twice. Refused, it is told as an intent nobody waits on is, unless the item was let go meanwhile.
+    /// Sends an intent that ends an item, such as a withdrawal, a dismissal or a trashing.
+    /// Drops the item once the server accepted it, and returns whether it was accepted.
+    ///
+    /// It is ignored while the item is not listed or a change to it is still unanswered.
+    /// So a second press never sends it twice.
+    /// A refusal is reported like that of an intent nobody waits on, unless the item was dropped meanwhile.
     pub fn ending(self, about: &K, intent: I) -> impl Future<Output = bool> + use<K, A, I> {
         let landing = untrack(|| self.is_listed(about) && !self.unanswered_on(about))
             .then(|| self.intended(about, intent));
@@ -666,7 +736,8 @@ where
         self.held(about)?.confirmed_untracked()
     }
 
-    /// Whether the list was read at all yet, which tells a list still loading from one that is empty.
+    /// Whether the list has been read at least once.
+    /// This tells a list that is still loading apart from an empty one.
     pub fn is_read(self) -> bool {
         self.has_been_read.try_get().unwrap_or(false)
     }
@@ -754,7 +825,10 @@ impl Landing {
     }
 }
 
-/// A landing waited on, held by its working copy: dropped with the copy before the server answered, as when its item is let go, it lands refused rather than leaving whoever waits waiting for ever.
+/// An answer that someone waits for, held by its working copy.
+///
+/// If it is dropped with the copy before the server answered, for example because its item was dropped, it resolves as refused.
+/// This way, the caller never waits forever.
 struct Lander(Rc<Landing>);
 
 impl Drop for Lander {
@@ -765,7 +839,8 @@ impl Drop for Lander {
     }
 }
 
-/// Whether an intent landed, once the server answered it, or what it was refused for.
+/// Resolves once the server answered an intent.
+/// It tells whether the intent was accepted, or why it was refused.
 pub struct Landed(Rc<Landing>);
 
 impl Landed {

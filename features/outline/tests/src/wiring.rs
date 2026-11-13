@@ -28,7 +28,8 @@ const REMEMBERING_PROJECTS: &str = "outline-remember-projects-of-attachments";
 const REMEMBERING_ROLES: &str = "outline-remember-roles";
 const REMEMBERING_TRASH: &str = "outline-remember-trash";
 
-/// Who may do what as the feature heard it, unless the list is down.
+/// Who may do what, as the feature heard it.
+/// It fails while the list is down.
 #[derive(Default)]
 pub struct WhoMayDoWhat {
     kept: InMemoryAccess,
@@ -176,12 +177,14 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     wired_on(clock, false)
 }
 
-/// A feature with accounts, where nobody but the system may do anything until told a role.
+/// A feature with accounts.
+/// Nobody but the system may do anything until the feature is told their role.
 pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
     wired_on(clock, true)
 }
 
-/// A feature with accounts, where the author owns the first two projects and nobody else is a member.
+/// A feature with accounts, where the author owns the first two projects.
+/// Nobody else is a member.
 pub async fn wired_where_the_author_owns(clock: Arc<dyn Clock>) -> Wired {
     let wired = wired_with_accounts(clock);
     for project in ["project_1", "project_2"] {
@@ -300,7 +303,8 @@ fn wired_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
 }
 
 impl Wired {
-    /// Tells the outline an account's role in a project, or that it is a member no more, each word newer than the last.
+    /// Tells the outline an account's role in a project, or that the account is no longer a member.
+    /// Each message has a newer version than the last.
     pub async fn give(&self, project: &str, account: &str, role: Option<Role>) {
         let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
         self.outlines

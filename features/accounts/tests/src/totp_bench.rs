@@ -191,7 +191,8 @@ impl Served {
     }
 }
 
-/// Ada with a second factor set up at the given moment: its secret, the recovery codes she was shown, and the cookie of the session that set it up.
+/// Ada with a second factor set up at the given moment.
+/// It holds the secret, the recovery codes she was shown, and the cookie of the session that set it up.
 pub struct SetUp {
     pub served: Served,
     pub secret: String,

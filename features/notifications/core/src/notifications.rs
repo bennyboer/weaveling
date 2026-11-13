@@ -220,7 +220,8 @@ impl NotificationsCore {
         Ok(due.len())
     }
 
-    /// Forgets every notice of a deleted account, whole, as an old one is, and its name.
+    /// Forgets every notice of a deleted account completely, the same way an old notice is forgotten.
+    /// Also forgets the account's name.
     pub async fn forget_account(
         &self,
         within: Option<&mut Transaction>,

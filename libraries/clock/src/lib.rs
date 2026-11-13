@@ -40,7 +40,8 @@ impl Clock for FixedClock {
     }
 }
 
-/// The moment `seconds` after the Unix epoch, as tests and their suites write an instant.
+/// The moment `seconds` after the Unix epoch.
+/// Tests and their suites use it to write an instant.
 pub fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }

@@ -61,7 +61,8 @@ fn made_by(authenticator: &mut SoftPasskey, asked: Value) -> Value {
     serde_json::to_value(made).expect("the answer is plain data")
 }
 
-/// The software passkey keeps no credential on itself, so a passkey's options are eased for it; the server asks for a resident one and never checks it was.
+/// The software passkey stores no credential on itself, so a passkey's options are relaxed for it.
+/// The server asks for a resident key, but never checks that it got one.
 fn not_resident(mut asked: Value) -> Value {
     asked["publicKey"]["authenticatorSelection"]["residentKey"] = "discouraged".into();
     asked["publicKey"]["authenticatorSelection"]["requireResidentKey"] = false.into();
@@ -935,7 +936,9 @@ async fn with_a_passkey(bench: &Bench, email: &str) -> (AccountId, SoftPasskey) 
     (account, authenticator)
 }
 
-/// The software passkey keeps no credential, so the account's credentials are named to it and its answer is given the user handle, as a passkey kept on a device finds and answers them.
+/// The software passkey stores no credential.
+/// So the account's credentials are passed to it, and the user handle is added to its answer.
+/// This is what a passkey stored on a device does on its own: it finds the credentials and answers with the user handle.
 async fn passkey_touch(
     bench: &Bench,
     authenticator: &mut SoftPasskey,
@@ -965,7 +968,8 @@ async fn passkey_touch(
     (signing_in, touch)
 }
 
-/// The user handle a passkey kept on its device answers with, unsigned: the account's id, as the server gave it when the passkey was made.
+/// Encodes bytes as base64url without padding.
+/// The tests use it for the user handle a passkey answers with, which is the account's id.
 pub(crate) fn base64_url(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     bytes

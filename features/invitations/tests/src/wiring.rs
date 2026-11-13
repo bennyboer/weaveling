@@ -38,7 +38,8 @@ pub struct Wired {
     versions: AtomicU64,
 }
 
-/// Who may do what, kept in memory, which can be made unreachable.
+/// Who may do what, stored in memory.
+/// It can be made unreachable.
 #[derive(Default)]
 pub struct Unreliable {
     kept: InMemoryAccess,
@@ -166,7 +167,8 @@ pub fn a_workbench() -> Wired {
     a_workbench_with(false)
 }
 
-/// A workbench with accounts: who may do what is what the feature heard of the members, or was given by `give`.
+/// A workbench with accounts.
+/// Who may do what follows what the feature heard from the members feature, or what was given by `give`.
 pub fn a_workbench_with_accounts() -> Wired {
     a_workbench_with(true)
 }
@@ -261,7 +263,7 @@ pub fn no_operator() -> Acting {
 }
 
 impl Wired {
-    /// Gives an account a role in a project, or takes it away with none, as the members would tell it.
+    /// Gives an account a role in a project, or takes the role away with none, as the members feature would report it.
     pub async fn give(&self, project: &str, account: &str, role: Option<Role>) {
         let version = self.versions.fetch_add(1, Ordering::SeqCst) + 1;
         self.invitations

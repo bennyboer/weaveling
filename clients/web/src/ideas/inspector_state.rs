@@ -31,7 +31,7 @@ pub struct InspectorState {
 }
 
 impl InspectorState {
-    /// Inspects an idea on its own, keeping a working copy of it here.
+    /// Inspects a single idea and keeps its own working copy of it.
     pub fn inspecting(project: Memo<String>, inspected: Signal<Option<IdeaId>>) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let ideas = working::copies(move |failure| _ = problem.try_set(Some(failure)));
@@ -39,7 +39,9 @@ impl InspectorState {
         Self::inspecting_in(project, inspected, ideas, problem)
     }
 
-    /// Inspects an idea among ideas a view around it already works on, as the board does its pool, so both show and change the same copy of it; what that view is refused it shows itself.
+    /// Inspects an idea that a surrounding view already works on, as the board does with its pool.
+    /// Both then show and change the same copy of the idea.
+    /// Refusals are shown by the surrounding view, not by the inspector.
     pub fn inspecting_among(
         project: Memo<String>,
         inspected: Signal<Option<IdeaId>>,

@@ -17,7 +17,12 @@ pub enum UnreadableSize {
     TooLarge,
 }
 
-/// The bytes a size is written as: a number, whole or with a point, and its unit, B, KB, MB, GB or TB, in any case and with a space or none; a kilobyte is 1024 bytes, so KiB, MiB, GiB and TiB are taken as the same, and a part of a byte is let go.
+/// Reads a written size as a number of bytes.
+///
+/// A size is a number, whole or with a decimal point, followed by its unit: B, KB, MB, GB or TB.
+/// The unit may be in any case, with or without a space before it.
+/// A kilobyte is 1024 bytes, so KiB, MiB, GiB and TiB mean the same as KB, MB, GB and TB.
+/// A fraction of a byte is dropped.
 pub fn bytes(written: &str) -> Result<u64, UnreadableSize> {
     let written = written.trim();
     let (whole, rest) = digits(written);

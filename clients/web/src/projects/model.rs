@@ -49,7 +49,8 @@ pub struct TrashedProject {
     pub restored: bool,
 }
 
-/// What a change told of one project makes of it in the list, given the project as held, if held at all.
+/// What a change reported by the server does to one project in the list.
+/// It is worked out from the project as currently held, if it is held at all.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Told {
     Changed(Project),
@@ -57,7 +58,8 @@ pub enum Told {
     Unchanged,
 }
 
-/// What a change told of one project says the list must show before a reading of it is taken in.
+/// Returns what the project list must contain after a change to one project, as reported by the server.
+/// A new reading of the list is used only once it contains this.
 pub fn awaited_in_the_list(told: &FrameDTO) -> Option<Awaited<ProjectId>> {
     let id = ProjectId::from(told.of.clone()?);
     let event = serde_json::from_value::<ProjectEventDTO>(told.event.clone()).ok()?;
@@ -71,7 +73,9 @@ pub fn awaited_in_the_list(told: &FrameDTO) -> Option<Awaited<ProjectId>> {
     })
 }
 
-/// What a change told of one project says the trash must show before a reading of it is taken in, where the change moves it into the trash or out of it.
+/// Returns what the trash must contain after a change to one project, as reported by the server.
+/// A new reading of the trash is used only once it contains this.
+/// Only changes that move the project into or out of the trash return something.
 pub fn awaited_in_the_trash(told: &FrameDTO) -> Option<Awaited<ProjectId>> {
     let id = ProjectId::from(told.of.clone()?);
 

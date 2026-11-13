@@ -18,7 +18,8 @@ use transacting::{InMemoryTransactions, Transaction};
 
 const PROJECT: &str = "project_1";
 
-/// Who may do what as the feature heard it, which can be made unreachable.
+/// Who may do what, as the feature heard it.
+/// It can be made unreachable.
 #[derive(Default)]
 struct Reachable {
     heard: InMemoryAccess,

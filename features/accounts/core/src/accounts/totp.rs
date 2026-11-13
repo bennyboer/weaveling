@@ -12,7 +12,8 @@ use crate::totp_key::TotpKey;
 
 const ISSUER: &str = "Weaveling";
 
-/// TOTP being set up, as the author is shown it: the secret to type, and the address its QR code holds.
+/// TOTP being set up, as it is shown to the author.
+/// It holds the secret to type in, and the address that its QR code contains.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingUpTotp {
     pub secret: String,
@@ -31,7 +32,8 @@ impl AccountsCore {
         self.totp_key.is_some()
     }
 
-    /// Begins setting up an app for the second step, for the account's password, as it may replace the app in use and its recovery codes.
+    /// Begins setting up an authenticator app for the second step.
+    /// It needs the account's password, because it may replace the app in use and its recovery codes.
     pub async fn begin_setting_up_totp(
         &self,
         account: &AccountId,
@@ -57,7 +59,8 @@ impl AccountsCore {
         })
     }
 
-    /// Finishes setting up by a code of the app, so every other session ends, and this one goes on as a new one.
+    /// Finishes setting up TOTP with a code from the app.
+    /// Every other session ends, and this session is replaced by a new one.
     pub async fn finish_setting_up_totp(
         &self,
         account: &AccountId,
@@ -117,7 +120,9 @@ impl AccountsCore {
         Ok((token, codes))
     }
 
-    /// Draws new recovery codes in place of the old, for the account's password, whatever answers its second step.
+    /// Creates new recovery codes in place of the old ones.
+    /// It needs the account's password.
+    /// It works no matter what answers the second step.
     pub async fn draw_recovery_codes(
         &self,
         account: &AccountId,
@@ -145,7 +150,9 @@ impl AccountsCore {
         Ok(codes)
     }
 
-    /// Turns TOTP off for the account's password, so every other session ends, and this one goes on as a new one; the recovery codes go too where nothing else answers the second step.
+    /// Turns off TOTP, which needs the account's password.
+    /// Every other session ends, and this session is replaced by a new one.
+    /// The recovery codes are deleted too, if nothing else answers the second step.
     pub async fn turn_off_totp(
         &self,
         account: &AccountId,
@@ -185,7 +192,8 @@ impl AccountsCore {
         Ok(token)
     }
 
-    /// Forgets the account's TOTP, and its recovery codes where no key answers the second step without it.
+    /// Forgets the account's TOTP.
+    /// It also forgets the recovery codes, if no key answers the second step without TOTP.
     pub(super) async fn forgetting_totp(
         &self,
         transaction: &mut Transaction,

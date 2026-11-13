@@ -36,7 +36,9 @@ pub fn knows(language: Language, message: &str) -> bool {
     in_the_catalogue_of(language, |catalogue| catalogue.has_message(message))
 }
 
-/// Fetches a language's catalogue, once, from where the client is handed out; English is built in. False where it cannot be had, English then speaking for it.
+/// Fetches a language's catalogue once, from the server that serves the client.
+/// English is built in and is never fetched.
+/// Returns false if the catalogue cannot be fetched; English is then used instead.
 pub async fn fetched(language: Language) -> bool {
     if language == Language::English
         || CATALOGUES.with(|catalogues| catalogues[language as usize].get().is_some())

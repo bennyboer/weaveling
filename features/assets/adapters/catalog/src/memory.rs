@@ -10,7 +10,9 @@ use eventsourcing::{AccountId, Version};
 use time::OffsetDateTime;
 use transacting::{Transaction, memory};
 
-/// A name heard as of a version: the name, an account's address, what it is found by, and when it was forgotten, none while it is known.
+/// A name as heard at a version.
+/// It holds the name, an account's email, the text it is searched by, and when it was forgotten.
+/// The time it was forgotten is missing while the name is known.
 #[derive(Debug, Clone)]
 struct Named {
     version: u64,
@@ -199,6 +201,25 @@ impl AssetCatalog for InMemoryAssetCatalog {
             .filter(past)
             .take(usize::try_from(at_most).unwrap_or(usize::MAX))
             .collect())
+    }
+
+    async fn owned_by(
+        &self,
+        _transaction: &mut Transaction,
+        owner: &Owner,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, CatalogError> {
+        let mut owned: Vec<AssetId> = self
+            .kept()
+            .summaries
+            .values()
+            .filter(|summary| &summary.owner == owner)
+            .map(|summary| summary.id)
+            .collect();
+        owned.sort_by_key(ToString::to_string);
+        owned.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        Ok(owned)
     }
 
     async fn uploaded_by(

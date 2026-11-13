@@ -13,7 +13,9 @@ use crate::recovery_code::RecoveryCode;
 use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
 
-/// A key just added: its id, the session going on in place of the one that added it, and the recovery codes, where it is the account's first second factor.
+/// A key that was just added.
+/// It holds the key's id, and the new session that replaces the one that added it.
+/// It also holds the recovery codes, if the key is the account's first second factor.
 #[derive(Debug)]
 pub struct AddedKey {
     pub key: KeyId,
@@ -40,7 +42,9 @@ impl AccountsCore {
         Ok(self.get(account).await?.state.keys().clone())
     }
 
-    /// What the browser is asked to make a key in its role with, a passkey signing in alone or a key answering the second step, for the account's password, as a key added is a way in.
+    /// Returns what the browser is asked, to make a key in the given role.
+    /// The role is either a passkey that signs in alone, or a key that answers the second step.
+    /// It needs the account's password, because an added key is a way to sign in.
     pub async fn begin_adding_key(
         &self,
         account: &AccountId,
@@ -70,7 +74,8 @@ impl AccountsCore {
         ))
     }
 
-    /// Adds the key the browser made, under the name given, so every other session ends, and this one goes on as a new one.
+    /// Adds the key the browser made, under the given name.
+    /// Every other session ends, and this session is replaced by a new one.
     pub async fn finish_adding_key(
         &self,
         account: &AccountId,
@@ -173,7 +178,8 @@ impl AccountsCore {
         })
     }
 
-    /// Removes a key for the account's password, so every other session ends, and this one goes on as a new one.
+    /// Removes a key, which needs the account's password.
+    /// Every other session ends, and this session is replaced by a new one.
     pub async fn remove_key(
         &self,
         account: &AccountId,
@@ -220,7 +226,10 @@ impl AccountsCore {
         Ok(token)
     }
 
-    /// Puts the passkey the browser just made in place of a key the account holds, under its name, for the account's password: how a key answering the second step becomes a passkey, made anew as one. Where it was the last second factor, the second step ends, and its recovery codes with it.
+    /// Replaces a key of the account with the passkey the browser just made, keeping the key's name.
+    /// It needs the account's password.
+    /// This is how a key that answers the second step becomes a passkey: it is made again as a passkey.
+    /// If the old key was the last second factor, the second step ends, and its recovery codes are deleted.
     pub async fn replace_key_by_passkey(
         &self,
         account: &AccountId,
@@ -306,7 +315,11 @@ impl AccountsCore {
         })
     }
 
-    /// Lets a passkey answer the second step in place of signing in alone, for the account's password, as a passkey always can; as the account's first second factor it comes with recovery codes, and every other session ends.
+    /// Lets a passkey answer the second step, instead of signing in alone.
+    /// It needs the account's password.
+    /// Any passkey is able to answer the second step.
+    /// If it becomes the account's first second factor, new recovery codes are created.
+    /// Every other session ends.
     pub async fn demote_key(
         &self,
         account: &AccountId,
@@ -358,7 +371,8 @@ impl AccountsCore {
         })
     }
 
-    /// Whether the password is the account's, throttled as signing in is, by the account.
+    /// Whether the password belongs to the account.
+    /// Tries are throttled per account, the same way as when signing in.
     pub(super) async fn password_confirmed(
         &self,
         account: &AccountId,

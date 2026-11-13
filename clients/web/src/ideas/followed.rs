@@ -12,7 +12,11 @@ use crate::projects::model::ProjectId;
 use crate::working_copy::Awaited;
 use live_contract::FrameDTO;
 
-/// The ideas of a project as the author works on them: read whole when the live socket opens, kept up with by version as other authors change them, and each changed through a working copy of its own.
+/// The ideas of a project, as the author works on them.
+///
+/// They are read in full when the live socket opens.
+/// They are then kept up to date by version as other authors change them.
+/// Each idea is changed through its own working copy.
 #[derive(Clone, Copy)]
 pub struct FollowedIdeas {
     project: StoredValue<ProjectId>,
@@ -47,7 +51,8 @@ impl FollowedIdeas {
         self.read(None);
     }
 
-    /// Reads the ideas again, asking until they list `idea`: an idea the list does not hold yet may still be on its way into it.
+    /// Reads the ideas again, and repeats the request until the list contains `idea`.
+    /// This is needed because a new idea can take a moment to show up in the list.
     pub fn read_until_listed(self, idea: &IdeaId) {
         self.read(Some(Awaited::Held {
             id: idea.clone(),

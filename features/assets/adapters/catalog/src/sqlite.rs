@@ -1,6 +1,6 @@
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Person, ProjectLink, Sorted,
-    Upload, UploadMark, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
+    Sorted, Upload, UploadMark, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -34,6 +34,13 @@ const REMEMBER: &str = "
 ";
 
 const FORGET: &str = "DELETE FROM asset_summaries WHERE id = ?1";
+
+const OWNED: &str = "
+    SELECT id FROM asset_summaries
+    WHERE owner_kind = ?1 AND owner = ?2
+    ORDER BY id
+    LIMIT ?3
+";
 
 const HELD: &str =
     "SELECT uploader, owner_kind, owner, total_size FROM asset_summaries WHERE id = ?1";
@@ -101,7 +108,9 @@ pub fn migrations() -> Migrator {
     laying
 }
 
-/// The assets on SQLite, with a running total for the installation, each account and each project, so what an upload is weighed against is read by its keys and never summed over every asset.
+/// The assets, stored in SQLite.
+/// It keeps a running total for the installation, for each account and for each project.
+/// So the usage an upload is checked against is read by key, and never summed over all assets.
 #[derive(Debug, Default)]
 pub struct SqliteAssetCatalog;
 
@@ -132,7 +141,8 @@ async fn counted(
     Ok(())
 }
 
-/// Takes what an asset counts off every total it counts in, where it is held.
+/// Subtracts an asset's size from every total it counts in.
+/// Does nothing if the asset is not stored.
 async fn taken_off(connection: &mut SqliteConnection, id: &AssetId) -> Result<(), CatalogError> {
     let held = sqlx::query(HELD)
         .bind(id.to_string())
@@ -276,6 +286,29 @@ impl AssetCatalog for SqliteAssetCatalog {
                     name: row.try_get("name").map_err(unreachable)?,
                     email: row.try_get("email").map_err(unreachable)?,
                 })
+            })
+            .collect()
+    }
+
+    async fn owned_by(
+        &self,
+        transaction: &mut Transaction,
+        owner: &Owner,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, CatalogError> {
+        let (owner_kind, owner) = owner_written(owner);
+        let rows = sqlx::query(OWNED)
+            .bind(owner_kind)
+            .bind(owner)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let id: String = row.try_get("id").map_err(unreachable)?;
+                id.parse().map_err(unreachable)
             })
             .collect()
     }

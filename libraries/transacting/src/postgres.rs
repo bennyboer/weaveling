@@ -12,7 +12,13 @@ use sqlx::{Describe, Either, Execute, Executor, PgPool, Postgres, SqlStr};
 
 use crate::{Failure, Transaction, Transactions, Unit};
 
-/// Run on every connection of a feature's pool, so each of its transactions is serializable: two that each read what the other writes cannot both commit, the one that loses answering a serialization failure, which the transaction's `Connection` marks and `retrying!` tries again. A transaction at another isolation is not watched for that, so the whole pool, not only `begin`, is set.
+/// Runs on every connection of a feature's pool, so each of its transactions is serializable.
+///
+/// Two transactions that each read what the other writes cannot both commit.
+/// The one that loses gets a serialization failure.
+/// The transaction's `Connection` marks that failure, and `retrying!` tries again.
+/// A transaction at another isolation level is not watched for that.
+/// That is why the whole pool is set, not only `begin`.
 pub const SERIALIZABLE: &str =
     "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE";
 
@@ -65,7 +71,9 @@ impl Unit for PostgresUnit {
 
 /// A transaction's connection, as adapters reach it through `connection`.
 ///
-/// Whatever an adapter makes of a failed query, as a message in its own error, the transaction remembers that a statement lost to another transaction, a serialization failure or a deadlock, so `retrying!` can try the whole work again however the failure came up to it.
+/// An adapter may turn a failed query into a message in its own error.
+/// Even then, the transaction remembers when a statement lost to another transaction, through a serialization failure or a deadlock.
+/// So `retrying!` can retry the whole work, however the failure reached it.
 pub struct Connection {
     begun: sqlx::Transaction<'static, Postgres>,
     lost_race: bool,
@@ -138,7 +146,9 @@ pub fn connection(transaction: &mut Transaction) -> Result<&mut Connection, Fail
     Ok(&mut transaction.backend::<PostgresUnit>()?.0)
 }
 
-/// Runs a statement on the pool, outside any `Transaction`, again after it lost a race, as `retrying!` runs a transaction: a statement on its own is a transaction of its own, serializable as every other, and may lose one just the same.
+/// Runs a statement on the pool, outside any `Transaction`, and runs it again if it lost a race.
+/// This works like `retrying!` does for a transaction.
+/// A statement on its own is its own transaction, serializable like every other, so it can lose a race too.
 pub async fn retried<T, F, Running>(mut statement: F) -> Result<T, sqlx::Error>
 where
     F: FnMut() -> Running,

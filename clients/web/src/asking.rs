@@ -77,9 +77,17 @@ impl Future for Pause {
     }
 }
 
-/// Asking again for something that changes, where the newest asking is the one whose answer counts: each asking takes the next number, and an answer is taken in only while no newer asking was made, so one read before a change and answered after it never stands over what came later. Acting once on a press is an `Act` instead.
+/// Tracks repeated requests for something that changes, so that only the answer to the newest request counts.
 ///
-/// Like every signal it belongs to the reactive owner current when it is made: one made inside an `Effect` is disposed when that effect runs again, and from then on no answer counts as the latest, so make it where whatever asks lives.
+/// Each request takes the next number.
+/// An answer is used only if no newer request was made in the meantime.
+/// So an answer that was read before a change, but arrived after it, never replaces newer data.
+/// To act once on a button press, use an `Act` instead.
+///
+/// Like every signal, it belongs to the reactive owner that is current when it is made.
+/// One made inside an `Effect` is disposed when that effect runs again.
+/// After that, no answer counts as the latest.
+/// So make it where the code that sends the requests lives.
 #[derive(Clone, Copy)]
 pub struct Asking(StoredValue<u64>);
 

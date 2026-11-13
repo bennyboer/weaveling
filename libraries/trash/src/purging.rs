@@ -13,7 +13,8 @@ pub const PURGED_AT_MOST: u64 = 100;
 
 const PURGED_EVERY: Duration = Duration::from_secs(60 * 60);
 
-/// What a feature does with something whose time in the trash is over: remove it for good, by its kind, and take it out of the trash, in one transaction.
+/// What a feature does with something whose time in the trash is over.
+/// It deletes the thing for good, according to its kind, and takes it out of the trash, in one transaction.
 #[async_trait]
 pub trait Purge: Send + Sync {
     async fn purge(&self, trashed: &Trashed) -> Result<(), Box<dyn Error + Send + Sync>>;

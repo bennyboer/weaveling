@@ -185,7 +185,7 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
 }
 
-/// Each word on a name, as the assets' listeners tell the catalog.
+/// Each kind of message about a name, as the assets' listeners pass it to the catalog.
 enum Naming {
     Person(&'static str, &'static str, &'static str, u64),
     PersonGone(&'static str, u64, i64),
@@ -275,7 +275,8 @@ async fn names_forgotten<W: Workbench>(bench: &W, before: i64, at_most: u64) -> 
     forgotten
 }
 
-/// Ada and Bo named as the accounts told it, Grace not; the loom named as the projects told it, the weft not.
+/// Ada and Bo have names from the accounts feature, Grace has none.
+/// The loom has a name from the projects feature, the weft has none.
 fn the_names() -> Vec<Naming> {
     vec![
         Naming::Person("account_ada", "Ada Lovelace", "ada@example.com", 1),
@@ -284,7 +285,11 @@ fn the_names() -> Vec<Naming> {
     ]
 }
 
-/// Ada's 300 bytes in the loom and 50 in the weft, Bo's 300 of his own, Grace's 100 in the weft, and 70 uploaded by nobody into the loom.
+/// Stores these uploads:
+/// Ada's 300 bytes in the loom and 50 in the weft,
+/// Bo's 300 bytes of his own,
+/// Grace's 100 bytes in the weft,
+/// and 70 bytes uploaded into the loom by nobody.
 async fn holdings_kept<W: Workbench>(bench: &W) {
     for (seconds, owner, uploader, total_size) in [
         (1, Owner::Project(the_loom()), Some(ada()), 300),
@@ -661,7 +666,7 @@ fn ids(uploads: &[Upload]) -> Vec<AssetId> {
     uploads.iter().map(|upload| upload.id).collect()
 }
 
-/// Two assets alike in how they are sorted, in the order of their ids as written.
+/// Returns two assets in the order of their ids as text, as the backends sort ties.
 fn in_id_order(one: AssetId, other: AssetId) -> [AssetId; 2] {
     if one.to_string() < other.to_string() {
         [one, other]
@@ -670,7 +675,10 @@ fn in_id_order(one: AssetId, other: AssetId) -> [AssetId; 2] {
     }
 }
 
-/// Ada's 300 bytes in the loom, uploaded first; her own 300 next; 50 in the weft and 120 of her own last, at the same moment; and Bo's 500 of his own.
+/// Stores five uploads:
+/// Ada's 300 bytes in the loom (oldest), then 300 of her own,
+/// then 50 in the weft and 120 of her own (both at the same time),
+/// and Bo's 500 of his own.
 async fn adas_uploads_kept<W: Workbench>(bench: &W) -> [AssetId; 4] {
     let adas = [an_asset(1), an_asset(2), an_asset(3), an_asset(4)];
     for (id, owner, uploader, total_size, uploaded) in [
@@ -795,6 +803,49 @@ pub async fn uploads_are_listed_a_page_at_a_time_after_the_last_listed<W: Workbe
             "{sorted:?}"
         );
     }
+}
+
+async fn owned<W: Workbench>(bench: &W, owner: &Owner, at_most: u64) -> Vec<AssetId> {
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .map_err(unreachable)
+        .expect("beginning should succeed");
+    let owned = bench
+        .store()
+        .owned_by(&mut transaction, owner, at_most)
+        .await
+        .expect("asking should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    owned
+}
+
+pub async fn an_owner_s_assets_are_found_by_id_at_most_so_many<W: Workbench>(bench: &W) {
+    // given: what Ada and Bo uploaded
+    let [loom, own, _, own_last] = adas_uploads_kept(bench).await;
+
+    // expect: Ada's own two, by id, and no more than asked
+    let mut hers = vec![own, own_last];
+    hers.sort_by_key(ToString::to_string);
+    assert_eq!(owned(bench, &Owner::Account(ada()), 10).await, hers);
+    assert_eq!(owned(bench, &Owner::Account(ada()), 1).await, hers[..1]);
+    // and: the loom's one, whoever uploaded it
+    assert_eq!(owned(bench, &Owner::Project(the_loom()), 10).await, [loom]);
+    // and: nothing of an owner holding nothing
+    assert!(owned(bench, &Owner::Account(grace()), 10).await.is_empty());
+    // when: the loom's is forgotten
+    forgotten(bench, &loom).await;
+    // then: the loom holds nothing
+    assert!(
+        owned(bench, &Owner::Project(the_loom()), 10)
+            .await
+            .is_empty()
+    );
 }
 
 pub async fn an_upload_forgotten_is_listed_no_more<W: Workbench>(bench: &W) {
@@ -1053,6 +1104,10 @@ macro_rules! conformance_tests {
             uploads_are_listed_a_page_at_a_time_after_the_last_listed
         );
         $crate::catalog_conformance_case!($workbench, an_upload_forgotten_is_listed_no_more);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_owner_s_assets_are_found_by_id_at_most_so_many
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             what_each_bound_holds_is_the_sum_of_its_assets

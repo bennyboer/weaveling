@@ -53,10 +53,16 @@ impl Role {
     }
 }
 
-/// Who may do what, as far as a feature has heard: each member's role in each project, the projects disbanded and those in the trash, and who runs the instance. Each word comes with the version of what it is about it was told at, the newest heard winning, so one heard late or twice changes nothing; what has ended stays as a tombstone until nothing can be heard late any more.
+/// Who may do what, as far as a feature has heard.
+///
+/// It stores each member's role in each project, which projects are disbanded or in the trash, and which accounts run the instance.
+/// Each update comes with the version of the thing it is about.
+/// The newest version wins, so an update that arrives late or twice changes nothing.
+/// Things that have ended stay as tombstones until no late update can arrive any more.
 #[async_trait]
 pub trait AccessCatalog: Send + Sync {
-    /// Remembers an account's role in a project as of a version of its members, or, with none, that it is a member no more, as of when.
+    /// Stores an account's role in a project, as of a version of the project's members.
+    /// No role means the account is no longer a member, and `at` records since when.
     async fn remember_role(
         &self,
         transaction: &mut Transaction,
@@ -67,7 +73,8 @@ pub trait AccessCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), AccessError>;
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more, whatever is heard of it late.
+    /// Stores that a project's members were disbanded, because the project was deleted.
+    /// Nobody is a member of it any more, whatever late updates about it arrive.
     async fn remember_disbanded(
         &self,
         transaction: &mut Transaction,
@@ -85,7 +92,8 @@ pub trait AccessCatalog: Send + Sync {
         in_the_trash: bool,
     ) -> Result<(), AccessError>;
 
-    /// Remembers whether an account runs the instance, as of a version of the account, or that it runs it no more, as of when.
+    /// Stores whether an account runs the instance, as of a version of the account.
+    /// When it no longer does, `at` records since when.
     async fn remember_operator(
         &self,
         transaction: &mut Transaction,
@@ -95,7 +103,10 @@ pub trait AccessCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), AccessError>;
 
-    /// Lets go, at most so many of each, of what ended before then, once nothing about it can be heard late any more: how many.
+    /// Deletes the tombstones of things that ended before `before`.
+    /// Call it only once no late update about them can arrive any more.
+    /// It deletes at most `at_most` of each kind.
+    /// Returns how many were deleted.
     async fn forget_tombstones_laid_before(
         &self,
         transaction: &mut Transaction,
@@ -103,7 +114,8 @@ pub trait AccessCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, AccessError>;
 
-    /// The account's role in a project it is a member of, the project not disbanded; whether it is in the trash is asked apart.
+    /// The account's role in a project it is a member of, unless the project is disbanded.
+    /// Whether the project is in the trash is checked separately.
     async fn role_of(
         &self,
         project: &str,
@@ -115,7 +127,7 @@ pub trait AccessCatalog: Send + Sync {
     /// The projects the account is a member of, neither disbanded nor in the trash.
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError>;
 
-    /// Whether two accounts are members of one project at least, neither disbanded nor in the trash.
+    /// Whether two accounts are both members of at least one project that is neither disbanded nor in the trash.
     async fn share_a_project(
         &self,
         one: &AccountId,
@@ -124,7 +136,7 @@ pub trait AccessCatalog: Send + Sync {
 
     async fn operates(&self, account: &AccountId) -> Result<bool, AccessError>;
 
-    /// The owners of a project not disbanded, by their accounts' ids.
+    /// The account ids of a project's owners, unless the project is disbanded.
     async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError>;
 }
 

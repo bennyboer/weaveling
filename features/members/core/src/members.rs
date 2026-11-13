@@ -161,12 +161,15 @@ impl Members {
         }
     }
 
-    /// Whether nobody is left in the project, the last member gone with their account, so the project is to be deleted.
+    /// Whether nobody is left in the project, because the last member left with their deleted account.
+    /// Such a project is to be deleted.
     fn is_abandoned(&self) -> bool {
         self.roles.is_empty() && !self.disbanded
     }
 
-    /// Lets a deleted account go, the longest-standing other member made owner first where it was the last, and the project abandoned where nobody else is in it.
+    /// Removes a deleted account from the project.
+    /// If it was the last owner, the longest-standing other member is made owner first.
+    /// If nobody else is in the project, the project is abandoned.
     fn letting_go(&self, account: AccountId) -> Vec<MembersEvent> {
         let Some(successor) = self.roles.keys().find(|other| **other != account) else {
             return vec![MembersEvent::Removed { account }, MembersEvent::Abandoned];

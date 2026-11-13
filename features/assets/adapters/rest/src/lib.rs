@@ -125,7 +125,8 @@ impl UploadsPaging {
     }
 }
 
-/// The upload a page goes on after, read from its cursor: what it takes, when it was uploaded in nanoseconds, and its id.
+/// Reads, from a page's cursor, the upload that the page continues after.
+/// The cursor holds the upload's size, when it was uploaded in nanoseconds, and its id.
 fn mark_read(cursor: &str) -> Option<UploadMark> {
     let mut parts = cursor.splitn(3, '.');
     let total_size = parts.next()?.parse().ok()?;

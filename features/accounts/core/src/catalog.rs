@@ -28,7 +28,7 @@ pub struct AccountSummary {
     pub deletion: Option<PendingDeletion>,
 }
 
-/// What an account is in a project, as the project's members last told it.
+/// What an account is in a project, as the project's members last reported it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InProject {
     Owner,
@@ -55,14 +55,17 @@ pub trait AccountCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<AccountSummary>, CatalogError>;
 
-    /// Forgets a deleted account whole: its place in the list and what it held in any project.
+    /// Forgets a deleted account completely: its entry in the list and what it was in any project.
     async fn forget(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), CatalogError>;
 
-    /// Remembers what an account is in a project, none where it is gone, as of when, by the members' version, so an older word heard late changes nothing, a join after the removal it preceded among them.
+    /// Remembers what an account is in a project, as of a given time and version of the members.
+    /// `held` is none if the account is no longer in the project.
+    /// The version makes sure that an older message arriving late changes nothing.
+    /// For example, a join that arrives after the removal that followed it is ignored.
     async fn remember_holding(
         &self,
         transaction: &mut Transaction,
@@ -73,7 +76,8 @@ pub trait AccountCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Remembers a project's members disbanded, its project deleted, as of when: nobody holds anything in it any more.
+    /// Remembers that a project's members were disbanded because the project was deleted, as of a given time.
+    /// After that, nobody is anything in the project anymore.
     async fn remember_disbanded(
         &self,
         transaction: &mut Transaction,
@@ -82,7 +86,11 @@ pub trait AccountCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets, at most so many of each, the projects disbanded before then with everything held in them, and the members gone before then: once no word about them may be retried, nothing is left for them to guard against.
+    /// Forgets the projects disbanded before the given time, with everything held in them.
+    /// Also forgets the members removed before that time.
+    /// It forgets at most `at_most` of each.
+    /// These records only guard against late messages.
+    /// Once no message about them can be retried anymore, they are no longer needed.
     async fn forget_tombstones_laid_before(
         &self,
         transaction: &mut Transaction,
@@ -90,7 +98,8 @@ pub trait AccountCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
-    /// Remembers whether a project is in the trash, by the project's version, so an older word heard late changes nothing.
+    /// Remembers whether a project is in the trash, at a version of the project.
+    /// The version makes sure that an older message arriving late changes nothing.
     async fn remember_trash(
         &self,
         transaction: &mut Transaction,
@@ -99,7 +108,8 @@ pub trait AccountCatalog: Send + Sync {
         in_the_trash: bool,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets a deleted project's place in the trash whole, so it holds only what is in the trash.
+    /// Forgets everything about a deleted project's trash state.
+    /// So the remembered trash state only covers projects that are in the trash.
     async fn forget_trash(
         &self,
         transaction: &mut Transaction,
@@ -108,7 +118,9 @@ pub trait AccountCatalog: Send + Sync {
 
     async fn is_in_the_trash(&self, project: &str) -> Result<bool, CatalogError>;
 
-    /// The projects others are in that the account is the last owner of, out of the trash, by project.
+    /// The projects that the account is the last owner of, and that others are in.
+    /// Projects in the trash are left out.
+    /// They are ordered by project.
     async fn projects_to_hand_over(&self, account: &AccountId)
     -> Result<Vec<String>, CatalogError>;
 }

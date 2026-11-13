@@ -29,7 +29,8 @@ fn name_field(name: RwSignal<String>) -> impl IntoView {
     ))
 }
 
-/// Names the key the browser has just made, which is added only once it is named.
+/// Asks for a name for the key the browser has just made.
+/// The key is added only after it has a name.
 pub fn naming_the_new_key(
     done: Act<String>,
     refused: RwSignal<Option<ApiError>>,
@@ -101,7 +102,8 @@ pub fn renaming(
     )
 }
 
-/// The words of a change to a key asked for by the password: its title, what follows, and the button that does it.
+/// The texts of a key change that needs the password first.
+/// They are the dialog title, a hint that says what happens next, and the label of the button that makes the change.
 pub struct PasswordAsked {
     pub heading: &'static str,
     pub hint: &'static str,
@@ -130,7 +132,8 @@ pub const DEMOTING: PasswordAsked = PasswordAsked {
     danger: false,
 };
 
-/// Asks for the password before a key is changed, saying what follows.
+/// Asks for the password before a key is changed.
+/// The dialog also says what happens after the change.
 pub fn asking_the_password(
     words: &'static PasswordAsked,
     named: &str,

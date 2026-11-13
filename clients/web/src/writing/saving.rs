@@ -50,7 +50,7 @@ impl Saving {
             .try_update(|writes| *writes = writes.saturating_sub(1));
     }
 
-    /// Counts what `unanswered` says is still on its way to the server as saving, for as long as it says so.
+    /// Shows as saving for as long as `unanswered` says something is still on its way to the server.
     pub fn while_unanswered(self, unanswered: Signal<bool>) {
         self.unanswered.update_value(|held| held.push(unanswered));
     }

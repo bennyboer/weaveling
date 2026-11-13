@@ -110,7 +110,10 @@ fn answered_at(invitation: &str, answer: Answer) -> String {
     format!("{MY_INVITATIONS}/{invitation}/{answered}")
 }
 
-/// Answers an invitation to the account, asking again a few times while it is refused as invalid: the list of one's invitations can show an invitation a moment before it can be taken up.
+/// Answers an invitation sent to the account.
+///
+/// If the server refuses the invitation as invalid, the answer is sent again a few times.
+/// This is because the list of invitations can show an invitation a moment before it can be accepted.
 pub async fn answer_invitation(invitation: &str, answer: Answer) -> Result<(), ApiError> {
     asking::until_it_holds(
         || invitation_answered(invitation, answer),
@@ -408,7 +411,8 @@ pub async fn answer_with_key(answer: serde_json::Value) -> Result<SignedInAccoun
     as_signed_in_account(http::parsed(response, SUBJECT).await?)
 }
 
-/// What the browser is asked to show any passkey of this site with, and the sign-in it belongs to.
+/// Starts signing in with a passkey.
+/// Returns the id of this sign-in and the options the browser needs to show the passkeys of this site.
 pub async fn begin_signing_in_with_passkey() -> Result<(String, serde_json::Value), ApiError> {
     let asked: PasskeyChallengeDTO =
         http::parsed(http::sent(Request::post(PASSKEY_ASKED)).await?, SUBJECT).await?;
@@ -465,7 +469,7 @@ pub async fn remove_totp(id: &str, on: u64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// How an account signs in, as the operator sees it.
+/// Returns the ways an account can sign in, as the operator sees them.
 pub async fn ways_in(id: &str) -> Result<WaysIn, ApiError> {
     let told: WaysInDTO = http::parsed(
         http::sent(Request::get(&format!("{INSTANCE_ACCOUNTS}/{id}/ways-in"))).await?,
@@ -510,7 +514,9 @@ pub async fn draw_recovery_codes(password: &str) -> Result<Vec<String>, ApiError
     Ok(drawn.codes)
 }
 
-/// Asks for one's own account to be deleted, for its password; every session of it ends with it.
+/// Asks for the signed-in account to be deleted.
+/// The account's password is needed for this.
+/// Every session of the account ends with the deletion.
 pub async fn ask_deletion(password: &str) -> Result<(), ApiError> {
     let payload = PasswordRequest {
         password: password.to_owned(),
@@ -524,7 +530,9 @@ pub async fn ask_deletion(password: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// Keeps the account its deletion is pending for, from the session signing in opened meanwhile, signed in anew.
+/// Cancels the pending deletion of the account and keeps it.
+/// This is called from a session that signed in while the deletion was pending.
+/// Returns the account, signed in again.
 pub async fn keep_account() -> Result<SignedInAccount, ApiError> {
     as_signed_in_account(http::parsed(http::sent(Request::delete(DELETION)).await?, ACCOUNT).await?)
 }
@@ -571,7 +579,7 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
     })
 }
 
-/// The account's keys answering its second step, the oldest first.
+/// Returns the account's keys that answer its second step, the oldest first.
 pub async fn keys() -> Result<Vec<HeldKey>, ApiError> {
     let listed: Vec<KeyDTO> = http::parsed(http::sent(Request::get(KEYS)).await?, SUBJECT).await?;
 
@@ -587,7 +595,9 @@ fn held_key(key: KeyDTO) -> Result<HeldKey, ApiError> {
     })
 }
 
-/// What the browser is asked to make a passkey or a security key with, in place of the key named where one is replaced.
+/// Starts adding a passkey or a security key.
+/// Returns the options the browser needs to make the key.
+/// If `replacing` names a key, the new key takes its place.
 pub async fn begin_adding_key(
     passkey: bool,
     replacing: Option<&str>,
@@ -630,7 +640,8 @@ pub async fn promote_key(
     .map(|_| ())
 }
 
-/// Lets a passkey answer the second step: the recovery codes, where it is the first second step.
+/// Turns a passkey into a key that answers the second step.
+/// Returns the new recovery codes if this is the account's first second step.
 pub async fn demote_key(id: &str, password: &str) -> Result<Option<Vec<String>>, ApiError> {
     let payload = PasswordRequest {
         password: password.to_owned(),
@@ -644,7 +655,8 @@ pub async fn demote_key(id: &str, password: &str) -> Result<Option<Vec<String>>,
     Ok(demoted.recovery_codes)
 }
 
-/// Adds the key the browser made, under its name: the recovery codes, where it is the first second step.
+/// Adds the key the browser made, under the given name.
+/// Returns the new recovery codes if this is the account's first second step.
 pub async fn finish_adding_key(
     name: &str,
     answer: serde_json::Value,

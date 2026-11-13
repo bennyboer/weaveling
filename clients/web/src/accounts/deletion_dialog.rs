@@ -23,7 +23,8 @@ fn naming(key: &'static str, args: &[(&'static str, String)]) -> String {
     speech::say_with(key, &told)
 }
 
-/// Asks the operator to be sure before another account is marked to be deleted, saying when it goes.
+/// Asks the operator to confirm before another account is marked for deletion.
+/// The dialog says when the account will be deleted.
 pub fn deletion_dialog<Marked>(
     account: ListedAccount,
     until: OffsetDateTime,

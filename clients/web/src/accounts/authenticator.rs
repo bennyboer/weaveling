@@ -23,7 +23,7 @@ extern "C" {
     async fn touch_key(asked: &str) -> Result<JsValue, JsValue>;
 }
 
-/// Why the browser made or showed no key.
+/// Why the browser did not make or show a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoKey {
     Cancelled,
@@ -36,27 +36,31 @@ pub fn supported() -> bool {
     keys_supported()
 }
 
-/// The browser's dialog making a key, as the server asked for it.
+/// Opens the browser's dialog that makes a new key.
+/// The key is made with the options the server asked for.
 pub async fn made(asked: &Value) -> Result<Value, NoKey> {
     answered(make_key(&asked.to_string()).await)
 }
 
-/// The browser's dialog asking for a touch of a key, as the server asked for it.
+/// Opens the browser's dialog that asks the user to touch a key.
+/// The dialog uses the options the server asked for.
 pub async fn touched(asked: &Value) -> Result<Value, NoKey> {
     answered(touch_key(&asked.to_string()).await)
 }
 
-/// Whether the browser can offer its passkeys where it fills in the address.
+/// Whether the browser can offer its passkeys among the suggestions for the address field.
 pub async fn offerable() -> bool {
     passkeys_offerable().await.as_bool() == Some(true)
 }
 
-/// The passkeys the browser holds for this site, offered among what it fills in the address, the one picked.
+/// Offers the browser's passkeys for this site among the suggestions for the address field.
+/// Returns the passkey the user picked.
 pub async fn offered(asked: &Value) -> Result<Value, NoKey> {
     answered(offer_passkeys(&asked.to_string()).await)
 }
 
-/// Takes back the passkeys offered in the address field, so the browser can ask otherwise.
+/// Stops offering passkeys in the address field.
+/// This lets the browser ask for a key in another way.
 pub fn stop_offering() {
     stop_offering_passkeys();
 }

@@ -250,7 +250,7 @@ where
         }))
     }
 
-    /// Forgets every message the aggregate told that is published already.
+    /// Forgets every message the aggregate sent that is already published.
     pub async fn forget_published(
         &self,
         transaction: &mut Transaction,

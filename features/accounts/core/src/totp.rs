@@ -5,7 +5,8 @@ use totp_rs::{Builder, Secret, Totp};
 
 pub struct TotpSecret(Vec<u8>);
 
-/// The step of time a code was accepted for, kept so the same code is refused for the rest of its window.
+/// The time step a code was accepted for.
+/// It is stored so the same code is refused for the rest of its time window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TotpStep(u64);
 
@@ -31,7 +32,7 @@ impl TotpSecret {
         Secret::from(self.0.clone()).to_base32()
     }
 
-    /// The address an authenticator app takes the secret from, as its QR code holds it.
+    /// The address an authenticator app reads the secret from, as its QR code contains it.
     pub fn otpauth_uri(&self, issuer: &str, label: &str) -> String {
         format!(
             "otpauth://totp/{}:{}?secret={}&issuer={}",

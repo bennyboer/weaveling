@@ -11,7 +11,7 @@ use crate::bench::{self, Bench, THE_LOOM};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
-/// Ada with a photo in the loom, named, and a portrait of her own.
+/// Ada uploads a photo into the loom and a portrait of her own; the loom has a name.
 async fn ada_having_uploaded() -> (Bench, AssetId, AssetId) {
     let bench = bench::a_bench().await;
     let (into_the_loom, _) = bench
@@ -33,7 +33,7 @@ async fn ada_having_uploaded() -> (Bench, AssetId, AssetId) {
     (bench, into_the_loom, her_own)
 }
 
-/// Ada reading the loom and no more, as the members told the assets.
+/// Demotes Ada to a reader of the loom.
 async fn ada_only_reads_the_loom(bench: &Bench) {
     bench
         .assets

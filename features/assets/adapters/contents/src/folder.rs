@@ -7,7 +7,9 @@ use tokio::fs;
 
 use crate::unreachable;
 
-/// Each asset a folder of its own under the root, each piece a file in it, written beside its name first and moved in place, so a piece read is never half written.
+/// Stores each asset in a folder of its own under the root, with each piece as a file in it.
+/// A piece is first written next to its final name and then moved into place.
+/// So a piece that is read is never half written.
 #[derive(Debug, Clone)]
 pub struct FolderContents {
     root: PathBuf,

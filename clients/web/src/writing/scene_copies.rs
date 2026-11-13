@@ -19,7 +19,11 @@ enum Intent {
     Delete,
 }
 
-/// The scenes the writing view changes, each on a working copy of its own: opened from the server the first time one is changed, then changed one request at a time, each on the version it was opened or last answered at.
+/// The scenes the writing view changes, each with its own working copy.
+///
+/// A scene is loaded from the server the first time it is changed.
+/// After that, it is changed one request at a time.
+/// Each request is based on the version the scene was loaded at or last answered with.
 #[derive(Clone, Copy)]
 pub struct SceneCopies {
     copies: WorkingCopies<SceneId, Scene, Intent>,

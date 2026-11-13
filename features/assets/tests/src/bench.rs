@@ -15,7 +15,9 @@ use transacting::{InMemoryTransactions, Transactions};
 
 pub const THE_LOOM: &str = "project_loom";
 pub const THE_WEFT: &str = "project_weft";
-/// Prepares any upload as a JPEG of 1,280 pixels made into three widths, each variant naming its width, or refuses every upload; counting how often it was asked.
+/// Prepares any upload as a JPEG of 1,280 pixels, made into three widths, each variant naming its width.
+/// Or it refuses every upload.
+/// It counts how often it was asked.
 pub struct FakeImages {
     refusing: Option<ImageRefused>,
     asked: AtomicUsize,
@@ -71,7 +73,8 @@ pub fn grace() -> Agent {
     Agent::Account(AccountId::from("account_grace"))
 }
 
-/// Ada owning the loom and Bo reading it, as the members told the assets, who may do what asked of what the assets heard.
+/// A bench where Ada owns the loom and Bo reads it, as the members feature reported it.
+/// Who may do what is decided by what the assets feature heard.
 pub async fn a_bench() -> Bench {
     a_bench_limited(Limits::default()).await
 }
@@ -84,7 +87,7 @@ pub async fn a_bench_refusing(refused: ImageRefused) -> Bench {
     bench_of(Limits::default(), Some(refused), true).await
 }
 
-/// Without accounts, where everyone may do everything.
+/// A bench without accounts, where everyone may do everything.
 pub async fn a_bench_without_accounts(limits: Limits) -> Bench {
     bench_of(limits, None, false).await
 }
@@ -145,7 +148,7 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
 }
 
 impl Bench {
-    /// Tells the assets Ada runs the instance, as the accounts would.
+    /// Tells the assets feature that Ada runs the instance, as the accounts feature would.
     pub async fn ada_runs_the_instance(&self) {
         self.assets
             .remember_operator(None, &AccountId::from("account_ada"), Version::of(3), true)
@@ -153,7 +156,8 @@ impl Bench {
             .expect("remembering should succeed");
     }
 
-    /// Gives Ada a limit of her own, as the operator would, or takes hers back.
+    /// Gives Ada her own limit, as an operator would.
+    /// With none, her own limit is removed.
     pub async fn adas_own_limit(&self, most: Option<u64>) {
         let ada = AccountId::from("account_ada");
         let mut transaction = self
@@ -172,7 +176,8 @@ impl Bench {
             .expect("finishing should succeed");
     }
 
-    /// The accounts or projects holding anything, by id, with their names as far as the assets heard; those alone found by the term, where one is given.
+    /// Returns the accounts or projects that store anything, by id, with their names as far as the assets feature heard them.
+    /// With a search term, only those matching the term are returned.
     pub async fn held(&self, holders: Holders, matching: Option<&str>) -> Vec<Held> {
         let mut transaction = self
             .transactions
@@ -192,7 +197,7 @@ impl Bench {
         held
     }
 
-    /// What the installation, Ada and the loom hold.
+    /// Returns how many bytes the installation, Ada and the loom store.
     pub async fn usage(&self) -> Usage {
         let mut transaction = self
             .transactions

@@ -19,7 +19,8 @@ use crate::wiring::Wired;
 
 const PROJECT: &str = "project_1";
 
-/// Who may do what, kept in memory, that can be made unreachable.
+/// Who may do what, stored in memory.
+/// It can be made unreachable.
 #[derive(Default)]
 struct Faltering {
     kept: InMemoryAccess,

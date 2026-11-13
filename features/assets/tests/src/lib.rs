@@ -5,6 +5,8 @@ mod assets_api;
 #[cfg(test)]
 mod assets_core;
 #[cfg(test)]
+mod assets_swept;
+#[cfg(test)]
 mod bench;
 #[cfg(test)]
 mod names_heard;

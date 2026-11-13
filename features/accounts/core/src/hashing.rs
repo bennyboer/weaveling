@@ -1,11 +1,14 @@
 use tokio::sync::Semaphore;
 
-/// How many Argon2 hashes run at once, each holding a thread and 19 MiB for tens of milliseconds.
+/// How many Argon2 hashes run at the same time.
+/// Each one uses a thread and 19 MiB for tens of milliseconds.
 pub const HASHES_AT_ONCE: usize = 4;
 
 static HASHING: Semaphore = Semaphore::const_new(HASHES_AT_ONCE);
 
-/// Runs hashing beside the async runtime, so a request waiting on it holds no worker, and at most `HASHES_AT_ONCE` at a time, so a flood of them waits its turn rather than taking every thread and the memory.
+/// Runs hashing work outside the async runtime, at most `HASHES_AT_ONCE` at a time.
+/// A request waiting for it does not block a worker.
+/// A flood of hashing work waits its turn, instead of taking every thread and all the memory.
 pub(crate) async fn aside<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
     let _turn = HASHING
         .acquire()

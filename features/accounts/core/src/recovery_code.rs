@@ -20,7 +20,8 @@ impl RecoveryCode {
         (0..Self::DRAWN).map(|_| Self::one_drawn()).collect()
     }
 
-    /// Codes drawn, and their hashes to keep, hashed beside the runtime, in turn.
+    /// Creates new codes, and the hashes to store for them.
+    /// The hashing runs outside the async runtime, waiting its turn.
     pub(crate) async fn drawn_and_hashed() -> (Vec<Self>, Vec<RecoveryCodeHash>) {
         hashing::aside(|| {
             let codes = Self::drawn();
@@ -31,7 +32,8 @@ impl RecoveryCode {
         .await
     }
 
-    /// The one of the hashes kept that admits it, checked beside the runtime, in turn.
+    /// Returns the stored hash that matches this code, if there is one.
+    /// It is checked outside the async runtime, waiting its turn.
     pub(crate) async fn admitted_by(self, kept: Vec<RecoveryCodeHash>) -> Option<RecoveryCodeHash> {
         hashing::aside(move || kept.into_iter().find(|hash| hash.admits(&self))).await
     }

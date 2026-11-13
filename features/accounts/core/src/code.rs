@@ -19,11 +19,13 @@ impl CodePurpose {
     }
 }
 
-/// A code as mailed, kept nowhere but in the mail.
+/// A code as it is mailed.
+/// It is stored nowhere except in the mail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerificationCode(String);
 
-/// What is kept of a code: its SHA-256, so a database read or a backup gives no code to type.
+/// What is stored of a code: its SHA-256 hash.
+/// So reading the database or a backup reveals no code that could be typed in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeDigest(String);
 
@@ -75,7 +77,8 @@ impl CodeDigest {
         &self.0
     }
 
-    /// Whether a code typed, around its spaces, is the one this was kept of, in the same time however much of it is right.
+    /// Whether a typed code is the one this digest was made of, ignoring spaces around it.
+    /// The check takes the same time, no matter how much of the code is right.
     pub fn admits(&self, tried: &str) -> bool {
         Self::of(tried.trim())
             .0
@@ -88,7 +91,8 @@ impl CodeDigest {
 impl PendingVerification {
     pub const MAX_TRIES: u32 = 5;
 
-    /// A code drawn, to be mailed, and what is kept of it until when.
+    /// Creates a new code to be mailed.
+    /// Also returns what is stored of it, and until when it is valid.
     pub fn issued(now: OffsetDateTime) -> (VerificationCode, Self) {
         let code = VerificationCode::drawn();
         let pending = Self {

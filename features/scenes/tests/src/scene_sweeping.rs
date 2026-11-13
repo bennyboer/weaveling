@@ -161,7 +161,8 @@ struct Wired {
     overheard: Arc<FakePublisher>,
 }
 
-/// Scenes where accounts are kept, Ada owning both projects and nobody else a member.
+/// Scenes with accounts, where Ada owns both projects.
+/// Nobody else is a member.
 async fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let overheard = Arc::new(FakePublisher::default());

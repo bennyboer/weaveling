@@ -157,7 +157,8 @@ pub fn accounts_listing() -> impl IntoView {
     )
 }
 
-/// What an operator may do with an account, behind one button, so the row keeps room for who it is.
+/// The actions an operator may take on an account, collected behind one button.
+/// This keeps room in the row for the account's name and details.
 fn actions(roster: Roster, account: ListedAccount, yourself: bool) -> impl IntoView {
     let leaving = account.deletion.is_some();
     let may_change_role =

@@ -40,7 +40,8 @@ pub struct SignedInAccount {
     pub deletion: Option<PendingDeletion>,
 }
 
-/// An account to be deleted on its day, as its session signed in while it is pending tells it.
+/// An account that is marked to be deleted on a certain day.
+/// A session that signs in while the deletion is pending is told about it this way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PendingDeletion {
     pub until: OffsetDateTime,
@@ -57,21 +58,23 @@ pub struct SecondFactorInUse {
     pub asked_way: SecondStepWay,
 }
 
-/// A way of answering the second step, recovery codes aside.
+/// A way to answer the second sign-in step, not counting recovery codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecondStepWay {
     Totp,
     Key,
 }
 
-/// Which way the account chose to be asked first: one way, or whichever answered last.
+/// Which way of the second step the account wants to be asked first.
+/// It is either one chosen way or the way that was used last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreferredWay {
     Chosen(SecondStepWay),
     LastUsed,
 }
 
-/// A key of the account, a passkey signing in alone or a key answering the second step, as its Security page lists it.
+/// A key of the account, as its Security page lists it.
+/// It is either a passkey that signs in on its own or a key that answers the second step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeldKey {
     pub id: String,
@@ -80,7 +83,8 @@ pub struct HeldKey {
     pub signs_in_alone: bool,
 }
 
-/// How an account signs in, as the operator sees it: the password, always kept, goes without saying.
+/// The ways an account can sign in, as the operator sees them.
+/// The password is not listed, because the account always keeps it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaysIn {
     pub keys: Vec<HeldKey>,
@@ -142,7 +146,8 @@ impl CurrentSession {
         self.signing_up.get()
     }
 
-    /// Whether nobody runs the instance yet, which only an account signed in is told.
+    /// Whether this Weaveling instance has no operator yet.
+    /// Only a signed-in account is told this.
     pub fn operator_wanted(self) -> bool {
         matches!(self.state.get(), SignInState::SignedIn(account) if account.operator_wanted)
     }
@@ -179,7 +184,8 @@ impl CurrentSession {
         self.ask();
     }
 
-    /// Asks again who is signed in, showing what was known until the answer comes.
+    /// Asks the server again who is signed in.
+    /// Until the answer comes, the last known state stays shown.
     pub fn look_again(self) {
         self.ask();
     }

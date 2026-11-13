@@ -134,7 +134,8 @@ pub fn migrations() -> Migrator {
     laying
 }
 
-/// Who may do what on Sqlite, laid down in the feature's own database: written in the listener's transaction, read on the feature's own pool.
+/// Who may do what, stored on Sqlite in the feature's own database.
+/// Updates are written in the listener's transaction and read on the feature's own pool.
 pub struct SqliteAccess {
     pool: SqlitePool,
 }

@@ -56,7 +56,8 @@ pub fn SecurityPage() -> impl IntoView {
     )
 }
 
-/// Greets one who just signed up, offering a passkey or a second step now, or leaving it for later.
+/// Greets someone who has just signed up.
+/// It offers to set up a passkey or a second step now, or to leave it for later.
 fn welcome(welcomed: bool) -> impl IntoView {
     welcomed.then(|| {
         html::section().class("welcome").role("status").child((
@@ -68,7 +69,8 @@ fn welcome(welcomed: bool) -> impl IntoView {
     })
 }
 
-/// What a key's dialog is about: naming the key the browser just made, or one the account holds.
+/// What a key dialog is about.
+/// It is either naming the key the browser just made, or changing a key the account already has.
 #[derive(Debug, Clone, PartialEq)]
 enum KeyDialog {
     Naming(Value),
@@ -393,7 +395,8 @@ fn overview(
 /// A menu item: its message, whether it is dangerous, and what choosing it does.
 type MenuItem = (&'static str, bool, Box<dyn Fn() + Send + Sync + 'static>);
 
-/// Which way the second step is asked first, offered once more than one way answers it.
+/// Lets the account choose which way of the second step is asked first.
+/// It is shown only when more than one way can answer the second step.
 fn preferred_way_choice(
     session: CurrentSession,
     factor: SecondFactorInUse,
@@ -443,7 +446,8 @@ fn preferred_way_choice(
     ))
 }
 
-/// A way's ⋮, holding what can be done with it: one menu open on the page at a time.
+/// The ⋮ menu of a sign-in way, with the actions for it.
+/// Only one menu can be open on the page at a time.
 fn way_menu(
     menu: RwSignal<Option<String>>,
     named: String,
@@ -707,7 +711,8 @@ enum Asked {
     AddingKey { passkey: bool },
 }
 
-/// The words of a change asked for by the password: what it does, and the button that does it.
+/// The texts of a change that needs the password first.
+/// They are a hint that says what the change does, and the label of the button that makes it.
 struct PasswordAsked {
     hint: &'static str,
     confirming: &'static str,

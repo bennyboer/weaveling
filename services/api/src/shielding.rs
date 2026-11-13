@@ -11,7 +11,7 @@ const HTTPS: &str = "https://";
 const A_YEAR: &str = "max-age=31536000";
 const NOSNIFF: &str = "nosniff";
 
-/// What browsers are told to hold the instance's pages to.
+/// The rules browsers are told to apply to the instance's pages.
 #[derive(Debug, Clone)]
 struct Shield {
     policy: HeaderValue,
@@ -37,9 +37,10 @@ impl Shield {
     }
 }
 
-/// Tells browsers to run only the instance's own scripts and reach only itself, never to show it inside another site's page,
-/// never to guess what a file is, and, served over https, never to come back over http:
-/// so a script that slipped in can do little, and no other site dresses the instance up to be clicked.
+/// Tells browsers to run only the instance's own scripts and to connect only to the instance.
+/// It also tells them never to show the instance inside another site's page, and never to guess a file's type.
+/// When served over https, it tells them never to come back over http.
+/// So a script that slipped in can do little, and no other site can disguise the instance to trick users into clicking.
 pub fn shielded(routes: Router, public_url: Option<&str>, changes_told_at: Option<u16>) -> Router {
     routes.layer(middleware::from_fn_with_state(
         Shield::of(public_url, changes_told_at),

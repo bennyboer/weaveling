@@ -12,7 +12,13 @@ const LONGEST_SIDE: u32 = 16_384;
 const MOST_PIXELS: u64 = 50_000_000;
 const MOST_MEMORY: u64 = 1024 * 1024 * 1024;
 
-/// Reads JPEG, PNG, GIF and WebP by `image`, a GIF by its first frame, sets it upright by what its camera told, and makes its variants as WebP by `gamut-webp`, keeping transparency where there is any. Whatever a camera wrote beside the pixels, where it was taken among it, stays with the original, which is never handed out.
+/// Reads JPEG, PNG, GIF and WebP images with `image`.
+/// A GIF is read by its first frame.
+/// An image is turned upright as its camera recorded it.
+/// The variants are made as WebP with `gamut-webp`, keeping any transparency.
+///
+/// Whatever a camera wrote next to the pixels, including where the photo was taken, stays only in the original.
+/// The original is never handed out.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct WebpImages;
 

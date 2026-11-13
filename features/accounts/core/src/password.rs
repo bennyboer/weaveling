@@ -45,7 +45,7 @@ impl Password {
         Ok(Self(raw.to_owned()))
     }
 
-    /// Hashed beside the runtime, in turn.
+    /// Hashes the password outside the async runtime, waiting its turn.
     pub async fn hashed_aside(self) -> PasswordHash {
         hashing::aside(move || self.hashed()).await
     }
@@ -72,7 +72,8 @@ impl PasswordHash {
         &self.0
     }
 
-    /// Whether it admits the password tried, checked beside the runtime, in turn.
+    /// Whether the tried password matches this hash.
+    /// It is checked outside the async runtime, waiting its turn.
     pub async fn admits_aside(&self, tried: &str) -> bool {
         let (kept, tried) = (self.clone(), tried.to_owned());
 

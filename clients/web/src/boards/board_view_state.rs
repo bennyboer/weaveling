@@ -192,7 +192,8 @@ impl BoardViewState {
             .intend(&idea, working::Intent::Retitle { title });
     }
 
-    /// The ideas of the project as the board works on them, for an inspector docked beside it to share.
+    /// The project's ideas as the board works on them.
+    /// An inspector docked beside the board shares them.
     pub fn ideas(&self) -> Ideas {
         self.pool.copies()
     }

@@ -7,7 +7,7 @@ ids::id!(KeyId, "key_");
 
 pub type InvalidKeyName = Unfit;
 
-/// What the author calls a key, to tell their keys apart: "YubiKey blue", "MacBook".
+/// The name the author gives a key, to tell their keys apart, like "YubiKey blue" or "MacBook".
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyName(String);
 
@@ -35,14 +35,16 @@ impl Display for KeyName {
     }
 }
 
-/// What a key does for its account: sign in alone, as a passkey, or answer the second step after the password.
+/// What a key does for its account.
+/// It either signs in alone, as a passkey, or answers the second step after the password.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyRole {
     Primary,
     SecondFactor,
 }
 
-/// A key as its account holds it; the credential itself is a secret, kept apart.
+/// A key as its account holds it.
+/// The credential itself is a secret and is stored separately.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Key {
     pub name: KeyName,

@@ -34,7 +34,9 @@ pub struct Ports {
     pub limits: Limits,
 }
 
-/// What the operator chose for assets: the limits they are held to, and a folder of their own to keep them in, in place of the database or the data's own folder.
+/// What the operator chose for assets.
+/// It holds the limits for assets, and optionally a folder of their own to store them in.
+/// Without that folder, assets are stored in the database or in the data's own folder.
 #[derive(Debug, Clone, Default)]
 pub struct Keeping {
     pub limits: Limits,
@@ -114,7 +116,8 @@ pub async fn assembled_assets(
     })
 }
 
-/// Where the data's own folder keeps the assets: a folder beside the feature's database file.
+/// Returns the folder in which the data's own folder stores the assets.
+/// It is next to the feature's database file.
 pub fn beside(database: &Path) -> PathBuf {
     database
         .parent()

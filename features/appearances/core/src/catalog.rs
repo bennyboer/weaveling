@@ -53,7 +53,8 @@ pub trait AppearanceCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
-    /// The places a subject appears in that are of its own project, none while its project is unknown.
+    /// Returns the places a subject appears in that belong to its own project.
+    /// Returns none while the subject's project is unknown.
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError>;
 
     async fn remember_project(
@@ -65,7 +66,8 @@ pub trait AppearanceCatalog: Send + Sync {
 
     async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError>;
 
-    /// Forgets every place of a deleted project as `forget_place` forgets one, telling which subjects appeared in them.
+    /// Forgets every place of a deleted project, the same way `forget_place` forgets one.
+    /// Returns the subjects that appeared in those places.
     async fn forget_places_of_project(
         &self,
         transaction: &mut Transaction,
@@ -73,7 +75,8 @@ pub trait AppearanceCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError>;
 
-    /// Keeps the project a place is of until the place is forgotten; a place forgotten already keeps none.
+    /// Stores which project a place belongs to, until the place is forgotten.
+    /// Does nothing for a place that is already forgotten.
     async fn remember_place_project(
         &self,
         transaction: &mut Transaction,

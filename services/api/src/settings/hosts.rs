@@ -15,7 +15,8 @@ pub struct UnreadableHosts {
 }
 
 impl Settings {
-    /// The names the instance is opened by besides localhost, a plain address and its public URL: a home network's, say.
+    /// The names the instance is opened by, besides localhost, a plain IP address and its public URL.
+    /// For example, a name on a home network.
     pub fn hosts(&self) -> Result<Vec<String>, UnreadableHosts> {
         let Some(setting) = &self.hosts else {
             return Ok(Vec::new());

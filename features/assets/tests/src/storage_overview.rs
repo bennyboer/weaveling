@@ -10,7 +10,10 @@ use crate::bench::{self, Bench, THE_LOOM};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
-/// Every account held to a megabyte, the instance to a gigabyte and each project to ten megabytes; Ada running it, given two megabytes of her own, with two photos in the loom; Bo with a portrait of his own; each named as the accounts and the projects told it.
+/// Sets up an instance with limits of 1 GB, 1 MB per account and 10 MB per project.
+/// Ada is the operator and has her own limit of 2 MB.
+/// She uploaded two photos into the loom, and Bo uploaded a portrait of his own.
+/// Ada, Bo and the loom have names.
 async fn an_instance_holding_some() -> (Bench, u64) {
     let bench = bench::a_bench_limited(Limits {
         instance: Some(1 << 30),

@@ -18,7 +18,8 @@ use crate::speech;
 
 const KEPT_BEFORE_DELETION: Duration = Duration::days(30);
 
-/// What deleting the account shows: nothing yet, the question, or the projects to hand over first.
+/// What the account deletion shows.
+/// It shows nothing yet, the confirmation question, or the projects that must be handed over first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Deleting {
     Not,
@@ -194,7 +195,7 @@ fn handing_over(
     )
 }
 
-/// The projects a refusal names to hand over first, if that is why it refused.
+/// Returns the projects that must be handed over first, if that is why the deletion was refused.
 fn to_hand_over(failed: &ApiError) -> Option<Vec<String>> {
     let ApiError::Rejected(refusal) = failed else {
         return None;
@@ -212,7 +213,8 @@ fn to_hand_over(failed: &ApiError) -> Option<Vec<String>> {
         })
 }
 
-/// The projects by their names, as far as the list knows them, by their ids otherwise.
+/// Returns the projects with their names.
+/// A project that is not in the project list is shown by its id instead.
 async fn named(ids: Vec<String>) -> Vec<ToHandOver> {
     let listed = projects::list().await.unwrap_or_default();
 

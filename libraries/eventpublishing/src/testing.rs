@@ -6,7 +6,9 @@ use time::OffsetDateTime;
 
 use crate::published::{PublishedAgent, PublishedAggregate};
 
-/// A published event as a test hands it to a listener: `event` is its body, version and name included, and it occurred `at`.
+/// A published event, as a test hands it to a listener.
+/// `event` is its body, including its version and name.
+/// It occurred `at`.
 pub fn published(
     routing: &str,
     kind: &str,

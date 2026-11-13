@@ -303,7 +303,7 @@ impl OutlinesCore {
         })
     }
 
-    /// Keeps which project an idea or a scene is of, so that no outline of another project may attach it.
+    /// Stores which project an idea or a scene belongs to, so that no outline of another project can attach it.
     pub async fn came_to_be(
         &self,
         within: Option<&mut Transaction>,
@@ -557,7 +557,9 @@ impl OutlinesCore {
 impl HearsAccess for OutlinesCore {
     type Refused = OutlinesError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see and change its outline follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may see and change the project's outline.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -582,7 +584,8 @@ impl HearsAccess for OutlinesCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -598,7 +601,7 @@ impl HearsAccess for OutlinesCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

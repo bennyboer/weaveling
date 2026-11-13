@@ -12,7 +12,8 @@ use crate::settings::Setting;
 pub const WEAVELING_MAIL_DROP: &str = "WEAVELING_MAIL_DROP";
 pub const WEAVELING_MAIL_LOG: &str = "WEAVELING_MAIL_LOG";
 
-/// Where mail goes until there is a mail server to send it: each mail as a file in a folder, into the log when chosen so for development, or nowhere.
+/// Where mail goes until there is a mail server to send it.
+/// Each mail is written as a file into a folder, written into the log when chosen for development, or sent nowhere.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mailing {
     Logged,
@@ -48,7 +49,8 @@ impl Mailing {
         }
     }
 
-    /// The mailing a server with or without accounts starts with: one with accounts needs its mail to reach someone.
+    /// The mailing a server starts with, depending on whether it has accounts.
+    /// A server with accounts needs its mail to reach someone.
     pub fn ready_for(self, accounts: Accounts) -> Result<Self, Unmailable> {
         match (accounts, &self) {
             (Accounts::On, Self::Nowhere) => Err(Unmailable::Nowhere),
@@ -75,7 +77,8 @@ impl Display for Mailing {
     }
 }
 
-/// Sends nothing, refusing each mail, where nothing is set for mail to go anywhere.
+/// Sends nothing and refuses each mail.
+/// It is used when mail is not set up to go anywhere.
 struct Unmailed;
 
 #[async_trait]

@@ -3,13 +3,16 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// A notice told to a follower still let in after who may follow changed, as its role may be another now.
+/// A notice sent to a follower that is still let in after access changed.
+/// Its role may be different now.
 pub const ACCESS_CHANGED: &str = "access-changed";
 
-/// The code a socket is closed with when its session ends; the client then asks no more and signs out.
+/// The code a socket is closed with when its session ends.
+/// The client then stops asking and signs out.
 pub const SESSION_ENDED: u16 = 4401;
 
-/// The code a socket is closed with when the server is stopping; the client opens it again once it is back.
+/// The code a socket is closed with when the server is stopping.
+/// The client opens the socket again once the server is back.
 pub const SERVER_CLOSING: u16 = 1001;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -40,7 +43,8 @@ pub enum AskedDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "told", rename_all = "kebab-case")]
 pub enum ToldDTO {
-    /// The subscription hears its channel from now on, so what is read after this misses nothing told later.
+    /// The subscription receives its channel from now on.
+    /// So anything read after this misses no later change.
     Following {
         id: String,
     },
@@ -58,12 +62,14 @@ pub enum ToldDTO {
     },
 }
 
-/// Why a subscription ended, told under its id; the socket and its other subscriptions go on.
+/// Why a subscription ended, sent with its id.
+/// The socket and its other subscriptions keep going.
 pub mod ended {
     pub const UNKNOWN_TOPIC: &str = "unknown-topic";
     pub const NOT_THERE: &str = "not-there";
     pub const FAILED: &str = "failed";
     pub const ACCESS_LOST: &str = "access-lost";
-    /// The follower fell too far behind to be told every frame; asked again, it follows from where it is.
+    /// The follower fell too far behind to receive every frame.
+    /// If it subscribes again, it follows from that point on.
     pub const BEHIND: &str = "behind";
 }

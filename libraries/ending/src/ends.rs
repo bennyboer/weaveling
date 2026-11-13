@@ -31,7 +31,11 @@ impl End {
     }
 }
 
-/// Everything a socket must end on, taken from its request: the session's `SessionEnd` and the server's `Shutdown`, each never reached where the request carries none. The server waits for the socket as long as its `Ends` is held.
+/// Everything a socket must end on, taken from its request.
+///
+/// These are the session's `SessionEnd` and the server's `Shutdown`.
+/// If the request carries no such end, that end never happens.
+/// The server waits for the socket as long as its `Ends` is held.
 pub struct Ends {
     session: SessionEnd,
     server: CancellationToken,

@@ -10,7 +10,7 @@ use axum::response::{IntoResponse, Response};
 
 const LOCALHOST: &str = "localhost";
 
-/// Where a page comes from, as browsers tell it: its scheme, and its host with the port.
+/// Where a page comes from, as browsers report it: its scheme, and its host with the port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Origin {
     scheme: String,
@@ -28,7 +28,8 @@ impl Origin {
     }
 }
 
-/// Where the instance is opened, as it is set: its own pages come from there, and requests are made to its name.
+/// Where the instance is opened, as configured.
+/// Its own pages come from there, and requests are made to its name.
 #[derive(Debug, Clone)]
 struct Served {
     public: Option<Origin>,
@@ -67,8 +68,10 @@ impl Served {
     }
 }
 
-/// Answers only requests made to a name this instance is served at, and from its own pages when a page made them:
-/// so no other site reaches the sockets, which browsers do not keep to their own origin, nor the API by DNS rebinding.
+/// Answers only requests made to a name this instance is served at.
+/// When a page made the request, it must be one of the instance's own pages.
+/// This keeps other sites from reaching the sockets, which browsers do not restrict to their own origin.
+/// It also keeps other sites from reaching the API by DNS rebinding.
 pub fn answering_only_its_own(
     routes: Router,
     public_url: Option<&str>,

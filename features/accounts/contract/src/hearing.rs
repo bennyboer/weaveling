@@ -1,4 +1,9 @@
-/// Lays out a feature's listener hearing who runs the instance, accounts becoming operators, stopping and being deleted, for its core to keep through `access::HearsOperators`. The feature's messaging crate depends on `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`, which the listener is written in.
+/// Defines a feature's listener for the events that change who runs the instance.
+///
+/// The listener hears when an account becomes an operator, stops being one, or is deleted.
+/// It passes each change to the feature's core through `access::HearsOperators`.
+/// The listener's code uses `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`.
+/// So the feature's messaging crate must depend on these crates.
 #[macro_export]
 macro_rules! access_operators_listener {
     ($listener:ident, $core:ty, $name:literal, $when_refused:literal) => {

@@ -97,7 +97,7 @@ impl Adapters {
         .await
     }
 
-    /// Assembled as `assembled` is, the assets kept to what the operator chose.
+    /// Assembled like `assembled`, but with the asset limits the operator chose.
     pub async fn keeping_assets(
         storage: Storage,
         accounts: Accounts,

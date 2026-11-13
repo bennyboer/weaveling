@@ -144,7 +144,8 @@ pub trait Sessions: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError>;
-    /// Forgets at most so many sessions that ran out before then, the oldest first: how many.
+    /// Forgets at most `at_most` sessions that expired before the given time, oldest first.
+    /// Returns how many were forgotten.
     async fn forget_sessions_run_out_before(
         &self,
         before: OffsetDateTime,
@@ -183,7 +184,8 @@ pub trait Verifications: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<(), SecretsError>;
-    /// Forgets at most so many codes that ran out before then, the oldest first: how many.
+    /// Forgets at most `at_most` codes that expired before the given time, oldest first.
+    /// Returns how many were forgotten.
     async fn forget_codes_run_out_before(
         &self,
         before: OffsetDateTime,
@@ -201,7 +203,8 @@ pub trait Operators: Send + Sync {
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
 
-    /// Holds the code for the first account signed up with it, so nobody else signs up with it: false where it is no code kept, or held for another already.
+    /// Reserves the code for the first account that signs up with it, so nobody else can sign up with it.
+    /// Returns false if the code is not stored, or if it is already reserved for another account.
     async fn hold_code(
         &self,
         transaction: &mut Transaction,
@@ -209,7 +212,8 @@ pub trait Operators: Send + Sync {
         account: &AccountId,
     ) -> Result<bool, SecretsError>;
 
-    /// Takes the code for the account becoming the operator, once, where it is held for nobody else.
+    /// Takes the code, once, for the account that becomes the operator.
+    /// This only works if the code is not reserved for another account.
     async fn take_code(
         &self,
         transaction: &mut Transaction,
@@ -281,7 +285,12 @@ pub struct KeptTotp {
     pub last_accepted: TotpStep,
 }
 
-/// An account's second-factor secrets: a TOTP secret being set up until a code of it is confirmed, then the one in use for signing in, which setting up anew leaves in use until the new one is finished; and its recovery codes, kept hashed.
+/// An account's second-factor secrets.
+///
+/// A TOTP secret being set up is kept until a code for it is confirmed.
+/// Then it becomes the secret in use for signing in.
+/// Setting up TOTP again leaves the old secret in use until the new setup is finished.
+/// The account's recovery codes are stored too, as hashes.
 #[async_trait]
 pub trait SecondFactors: Send + Sync {
     async fn begin_setting_up(
@@ -332,7 +341,8 @@ pub trait SecondFactors: Send + Sync {
         code: &RecoveryCodeHash,
     ) -> Result<bool, SecretsError>;
 
-    /// Forgets the account's TOTP, the one in use and any being set up; its recovery codes stay, belonging to the second step.
+    /// Forgets the account's TOTP: the one in use and any being set up.
+    /// Its recovery codes stay, because they belong to the second step as a whole.
     async fn forget_totp(
         &self,
         transaction: &mut Transaction,
@@ -345,7 +355,7 @@ pub trait SecondFactors: Send + Sync {
         account: &AccountId,
     ) -> Result<(), SecretsError>;
 
-    /// Notes the way that answered the account's second step, in place of the one before.
+    /// Records the way that answered the account's second step, replacing the one recorded before.
     async fn note_answered_by(
         &self,
         transaction: &mut Transaction,
@@ -357,7 +367,8 @@ pub trait SecondFactors: Send + Sync {
         &self,
         account: &AccountId,
     ) -> Result<Option<SecondStepWay>, SecretsError>;
-    /// Forgets the account's second step whole: its TOTP in use and any being set up, its recovery codes and the way that answered last.
+    /// Forgets the account's whole second step.
+    /// That is the TOTP in use and any being set up, the recovery codes, and the way that answered last.
     async fn forget_second_factors_of(
         &self,
         transaction: &mut Transaction,
@@ -372,17 +383,21 @@ pub enum Dismissal {
     NotAppointed,
 }
 
-/// A key's credential as webauthn-rs wrote it, kept whole and unread here: its public key, its counter, what it can do. Its id is the browser's, the same across every account.
+/// A key's credential as webauthn-rs wrote it, stored whole and not read here.
+/// It contains the public key, the counter, and what the key can do.
+/// Its id comes from the browser, so all accounts share one space of ids.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyCredential {
     pub id: Vec<u8>,
     pub written: String,
 }
 
-/// The credentials of every account's keys, one a key, each credential held by one key of one account only.
+/// The credentials of every account's keys, one per key.
+/// Each credential belongs to exactly one key of one account.
 #[async_trait]
 pub trait KeyCredentials: Send + Sync {
-    /// Keeps a new key's credential; false where a key of any account holds a credential by that id already.
+    /// Stores a new key's credential.
+    /// Returns false if a key of any account already holds a credential with that id.
     async fn keep_credential(
         &self,
         transaction: &mut Transaction,
@@ -397,7 +412,8 @@ pub trait KeyCredentials: Send + Sync {
         account: &AccountId,
     ) -> Result<Vec<(KeyId, KeyCredential)>, SecretsError>;
 
-    /// Writes a key's credential anew, as it is after a use; false where the key holds none.
+    /// Overwrites a key's credential with its state after a use.
+    /// Returns false if the key has no credential.
     async fn renew_credential(
         &self,
         transaction: &mut Transaction,

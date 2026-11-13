@@ -273,7 +273,7 @@ impl ScenesCore {
         Ok(batch)
     }
 
-    /// Keeps which project an idea is of, so that no scene of another project may link it.
+    /// Stores which project an idea belongs to, so that no scene of another project can link it.
     pub async fn idea_captured(
         &self,
         within: Option<&mut Transaction>,
@@ -289,7 +289,7 @@ impl ScenesCore {
         })
     }
 
-    /// Unlinks a discarded idea from every scene, and forgets which project it was of.
+    /// Unlinks a discarded idea from every scene, and forgets which project it belonged to.
     pub async fn unlink_everywhere(
         &self,
         within: Option<&mut Transaction>,
@@ -571,7 +571,9 @@ impl ScenesCore {
 impl HearsAccess for ScenesCore {
     type Refused = ScenesError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may read and write its scenes follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may read and write the project's scenes.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -596,7 +598,8 @@ impl HearsAccess for ScenesCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -612,7 +615,7 @@ impl HearsAccess for ScenesCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

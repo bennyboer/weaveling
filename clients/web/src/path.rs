@@ -24,7 +24,8 @@ struct Crumb {
     leads_to: Option<String>,
 }
 
-/// The path from one's projects to the page shown, read from its address, every step but the last a way back.
+/// The path from the user's projects to the page shown, read from the page's address.
+/// Every step except the last is a link back.
 pub fn path_bar() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let screen = session.screen();

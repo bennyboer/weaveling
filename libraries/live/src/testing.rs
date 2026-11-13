@@ -8,7 +8,8 @@ const SETTLING: Duration = Duration::from_millis(50);
 const FRESH: Duration = Duration::from_secs(1);
 const QUIET: Duration = Duration::from_millis(150);
 
-/// A client of the one socket in tests: it subscribes as the browser does and reads what it is told.
+/// A test client of the shared socket.
+/// It subscribes like the browser does and reads what it receives.
 pub struct Subscriber {
     socket: TestWebSocket,
 }
@@ -21,7 +22,8 @@ impl Subscriber {
         }
     }
 
-    /// Subscribes under `id` to `topic` about `about`, and gives the server a moment to take it in.
+    /// Subscribes under `id` to `topic` about `about`.
+    /// Then it gives the server a moment to process the subscription.
     pub async fn subscribe(&mut self, id: &str, topic: &str, about: &[(&str, &str)]) {
         self.socket
             .send_json(&AskedDTO::Subscribe {
@@ -43,7 +45,8 @@ impl Subscriber {
         tokio::time::sleep(SETTLING).await;
     }
 
-    /// The next thing told but that a subscription is followed, failing unless it comes within a second.
+    /// The next message received, skipping confirmations that a subscription is followed.
+    /// Fails unless it arrives within a second.
     pub async fn told(&mut self) -> ToldDTO {
         loop {
             match self.anything_told().await {
@@ -53,7 +56,8 @@ impl Subscriber {
         }
     }
 
-    /// Waits until the subscription under `id` is followed, failing on anything else told first.
+    /// Waits until the subscription under `id` is followed.
+    /// Fails if anything else arrives first.
     pub async fn following(&mut self, id: &str) {
         match self.anything_told().await {
             ToldDTO::Following { id: followed } if followed == id => {}
@@ -67,7 +71,8 @@ impl Subscriber {
             .expect("told while it is fresh")
     }
 
-    /// The next frame told, as JSON to index into, failing on anything else.
+    /// The next frame received, as JSON to index into.
+    /// Fails on anything else.
     pub async fn frame(&mut self) -> Value {
         match self.told().await {
             ToldDTO::Frame { frame, .. } => {
@@ -77,7 +82,8 @@ impl Subscriber {
         }
     }
 
-    /// Why the next thing told ended a subscription, failing on anything else.
+    /// Why the next message ended a subscription.
+    /// Fails on anything else.
     pub async fn ended(&mut self) -> String {
         match self.told().await {
             ToldDTO::Ended { why, .. } => why,
@@ -85,7 +91,8 @@ impl Subscriber {
         }
     }
 
-    /// Whether nothing but that a subscription is followed is told for a short while; whatever is told meanwhile is read and gone.
+    /// Whether nothing arrives for a short while, apart from confirmations that a subscription is followed.
+    /// Anything received meanwhile is read and dropped.
     pub async fn silent(&mut self) -> bool {
         loop {
             match tokio::time::timeout(QUIET, self.socket.receive_json::<ToldDTO>()).await {

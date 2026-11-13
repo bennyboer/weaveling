@@ -25,7 +25,8 @@ const ENQUEUE: &str = "
 const FORGET_PUBLISHED: &str =
     "DELETE FROM outbox WHERE aggregate = ?1 AND kind = ?2 AND published_at IS NOT NULL";
 
-/// Forgets what an aggregate told that is published already; what still waits goes out as before.
+/// Forgets the messages of an aggregate that are already published.
+/// Messages that still wait are sent as before.
 pub async fn forget_published(
     transaction: &mut Transaction,
     aggregate: &str,

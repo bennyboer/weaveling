@@ -8,7 +8,11 @@ use transacting::Transaction;
 
 use crate::{AccessCatalog, AccessError, Role};
 
-/// Who may do what, answered from what the feature itself has heard: the `Authorizer` over its own `AccessCatalog`. What it is told is written in the listener's transaction, and once that is committed whoever follows the project live is told its access changed.
+/// Answers who may do what, from the access updates the feature has received itself.
+///
+/// It is the `Authorizer` backed by the feature's own `AccessCatalog`.
+/// Each update is written in the listener's transaction.
+/// Once that transaction has committed, everyone who follows the project live is told that its access changed.
 #[derive(Clone)]
 pub struct KeptAccess {
     catalog: Arc<dyn AccessCatalog>,
@@ -104,7 +108,7 @@ impl KeptAccess {
             .await
     }
 
-    /// Whether two accounts are members of one project at least, neither disbanded nor in the trash.
+    /// Whether two accounts are both members of at least one project that is neither disbanded nor in the trash.
     pub async fn share_a_project(
         &self,
         one: &AccountId,
@@ -113,7 +117,7 @@ impl KeptAccess {
         self.catalog.share_a_project(one, other).await
     }
 
-    /// The owners of a project not disbanded, by their accounts' ids.
+    /// The account ids of a project's owners, unless the project is disbanded.
     pub async fn owners_of(&self, project: &str) -> Result<Vec<AccountId>, AccessError> {
         self.catalog.owners_of(project).await
     }

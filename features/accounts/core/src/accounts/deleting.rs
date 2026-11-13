@@ -12,7 +12,12 @@ use crate::secrets::Dismissal;
 use crate::session::{SessionToken, Stage};
 
 impl AccountsCore {
-    /// Asks for one's own account to be deleted, for its password: it is kept until the answer, to be kept after all, every session of it ending at once; an operator stops being one, unless the last. Asked again, the deletion stands as first asked.
+    /// Asks for one's own account to be deleted, which needs the account's password.
+    ///
+    /// The account is kept until the returned date, so its holder can still decide to keep it.
+    /// Every session of the account ends at once.
+    /// An operator stops being an operator, but the last operator cannot ask for deletion.
+    /// If the deletion was already asked for, the first request stands.
     pub async fn ask_deletion(
         &self,
         account: &AccountId,
@@ -38,7 +43,9 @@ impl AccountsCore {
         Ok(pending)
     }
 
-    /// Marks another account for deletion, as the operator: the same thirty days, and only the operator calls it off.
+    /// Marks another account for deletion, as an operator.
+    /// The account is kept for the same thirty days.
+    /// Only an operator can call this deletion off.
     pub async fn mark_for_deletion(
         &self,
         by: &AccountId,
@@ -69,7 +76,11 @@ impl AccountsCore {
         Ok(pending)
     }
 
-    /// Keeps one's own account after all, from the session signing in opened while its deletion was pending, where its holder asked for it: the session goes on signed in, under a new token; the operator's role, given up in asking, does not come back.
+    /// Keeps one's own account after all, if its holder asked for the deletion.
+    ///
+    /// It is called from the session that signing in opened while the deletion was pending.
+    /// That session continues signed in, under a new token.
+    /// The operator role, given up when the deletion was asked for, does not come back.
     pub async fn keep_account(
         &self,
         pending: &SessionToken,
@@ -112,7 +123,7 @@ impl AccountsCore {
         Ok(opened)
     }
 
-    /// Keeps an account asked to be deleted, as the operator, whoever asked.
+    /// Keeps an account whose deletion was asked for, as an operator, no matter who asked.
     pub async fn keep_account_of(
         &self,
         by: &AccountId,
@@ -145,7 +156,8 @@ impl AccountsCore {
         )
     }
 
-    /// Remembers what an account is in a project, none where it is gone, as the project's members tell it.
+    /// Remembers what an account is in a project, as the project's members report it.
+    /// It is none if the account is no longer in the project.
     pub async fn remember_holding(
         &self,
         within: Option<&mut Transaction>,
@@ -170,7 +182,8 @@ impl AccountsCore {
         })
     }
 
-    /// Remembers a project's members disbanded, as its members tell it once the project is deleted.
+    /// Remembers that a project's members were disbanded.
+    /// The members report this once the project is deleted.
     pub async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -186,7 +199,9 @@ impl AccountsCore {
         })
     }
 
-    /// Forgets what only guarded against a late word about projects disbanded and members gone, once no word may be retried.
+    /// Forgets the tombstones of disbanded projects and removed members, laid before the given time.
+    /// They only guard against late messages about those projects and members.
+    /// Once no such message can be retried anymore, they are no longer needed.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -202,7 +217,8 @@ impl AccountsCore {
         })
     }
 
-    /// Forgets sessions and codes that ran out before then, at most so many of each: how many.
+    /// Forgets sessions and codes that expired before the given time, at most `at_most` of each.
+    /// Returns how many sessions and how many codes were forgotten.
     pub async fn forget_run_out_before(
         &self,
         before: OffsetDateTime,
@@ -264,7 +280,7 @@ impl AccountsCore {
         Ok(PendingDeletion { until, asked_by })
     }
 
-    /// Sweeps an account whose thirty days are over, for good.
+    /// Deletes an account for good, once its thirty days are over.
     pub async fn sweep(&self, account: &AccountId) -> Result<(), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
             let aggregate = AggregateId::from(account);

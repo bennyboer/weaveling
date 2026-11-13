@@ -8,23 +8,27 @@ use eventsourcing::Agent;
 
 use crate::{About, Broadcaster, Channel, Refused, Subscribed, Topic};
 
-/// Decides who may follow what a topic is about, told as text: a project's id, a board's.
+/// Decides who may follow what a topic is about.
+/// The thing is given as text, for example a project's id or a board's id.
 #[async_trait]
 pub trait Gate: Send + Sync {
-    /// Whether `agent` may follow `about` now; an error when that cannot be told, which is no answer either way.
+    /// Whether `agent` may follow `about` now.
+    /// Returns an error when that cannot be decided; an error means neither yes nor no.
     async fn admits(
         &self,
         agent: &Agent,
         about: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>>;
 
-    /// What wakes when who may follow `about` may have changed, so the gate is asked again; by default nothing ever does.
+    /// Returns a watch that wakes when access to `about` may have changed, so the gate is asked again.
+    /// By default it never wakes.
     async fn watch(&self, _about: &str) -> AccessWatch {
         AccessWatch::still()
     }
 }
 
-/// A follower a gate let in, kept to ask the gate again whenever its watch wakes.
+/// A follower that a gate let in.
+/// It is kept so the gate can be asked again whenever its watch wakes.
 pub struct Admission {
     watch: AccessWatch,
     gate: Arc<dyn Gate>,
@@ -37,7 +41,9 @@ pub(crate) enum Access {
     Lost,
 }
 
-/// Asks `gate` whether `agent` may follow `about`, watching first so that no change of access slips in between: let in, refused as not there, or refused as failed when the gate cannot tell.
+/// Asks `gate` whether `agent` may follow `about`.
+/// It starts watching first, so no access change is missed in between.
+/// The result is one of: let in, refused as not there, or refused as failed when the gate cannot decide.
 pub async fn admitted(
     gate: Arc<dyn Gate>,
     agent: &Agent,
@@ -70,7 +76,9 @@ impl Admission {
     }
 }
 
-/// The topic of a feature that only asks a gate: each subscription hears the one channel `channel_of` reads from what it is about, while the gate lets it in.
+/// The topic of a feature that only needs a gate.
+/// Each subscription listens to one channel, which `channel_of` derives from what the subscription is about.
+/// It listens only while the gate lets it in.
 pub struct GatedTopic<C> {
     named: &'static str,
     broadcaster: Broadcaster<C>,

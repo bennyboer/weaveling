@@ -579,7 +579,9 @@ fn second_step_form(page: Page) -> impl IntoView {
     )
 }
 
-/// Signs in by a passkey alone, where this Weaveling instance and the browser both know keys; the browser shows whichever passkeys of this site it holds.
+/// Signs in with a passkey alone.
+/// It is offered when both this Weaveling instance and the browser support keys.
+/// The browser shows all passkeys it holds for this site.
 fn passkey_offered(session: CurrentSession) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
     let said = RwSignal::new(None::<&'static str>);
@@ -650,7 +652,9 @@ fn passkey_offered(session: CurrentSession) -> impl IntoView {
     }
 }
 
-/// Offers the browser's passkeys for this site where it fills in the address, signing in once one is picked; a browser holding none shows nothing.
+/// Offers the browser's passkeys for this site among the suggestions for the address field.
+/// Signs in as soon as one is picked.
+/// A browser that holds no passkeys shows nothing.
 fn offering_in_the_address(session: CurrentSession, refused: RwSignal<Option<ApiError>>) {
     task::spawn_local(async move {
         if !authenticator::offerable().await {
@@ -669,7 +673,9 @@ fn offering_in_the_address(session: CurrentSession, refused: RwSignal<Option<Api
     });
 }
 
-/// Asks for a touch of one of the account's keys; the browser's own dialog opens only once asked for, so one who meant another way is not interrupted.
+/// Asks the user to touch one of the account's keys.
+/// The browser's own dialog opens only when the user asks for it.
+/// This way, someone who wants to use another way is not interrupted.
 fn key_step_form(page: Page) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let refused = RwSignal::new(None::<ApiError>);
@@ -733,7 +739,9 @@ fn key_step_form(page: Page) -> impl IntoView {
     )
 }
 
-/// Offers to ask this way first from now on, where another is asked first; the choice is kept only once the step succeeds.
+/// Offers to ask this way first from now on.
+/// It is shown only when another way is currently asked first.
+/// The choice is saved only after the step succeeds.
 fn first_from_now_on_box(way: SecondStepWay, checked: RwSignal<bool>) -> impl IntoView {
     owed().is_some_and(|owed| owed.asked_way != way).then(|| {
         html::label().class("first-from-now-on").child((
@@ -754,7 +762,8 @@ fn another_way(page: Page) -> impl IntoView {
     })
 }
 
-/// Every way that answers the account's second step, the one asked first among them, recovery codes last.
+/// Lists every way that can answer the account's second step.
+/// The way that is asked first is marked, and recovery codes come last.
 fn another_way_form(page: Page) -> impl IntoView {
     let owed = owed();
     let way = move |form: Form, title: &'static str, hint: &'static str, first: bool| {
@@ -808,7 +817,7 @@ fn another_way_form(page: Page) -> impl IntoView {
     )
 }
 
-/// The way the second step is asked first, as the server told it.
+/// The form for the way the second step is asked first, as the server reported it.
 fn asked_form(account: &SignedInAccount) -> Form {
     match account.second_factor {
         Some(factor) if factor.asked_way == SecondStepWay::Key => Form::KeyStep,
@@ -816,7 +825,7 @@ fn asked_form(account: &SignedInAccount) -> Form {
     }
 }
 
-/// The second step the session owes, as the account told it.
+/// The second step this session still has to complete, as reported for the account.
 fn owed() -> Option<SecondFactorInUse> {
     match expect_context::<CurrentSession>().state.get_untracked() {
         SignInState::OwingSecondFactor(account) => account.second_factor,

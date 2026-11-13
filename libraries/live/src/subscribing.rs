@@ -18,19 +18,25 @@ use crate::gate::{Access, Admission};
 use crate::{Channel, Frames, Hearing};
 
 const WAITING_TO_BE_SENT: usize = 64;
-/// The most a client sends at once: it only subscribes and unsubscribes, so far less than this, and nobody fills the server's memory with one message.
+/// The largest message a client may send.
+/// Clients only subscribe and unsubscribe, so their messages are far smaller than this.
+/// The limit keeps anyone from filling the server's memory with one message.
 pub const LARGEST_ASKED: usize = 64 * 1024;
 
-/// What a subscription asks to follow, by name: `{ "project": … }`, `{ "board": … }`, `{ "mine": "true" }`.
+/// What a subscription asks to follow, as named values.
+/// For example `{ "project": … }`, `{ "board": … }` or `{ "mine": "true" }`.
 pub type About = HashMap<String, String>;
 
-/// Lets each frame through to one follower or holds it back, so that followers of one channel may each hear only their own part of it; an error ends the subscription as failed rather than skip a frame it may have needed.
+/// Lets each frame through to one follower, or holds it back.
+/// This way followers of one channel can each receive only their own part of it.
+/// An error ends the subscription as failed, rather than skipping a frame the follower may have needed.
 #[async_trait]
 pub trait Sieve: Send + Sync {
     async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>>;
 }
 
-/// What a topic answers a subscription it lets in with: the frames it hears, and how they are to be followed.
+/// What a topic returns when it lets a subscription in.
+/// It holds the frames the subscription receives, and how they are to be followed.
 pub struct Subscribed {
     hearing: Box<dyn Frames>,
     standing: Option<u64>,
@@ -48,19 +54,23 @@ impl Subscribed {
         }
     }
 
-    /// Tells the follower first the version it stands at, so that a change made between reading and subscribing is not lost.
+    /// First tells the follower the version it is at.
+    /// This way a change made between reading and subscribing is not lost.
     pub fn standing_at(mut self, version: u64) -> Self {
         self.standing = Some(version);
         self
     }
 
-    /// Follows only while the admission holds: asked again whenever access may have changed, ended `access-lost` once it no longer does, told `access-changed` when it still does.
+    /// Follows only while the admission holds.
+    /// The admission is checked again whenever access may have changed.
+    /// If access is gone, the subscription ends with `access-lost`.
+    /// If access remains, the follower is sent `access-changed`.
     pub fn while_admitted(mut self, admission: Admission) -> Self {
         self.admission = Some(admission);
         self
     }
 
-    /// Passes each frame through `sieve` before telling it.
+    /// Passes each frame through `sieve` before sending it.
     pub fn sifted(mut self, sieve: Arc<dyn Sieve>) -> Self {
         self.sieve = Some(sieve);
         self
@@ -70,9 +80,10 @@ impl Subscribed {
 /// Why a topic turned a subscription away.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refused {
-    /// Nothing to follow, or nothing this agent may follow: the two are told alike, so that a stranger learns nothing.
+    /// Nothing to follow, or nothing this agent may follow.
+    /// Both cases look the same, so a stranger learns nothing.
     NotThere,
-    /// Whether it may be followed could not be told.
+    /// It could not be decided whether it may be followed.
     Failed,
 }
 
@@ -85,7 +96,7 @@ impl Refused {
     }
 }
 
-/// One feature's part of the one socket: what it is called there, and whom it lets follow what.
+/// One feature's part of the shared socket: its name there, and who may follow what.
 #[async_trait]
 pub trait Topic: Send + Sync {
     /// The name a client subscribes by.
@@ -113,7 +124,8 @@ impl Topics {
     }
 }
 
-/// Serves `/live`, the one socket a client subscribes to every topic over; it closes as its request's `Ends` tell it.
+/// Serves `/live`, the one socket a client uses to subscribe to every topic.
+/// It closes when its request's `Ends` say so.
 pub fn live_socket(topics: Topics) -> Router {
     Router::new().route(
         "/live",

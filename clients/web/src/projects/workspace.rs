@@ -225,7 +225,8 @@ impl Workspace {
         self.creating.start((name, details));
     }
 
-    /// The `aria-busy` of what renames or trashes a project: set while a change of the author's to it is unanswered.
+    /// The `aria-busy` value for the controls that rename or trash a project.
+    /// It is set while a change the author made to the project has no answer yet.
     pub fn changing(self, id: &ProjectId) -> Option<&'static str> {
         self.listed.unanswered_on(id).then_some("true")
     }

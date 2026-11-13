@@ -1,9 +1,12 @@
 use time::{Duration, OffsetDateTime};
 
-/// How long an account asked to be deleted is kept, to be kept after all, before it is gone for good.
+/// How long an account is kept after its deletion was asked for, before it is deleted for good.
+/// During that time it can still be kept after all.
 pub const KEPT_BEFORE_DELETION: Duration = Duration::days(30);
 
-/// An account asked to be deleted: until when it is kept, and who asked, as only the operator calls off what the operator asked.
+/// An account whose deletion was asked for.
+/// It holds until when the account is kept, and who asked.
+/// Who asked matters, because only an operator can call off a deletion that an operator asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PendingDeletion {
     pub until: OffsetDateTime,

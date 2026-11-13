@@ -32,18 +32,22 @@ pub enum UnfitSize {
     Nought,
 }
 
-/// How much the instance takes for images and other assets, and where it keeps them.
+/// How much storage the instance allows for images and other assets, and where it stores them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetSettings {
-    /// The most one upload may be, in bytes.
+    /// The largest size of one upload, in bytes.
     pub most_each_upload: u64,
-    /// The most the instance keeps for every asset together, in bytes, none unless set.
+    /// The most storage all assets together may use, in bytes.
+    /// There is no limit unless it is set.
     pub most_kept: Option<u64>,
-    /// The most an account's uploads may take together, in bytes, wherever they went; held only where there are accounts.
+    /// The most storage an account's uploads may use together, in bytes, wherever they went.
+    /// It applies only when there are accounts.
     pub most_each_account: u64,
-    /// The most a project's assets may take together, in bytes, none unless set.
+    /// The most storage a project's assets may use together, in bytes.
+    /// There is no limit unless it is set.
     pub most_each_project: Option<u64>,
-    /// A folder of the operator's choosing, in place of the database or the local data's own.
+    /// A folder the operator chose for storing assets.
+    /// It is used instead of the database or the default folder of the local data.
     pub folder: Option<PathBuf>,
 }
 
@@ -60,7 +64,8 @@ impl Default for AssetSettings {
 }
 
 impl AssetSettings {
-    /// What the assets are kept to: an account held to its limit only where there are accounts.
+    /// The limits the assets are kept to.
+    /// An account is held to its limit only when there are accounts.
     pub fn keeping(&self, accounts: Accounts) -> Keeping {
         Keeping {
             limits: Limits {

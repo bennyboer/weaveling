@@ -19,7 +19,8 @@ pub(crate) fn owner_written(owner: &Owner) -> (&'static str, String) {
     }
 }
 
-/// The owner read back from its kind and id; a kind never written is a failure.
+/// Reads an owner back from its stored kind and id.
+/// An unknown kind is an error.
 pub(crate) fn owner_read(kind: &str, owner: &str) -> Result<Owner, CatalogError> {
     match kind {
         PROJECT => Ok(Owner::Project(ProjectLink::from(owner))),
@@ -55,7 +56,10 @@ pub(crate) fn size_written(size: u64) -> Result<i64, CatalogError> {
     i64::try_from(size).map_err(unreachable)
 }
 
-/// The totals an asset counts in, each a bound and whose: the installation's, its uploader's where there is one, its project's where it is a project's.
+/// Returns the totals an asset counts in, each as a bound and whose total it is.
+/// The installation's total always counts.
+/// The uploader's total counts if there is an uploader.
+/// The project's total counts if the asset belongs to a project.
 pub(crate) fn bounds_of(
     uploader: Option<&str>,
     owner_kind: &str,
@@ -72,7 +76,8 @@ pub(crate) fn bounds_of(
     bounds
 }
 
-/// The usage read back from the totals asked, each by its bound; a total never kept is nothing.
+/// Builds the usage from the totals that were read, matching each total by its bound.
+/// A total that was never stored counts as zero.
 pub(crate) fn usage_of(
     totals: impl IntoIterator<Item = (String, i64)>,
 ) -> Result<Usage, CatalogError> {
@@ -90,7 +95,8 @@ pub(crate) fn usage_of(
     Ok(usage)
 }
 
-/// What a person is found by: their name and address, lowered, so a term of any case finds them on every backend alike.
+/// The text a person is searched by: name and email, in lowercase.
+/// Storing it in lowercase makes search ignore case the same way on every backend.
 pub(crate) fn person_searched(name: &str, email: &str) -> String {
     format!("{name} {email}").to_lowercase()
 }
@@ -99,7 +105,8 @@ pub(crate) fn project_searched(name: &str) -> String {
     name.to_lowercase()
 }
 
-/// The pattern a term is looked for by: anywhere in what is searched, lowered, its own `%`, `_` and `\` taken as they are.
+/// Turns a search term into a `LIKE` pattern that matches it anywhere, in lowercase.
+/// The characters `%`, `_` and `\` in the term are escaped, so they match literally.
 pub(crate) fn pattern_of(term: &str) -> String {
     let mut pattern = String::from("%");
     for sign in term.to_lowercase().chars() {
@@ -113,7 +120,13 @@ pub(crate) fn pattern_of(term: &str) -> String {
     pattern
 }
 
-/// How the holdings are asked for, written with the backend's placeholder: the bound and how many first, then the last listed's total, where sorted by it, and id, and last the pattern. Where a term is given the names are searched first and their totals joined, so a term found by few is not weighed against every holding.
+/// Builds the SQL for the storage overview, using the backend's placeholder style.
+///
+/// The parameters are bound in this order: the bound and the page size,
+/// then the cursor's total (only when sorted by use) and id, and last the search pattern.
+///
+/// With a search term the query starts from the names and joins their totals.
+/// That way a rare term does not make the database walk every total.
 pub(crate) fn holdings_asked(
     placeholder: fn(usize) -> String,
     holders: Holders,
@@ -174,7 +187,11 @@ pub(crate) fn holdings_asked(
     asked
 }
 
-/// How an account's uploads are asked for, written with the backend's placeholder: the account and how many first, then the last listed's size or moment, as sorted, and its id; each project's name joined where the assets heard it.
+/// Builds the SQL for an account's uploads, using the backend's placeholder style.
+///
+/// The parameters are bound in this order: the account and the page size,
+/// then the cursor's size or time (depending on the order) and its id.
+/// The project's name is joined for uploads into projects.
 pub(crate) fn uploads_asked(
     placeholder: fn(usize) -> String,
     sorted: UploadsSorted,

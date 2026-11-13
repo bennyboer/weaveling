@@ -3,14 +3,16 @@ use eventsourcing::AccountId;
 use crate::asset::ProjectLink;
 use crate::catalog::{Held, Upload};
 
-/// What the instance holds of every asset, and the most it may.
+/// How much storage the whole instance uses, and its limit, if it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InstanceStorage {
     pub used: u64,
     pub most: Option<u64>,
 }
 
-/// What an account's uploads take, wherever they went, and the most they may: its own limit, given by the operator, or the one of every account; with its name and address, where the assets heard them.
+/// How much storage an account's uploads use, wherever they went, and its limit.
+/// The limit is the account's own, if an operator gave it one, or else the default for accounts.
+/// Name and email are missing if the assets feature never heard them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountStorage {
     pub account: AccountId,
@@ -21,7 +23,9 @@ pub struct AccountStorage {
     pub own_limit: bool,
 }
 
-/// What a project's assets take, the most they may, and its owners, to speak to about it; with its name, where the assets heard it.
+/// How much storage a project's assets use, its limit, and its owners.
+/// The owners are listed so an operator knows whom to contact.
+/// The name is missing if the assets feature never heard it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectStorage {
     pub project: ProjectLink,
@@ -31,14 +35,17 @@ pub struct ProjectStorage {
     pub owners: Vec<AccountId>,
 }
 
-/// One of an account's uploads, and whether it may delete it: its own always, one in a project where it may write there.
+/// One of an account's uploads, and whether the account may delete it.
+/// Its own images it may always delete.
+/// An upload into a project it may delete only while it has write access to that project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnUpload {
     pub upload: Upload,
     pub deletable: bool,
 }
 
-/// A page, and where the next goes on from where there is one: after the last listed, where the page is full.
+/// One page of a list, and the cursor for the next page.
+/// The cursor is only set when the page is full, so a shorter page is the last one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed<T, Mark = Held> {
     pub listed: Vec<T>,

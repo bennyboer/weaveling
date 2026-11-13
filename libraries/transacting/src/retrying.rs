@@ -11,7 +11,11 @@ pub trait LostRace {
     fn lost_race(&self) -> bool;
 }
 
-/// What a try under `retrying!` answered when it failed: the work's own refusal, which is never tried again, or its transaction's failure, which is when the transaction lost a race. Lets work whose error knows nothing of transactions, as an adapter's, be tried again all the same.
+/// What a try under `retrying!` returned when it failed.
+///
+/// It is either the work's own refusal, which is never retried, or its transaction's failure.
+/// A transaction's failure is used when the transaction lost a race.
+/// This lets work be retried even when its error knows nothing of transactions, like an adapter's error.
 #[derive(Debug)]
 pub enum Tried<E> {
     Refused(E),
@@ -85,7 +89,9 @@ macro_rules! retrying {
     }};
 }
 
-/// Runs the work in the transaction it is handed, or, handed none, in one of its own through `retrying!`: a transaction borrowed is the owner's to try again.
+/// Runs the work in the transaction it is given.
+/// If it is given none, it runs the work in its own transaction through `retrying!`.
+/// A borrowed transaction is retried by its owner, not here.
 #[macro_export]
 macro_rules! joining {
     ($transactions:expr, $within:expr, |$transaction:ident| $work:block) => {

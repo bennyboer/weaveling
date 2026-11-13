@@ -7,12 +7,14 @@ use crate::key_ceremonies::{CeremonyFailed, SigningIn};
 use crate::session::SessionToken;
 
 impl AccountsCore {
-    /// What the browser is asked for any passkey it holds for this instance, nobody named yet, and the id the sign-in goes by.
+    /// Starts a sign-in with any passkey the browser holds for this instance, before anybody is named.
+    /// Returns the id of the sign-in, and what the browser is asked.
     pub fn begin_signing_in_with_passkey(&self) -> Result<(SigningIn, Value), AccountsError> {
         Ok(self.key_ceremonies()?.begin_signing_in(self.clock.now()))
     }
 
-    /// Signs in by a passkey alone, its device having checked who holds it, so no second step is owed.
+    /// Signs in with a passkey alone.
+    /// The device has already checked who holds the passkey, so no second step is needed.
     pub async fn sign_in_with_passkey(
         &self,
         signing_in: &SigningIn,

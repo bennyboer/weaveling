@@ -28,7 +28,8 @@ pub struct Person {
     pub email: String,
 }
 
-/// An account asked to be deleted, until when it is kept, as accounts last told it.
+/// An account that asked to be deleted, and until when it is kept.
+/// This is as the accounts feature last reported it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Leaving {
     pub account: AccountId,
@@ -65,7 +66,7 @@ pub trait MembershipCatalog: Send + Sync {
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 
-    /// Forgets a deleted account's person, its name and address.
+    /// Forgets the name and email address of a deleted account.
     async fn forget_person(
         &self,
         transaction: &mut Transaction,
@@ -88,7 +89,10 @@ pub trait MembershipCatalog: Send + Sync {
 
     async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 
-    /// Remembers until when an account is leaving, none where it is kept after all or gone, as of when, by the account's version, so an older word heard late changes nothing.
+    /// Stores until when an account is leaving.
+    /// `until` is none if the account is kept after all, or is already gone.
+    /// `at` is the time this is stored.
+    /// The account's version is compared, so an older message that arrives late changes nothing.
     async fn remember_leaving(
         &self,
         transaction: &mut Transaction,
@@ -98,7 +102,8 @@ pub trait MembershipCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets, at most so many, the accounts no longer leaving since before then: once no word about their leaving may be retried, nothing is left for them to guard against.
+    /// Forgets the accounts that stopped leaving before the given time, at most `at_most` of them.
+    /// Once no message about their leaving can be retried any more, there is nothing left to guard against.
     async fn forget_leaving_settled_before(
         &self,
         transaction: &mut Transaction,
@@ -106,7 +111,7 @@ pub trait MembershipCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
-    /// Those of the accounts asked for that are leaving, by account.
+    /// Returns those of the given accounts that are leaving, by account.
     async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError>;
 }
 

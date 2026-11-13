@@ -16,7 +16,8 @@ pub enum CatalogError {
     Backend(#[source] Box<dyn Error + Send + Sync>),
 }
 
-/// An asset as the list holds it: whose it is, who uploaded it, the picture's kind and size, and every byte kept for it.
+/// An asset as the catalog stores it.
+/// It holds its owner, its uploader, the picture's format and size, and all bytes stored for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetSummary {
     pub id: AssetId,
@@ -30,21 +31,24 @@ pub struct AssetSummary {
     pub uploaded_at: OffsetDateTime,
 }
 
-/// Whose holdings are listed: every account's that uploaded, or every project's.
+/// Whose storage use is listed: the accounts' or the projects'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Holders {
     Accounts,
     Projects,
 }
 
-/// How holdings are listed: the most held first, the ids in order where they hold as much; or by id alone.
+/// The order of the storage overview: the largest use first, or by id.
+/// Entries with the same use are ordered by id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sorted {
     MostUsed,
     ById,
 }
 
-/// What one account or project holds, in bytes, by its id, and its name and an account's address as far as the assets heard, none where they did not.
+/// How many bytes one account or project uses, by its id.
+/// Also holds its name, and for an account its email.
+/// Both are missing if the assets feature never heard them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
     pub id: String,
@@ -53,14 +57,17 @@ pub struct Held {
     pub email: Option<String>,
 }
 
-/// How an account's uploads are listed: the largest first, or the newest; the ids in order where they are alike.
+/// The order of an account's uploads: the largest first, or the newest first.
+/// Uploads with the same size or time are ordered by id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UploadsSorted {
     Largest,
     Newest,
 }
 
-/// One of an account's uploads as listed: whose it is, the project's name as far as the assets heard it, the picture, what it takes, and when it was uploaded.
+/// One of an account's uploads, as listed.
+/// It holds the owner, the image's format and size, how many bytes it uses, and when it was uploaded.
+/// For an upload into a project it also holds the project's name, if the assets feature heard it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Upload {
     pub id: AssetId,
@@ -73,7 +80,8 @@ pub struct Upload {
     pub uploaded_at: OffsetDateTime,
 }
 
-/// The upload a page goes on after, by what it takes, when it was uploaded and its id, whichever way the page is sorted.
+/// The cursor for the next page of uploads: the last listed upload's size, time and id.
+/// It holds both size and time, so it works for either order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadMark {
     pub id: AssetId,
@@ -91,7 +99,8 @@ impl From<&Upload> for UploadMark {
     }
 }
 
-/// An account as the assets heard of it from the accounts: whom to name in the operators' administration, and to find there.
+/// An account's name and email, as reported by the accounts feature.
+/// Operators see them in the storage overview and can search by them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Person {
     pub account: AccountId,
@@ -99,7 +108,9 @@ pub struct Person {
     pub email: String,
 }
 
-/// The assets kept, written in the transaction that tells one uploaded or deleted, so what each bound holds is never behind when an upload is weighed against it.
+/// The stored assets.
+/// They are written in the same transaction that records an upload or a deletion.
+/// So each bound's usage is never out of date when an upload is checked against it.
 #[async_trait]
 pub trait AssetCatalog: Send + Sync {
     async fn remember(
@@ -108,11 +119,13 @@ pub trait AssetCatalog: Send + Sync {
         summary: &AssetSummary,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets an asset; forgetting one never remembered is no failure.
+    /// Forgets an asset.
+    /// Forgetting one that was never stored does not fail.
     async fn forget(&self, transaction: &mut Transaction, id: &AssetId)
     -> Result<(), CatalogError>;
 
-    /// What the installation holds, what the account uploaded, and what the project holds, each where named.
+    /// Returns how many bytes the installation stores, the account uploaded, and the project stores.
+    /// The account's and the project's usage are only read if they are given.
     async fn usage_within(
         &self,
         transaction: &mut Transaction,
@@ -120,7 +133,9 @@ pub trait AssetCatalog: Send + Sync {
         project: Option<&ProjectLink>,
     ) -> Result<Usage, CatalogError>;
 
-    /// What the accounts or the projects holding anything hold, at most so many, after the one listed last as sorted; where a term is given, those alone whose name, or an account's address, holds it, whatever its case.
+    /// Lists the storage use of accounts or projects, starting after the given cursor.
+    /// Returns at most `at_most` entries, and only those that use something.
+    /// With a term, only entries whose name (or an account's email) contains it, ignoring case.
     async fn held_by(
         &self,
         transaction: &mut Transaction,
@@ -131,7 +146,16 @@ pub trait AssetCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<Vec<Held>, CatalogError>;
 
-    /// What the account uploaded, into projects and its own, at most so many, after the one listed last as sorted.
+    /// Returns the ids of an owner's assets, ordered by id, at most `at_most` of them.
+    async fn owned_by(
+        &self,
+        transaction: &mut Transaction,
+        owner: &Owner,
+        at_most: u64,
+    ) -> Result<Vec<AssetId>, CatalogError>;
+
+    /// Lists what the account uploaded, both into projects and as its own images.
+    /// Starts after the given cursor and returns at most `at_most` uploads.
     async fn uploaded_by(
         &self,
         transaction: &mut Transaction,
@@ -141,7 +165,8 @@ pub trait AssetCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<Vec<Upload>, CatalogError>;
 
-    /// Remembers an account's name and address as of a version of it, the newest heard winning.
+    /// Stores an account's name and email at a version.
+    /// It is ignored if a newer version is already stored.
     async fn remember_person(
         &self,
         transaction: &mut Transaction,
@@ -149,7 +174,8 @@ pub trait AssetCatalog: Send + Sync {
         version: Version,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets an account's name and address as of a version, as when it is deleted, keeping what guards against an older word heard late.
+    /// Removes an account's name and email at a version, for example when the account is deleted.
+    /// A tombstone stays behind, so an older message arriving late cannot bring the name back.
     async fn forget_person(
         &self,
         transaction: &mut Transaction,
@@ -158,7 +184,8 @@ pub trait AssetCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Remembers a project's name as of a version of it, the newest heard winning.
+    /// Stores a project's name at a version.
+    /// It is ignored if a newer version is already stored.
     async fn remember_project_name(
         &self,
         transaction: &mut Transaction,
@@ -167,7 +194,8 @@ pub trait AssetCatalog: Send + Sync {
         name: &str,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets a project's name as of a version, as when it is deleted, keeping what guards against an older word heard late.
+    /// Removes a project's name at a version, for example when the project is deleted.
+    /// A tombstone stays behind, so an older message arriving late cannot bring the name back.
     async fn forget_project_name(
         &self,
         transaction: &mut Transaction,
@@ -176,7 +204,8 @@ pub trait AssetCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    /// Lets go, at most so many of each, of the names forgotten before then, once nothing about them can be heard late any more: how many.
+    /// Deletes the name tombstones laid before the given time, at most `at_most` of each kind.
+    /// Returns how many were deleted.
     async fn forget_tombstones_laid_before(
         &self,
         transaction: &mut Transaction,

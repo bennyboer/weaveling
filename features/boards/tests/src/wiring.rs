@@ -49,7 +49,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     wired_keeping(clock, Arc::new(InMemoryAccess::new()), false)
 }
 
-/// Boards with accounts, who may do what kept in their own access.
+/// Boards with accounts, where who may do what is stored in the boards' own access records.
 pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
     wired_keeping(clock, Arc::new(InMemoryAccess::new()), true)
 }
@@ -127,7 +127,8 @@ pub fn wired_keeping(
 }
 
 impl Wired {
-    /// Tells the boards an account's role in a project, or that it is a member no more, each told newer than the last.
+    /// Tells the boards an account's role in a project, or that the account is no longer a member.
+    /// Each message has a newer version than the last.
     pub async fn give(&self, project: &str, account: &AccountId, role: Option<Role>) {
         self.boards
             .remember_role(
@@ -158,7 +159,8 @@ impl Wired {
     }
 }
 
-/// Who may do what, kept in memory, that can be made unreachable.
+/// Who may do what, stored in memory.
+/// It can be made unreachable.
 #[derive(Default)]
 pub struct Faltering {
     kept: InMemoryAccess,

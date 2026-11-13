@@ -1,7 +1,11 @@
 mod board;
 mod idea;
 mod ideas;
-/// The views loaded only once they are opened: each one's code is a chunk of its own, fetched when it is first opened, so opening Weaveling waits for none of them; every build is therefore split, `--split`.
+/// The views that are loaded only when they are opened.
+///
+/// The code of each view is in its own chunk, which is fetched the first time the view is opened.
+/// So opening Weaveling does not wait for any of them.
+/// Because of this, every build is split with `--split`.
 mod lazy;
 mod members;
 mod missing;

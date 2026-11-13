@@ -1,7 +1,8 @@
-/// The most any limit may be, in bytes: what every backend counts.
+/// The largest a limit may be, in bytes.
+/// Every backend can count up to this.
 pub const MOST_COUNTED: u64 = i64::MAX as u64;
 
-/// What a limit bounds: one upload, every asset of the installation, all an account uploaded, or all a project holds.
+/// What a limit applies to: one upload, all assets of the installation, all an account uploaded, or all a project stores.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Bound {
     Upload,
@@ -10,7 +11,8 @@ pub enum Bound {
     Project,
 }
 
-/// The most each bound may hold, in bytes; none where it is not bounded, as an account is not without accounts.
+/// The most each bound may hold, in bytes.
+/// A bound is missing if it has no limit, as accounts have none without accounts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Limits {
     pub each_upload: Option<u64>,
@@ -19,7 +21,8 @@ pub struct Limits {
     pub each_project: Option<u64>,
 }
 
-/// What the bounds an upload counts against hold already: the installation, the account uploading, the project it goes into.
+/// How many bytes the bounds an upload counts against already hold.
+/// These are the installation, the uploading account, and the project the upload goes into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Usage {
     pub instance: u64,
@@ -27,7 +30,7 @@ pub struct Usage {
     pub project: u64,
 }
 
-/// One limit as it stands: the most its bound may hold, and what it holds.
+/// One limit as it stands: the most its bound may hold, and how much it holds now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limit {
     pub bound: Bound,
@@ -35,7 +38,7 @@ pub struct Limit {
     pub used: u64,
 }
 
-/// Which bounds an upload counts against beside the installation.
+/// Which bounds an upload counts against, besides the installation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Counted {
     pub by_an_account: bool,
@@ -43,14 +46,15 @@ pub struct Counted {
 }
 
 impl Limit {
-    /// Whether the bound takes so many bytes more.
+    /// Whether the bound can take this many more bytes.
     pub fn takes(&self, adding: u64) -> bool {
         self.used.saturating_add(adding) <= self.most
     }
 }
 
 impl Limits {
-    /// The limit on one upload, which takes it or not before anything is made of it.
+    /// Returns the limit on a single upload.
+    /// It is checked before anything is made from the upload.
     pub fn on_the_upload(&self) -> Option<Limit> {
         self.each_upload.map(|most| Limit {
             bound: Bound::Upload,
@@ -59,7 +63,8 @@ impl Limits {
         })
     }
 
-    /// The limits what is kept for an upload counts against, as they stand, the installation's first.
+    /// Returns the limits that the stored bytes of an upload count against, with their current usage.
+    /// The installation's limit comes first.
     pub fn on_what_is_kept(&self, usage: Usage, counted: Counted) -> Vec<Limit> {
         [
             (Bound::Instance, self.instance, usage.instance, true),
@@ -85,7 +90,7 @@ impl Limits {
     }
 }
 
-/// The first of the limits that does not take so many bytes more.
+/// Returns the first limit that cannot take this many more bytes.
 pub fn first_passed(limits: impl IntoIterator<Item = Limit>, adding: u64) -> Option<Limit> {
     limits.into_iter().find(|limit| !limit.takes(adding))
 }

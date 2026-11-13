@@ -15,7 +15,8 @@ use crate::session::{SessionToken, Stage};
 use crate::throttle::Guarded;
 
 impl AccountsCore {
-    /// Answers the second factor a session owes with a code of the app, opening a session signed in all the way in its place.
+    /// Answers the second step a session owes with a code from the authenticator app.
+    /// A fully signed-in session opens in its place.
     pub async fn answer_with_totp(
         &self,
         token: &SessionToken,
@@ -56,7 +57,8 @@ impl AccountsCore {
         Ok(answered)
     }
 
-    /// Answers the second factor a session owes with one of the account's recovery codes, which serves only this once.
+    /// Answers the second step a session owes with one of the account's recovery codes.
+    /// That code can be used only this once.
     pub async fn answer_with_recovery_code(
         &self,
         token: &SessionToken,
@@ -99,7 +101,7 @@ impl AccountsCore {
         Ok(answered)
     }
 
-    /// What the browser is asked for a touch of one of the keys answering the account's second step.
+    /// Returns what the browser is asked, to get a touch of one of the keys that answer the account's second step.
     pub async fn begin_answering_with_key(
         &self,
         token: &SessionToken,
@@ -116,8 +118,10 @@ impl AccountsCore {
             .map_err(|_| AccountsError::KeyRefused)
     }
 
-    /// Answers the second factor a session owes with a key's touch, opening a session signed in all the way in its place.
-    /// A touch cannot be guessed, so it is not held back by codes guessed wrong, which may be another's who knows the password.
+    /// Answers the second step a session owes with a touch of a key.
+    /// A fully signed-in session opens in its place.
+    /// A touch cannot be guessed, so it is not blocked by wrong codes tried before.
+    /// Those wrong codes may come from someone else who knows the password.
     pub async fn answer_with_key(
         &self,
         token: &SessionToken,
@@ -155,7 +159,8 @@ impl AccountsCore {
         Ok(answered)
     }
 
-    /// The credentials of the account's keys that answer its second step, not those signing in alone.
+    /// The credentials of the account's keys that answer its second step.
+    /// Passkeys that sign in alone are left out.
     async fn second_step_credentials(
         &self,
         account: &AccountId,
@@ -176,7 +181,7 @@ impl AccountsCore {
             .collect())
     }
 
-    /// The way the account's second step is asked first, as it chose, or as it answered last.
+    /// The way the account's second step is asked for first: the way it chose, or the way that answered last.
     pub async fn asked_way(
         &self,
         account: &AccountId,

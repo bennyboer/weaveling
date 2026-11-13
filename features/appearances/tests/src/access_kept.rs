@@ -35,7 +35,8 @@ fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
     )
 }
 
-/// The feature as with accounts, an idea of the loom placed in a scene, and nobody heard of yet.
+/// Sets up the feature with accounts, and an idea of the loom placed in a scene.
+/// The feature has not heard of any member yet.
 async fn heard() -> Heard {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
     catalog

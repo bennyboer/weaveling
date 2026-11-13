@@ -9,7 +9,8 @@ use scenes_core::ScenesCore;
 use time::OffsetDateTime;
 use transacting::Transaction;
 
-/// Who may do what as the feature heard it, unless the list is down.
+/// Who may do what, as the feature heard it.
+/// It fails while the list is down.
 #[derive(Default)]
 pub struct WhoMayDoWhat {
     kept: InMemoryAccess,
@@ -129,7 +130,8 @@ impl AccessCatalog for WhoMayDoWhat {
     }
 }
 
-/// Who may do what as the scenes heard it, each word told newer than the last.
+/// Who may do what, as the scenes heard it.
+/// Each message has a newer version than the last.
 #[derive(Clone)]
 pub struct Kept {
     pub who: Arc<WhoMayDoWhat>,
@@ -150,12 +152,12 @@ impl Default for Kept {
 }
 
 impl Kept {
-    /// The authorizer the scenes are given where there are accounts.
+    /// The authorizer the scenes get when there are accounts.
     pub fn authorizer(&self) -> Arc<dyn Authorizer> {
         Arc::new(self.access.clone())
     }
 
-    /// Tells the scenes an account's role in a project, or that it is a member no more.
+    /// Tells the scenes an account's role in a project, or that the account is no longer a member.
     pub async fn give(
         &self,
         scenes: &ScenesCore,
@@ -177,7 +179,8 @@ impl Kept {
     }
 }
 
-/// Who may do what where nobody has been told anything, for scenes that allow everyone.
+/// Access records where nobody has been given a role yet.
+/// Used for scenes that allow everyone.
 pub fn heard_of_nobody() -> KeptAccess {
     KeptAccess::new(Arc::new(InMemoryAccess::new()))
 }

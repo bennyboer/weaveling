@@ -25,14 +25,16 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectLink(String);
 
-/// Whose an asset is: a project's, seen by those who may read it, or an account's, seen by those who share a project with it.
+/// Whom an asset belongs to: a project or an account.
+/// A project's asset is seen by those who may read the project.
+/// An account's asset is seen by those who share a project with the account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Owner {
     Project(ProjectLink),
     Account(AccountId),
 }
 
-/// What kind of image the original was, known by its bytes.
+/// The format of the original image, recognized from its bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Jpeg,
@@ -41,7 +43,7 @@ pub enum Format {
     Webp,
 }
 
-/// An image as it was uploaded: its kind, how large it is, and the widths it was made into.
+/// An image as it was uploaded: its format, its size, and the widths its variants were made in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Picture {
     pub format: Format,
@@ -78,7 +80,9 @@ pub enum AssetEvent {
     },
 }
 
-/// A file Weaveling keeps that is not text, an image for now: whose it is, the picture, and every byte kept for it, the original and its variants, counted against what the installation may hold.
+/// A file that Weaveling stores and that is not text. For now it is always an image.
+/// It holds its owner, the picture, and all bytes stored for it, the original and its variants.
+/// These bytes count against the installation's limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asset {
     owner: Owner,

@@ -63,7 +63,7 @@ pub trait NoticeCatalog: Send + Sync {
         account: &AccountId,
     ) -> Result<(), CatalogError>;
 
-    /// Every notice listed for an account, dismissed or not.
+    /// Returns every notice listed for an account, dismissed or not.
     async fn notices_of(&self, account: &AccountId) -> Result<Vec<NoticeId>, CatalogError>;
 
     async fn remember_project_name(

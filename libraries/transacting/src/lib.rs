@@ -94,7 +94,8 @@ impl Transaction {
         self.after_commit.push(Box::pin(followup));
     }
 
-    /// Whether a statement in it lost a race to another transaction, however its failure was answered: the work is then to be tried again, in a fresh transaction.
+    /// Whether a statement in it lost a race to another transaction, however its failure was handled.
+    /// If so, the work should be retried in a fresh transaction.
     pub fn lost_race(&self) -> bool {
         self.unit.lost_race()
     }

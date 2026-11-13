@@ -46,7 +46,7 @@ const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 const MAILING_ANYONE: &str = "mailing-anyone";
 const THE_INSTANCE: &str = "instance";
 
-/// The mails anyone may have the instance send, unless it is told otherwise.
+/// The default number of mails per hour that anyone may make the instance send.
 pub const MAIL_EACH_HOUR: u32 = 100;
 
 #[derive(Clone)]
@@ -123,7 +123,9 @@ impl AccountsCore {
         Self { signing_up, ..self }
     }
 
-    /// Caps the mails anyone may have the instance send, codes and word of an address having an account, at so many each hour across the instance, so nobody mails strangers in bulk through it.
+    /// Limits the mails that anyone may make the instance send to `mail_each_hour` per hour, across the whole instance.
+    /// This covers codes, and notices that an address already has an account.
+    /// It stops anyone from using the instance to mail strangers in bulk.
     pub fn capping_mail(self, mail_each_hour: u32) -> Self {
         Self {
             mail_each_hour,

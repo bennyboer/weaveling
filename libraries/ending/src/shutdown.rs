@@ -2,7 +2,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_util::task::task_tracker::TaskTrackerToken;
 
-/// The server's own end: put into the routes as an extension, every socket's `Ends` hears it close, and it waits until the last of them has gone.
+/// The server's own end.
+///
+/// It is added to the routes as an extension.
+/// Every socket's `Ends` notices when it closes.
+/// It then waits until the last socket has gone.
 #[derive(Clone, Default)]
 pub struct Shutdown {
     closing: CancellationToken,

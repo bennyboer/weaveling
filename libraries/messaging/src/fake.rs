@@ -19,7 +19,8 @@ impl FakePublisher {
         self.refusing.store(refusing, Ordering::SeqCst);
     }
 
-    /// Never answers a publish while holding, as a broker that hangs or a relay that dies mid-publish.
+    /// While holding, never answers a publish.
+    /// This acts like a broker that hangs, or a relay that dies mid-publish.
     pub fn holding(&self, holding: bool) {
         self.holding.store(holding, Ordering::SeqCst);
     }

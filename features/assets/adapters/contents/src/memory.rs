@@ -14,7 +14,7 @@ impl InMemoryContents {
         Self::default()
     }
 
-    /// How many pieces are kept, of every asset.
+    /// Returns how many pieces are stored, across all assets.
     pub fn pieces(&self) -> usize {
         self.kept().len()
     }

@@ -4,7 +4,7 @@ use accounts_core::{AccountId, AccountsCore, KIND};
 use async_trait::async_trait;
 use trash::{Purge, Trashed};
 
-/// The accounts' answer to an account whose thirty days are over: swept for good.
+/// What the accounts feature does with an account whose thirty days are over: it deletes the account for good.
 pub struct AccountsPurge {
     accounts: AccountsCore,
 }

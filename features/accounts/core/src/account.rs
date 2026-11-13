@@ -261,14 +261,14 @@ impl Account {
             })
     }
 
-    /// Whether a key answers the second step besides TOTP.
+    /// Whether a key can answer the second step, so that TOTP is not the only way.
     pub fn answers_second_step_without_totp(&self) -> bool {
         self.keys
             .values()
             .any(|key| key.role == KeyRole::SecondFactor)
     }
 
-    /// Whether TOTP or another key answers the second step besides this key.
+    /// Whether TOTP or another key can still answer the second step without this key.
     pub fn answers_second_step_without_key(&self, removed: &KeyId) -> bool {
         self.totp.is_some()
             || self
@@ -281,7 +281,11 @@ impl Account {
         self.preferred_way
     }
 
-    /// The way the second step is asked first: the one chosen, else the one that answered last, while it still answers; else a key before the app.
+    /// The way the second step is asked for first.
+    ///
+    /// This is the way the account chose, or the way that answered last if the account prefers that.
+    /// That way is used only as long as it still works.
+    /// Otherwise a key is asked for if there is one, else the app.
     pub fn asked_way(&self, answered_last: Option<SecondStepWay>) -> Option<SecondStepWay> {
         let answers = |way: &SecondStepWay| match way {
             SecondStepWay::Totp => self.totp.is_some(),
@@ -307,12 +311,14 @@ impl Account {
         self.totp
     }
 
-    /// Whether the account is kept from signing in: locked by the operator, asked to be deleted, or deleted.
+    /// Whether the account may not sign in normally.
+    /// This is the case if an operator locked it, if its deletion was asked for, or if it was deleted.
     pub fn is_locked(&self) -> bool {
         !self.locks.is_empty() || self.pending_deletion.is_some() || self.gone
     }
 
-    /// Whether the account was deleted: nothing of who held it is left, only its id.
+    /// Whether the account was deleted.
+    /// Only its id is left, nothing about the person who held it.
     pub fn is_gone(&self) -> bool {
         self.gone
     }
@@ -321,12 +327,16 @@ impl Account {
         self.pending_deletion
     }
 
-    /// Whether the operator locked the account, which nobody signs in to at all, unlike an account asked to be deleted, signed in to only to be kept.
+    /// Whether an operator locked the account.
+    /// Nobody can sign in to a locked account at all.
+    /// This differs from an account whose deletion was asked for: it can still be signed in to, but only to keep it.
     pub fn is_locked_by_the_operator(&self) -> bool {
         !self.locks.is_empty() || self.gone
     }
 
-    /// The stage a session opens at once whatever signing in asks is answered: signed in, or, for an account asked to be deleted, only to keep it or sign out.
+    /// The stage a session opens at, once every step of signing in is answered.
+    /// Normally this is signed in.
+    /// For an account whose deletion was asked for, the session may only keep the account or sign out.
     pub fn signs_in_to(&self) -> Stage {
         if self.pending_deletion.is_some() {
             Stage::DeletionPending
@@ -777,7 +787,8 @@ impl Aggregate for Account {
     }
 }
 
-/// The address a deleted account stands at, in a domain reserved never to exist.
+/// The email address a deleted account gets.
+/// Its domain is reserved so that it never exists.
 fn gone_address() -> EmailAddress {
     EmailAddress::new("deleted@account.invalid").expect("a plain address")
 }

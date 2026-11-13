@@ -73,7 +73,9 @@ pub enum Unsettled {
     TotpKey(#[from] UnreadableTotpKey),
 }
 
-/// Every setting the server starts with, read once: built-in defaults, then a settings file, then the variables, the later winning.
+/// Every setting the server starts with, read once.
+/// Built-in defaults come first, then a settings file, then the environment variables.
+/// Later sources win.
 #[derive(Debug, Default)]
 pub struct Settings {
     listen: Option<Setting>,
@@ -99,7 +101,8 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// The settings this process was started with: its arguments and variables, and the file they name or the one beside it.
+    /// The settings this process was started with.
+    /// They come from its arguments and environment variables, and from the settings file they name or the one next to it.
     pub fn of_this_process() -> Result<Self, Unsettled> {
         Self::read(
             env::args().skip(1),

@@ -15,7 +15,9 @@ enum Copying {
     Refused,
 }
 
-/// A button that copies a text and says for a moment whether the browser let it, as wide all along as the longest of its words.
+/// A button that copies a text.
+/// For a moment afterwards, it says whether the browser allowed the copy.
+/// It is always as wide as its longest label, so its width does not change.
 pub fn copy_button(label: &'static str, text: String) -> impl IntoView {
     let copying = RwSignal::new(Copying::Waiting);
     let said = speech::said(label);

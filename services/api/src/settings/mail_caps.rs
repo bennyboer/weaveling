@@ -13,10 +13,11 @@ pub struct UnreadableMailCap {
     pub setting: Setting,
 }
 
-/// How much mail the instance sends at most, so nobody mails strangers in bulk through it.
+/// How much mail the instance sends at most, so nobody can mail strangers in bulk through it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailCaps {
-    /// Codes and word of an address having an account, which anyone may have sent, across the instance.
+    /// Mails that anyone may cause to be sent, counted across the whole instance.
+    /// These are codes, and notices that an address already has an account.
     pub anyone_each_hour: u32,
     /// Invitations, by the account inviting.
     pub invitations_each_hour: u32,

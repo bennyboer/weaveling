@@ -4,17 +4,19 @@ use transacting::Transaction;
 
 use crate::catalog::CatalogError;
 
-/// The limits the operator gave single accounts in place of the one each account is held to, in bytes, kept by the assets feature.
+/// The limits an operator gave to single accounts, in bytes, stored by the assets feature.
+/// Such a limit replaces the default limit for accounts.
 #[async_trait]
 pub trait AccountLimits: Send + Sync {
-    /// The limit given the account, or none where it is held to the one of every account.
+    /// Returns the limit given to the account.
+    /// Returns none if the account has the default limit for accounts.
     async fn limit_of(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
     ) -> Result<Option<u64>, CatalogError>;
 
-    /// Gives the account a limit of its own, in place of any it had.
+    /// Gives the account its own limit, replacing any limit it had before.
     async fn give(
         &self,
         transaction: &mut Transaction,
@@ -22,7 +24,8 @@ pub trait AccountLimits: Send + Sync {
         most: u64,
     ) -> Result<(), CatalogError>;
 
-    /// Takes the account's own limit back, holding it to the one of every account again; taking back one never given is no failure.
+    /// Removes the account's own limit, so the default limit for accounts applies again.
+    /// Removing a limit that was never given does not fail.
     async fn take_back(
         &self,
         transaction: &mut Transaction,

@@ -208,7 +208,9 @@ impl ProjectsCore {
         })
     }
 
-    /// Deletes a project nobody is left in, as its members tell it, whether in the trash or not, and takes it out of the trash.
+    /// Deletes a project that nobody is left in, as reported by its members.
+    /// This works whether the project is in the trash or not.
+    /// It also takes the project out of the trash.
     pub async fn delete_abandoned(
         &self,
         within: Option<&mut Transaction>,
@@ -319,7 +321,9 @@ impl ProjectsCore {
 impl HearsAccess for ProjectsCore {
     type Refused = ProjectsError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may do what follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may do what.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -344,7 +348,8 @@ impl HearsAccess for ProjectsCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -360,7 +365,7 @@ impl HearsAccess for ProjectsCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as its own trashing or restoring told it at a version.
+    /// Stores whether a project is in the trash, as reported by its own trashing or restoring at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

@@ -25,14 +25,15 @@ use crate::limits::{Counted, Limits, MOST_COUNTED};
 use crate::preparing;
 use crate::storage::{AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectStorage};
 
-/// What an account's uploads take together, and the most they may, where they are held to any.
+/// How many bytes an account's uploads use together, and their limit.
+/// The limit is missing if there is none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OwnUsage {
     pub used: u64,
     pub most: Option<u64>,
 }
 
-/// What is handed out of an asset: a variant, as WebP.
+/// The part of an asset that is handed out: a variant, as WebP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Content {
     pub bytes: Vec<u8>,
@@ -40,6 +41,9 @@ pub struct Content {
 }
 
 const VARIANTS_ARE: &str = "image/webp";
+
+/// How many assets a sweep deletes in one transaction.
+pub const SWEPT_AT_ONCE: u64 = 50;
 
 #[derive(Clone)]
 pub struct AssetsCore {
@@ -90,7 +94,12 @@ impl AssetsCore {
         self.limits
     }
 
-    /// Takes an image into a project for whoever may write in it: refused past the upload's limit before anything is made of it, prepared beside the runtime, its pieces kept, and told uploaded only where every limit it counts against takes it, weighed in the transaction that tells it.
+    /// Uploads an image into a project.
+    /// The agent must be allowed to write in the project.
+    /// An upload larger than the upload limit is refused before anything is made from it.
+    /// The image is prepared outside the async runtime, and its pieces are stored.
+    /// It is recorded as uploaded only if it fits every limit it counts against.
+    /// Those limits are checked in the same transaction that records the upload.
     pub async fn upload_into(
         &self,
         project: &str,
@@ -105,7 +114,9 @@ impl AssetsCore {
             .await
     }
 
-    /// Takes an image as the uploading account's own, as its picture is; counted against the installation and the account alone, and refused where nobody is signed in, as without accounts.
+    /// Uploads an image as the uploading account's own, like its picture.
+    /// It counts only against the installation's and the account's limits.
+    /// It is refused if nobody is signed in, which is always the case without accounts.
     pub async fn upload_as_own(
         &self,
         uploaded: Vec<u8>,
@@ -152,7 +163,10 @@ impl AssetsCore {
         Ok((id, self.events.latest(&AggregateId::from(&id)).await?))
     }
 
-    /// The variant of an asset for whoever may see it: the narrowest at least as wide as asked, else the widest, which is also what is handed out asked for no width; never the original.
+    /// Returns a variant of an asset, if the agent may see the asset.
+    /// It is the narrowest variant at least as wide as asked, or else the widest.
+    /// The widest is also returned when no width is asked for.
+    /// The original is never returned.
     pub async fn content(
         &self,
         id: &str,
@@ -183,7 +197,9 @@ impl AssetsCore {
         })
     }
 
-    /// Deletes an asset for whoever may write where it is, and then lets go of its pieces; deleting it again changes nothing.
+    /// Deletes an asset, if the agent may write where it is.
+    /// Its stored pieces are removed afterwards.
+    /// Deleting it again changes nothing.
     pub async fn delete(&self, id: &str, agent: &Agent) -> Result<(), AssetsError> {
         let id: AssetId = id.parse()?;
         let asset = self.standing(&id).await?.state;
@@ -208,7 +224,47 @@ impl AssetsCore {
         Ok(self.contents.forget(&id).await?)
     }
 
-    /// Gives an account a limit of its own, in place of the one of every account, for an operator alone.
+    /// Deletes every asset of an owner, used when a project or an account is deleted.
+    ///
+    /// The deletions are made by the system, so no permission is checked.
+    /// They run in batches of `SWEPT_AT_ONCE`, each batch in its own transaction.
+    /// A batch's stored bytes are removed only after its transaction has committed.
+    /// Returns how many assets were deleted.
+    pub async fn sweep(&self, owner: &Owner) -> Result<u64, AssetsError> {
+        let mut swept = 0;
+        loop {
+            let deleted = transacting::retrying!(&*self.transactions, |transaction| {
+                let owned = self
+                    .catalog
+                    .owned_by(transaction, owner, SWEPT_AT_ONCE)
+                    .await?;
+                for id in &owned {
+                    self.events
+                        .execute_at(
+                            transaction,
+                            &AggregateId::from(id),
+                            None,
+                            AssetCommand::Delete,
+                            &Agent::System,
+                        )
+                        .await?;
+                    self.catalog.forget(transaction, id).await?;
+                }
+
+                Ok::<_, AssetsError>(owned)
+            })?;
+            for id in &deleted {
+                self.contents.forget(id).await?;
+            }
+            swept += deleted.len() as u64;
+            if (deleted.len() as u64) < SWEPT_AT_ONCE {
+                return Ok(swept);
+            }
+        }
+    }
+
+    /// Gives an account its own storage limit, replacing the default limit for accounts.
+    /// Only an operator may do this.
     pub async fn give_account_limit(
         &self,
         account: &str,
@@ -230,7 +286,8 @@ impl AssetsCore {
         })
     }
 
-    /// Takes an account's own limit back, holding it to the one of every account again, for an operator alone.
+    /// Removes an account's own storage limit, so the default limit for accounts applies again.
+    /// Only an operator may do this.
     pub async fn take_back_account_limit(
         &self,
         account: &str,
@@ -246,7 +303,8 @@ impl AssetsCore {
         })
     }
 
-    /// What the instance holds of every asset, and the most it may, for an operator alone.
+    /// Returns how much storage the whole instance uses, and its limit.
+    /// Only an operator may ask.
     pub async fn instance_storage(&self, agent: &Agent) -> Result<InstanceStorage, AssetsError> {
         self.operating(agent).await?;
 
@@ -260,7 +318,10 @@ impl AssetsCore {
         })
     }
 
-    /// What each account that uploaded holds, and the most it may, a page at a time, for an operator alone; those alone whose name or address holds the term, where one is given.
+    /// Lists how much storage each account uses, with its limit, one page at a time.
+    /// Only accounts that uploaded something are listed.
+    /// With a search term, only accounts whose name or email contains it are listed.
+    /// Only an operator may ask.
     pub async fn accounts_storage(
         &self,
         sorted: Sorted,
@@ -304,7 +365,10 @@ impl AssetsCore {
         })
     }
 
-    /// What each project holding anything holds, the most it may, and its owners, a page at a time, for an operator alone; those alone whose name holds the term, where one is given.
+    /// Lists how much storage each project uses, with its limit and its owners, one page at a time.
+    /// Only projects that hold something are listed.
+    /// With a search term, only projects whose name contains it are listed.
+    /// Only an operator may ask.
     pub async fn projects_storage(
         &self,
         sorted: Sorted,
@@ -343,7 +407,10 @@ impl AssetsCore {
         Ok(Listed::paged(listed, held.last().cloned(), at_most))
     }
 
-    /// What the signed-in account uploaded, into projects and its own, a page at a time, each told whether it may delete it; refused where nobody is signed in, as without accounts.
+    /// Lists everything the signed-in account uploaded, one page at a time.
+    /// This includes uploads into projects and the account's own images.
+    /// Each entry says whether the account may delete it.
+    /// Fails with `NoAccount` when nobody is signed in, which is always the case without accounts.
     pub async fn uploads_of(
         &self,
         sorted: UploadsSorted,
@@ -388,7 +455,8 @@ impl AssetsCore {
         Ok(Listed::paged(listed, last, at_most))
     }
 
-    /// What the signed-in account's uploads take, wherever they went, and the most they may: its own limit, or the one of every account.
+    /// Returns how many bytes the signed-in account's uploads use, wherever they went, and its limit.
+    /// The limit is the account's own, if an operator gave it one, or else the default for accounts.
     pub async fn usage_of(&self, agent: &Agent) -> Result<OwnUsage, AssetsError> {
         let Agent::Account(account) = agent else {
             return Err(AssetsError::NoAccount);
@@ -408,7 +476,8 @@ impl AssetsCore {
         })
     }
 
-    /// Remembers an account's name and address as the accounts told them at a version, so the operators find it by them.
+    /// Stores an account's name and email, as the accounts feature reported them.
+    /// Operators see them in the storage overview and can search by them.
     pub async fn remember_person(
         &self,
         within: Option<&mut Transaction>,
@@ -424,7 +493,7 @@ impl AssetsCore {
         })
     }
 
-    /// Forgets a deleted account's name and address, as the accounts told it at a version.
+    /// Removes the name and email of a deleted account.
     pub async fn forget_person(
         &self,
         within: Option<&mut Transaction>,
@@ -440,7 +509,8 @@ impl AssetsCore {
         })
     }
 
-    /// Remembers a project's name as the projects told it at a version, so the operators find it by it.
+    /// Stores a project's name, as the projects feature reported it.
+    /// Operators see it in the storage overview and can search by it.
     pub async fn remember_project_name(
         &self,
         within: Option<&mut Transaction>,
@@ -457,7 +527,7 @@ impl AssetsCore {
         })
     }
 
-    /// Forgets a deleted project's name, as the projects told it at a version.
+    /// Removes the name of a deleted project.
     pub async fn forget_project_name(
         &self,
         within: Option<&mut Transaction>,
@@ -473,7 +543,10 @@ impl AssetsCore {
         })
     }
 
-    /// Lets go of what only guarded against a word heard late, about who may do what or whose name is what, once none may be any more.
+    /// Deletes old tombstones, both from the access tables and from the stored names.
+    /// A tombstone keeps a late, outdated message from bringing deleted data back.
+    /// Once it is old enough, no such message can arrive any more.
+    /// Returns how many tombstones were deleted.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -572,7 +645,9 @@ impl AssetsCore {
         })
     }
 
-    /// The limits an upload by the account is held to: its own in place of the one of every account, where the operator gave it one and accounts are held to any.
+    /// Returns the limits an upload by the account must fit.
+    /// If an operator gave the account its own limit, it replaces the default limit for accounts.
+    /// This only applies if accounts have a limit at all.
     async fn limits_of(
         &self,
         transaction: &mut Transaction,
@@ -605,7 +680,9 @@ impl AssetsCore {
         Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 
-    /// Whether the agent may see an asset: a project's, by reading the project; an account's, by being the account or sharing a project with it.
+    /// Whether the agent may see an asset.
+    /// A project's asset may be seen by whoever may read the project.
+    /// An account's asset may be seen by the account itself and by those who share a project with it.
     async fn may_see(&self, agent: &Agent, owner: &Owner) -> Result<bool, AssetsError> {
         match (owner, agent) {
             (Owner::Project(project), _) => Ok(self
@@ -660,7 +737,9 @@ impl AssetsCore {
 impl HearsAccess for AssetsCore {
     type Refused = AssetsError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may see what.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -685,7 +764,8 @@ impl HearsAccess for AssetsCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -701,7 +781,7 @@ impl HearsAccess for AssetsCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,
@@ -723,7 +803,7 @@ impl HearsAccess for AssetsCore {
 impl HearsOperators for AssetsCore {
     type Refused = AssetsError;
 
-    /// Remembers whether an account runs the instance, as the accounts told it at a version.
+    /// Stores whether an account runs the instance, as the accounts feature reported it at a version.
     async fn remember_operator(
         &self,
         within: Option<&mut Transaction>,
@@ -741,7 +821,8 @@ impl HearsOperators for AssetsCore {
     }
 }
 
-/// The term searched for, its spaces around it let go of; a term of nothing but spaces searches for nothing.
+/// Trims the search term.
+/// A term that is empty or only spaces means no search at all.
 fn searched(matching: Option<&str>) -> Option<&str> {
     matching.map(str::trim).filter(|term| !term.is_empty())
 }

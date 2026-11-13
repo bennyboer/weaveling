@@ -36,7 +36,7 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
 }
 
-/// Each word told the catalog, as a feature's listener hears them.
+/// Each update given to the catalog, as a feature's listener receives them.
 enum Word {
     Role(&'static str, AccountId, u64, Option<Role>, i64),
     Disbanded(&'static str, u64, i64),

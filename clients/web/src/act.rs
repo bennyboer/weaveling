@@ -7,10 +7,18 @@ use leptos::task;
 
 type Doing<T> = Rc<dyn Fn(T, Here) -> Pin<Box<dyn Future<Output = ()>>>>;
 
-/// Something one click or key starts, once at a time: started again while it runs, it does nothing, so a double click or a held key never does it twice. What it is about, a section written into, says which of several buttons shows it busy.
+/// An action that a click or a key press starts.
+///
+/// Only one run happens at a time.
+/// Starting it again while it runs does nothing, so a double click or a held key never runs it twice.
+/// The value it runs with, for example the section being written into, decides which of several buttons shows as busy.
 pub struct Act<T: Send + Sync + 'static = ()> {
     running: RwSignal<Option<T>>,
-    /// Holds nothing; it only lives as long as the view the act was built in. Like every signal it belongs to the reactive owner current at `Act::new`, and Leptos disposes it when that view is taken off the page, while the act's task runs on. So build an act in the view whose leaving should stop it, not higher up.
+    /// Holds nothing. It only exists as long as the view the act was built in.
+    ///
+    /// Like every signal, it belongs to the reactive owner that is current at `Act::new`.
+    /// Leptos disposes it when that view is removed from the page, while the act's task keeps running.
+    /// So build an act in the view whose removal should stop it, not higher up.
     here: StoredValue<()>,
     doing: StoredValue<Doing<T>, LocalStorage>,
 }
@@ -23,7 +31,8 @@ impl<T: Send + Sync + 'static> Clone for Act<T> {
 
 impl<T: Send + Sync + 'static> Copy for Act<T> {}
 
-/// Whether the view an act was started from is still shown, so that what it does once its answer comes, such as going elsewhere, is not done after its author left.
+/// Tells whether the view an act was started from is still shown.
+/// This way, what the act does after its answer comes, such as navigating elsewhere, is skipped if the user has already left.
 #[derive(Clone, Copy)]
 pub struct Here(StoredValue<()>);
 
@@ -61,7 +70,8 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> Act<T> {
         self.running.with(Option::is_some)
     }
 
-    /// The `aria-busy` of the button that starts it: set while it runs, which is also what draws the button as busy.
+    /// The `aria-busy` value for the button that starts the act.
+    /// It is set while the act runs, and it also makes the button look busy.
     pub fn busy(self) -> Option<&'static str> {
         self.running().then_some("true")
     }
@@ -74,7 +84,8 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> Act<T> {
 }
 
 impl Here {
-    /// True while the view is shown: reading a disposed value gives nothing back.
+    /// Returns true while the view is shown.
+    /// Reading a disposed value returns nothing, which is how a removed view is noticed.
     pub fn still(self) -> bool {
         self.0.try_get_value().is_some()
     }

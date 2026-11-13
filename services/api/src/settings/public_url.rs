@@ -13,7 +13,8 @@ pub struct UnreadablePublicUrl {
 }
 
 impl Settings {
-    /// Where the instance is served, as it is set, for the links its mail leads to.
+    /// Where the instance is served, as configured.
+    /// The links in its mail point there.
     pub fn public_url(&self) -> Option<String> {
         self.public_url
             .as_ref()

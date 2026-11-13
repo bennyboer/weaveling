@@ -10,7 +10,7 @@ use crate::app::outline::OutlinePage;
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
 
-/// A project, opened at the view it shows first.
+/// A project, opened at its first view.
 pub struct ProjectRoute;
 
 #[lazy_route]
@@ -24,7 +24,9 @@ impl LazyRoute for ProjectRoute {
     }
 }
 
-/// The writing view, shown once the editor is fetched too, which begins beside its own code.
+/// The writing view.
+/// It is shown only after the editor is fetched too.
+/// Fetching the editor starts at the same time as fetching the view's own code.
 pub struct WriteRoute {
     editor: LocalResource<()>,
 }
@@ -42,7 +44,8 @@ impl LazyRoute for WriteRoute {
     }
 }
 
-/// The scenes not in the book, shown once the editor is fetched too.
+/// The scenes that are not in the book.
+/// They are shown only after the editor is fetched too.
 pub struct LooseScenesRoute {
     editor: LocalResource<()>,
 }
@@ -134,7 +137,7 @@ impl LazyRoute for MembersRoute {
     }
 }
 
-/// Those invited into a project.
+/// The people invited into a project.
 pub struct MembersInvitedRoute;
 
 #[lazy_route]
@@ -162,7 +165,7 @@ impl LazyRoute for SecurityRoute {
     }
 }
 
-/// The instance's operating.
+/// The page for operating this Weaveling instance.
 pub struct InstanceRoute;
 
 #[lazy_route]
@@ -176,7 +179,7 @@ impl LazyRoute for InstanceRoute {
     }
 }
 
-/// The instance's accounts.
+/// The accounts of this Weaveling instance.
 pub struct InstanceAccountsRoute;
 
 #[lazy_route]
@@ -190,7 +193,7 @@ impl LazyRoute for InstanceAccountsRoute {
     }
 }
 
-/// The instance's invitations.
+/// The invitations of this Weaveling instance.
 pub struct InstanceInvitationsRoute;
 
 #[lazy_route]

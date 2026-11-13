@@ -66,7 +66,8 @@ impl InMemoryOutbox {
         transaction.after_commit(async move { put(&entries, &waiting, origin, message) });
     }
 
-    /// Forgets, once the transaction commits, what an aggregate told that is published by then; what still waits goes out as before.
+    /// Once the transaction commits, forgets the messages of an aggregate that are published by then.
+    /// Messages that still wait are sent as before.
     pub fn forget_published_after_commit(
         &self,
         transaction: &mut Transaction,
@@ -85,7 +86,7 @@ impl InMemoryOutbox {
         });
     }
 
-    /// The routing keys of what was published and is kept still, in the order it was told.
+    /// The routing keys of the published messages that are still kept, in the order they were sent.
     pub fn kept_published(&self) -> Vec<String> {
         self.held()
             .held

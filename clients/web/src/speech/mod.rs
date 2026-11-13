@@ -16,7 +16,7 @@ pub struct Speech {
     spoken: RwSignal<Language>,
 }
 
-/// Fetches the catalogue of the language the page will be spoken in, before anything is shown in it.
+/// Fetches the catalogue of the page's language before anything is shown.
 pub async fn readied() {
     catalogue::fetched(first_spoken()).await;
 }
@@ -41,7 +41,8 @@ impl Speech {
         self.spoken.get()
     }
 
-    /// Speaks the language once its catalogue is fetched; where it cannot be, the one spoken stays.
+    /// Switches to the language once its catalogue is fetched.
+    /// If the catalogue cannot be fetched, the current language stays.
     pub fn speak(self, language: Language) {
         task::spawn_local(async move {
             if !catalogue::fetched(language).await {

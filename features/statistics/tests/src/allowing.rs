@@ -6,7 +6,8 @@ use clock::FixedClock;
 use statistics_core::{StatisticsCore, WordCountCatalog};
 use transacting::Transactions;
 
-/// The core as without accounts: everyone may do everything, whatever its own access has heard.
+/// Builds the core as it runs without accounts, where everyone may do everything.
+/// This holds no matter what its own access records contain.
 pub fn everyone(
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn WordCountCatalog>,

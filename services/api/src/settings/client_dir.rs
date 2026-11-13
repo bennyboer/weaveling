@@ -9,7 +9,8 @@ pub(super) const LEPTOS_WATCH: &str = "LEPTOS_WATCH";
 pub(super) const LEPTOS_RELOAD_PORT: &str = "LEPTOS_RELOAD_PORT";
 
 impl Settings {
-    /// The built client to hand out beside `/api`, where one is named: by the setting, else by cargo-leptos, which starts this server with the site it built.
+    /// The built client to serve next to `/api`, if one is named.
+    /// It is named by the setting, or else by cargo-leptos, which starts this server with the site it built.
     pub fn client(&self) -> Option<ServedClient> {
         let dir = self.client_dir.as_ref()?;
 

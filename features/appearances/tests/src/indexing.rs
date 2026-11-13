@@ -66,7 +66,8 @@ fn a_workbench() -> Wired {
 }
 
 impl Wired {
-    /// Where an idea appears once it is known to be of `PROJECT`, as the places are unless a case says otherwise.
+    /// Returns where an idea appears, once the idea is known to belong to `PROJECT`.
+    /// The places belong to `PROJECT` too, unless a case says otherwise.
     async fn places_of(&self, idea: &str) -> Vec<Place> {
         self.hears(&self.projects, captured(idea, PROJECT)).await;
 

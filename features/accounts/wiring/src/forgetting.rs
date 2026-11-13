@@ -9,10 +9,12 @@ use clock::Clock;
 
 const EACH_BATCH: u64 = 500;
 
-/// How long a session or a code is kept after it runs out, so that one typed or brought a little late is told it ran out rather than that there is none.
+/// How long a session or a code is kept after it expires.
+/// So if one is used a little late, the user is told that it expired, rather than that it does not exist.
 const KEPT_AFTER_RUNNING_OUT: time::Duration = time::Duration::days(1);
 
-/// Forgets sessions and codes run out a day ago and more, every hour, which nothing else ever does.
+/// Every hour, forgets sessions and codes that expired a day ago or more.
+/// Nothing else ever deletes them.
 pub struct ForgetRunOutSessionsAndCodes {
     accounts: AccountsCore,
     clock: Arc<dyn Clock>,

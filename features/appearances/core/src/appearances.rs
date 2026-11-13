@@ -59,7 +59,9 @@ impl AppearancesCore {
         Ok(self.may_read(idea, agent).await?.unwrap_or(false))
     }
 
-    /// An idea's project is taken from the ideas alone, never from where it is linked, so a link from another project moves nothing.
+    /// Stores which project an idea belongs to.
+    /// The project comes only from the ideas feature, never from where the idea is linked.
+    /// So a link from another project does not change the idea's project.
     pub async fn captured(
         &self,
         within: Option<&mut Transaction>,
@@ -75,7 +77,9 @@ impl AppearancesCore {
         })
     }
 
-    /// The project given is the place's, so an idea linked from another project is kept but shown nowhere.
+    /// Stores that an idea appears in a place.
+    /// The given project is the place's project.
+    /// So an idea linked from another project is stored, but not shown anywhere.
     pub async fn appeared(
         &self,
         within: Option<&mut Transaction>,
@@ -127,7 +131,8 @@ impl AppearancesCore {
         })
     }
 
-    /// Every place of a deleted project goes, sections included, whose outline names none of them as it goes.
+    /// Forgets every place of a deleted project, sections included.
+    /// The outline does not report each of these places as gone when its project is deleted, so they are all forgotten here.
     pub async fn project_deleted(
         &self,
         within: Option<&mut Transaction>,
@@ -194,7 +199,9 @@ impl AppearancesCore {
 impl HearsAccess for AppearancesCore {
     type Refused = AppearancesError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may see what.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -219,7 +226,8 @@ impl HearsAccess for AppearancesCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -235,7 +243,7 @@ impl HearsAccess for AppearancesCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

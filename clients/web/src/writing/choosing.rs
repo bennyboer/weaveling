@@ -131,7 +131,8 @@ impl Choosing {
     }
 }
 
-/// Gives the book the keys while scenes are chosen, leaving the view where it is: a browser scrolls what takes focus into view, and the book is taller than the window.
+/// Gives keyboard focus to the book while scenes are chosen, without scrolling the view.
+/// A browser normally scrolls a focused element into view, and the book is taller than the window.
 pub fn hand_the_keys_to_the_book() {
     if let Some(book) = document()
         .query_selector("article.writing")

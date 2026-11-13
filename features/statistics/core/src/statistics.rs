@@ -121,7 +121,9 @@ impl StatisticsCore {
 impl HearsAccess for StatisticsCore {
     type Refused = StatisticsError;
 
-    /// Remembers an account's role in a project, or that it is a member no more, as the project's members told it at a version, so who may see what follows.
+    /// Stores an account's role in a project, or that the account is no longer a member.
+    /// The members feature reports this at a version.
+    /// The stored roles decide who may see what.
     async fn remember_role(
         &self,
         within: Option<&mut Transaction>,
@@ -146,7 +148,8 @@ impl HearsAccess for StatisticsCore {
         })
     }
 
-    /// Remembers a project's members disbanded, its project deleted: nobody is a member of it any more.
+    /// Stores that a project's members were disbanded because the project was deleted.
+    /// After this, nobody is a member of the project.
     async fn remember_disbanded(
         &self,
         within: Option<&mut Transaction>,
@@ -162,7 +165,7 @@ impl HearsAccess for StatisticsCore {
         })
     }
 
-    /// Remembers whether a project is in the trash, as the projects told it at a version.
+    /// Stores whether a project is in the trash, as the projects feature reported it at a version.
     async fn remember_trash(
         &self,
         within: Option<&mut Transaction>,

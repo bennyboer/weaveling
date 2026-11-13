@@ -1,4 +1,9 @@
-/// Lays out a feature's listener hearing who is a member of which project in which role, for its core to keep through `access::HearsAccess`: founded, joined, role changed, left, removed and disbanded; an abandoning, which follows the last member's removal, changes nobody's membership. The feature's messaging crate depends on `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`, which the listener is written in.
+/// Defines a feature's listener that hears who is a member of which project, in which role.
+/// The listener passes this to the feature's core through `access::HearsAccess`.
+/// It handles these events: founded, joined, role changed, left, removed and disbanded.
+/// An abandoning, which follows the removal of the last member, changes nobody's membership.
+///
+/// The feature's messaging crate must depend on `access`, `async-trait`, `eventpublishing`, `eventsourcing`, `inbox`, `messaging` and `transacting`, because the listener's code uses them.
 #[macro_export]
 macro_rules! access_roles_listener {
     ($listener:ident, $core:ty, $name:literal, $when_refused:literal) => {

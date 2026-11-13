@@ -15,7 +15,8 @@ const GIVE: &str = "
 
 const TAKE_BACK: &str = "DELETE FROM asset_account_limits WHERE account = $1";
 
-/// The limits the operator gave single accounts, on Postgres, beside the assets in the catalog's own schema.
+/// The limits an operator gave to single accounts, stored in Postgres.
+/// They are stored next to the assets, in the catalog's own schema.
 #[derive(Debug, Default)]
 pub struct PostgresAccountLimits;
 

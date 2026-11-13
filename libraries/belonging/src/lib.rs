@@ -33,10 +33,13 @@ pub enum BelongingsError {
     Backend(#[source] Box<dyn Error + Send + Sync>),
 }
 
-/// What another feature's things belong to, as far as this feature has heard: an idea or a scene to its project, one owner of each kind.
+/// What another feature's things belong to, as far as this feature has heard.
+/// For example, an idea or a scene belongs to its project.
+/// A thing has one owner of each kind.
 #[async_trait]
 pub trait Belongings: Send + Sync {
-    /// Remembers whom a thing belongs to, of a kind of owner, unless the thing was forgotten: what is heard of it late, once it is gone, is not kept.
+    /// Stores whom a thing belongs to, for one kind of owner.
+    /// Does nothing if the thing was already forgotten, so a late update about a deleted thing is not kept.
     async fn remember(
         &self,
         transaction: &mut Transaction,
@@ -46,7 +49,8 @@ pub trait Belongings: Send + Sync {
         owner: &str,
     ) -> Result<(), BelongingsError>;
 
-    /// Forgets what a thing belongs to, its owners of every kind, and lays a tombstone for it, so it is not remembered again.
+    /// Forgets what a thing belongs to, for every kind of owner.
+    /// It also lays a tombstone for the thing, so it is not stored again.
     async fn forget(
         &self,
         transaction: &mut Transaction,
@@ -55,7 +59,9 @@ pub trait Belongings: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), BelongingsError>;
 
-    /// Forgets at most so many tombstones laid before then, the oldest first, once nothing heard late can come any more: how many.
+    /// Deletes at most `at_most` tombstones laid before `before`, the oldest first.
+    /// Call it only once no late update can arrive any more.
+    /// Returns how many were deleted.
     async fn forget_tombstones_laid_before(
         &self,
         transaction: &mut Transaction,

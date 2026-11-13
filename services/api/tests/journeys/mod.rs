@@ -217,7 +217,9 @@ impl<B: Backend> Journey<B> {
         self.backend.cleanup().await;
     }
 
-    /// Posts and expects the answer, waiting while a feature has not heard yet who may act in a project, as each hears it some milliseconds after the members tell it.
+    /// Posts and expects the given answer.
+    /// It retries while a feature has not yet learned who may act in a project.
+    /// Each feature learns that a few milliseconds after the members report it.
     pub async fn posted(&self, path: &str, body: Value, answered: StatusCode) -> Value {
         let mut response = self.server.post(path).json(&body).await;
         for _ in 0..1_000 {

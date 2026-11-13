@@ -11,7 +11,8 @@ use crate::moment;
 use crate::problem;
 use crate::speech;
 
-/// What the operator is about to take away from the account, asked to be sure first.
+/// The sign-in way the operator is about to remove from the account.
+/// The operator is asked to confirm before it is removed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Removing {
     Key(HeldKey),
@@ -25,7 +26,10 @@ fn naming(key: &'static str, name: &str) -> String {
     speech::say_with(key, &args)
 }
 
-/// How an account signs in, every way but the password removable for one who lost it, each removal asked to be sure of and saying what follows.
+/// Shows the ways an account can sign in.
+///
+/// Every way except the password can be removed, for an account holder who lost it.
+/// Each removal must be confirmed, and the dialog says what happens after it.
 pub(super) fn ways_in_dialog(
     account: ListedAccount,
     roster: Roster,
@@ -242,7 +246,9 @@ fn sure<Remove: Fn(Removing) + Copy + 'static>(
         ))
 }
 
-/// What the account is left with once the way is gone: a passkey takes no second step along, while the last second step leaves the password alone.
+/// Returns the message that says what the account is left with after the way is removed.
+/// Removing a passkey does not remove a second step.
+/// Removing the last second step leaves only the password.
 fn what_follows(seen: &WaysIn, removing: &Removing) -> &'static str {
     let second_steps_left = seen
         .keys

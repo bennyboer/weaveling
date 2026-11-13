@@ -14,7 +14,9 @@ use crate::operator::OperatorCode;
 use crate::second_factor::Totp;
 use crate::secrets::Dismissal;
 
-/// An account's ways in as the operator sees them: names and dates, never a secret; the password, always kept, goes without saying.
+/// The ways an account can sign in, as an operator sees them.
+/// It holds names and dates, never a secret.
+/// The password is not listed, because every account always has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaysIn {
     pub version: Version,
@@ -87,7 +89,8 @@ impl AccountsCore {
         Ok(())
     }
 
-    /// Turns an account's TOTP off, for one who lost both the device and the recovery codes, ending every session of the account.
+    /// Turns off an account's TOTP, for someone who lost both the device and the recovery codes.
+    /// Every session of the account ends.
     pub async fn remove_totp(
         &self,
         by: &AccountId,
@@ -136,7 +139,9 @@ impl AccountsCore {
         })
     }
 
-    /// Removes a key of an account, for one who lost it, ending every session of the account; where it was the last second factor, the recovery codes go with it.
+    /// Removes a key of an account, for someone who lost it.
+    /// Every session of the account ends.
+    /// If it was the last second factor, the recovery codes are deleted too.
     pub async fn remove_key_of(
         &self,
         by: &AccountId,
@@ -272,7 +277,8 @@ impl AccountsCore {
         }
     }
 
-    /// Whether who acts is an account operating this instance, as it stands now; nobody else is.
+    /// Whether the agent is an account that operates this instance right now.
+    /// Any other agent is never an operator.
     pub async fn operates(&self, agent: &Agent) -> Result<bool, AccountsError> {
         let Agent::Account(account) = agent else {
             return Ok(false);
