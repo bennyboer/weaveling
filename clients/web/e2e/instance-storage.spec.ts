@@ -14,8 +14,16 @@ type Held = {
   own: number | null;
 };
 
+type Project = {
+  project: string;
+  name: string | null;
+  used: number;
+  owners: { account: string; name: string | null; email: string | null }[];
+};
+
 type Storage = {
   accounts: Held[];
+  projects: Project[];
   pageSize: number;
   searched: string[];
   given: { account: string; most: number }[];
@@ -38,9 +46,10 @@ const HEDY: Held = {
 };
 
 /// Answers the storage routes: the instance's usage, the accounts the most used first, a page at a time and by search, and giving and taking back limits.
-async function aStorage(page: Page, accounts: Held[]): Promise<Storage> {
+async function aStorage(page: Page, accounts: Held[], projects: Project[] = []): Promise<Storage> {
   const storage: Storage = {
     accounts: accounts.map((held) => ({ ...held })),
+    projects,
     pageSize: 50,
     searched: [],
     given: [],
@@ -89,6 +98,28 @@ async function aStorage(page: Page, accounts: Held[]): Promise<Storage> {
     },
   );
   await page.route(
+    (url) => url.pathname === "/api/assets/storage/projects",
+    (route) => {
+      const url = new URL(route.request().url());
+      const term = (url.searchParams.get("search") ?? "").toLowerCase();
+      storage.searched.push(term);
+      const found = storage.projects
+        .filter((project) => (project.name ?? "").toLowerCase().includes(term))
+        .sort((one, other) => other.used - one.used);
+      const after = url.searchParams.get("after");
+      const from = after ? found.findIndex((project) => project.project === after) + 1 : 0;
+      const listed = found.slice(from, from + storage.pageSize);
+      const more = from + storage.pageSize < found.length;
+
+      return route.fulfill({
+        json: {
+          projects: listed.map((project) => ({ ...project, most: 10 * MB })),
+          next: more ? listed[listed.length - 1].project : null,
+        },
+      });
+    },
+  );
+  await page.route(
     (url) => /^\/api\/assets\/accounts\/[^/]+\/limit$/.test(url.pathname),
     async (route) => {
       const account = new URL(route.request().url()).pathname.split("/")[4];
@@ -113,8 +144,12 @@ async function aStorage(page: Page, accounts: Held[]): Promise<Storage> {
   return storage;
 }
 
-async function anOperatorLookingAtTheStorage(page: Page, accounts = [HEDY, GRACE]) {
-  const storage = await aStorage(page, accounts);
+async function anOperatorLookingAtTheStorage(
+  page: Page,
+  accounts = [HEDY, GRACE],
+  projects: Project[] = [],
+) {
+  const storage = await aStorage(page, accounts, projects);
   const server = await aServerWithAccounts(page);
   server.operator = true;
   await page.goto("/");
@@ -128,7 +163,24 @@ async function anOperatorLookingAtTheStorage(page: Page, accounts = [HEDY, GRACE
   return storage;
 }
 
-const listed = (page: Page) => page.locator(".storage-use > li");
+const listed = (page: Page) => page.locator(".storage-accounts .storage-use > li");
+const projectsListed = (page: Page) => page.locator(".storage-projects .storage-use > li");
+
+const THE_LOOM: Project = {
+  project: "project_loom",
+  name: "The Loom",
+  used: 3 * MB,
+  owners: [
+    { account: "account_grace", name: "Grace Hopper", email: "grace@example.com" },
+    { account: "account_lost", name: null, email: null },
+  ],
+};
+const THE_WEFT: Project = {
+  project: "project_weft",
+  name: "The Weft",
+  used: MB,
+  owners: [{ account: "account_hedy", name: "Hedy Lamarr", email: "hedy@example.com" }],
+};
 const row = (page: Page, name: string) => listed(page).filter({ hasText: name });
 
 test("the operator sees what the instance uses, and each account the most used first", async ({
@@ -266,4 +318,39 @@ test("more accounts follow with Show more", async ({ page }) => {
   await expect(listed(page)).toHaveCount(3);
   await expect(listed(page).nth(2)).toContainText("300 B of 1 GB used");
   await expect(page.getByRole("button", { name: "Show more" })).toHaveCount(0);
+});
+
+test("the operator sees each project the most used first, with its owners by name", async ({
+  page,
+}) => {
+  // given: an operator, the loom using 3 MB and the weft 1 MB
+  await anOperatorLookingAtTheStorage(page, [HEDY, GRACE], [THE_WEFT, THE_LOOM]);
+
+  // then: the projects are listed, the one using the most first, against their limit
+  await expect(projectsListed(page)).toHaveCount(2);
+  await expect(projectsListed(page).nth(0)).toContainText("The Loom");
+  await expect(projectsListed(page).nth(0)).toContainText("3 MB of 10 MB used");
+  // and: its owners by name and address, or by id where the name is unknown
+  await expect(projectsListed(page).nth(0)).toContainText(
+    "Owners: Grace Hopper (grace@example.com), account_lost",
+  );
+  await expect(projectsListed(page).nth(1)).toContainText("The Weft");
+});
+
+test("a project is found by its name, and none matching says so", async ({ page }) => {
+  // given: an operator looking at the loom and the weft
+  await anOperatorLookingAtTheStorage(page, [], [THE_WEFT, THE_LOOM]);
+  await expect(projectsListed(page)).toHaveCount(2);
+
+  // when: she searches for the weft
+  await page.getByLabel("Find a project").fill("weft");
+
+  // then: the weft alone is listed
+  await expect(projectsListed(page)).toHaveCount(1);
+  await expect(projectsListed(page).nth(0)).toContainText("The Weft");
+  // when: she searches for a project nobody has
+  await page.getByLabel("Find a project").fill("nothing");
+  // then: no project matches, and the accounts are untouched
+  await expect(page.getByText("No project matches.")).toBeVisible();
+  await expect(page.getByText("No account uses any storage yet.")).toBeVisible();
 });

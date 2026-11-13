@@ -1238,3 +1238,7 @@
     flex: 1;
   }
 }
+
+.operating :is(.storage-accounts, .storage-projects) {
+  margin-top: 2rem;
+}

@@ -1,6 +1,6 @@
 use assets_contract::{
-    AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, UploadDTO, UploadsDTO,
-    UsageDTO, sort,
+    AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
+    UploadDTO, UploadsDTO, UsageDTO, sort,
 };
 use gloo_net::http::Request;
 use time::OffsetDateTime;
@@ -13,6 +13,7 @@ const ASSETS: &str = "/api/assets";
 const USAGE: &str = "/api/assets/usage";
 const INSTANCE: &str = "/api/assets/storage";
 const ACCOUNTS: &str = "/api/assets/storage/accounts";
+const PROJECTS: &str = "/api/assets/storage/projects";
 const ASSET: &str = "asset";
 
 /// The order of one's uploads: the newest first, or the largest first.
@@ -85,7 +86,41 @@ pub struct AccountsPage {
     pub next: Option<String>,
 }
 
+/// An owner of a project, with name and email if the assets feature heard them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectOwner {
+    pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+/// How much storage one project uses, its limit, and its owners, as an operator sees it.
+/// `name` is missing if the assets feature never heard it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectStorage {
+    pub project: String,
+    pub name: Option<String>,
+    pub used: u64,
+    pub most: Option<u64>,
+    pub owners: Vec<ProjectOwner>,
+}
+
+/// One page of projects, the ones using the most first, and the cursor for the next page, if there is one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectsPage {
+    pub projects: Vec<ProjectStorage>,
+    pub next: Option<String>,
+}
+
 fn accounts_listing(search: &str, after: Option<&str>) -> String {
+    storage_listing(ACCOUNTS, search, after)
+}
+
+fn projects_listing(search: &str, after: Option<&str>) -> String {
+    storage_listing(PROJECTS, search, after)
+}
+
+fn storage_listing(listing: &str, search: &str, after: Option<&str>) -> String {
     let asked: Vec<String> = [
         Some(format!("sort={}", sort::MOST_USED)),
         after.map(|after| format!("after={after}")),
@@ -97,7 +132,7 @@ fn accounts_listing(search: &str, after: Option<&str>) -> String {
     .flatten()
     .collect();
 
-    format!("{ACCOUNTS}?{}", asked.join("&"))
+    format!("{listing}?{}", asked.join("&"))
 }
 
 /// Percent-encodes a term for an address, keeping only letters, digits and `-_.~` as they are.
@@ -215,6 +250,39 @@ pub async fn accounts(search: &str, after: Option<&str>) -> Result<AccountsPage,
     })
 }
 
+/// Lists the projects that use storage, the ones using the most first, with their owners. For an operator only.
+/// With a search term, only projects whose name contains it are listed.
+pub async fn projects(search: &str, after: Option<&str>) -> Result<ProjectsPage, ApiError> {
+    let page: ProjectsStorageDTO = http::parsed(
+        http::sent(Request::get(&projects_listing(search, after))).await?,
+        ASSET,
+    )
+    .await?;
+
+    Ok(ProjectsPage {
+        projects: page
+            .projects
+            .into_iter()
+            .map(|told| ProjectStorage {
+                project: told.project,
+                name: told.name,
+                used: told.used,
+                most: told.most,
+                owners: told
+                    .owners
+                    .into_iter()
+                    .map(|owner| ProjectOwner {
+                        account: owner.account,
+                        name: owner.name,
+                        email: owner.email,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        next: page.next,
+    })
+}
+
 /// Gives an account its own storage limit. For an operator only.
 pub async fn give_limit(account: &str, most: u64) -> Result<(), ApiError> {
     http::checked(
@@ -313,6 +381,15 @@ mod tests {
         assert_eq!(
             accounts_listing("jürgen", None),
             "/api/assets/storage/accounts?sort=most-used&search=j%C3%BCrgen"
+        );
+    }
+
+    #[test]
+    fn the_projects_are_asked_for_like_the_accounts() {
+        // expect: the projects' own address, with the same order, cursor and search
+        assert_eq!(
+            projects_listing("loom", Some("2048.project_1")),
+            "/api/assets/storage/projects?sort=most-used&after=2048.project_1&search=loom"
         );
     }
 

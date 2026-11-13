@@ -893,3 +893,10 @@ instance-storage-limit-invalid = Escribe un número mayor que 0.
 instance-storage-limit-cancel = Cancelar
 instance-storage-limit-default = Usar el límite habitual
 instance-storage-limit-save = Guardar
+
+instance-storage-projects = Proyectos
+instance-storage-find-project = Buscar un proyecto
+instance-storage-find-project-hint = Nombre del proyecto
+instance-storage-no-projects = Ningún proyecto ocupa espacio todavía.
+instance-storage-no-project-match = Ningún proyecto coincide.
+instance-storage-owners = Propietarios: { $names }
