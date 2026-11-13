@@ -1,16 +1,14 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use access::{InMemoryAccess, KeptAccess, Role};
-use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
-use belonging::InMemoryBelongings;
+use access::Role;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
-use boards_core::{BoardCatalog, BoardEvent, BoardId, BoardsCore, IdeaLink, KIND, Size, Spot};
+use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
 use boards_messaging::{
-    LET_GO_EVERYWHERE, LET_GO_OF_THE_GONE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener,
-    LetGoOfTheGoneDTO, UnpinOnDiscardListener,
+    LET_GO_EVERYWHERE, LET_GO_OF_THE_GONE, LetGoEverywhereDTO, LetGoOfTheGoneDTO,
+    UnpinOnDiscardListener,
 };
 use clock::FixedClock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
@@ -20,26 +18,7 @@ use serde_json::json;
 use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
-use crate::wiring::Wired;
-
-/// Whom to let in cannot be known.
-struct Unknowable;
-
-#[async_trait]
-impl Authorizer for Unknowable {
-    async fn may(
-        &self,
-        _agent: &Agent,
-        _act: Act,
-        _project: &str,
-    ) -> Result<bool, AuthorizerError> {
-        Err(AuthorizerError::Unreachable("the list is down".into()))
-    }
-
-    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
-        Err(AuthorizerError::Unreachable("the list is down".into()))
-    }
-}
+use crate::wiring::{Faltering, Wired};
 
 async fn a_workbench() -> Wired {
     let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
@@ -320,33 +299,38 @@ async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
 }
 
 #[tokio::test]
-async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() {
-    // given: a board holding an idea
-    let wired = a_workbench().await;
-    a_board_holding(&wired, &["idea_1"]).await;
-    // and: who may do what cannot be known
-    let unknowing = BoardsCore::new(
-        wired.store.clone(),
-        Arc::new(InMemoryTransactions::new()),
-        wired.catalog.clone(),
-        wired.registry.clone(),
-        Arc::new(InMemoryBelongings::new()),
-        KeptAccess::new(Arc::new(InMemoryAccess::new())),
-        Arc::new(Unknowable),
-        wired.clock.clone(),
+async fn letting_go_in_the_system_s_name_does_not_wait_on_knowing_whom_to_let_in() {
+    // given: a board holding an idea, its project's owner known
+    let access = Arc::new(Faltering::default());
+    let wired = wiring::wired_keeping(
+        Arc::new(FixedClock::new(clock::at(1_000))),
+        access.clone(),
+        true,
     );
+    wired
+        .give("project_1", &AccountId::from("author-7"), Some(Role::Owner))
+        .await;
+    a_board_holding(&wired, &["idea_1"]).await;
+    // and: whom to let in cannot be known
+    access.down.store(true, Ordering::Release);
 
-    // then: letting go of the idea everywhere fails
-    assert!(
-        Inboxed::new(
-            LetGoOfDiscardedIdeaListener::new(unknowing),
-            Arc::new(InMemoryTransactions::new()),
-            Arc::new(InMemoryInbox::new(wired.clock.clone())),
-        )
+    // when: the idea is let go of everywhere
+    wired
+        .letting_go_everywhere
         .handle(&asked_to_let_go_everywhere("idea_1"))
         .await
-        .is_err(),
-        "a discarded idea left pinned for good is worse than a message tried again"
+        .expect("the system may let go whatever is known of who else may");
+    wired.settle().await;
+
+    // then: the index finds no board holding it
+    assert!(
+        wired
+            .catalog
+            .boards_holding(&an_idea("idea_1"))
+            .await
+            .expect("looking should succeed")
+            .is_empty(),
+        "a discarded idea left pinned for good would wait on a list it never needed"
     );
 }
 

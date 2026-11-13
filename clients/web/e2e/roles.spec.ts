@@ -17,10 +17,17 @@ async function aProjectWithAnIdea(page: Page): Promise<string> {
   });
   expect(made.ok()).toBe(true);
   const project = (await made.json()).id;
-  const captured = await page.request.post(`${API}/ideas`, {
-    data: { project, title: "A loose thread" },
-  });
-  expect(captured.ok()).toBe(true);
+  await expect
+    .poll(
+      async () =>
+        (
+          await page.request.post(`${API}/ideas`, {
+            data: { project, title: "A loose thread" },
+          })
+        ).ok(),
+      { message: "the ideas hear of the project's owner some milliseconds after its start" },
+    )
+    .toBe(true);
 
   return project;
 }
