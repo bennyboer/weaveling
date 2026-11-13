@@ -3,6 +3,7 @@ use leptos::{IntoView, component, html, view};
 use leptos_router::components::{A, Redirect};
 
 use crate::accounts::{CurrentSession, SignInState, listing};
+use crate::assets::instance_storage;
 use crate::invitations;
 use crate::invitations::service::InvitedInto;
 use crate::route;
@@ -14,6 +15,7 @@ use crate::speech;
 enum Section {
     Accounts,
     Invitations,
+    Storage,
 }
 
 #[component]
@@ -29,6 +31,11 @@ pub fn InstanceAccountsPage() -> impl IntoView {
 #[component]
 pub fn InstanceInvitationsPage() -> impl IntoView {
     instance_page(Section::Invitations)
+}
+
+#[component]
+pub fn InstanceStoragePage() -> impl IntoView {
+    instance_page(Section::Storage)
 }
 
 fn instance_page(section: Section) -> impl IntoView {
@@ -60,6 +67,7 @@ fn operating(section: Section) -> impl IntoView {
             Section::Invitations => {
                 invitations::listing::invitations_listing(InvitedInto::Instance).into_any()
             }
+            Section::Storage => instance_storage::storage_overview().into_any(),
         },
     )
 }
@@ -73,5 +81,6 @@ fn sections() -> impl IntoView {
             <A href=route::INSTANCE_INVITATIONS>
                 {speech::said("instance-invitations-heading")}
             </A>
+            <A href=route::INSTANCE_STORAGE>{speech::said("storage-heading")}</A>
         })
 }

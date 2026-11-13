@@ -9,7 +9,9 @@ use crate::app::members::{MembersInvitedPage, MembersPage};
 use crate::app::outline::OutlinePage;
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::assets::storage_page::StoragePage;
-use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
+use crate::instance::{
+    InstanceAccountsPage, InstanceInvitationsPage, InstancePage, InstanceStoragePage,
+};
 
 /// A project, opened at its first view.
 pub struct ProjectRoute;
@@ -219,5 +221,19 @@ impl LazyRoute for InstanceInvitationsRoute {
 
     fn view(_: Self) -> AnyView {
         InstanceInvitationsPage().into_any()
+    }
+}
+
+/// The storage the instance and its accounts use.
+pub struct InstanceStorageRoute;
+
+#[lazy_route]
+impl LazyRoute for InstanceStorageRoute {
+    fn data() -> Self {
+        Self
+    }
+
+    fn view(_: Self) -> AnyView {
+        InstanceStoragePage().into_any()
     }
 }

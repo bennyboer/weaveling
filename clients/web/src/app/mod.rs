@@ -28,8 +28,8 @@ use crate::accounts::your_account::YourAccountPage;
 use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::lazy::{
     BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
-    InstanceRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute, OutlineRoute, ProjectRoute,
-    SecurityRoute, StorageRoute, WriteRoute,
+    InstanceRoute, InstanceStorageRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute,
+    OutlineRoute, ProjectRoute, SecurityRoute, StorageRoute, WriteRoute,
 };
 use crate::app::missing::MissingPage;
 use crate::app::trash::{TrashPage, TrashPageProps};
@@ -97,6 +97,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/instance") view={Lazy::<InstanceRoute>::new()} />
             <Route path=path!("/instance/accounts") view={Lazy::<InstanceAccountsRoute>::new()} />
             <Route path=path!("/instance/invitations") view={Lazy::<InstanceInvitationsRoute>::new()} />
+            <Route path=path!("/instance/storage") view={Lazy::<InstanceStorageRoute>::new()} />
             <Route path=path!("/projects/:project") view={Lazy::<ProjectRoute>::new()} />
             <Route path=path!("/projects/:project/board") view={Lazy::<BoardRoute>::new()} />
             <Route path=path!("/projects/:project/outline") view={Lazy::<OutlineRoute>::new()} />

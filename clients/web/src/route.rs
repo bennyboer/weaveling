@@ -12,6 +12,7 @@ pub const SECURITY: &str = "/account/security";
 pub const STORAGE: &str = "/account/storage";
 pub const INSTANCE_ACCOUNTS: &str = "/instance/accounts";
 pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
+pub const INSTANCE_STORAGE: &str = "/instance/storage";
 
 const SLUG_CHARS: usize = 60;
 

@@ -175,7 +175,7 @@ fn storage() -> impl IntoView {
     )
 }
 
-fn used(usage: Usage, speech: Speech) -> impl IntoView {
+pub(crate) fn used(usage: Usage, speech: Speech) -> impl IntoView {
     let told = move || {
         let mut args = FluentArgs::new();
         args.set("used", size::told(usage.used, speech.language()));

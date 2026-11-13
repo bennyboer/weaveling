@@ -127,6 +127,7 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
             match rest {
                 [] | ["accounts"] => vec![manage, said("instance-accounts-heading", None)],
                 ["invitations"] => vec![manage, said("instance-invitations-heading", None)],
+                ["storage"] => vec![manage, said("storage-heading", None)],
                 _ => vec![said("path-missing", None)],
             }
         }
@@ -246,13 +247,22 @@ mod tests {
 
     #[test]
     fn the_instance_pages_lie_under_managing_the_instance() {
-        // expect: accounts and invitations under managing the instance
+        // expect: accounts, invitations and storage under managing the instance
         assert_eq!(
             labels("/instance/invitations"),
             vec![
                 Label::Home,
                 Label::Said("account-menu-operator"),
                 Label::Said("instance-invitations-heading"),
+            ]
+        );
+        // and: the storage too
+        assert_eq!(
+            labels("/instance/storage"),
+            vec![
+                Label::Home,
+                Label::Said("account-menu-operator"),
+                Label::Said("storage-heading"),
             ]
         );
     }

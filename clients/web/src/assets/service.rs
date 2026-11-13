@@ -1,4 +1,7 @@
-use assets_contract::{OwnerDTO, UploadDTO, UploadsDTO, UsageDTO, sort};
+use assets_contract::{
+    AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, UploadDTO, UploadsDTO,
+    UsageDTO, sort,
+};
 use gloo_net::http::Request;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -8,6 +11,8 @@ use crate::http::ApiError;
 
 const ASSETS: &str = "/api/assets";
 const USAGE: &str = "/api/assets/usage";
+const INSTANCE: &str = "/api/assets/storage";
+const ACCOUNTS: &str = "/api/assets/storage/accounts";
 const ASSET: &str = "asset";
 
 /// The order of one's uploads: the newest first, or the largest first.
@@ -58,6 +63,57 @@ pub struct UploadPage {
 pub struct Usage {
     pub used: u64,
     pub most: Option<u64>,
+}
+
+/// How much storage one account uses, as an operator sees it.
+/// `name` and `email` are missing if the assets feature never heard them.
+/// `most` is the account's own limit if `own_limit`, or else the default limit for accounts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountStorage {
+    pub account: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub used: u64,
+    pub most: Option<u64>,
+    pub own_limit: bool,
+}
+
+/// One page of accounts, the ones using the most first, and the cursor for the next page, if there is one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountsPage {
+    pub accounts: Vec<AccountStorage>,
+    pub next: Option<String>,
+}
+
+fn accounts_listing(search: &str, after: Option<&str>) -> String {
+    let asked: Vec<String> = [
+        Some(format!("sort={}", sort::MOST_USED)),
+        after.map(|after| format!("after={after}")),
+        Some(search.trim())
+            .filter(|term| !term.is_empty())
+            .map(|term| format!("search={}", encoded(term))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    format!("{ACCOUNTS}?{}", asked.join("&"))
+}
+
+/// Percent-encodes a term for an address, keeping only letters, digits and `-_.~` as they are.
+fn encoded(term: &str) -> String {
+    term.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                char::from(byte).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
+}
+
+fn limit_of(account: &str) -> String {
+    format!("{ASSETS}/accounts/{account}/limit")
 }
 
 fn listing(sorted: UploadsSorted, after: Option<&str>) -> String {
@@ -122,6 +178,67 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
+/// Returns how much storage the whole instance uses, and its limit. For an operator only.
+pub async fn instance() -> Result<Usage, ApiError> {
+    let told: InstanceStorageDTO =
+        http::parsed(http::sent(Request::get(INSTANCE)).await?, ASSET).await?;
+
+    Ok(Usage {
+        used: told.used,
+        most: told.most,
+    })
+}
+
+/// Lists the accounts that use storage, the ones using the most first. For an operator only.
+/// With a search term, only accounts whose name or email contains it are listed.
+pub async fn accounts(search: &str, after: Option<&str>) -> Result<AccountsPage, ApiError> {
+    let page: AccountsStorageDTO = http::parsed(
+        http::sent(Request::get(&accounts_listing(search, after))).await?,
+        ASSET,
+    )
+    .await?;
+
+    Ok(AccountsPage {
+        accounts: page
+            .accounts
+            .into_iter()
+            .map(|told| AccountStorage {
+                account: told.account,
+                name: told.name,
+                email: told.email,
+                used: told.used,
+                most: told.most,
+                own_limit: told.own_limit,
+            })
+            .collect(),
+        next: page.next,
+    })
+}
+
+/// Gives an account its own storage limit. For an operator only.
+pub async fn give_limit(account: &str, most: u64) -> Result<(), ApiError> {
+    http::checked(
+        http::sent_with(
+            Request::put(&limit_of(account)),
+            &AccountLimitRequest { most },
+        )
+        .await?,
+        ASSET,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Removes an account's own storage limit, so the default limit applies again. For an operator only.
+pub async fn take_back_limit(account: &str) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(Request::delete(&limit_of(account))).await?,
+        ASSET,
+    )
+    .await
+    .map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +284,35 @@ mod tests {
                 .expect("a readable upload")
                 .project,
             None
+        );
+    }
+
+    #[test]
+    fn the_accounts_are_asked_for_the_most_used_first_and_by_their_search() {
+        // expect: no search term asks for every account
+        assert_eq!(
+            accounts_listing("  ", None),
+            "/api/assets/storage/accounts?sort=most-used"
+        );
+        // and: a page goes on from its cursor
+        assert_eq!(
+            accounts_listing("", Some("2048.account_ada")),
+            "/api/assets/storage/accounts?sort=most-used&after=2048.account_ada"
+        );
+        // and: a term is trimmed and sent as part of the address
+        assert_eq!(
+            accounts_listing(" ada lovelace ", None),
+            "/api/assets/storage/accounts?sort=most-used&search=ada%20lovelace"
+        );
+        // and: signs that mean something in an address are encoded
+        assert_eq!(
+            accounts_listing("ada+1@example.com&x", None),
+            "/api/assets/storage/accounts?sort=most-used&search=ada%2B1%40example.com%26x"
+        );
+        // and: letters beyond ascii are encoded byte by byte
+        assert_eq!(
+            accounts_listing("jürgen", None),
+            "/api/assets/storage/accounts?sort=most-used&search=j%C3%BCrgen"
         );
     }
 
