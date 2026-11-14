@@ -139,7 +139,7 @@ fn a_photo_is_made_into_each_width_narrower_than_it_and_its_own_as_webp_close_to
     );
     assert_eq!(prepared.picture.original_size, uploaded.len() as u64);
     // and: made into each width narrower than it and its own, narrowest first
-    assert_eq!(prepared.picture.variants, [384, 768, 1_536, 2_000]);
+    assert_eq!(prepared.picture.variants, [96, 192, 384, 768, 1_536, 2_000]);
     assert_eq!(
         prepared
             .variants
@@ -189,7 +189,7 @@ fn a_photo_its_camera_took_turned_is_set_upright() {
         (prepared.picture.width, prepared.picture.height),
         (200, 400)
     );
-    let (width, variant) = &prepared.variants[0];
+    let (width, variant) = prepared.variants.last().expect("its own width is made");
     assert_eq!(*width, 200);
     assert_eq!(
         (read_back(variant).width(), read_back(variant).height()),
@@ -213,7 +213,7 @@ fn transparency_is_kept_where_there_is_any() {
     let prepared = WebpImages.prepared(&uploaded).expect("a PNG is taken");
 
     // then: its variant is see-through on the left and not on the right
-    let back = read_back(&prepared.variants[0].1).to_rgba8();
+    let back = read_back(&prepared.variants.last().expect("its own width is made").1).to_rgba8();
     assert_eq!(back.get_pixel(20, 100)[3], 0);
     assert_eq!(back.get_pixel(280, 100)[3], 255);
     assert_eq!(prepared.picture.format, Format::Png);
@@ -234,7 +234,7 @@ fn a_gif_and_a_webp_are_taken_too() {
     for (uploaded, format) in [(gif, Format::Gif), (webp, Format::Webp)] {
         let prepared = WebpImages.prepared(&uploaded).expect("it is taken");
         assert_eq!(prepared.picture.format, format);
-        assert_eq!(prepared.picture.variants, [384, 500]);
+        assert_eq!(prepared.picture.variants, [96, 192, 384, 500]);
     }
 }
 

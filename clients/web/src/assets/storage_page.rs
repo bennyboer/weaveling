@@ -16,8 +16,9 @@ use crate::size;
 use crate::speech;
 use crate::speech::Speech;
 
-/// The width of the thumbnails, in pixels: the narrowest variant the server makes.
-const THUMBNAIL: u32 = 384;
+/// The width asked for the thumbnails, in pixels.
+/// They are shown 64 pixels wide, so this stays sharp on screens with three times the pixel density.
+const THUMBNAIL: u32 = 192;
 
 /// What the storage page shows and is doing.
 /// `asked` counts the lists asked for, so an answer to an older one is ignored.

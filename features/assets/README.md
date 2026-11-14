@@ -20,7 +20,7 @@ Its `Picture` stores:
 - The kind of image is recognised by its bytes: JPEG, PNG, GIF or WebP. For a GIF, only its first frame is used. Anything else, an SVG for example, is refused as not an image.
 - An image is refused as too large if one side is longer than 16,384 pixels, or if it has more than fifty million pixels. This check happens after reading only the header. So a small file that claims to be a huge picture uses no memory.
 - The image is turned upright, as its camera recorded.
-- Variants are made in every width of 384, 768, 1,536 and 3,072 that is narrower than the image. If the image is narrower than the widest of these, a variant in its own width is made too. A variant is never wider than the image. Each variant is made from the next wider one.
+- Variants are made in every width of 96, 192, 384, 768, 1,536 and 3,072 that is narrower than the image. The two narrow widths are for small pictures, such as an account's picture in the masthead (*added in slice 11c, 2026-11-14*); images uploaded before keep the variants they had. If the image is narrower than the widest of these, a variant in its own width is made too. A variant is never wider than the image. Each variant is made from the next wider one.
 - The variants are encoded as WebP by `gamut-webp` at quality 75. They keep transparency only if the image has any.
 
 The widths are stored in the `Picture`. `Prepared::total_size` counts the original and every variant. This work is slow. So the upload runs it on blocking threads beside the async runtime, and only for a few uploads at a time.
