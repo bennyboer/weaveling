@@ -2,6 +2,7 @@ use eventsourcing::AccountId;
 
 use crate::asset::ProjectLink;
 use crate::catalog::{Held, Upload};
+use crate::uses::AssetUse;
 
 /// How much storage the whole instance uses, and its limit, if it has one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,10 +48,12 @@ pub struct ProjectOwner {
 /// One of an account's uploads, and whether the account may delete it.
 /// Its own images it may always delete.
 /// An upload into a project it may delete only while it has write access to that project.
+/// `uses` says what the upload is used for. An upload in use cannot be deleted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnUpload {
     pub upload: Upload,
     pub deletable: bool,
+    pub uses: Vec<AssetUse>,
 }
 
 /// One page of a list, and the cursor for the next page.

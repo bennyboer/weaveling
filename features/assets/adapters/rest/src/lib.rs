@@ -1,11 +1,11 @@
 use assets_contract::{
-    AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, InstanceStorageDTO,
-    OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadsDTO,
-    UsageDTO, bound, format, refused, sort,
+    AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, AssetUseDTO, HolderDTO,
+    InstanceStorageDTO, OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO,
+    UploadDTO, UploadsDTO, UsageDTO, bound, format, purpose, refused, sort,
 };
 use assets_core::{
-    Asset, AssetError, AssetsCore, AssetsError, Bound, Format, Held, ImageRefused, Limit, Listed,
-    Owner, Sorted, UploadMark, UploadsSorted,
+    Asset, AssetError, AssetUse, AssetsCore, AssetsError, Bound, Format, Held, Holder,
+    ImageRefused, Limit, Listed, Owner, Purpose, Sorted, UploadMark, UploadsSorted,
 };
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
@@ -35,7 +35,7 @@ pub fn router(assets: AssetsCore) -> Router {
         .route("/assets/storage", routing::get(instance_storage))
         .route("/assets/storage/accounts", routing::get(accounts_storage))
         .route("/assets/storage/projects", routing::get(projects_storage))
-        .route("/assets/{id}", routing::delete(delete))
+        .route("/assets/{id}", routing::get(asset).delete(delete))
         .route("/assets/{id}/content", routing::get(content))
         .route(
             "/assets/accounts/{account}/limit",
@@ -184,7 +184,12 @@ async fn upload(
     }
     .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::CREATED, &id.to_string(), &uploaded))
+    Ok(to_response(
+        StatusCode::CREATED,
+        &id.to_string(),
+        &uploaded,
+        &[],
+    ))
 }
 
 async fn content(
@@ -360,9 +365,32 @@ async fn uploads(
                 total_size: own.upload.total_size,
                 uploaded_at: clock::text::serialize(own.upload.uploaded_at),
                 deletable: own.deletable,
+                uses: own.uses.iter().map(use_told).collect(),
             })
             .collect(),
     }))
+}
+
+async fn asset(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(id): Path<String>,
+) -> Result<Response, Problem> {
+    let (standing, uses) = assets.asset(&id, &acting).await.map_err(problem_of)?;
+
+    Ok(to_response(StatusCode::OK, &id, &standing, &uses))
+}
+
+fn use_told(used: &AssetUse) -> AssetUseDTO {
+    AssetUseDTO {
+        purpose: match used.purpose {
+            Purpose::AccountPicture => purpose::ACCOUNT_PICTURE,
+        }
+        .to_owned(),
+        by: match &used.by {
+            Holder::Account(account) => HolderDTO::Account(account.to_string()),
+        },
+    }
 }
 
 async fn delete(
@@ -375,7 +403,12 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_response(status: StatusCode, id: &str, standing: &Standing<Asset>) -> Response {
+fn to_response(
+    status: StatusCode,
+    id: &str,
+    standing: &Standing<Asset>,
+    uses: &[AssetUse],
+) -> Response {
     let asset = &standing.state;
     let picture = asset.picture();
 
@@ -392,6 +425,7 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Asset>) -> Resp
             widths: picture.variants.clone(),
             original_size: picture.original_size,
             total_size: asset.total_size(),
+            uses: uses.iter().map(use_told).collect(),
         }),
     )
         .into_response()
@@ -450,6 +484,7 @@ fn problem_of(refusal: AssetsError) -> Problem {
         AssetsError::NotAnOperator => {
             Problem::forbidden(refused::NOT_AN_OPERATOR, AssetsError::NotAnOperator)
         }
+        AssetsError::InUse => Problem::refused(refused::IN_USE, AssetsError::InUse),
         AssetsError::LimitUncountable => {
             Problem::unprocessable(refused::LIMIT_UNCOUNTABLE, AssetsError::LimitUncountable)
         }

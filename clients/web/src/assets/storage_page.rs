@@ -6,7 +6,7 @@ use leptos::{IntoView, component, ev, html};
 use crate::accounts::{CurrentSession, SignInState};
 use crate::act::{Act, Here};
 use crate::assets::service;
-use crate::assets::service::{Upload, UploadsSorted, Usage};
+use crate::assets::service::{Purpose, Upload, UploadsSorted, Usage};
 use crate::dialog;
 use crate::http::ApiError;
 use crate::moment;
@@ -246,10 +246,22 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
         } else {
             html::p()
                 .class("hint")
-                .child(speech::said("storage-not-deletable"))
+                .child(speech::said(not_deletable_because(&upload.uses)))
                 .into_any()
         }),
     ))
+}
+
+/// The message that says why an upload cannot be deleted.
+/// An upload in use says what it is used for. Otherwise it is in a project the account may not write in.
+fn not_deletable_because(uses: &[Purpose]) -> &'static str {
+    if uses.contains(&Purpose::AccountPicture) {
+        "storage-in-use-as-picture"
+    } else if !uses.is_empty() {
+        "storage-in-use"
+    } else {
+        "storage-not-deletable"
+    }
 }
 
 fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
@@ -289,4 +301,22 @@ fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
             )),
         ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_upload_that_cannot_be_deleted_says_why() {
+        // expect: a picture says it is one
+        assert_eq!(
+            not_deletable_because(&[Purpose::Other, Purpose::AccountPicture]),
+            "storage-in-use-as-picture"
+        );
+        // and: a use this client does not know says only that it is in use
+        assert_eq!(not_deletable_because(&[Purpose::Other]), "storage-in-use");
+        // and: an upload used for nothing is in a project the account may not write in
+        assert_eq!(not_deletable_because(&[]), "storage-not-deletable");
+    }
 }

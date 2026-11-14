@@ -19,6 +19,7 @@ type Upload = {
   total_size: number;
   uploaded_at: string;
   deletable: boolean;
+  uses?: { purpose: string; by: { kind: string; id: string } }[];
 };
 
 type Shelf = {
@@ -248,4 +249,23 @@ test("with nothing uploaded, it says so, and without a limit only the use is tol
   await expect(page.getByText("You have not uploaded anything yet.")).toBeVisible();
   await expect(page.getByRole("main")).toContainText("0 B used");
   await expect(page.getByRole("meter")).toHaveCount(0);
+});
+
+test("an upload in use as her picture says so and cannot be deleted", async ({ page }) => {
+  // given: Ada's portrait, shown as her account picture
+  await aShelf(page, [
+    {
+      ...THE_PORTRAIT,
+      deletable: false,
+      uses: [{ purpose: "account-picture", by: { kind: "account", id: "account_ada" } }],
+    },
+  ]);
+  await signedIn(page);
+
+  // when: she opens her storage
+  await page.goto("/account/storage");
+
+  // then: the portrait says it is her picture, without a delete button
+  await expect(uploads(page).nth(0)).toContainText("In use as your account picture.");
+  await expect(uploads(page).nth(0).getByRole("button", { name: "Delete" })).toHaveCount(0);
 });

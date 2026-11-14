@@ -43,6 +43,8 @@ pub enum AssetsError {
     LimitReached(Limit),
     #[error("the asset is told kept, yet the bytes for it are not there")]
     ContentsMissing,
+    #[error("the asset is still in use, so it cannot be deleted")]
+    InUse,
 }
 
 impl LostRace for AssetsError {

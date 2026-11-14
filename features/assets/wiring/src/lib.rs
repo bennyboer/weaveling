@@ -4,13 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use access::{InMemoryAccess, KeptAccess};
-use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryAssetUses};
 use assets_contents::{FolderContents, InMemoryContents};
-use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetsCore, Contents};
+use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetUses, AssetsCore, Contents};
 use assets_images::WebpImages;
 use assets_messaging::{
-    RememberOperatorsListener, RememberPeopleListener, RememberProjectNamesListener,
-    RememberRolesListener, RememberTrashListener, SweepAssetsOfDeletedOwnerListener,
+    RememberOperatorsListener, RememberPeopleListener, RememberPicturesListener,
+    RememberProjectNamesListener, RememberRolesListener, RememberTrashListener,
+    SweepAssetsOfDeletedOwnerListener,
 };
 use async_trait::async_trait;
 use authorizing::{AllowingEverything, Authorizer};
@@ -60,6 +61,7 @@ pub struct Ports {
     pub catalog: Arc<dyn AssetCatalog>,
     pub access: KeptAccess,
     pub account_limits: Arc<dyn AccountLimits>,
+    pub uses: Arc<dyn AssetUses>,
     pub contents: Arc<dyn Contents>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
@@ -91,6 +93,7 @@ pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
         ports.contents.clone(),
         Arc::new(WebpImages),
         authorizer,
+        ports.uses.clone(),
         context.clock.clone(),
     )
     .limited(ports.limits)
@@ -116,6 +119,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
                 context.clock.clone(),
             ))),
             Arc::new(SweepAssetsOfDeletedOwnerListener::new(assets.clone())),
+            Arc::new(hearing.inboxed(RememberPicturesListener::new(assets.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetStrayContents {
@@ -190,6 +194,7 @@ impl Feature for AssetFeature {
             catalog: Arc::new(InMemoryAssetCatalog::new()),
             access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             account_limits: Arc::new(InMemoryAccountLimits::new()),
+            uses: Arc::new(InMemoryAssetUses::new()),
             contents: Arc::new(InMemoryContents::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
@@ -216,6 +221,7 @@ impl Feature for AssetFeature {
             catalog: Arc::new(assets_catalog::PostgresAssetCatalog::new()),
             access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool.clone()))),
             account_limits: Arc::new(assets_catalog::PostgresAccountLimits::new()),
+            uses: Arc::new(assets_catalog::PostgresAssetUses::new()),
             contents: Arc::new(assets_contents::PostgresContents::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
@@ -255,6 +261,7 @@ impl Feature for AssetFeature {
             catalog: Arc::new(assets_catalog::SqliteAssetCatalog::new()),
             access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool.clone()))),
             account_limits: Arc::new(assets_catalog::SqliteAccountLimits::new()),
+            uses: Arc::new(assets_catalog::SqliteAssetUses::new()),
             contents: Arc::new(FolderContents::new(folder)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use access::{HearsAccess, HearsOperators, InMemoryAccess, KeptAccess, Role};
-use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog};
+use assets_catalog::{InMemoryAccountLimits, InMemoryAssetCatalog, InMemoryAssetUses};
 use assets_contents::InMemoryContents;
 use assets_core::{
     AccountLimits, AssetCatalog, AssetsCore, Format, Held, Holders, ImageRefused, Images, Limits,
@@ -107,6 +107,7 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
     let transactions = Arc::new(InMemoryTransactions::new());
     let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let account_limits = Arc::new(InMemoryAccountLimits::new());
+    let uses = Arc::new(InMemoryAssetUses::new());
     let authorizer: Arc<dyn Authorizer> = if with_accounts {
         Arc::new(access.clone())
     } else {
@@ -125,6 +126,7 @@ async fn bench_of(limits: Limits, refusing: Option<ImageRefused>, with_accounts:
             contents.clone(),
             images.clone(),
             authorizer,
+            uses,
             clock.clone(),
         )
         .limited(limits),

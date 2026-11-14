@@ -901,3 +901,6 @@ instance-storage-no-projects = Aucun projet n'occupe encore d'espace.
 instance-storage-no-project-match = Aucun projet ne correspond.
 instance-storage-owners = Propriétaires : { $names }
 refused-picture-id-invalid = Ce n'est pas un identifiant d'image valide.
+refused-asset-in-use = Ce fichier est encore utilisé, il ne peut donc pas être supprimé.
+storage-in-use-as-picture = Utilisé comme image de votre compte.
+storage-in-use = Encore utilisé.

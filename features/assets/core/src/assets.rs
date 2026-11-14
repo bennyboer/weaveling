@@ -26,6 +26,7 @@ use crate::preparing;
 use crate::storage::{
     AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
 };
+use crate::uses::{AssetUse, AssetUses, Holder, Purpose};
 
 /// How many bytes an account's uploads use together, and their limit.
 /// The limit is missing if there is none.
@@ -60,6 +61,7 @@ pub struct AssetsCore {
     contents: Arc<dyn Contents>,
     images: Arc<dyn Images>,
     authorizer: Arc<dyn Authorizer>,
+    uses: Arc<dyn AssetUses>,
     clock: Arc<dyn Clock>,
     limits: Limits,
 }
@@ -75,6 +77,7 @@ impl AssetsCore {
         contents: Arc<dyn Contents>,
         images: Arc<dyn Images>,
         authorizer: Arc<dyn Authorizer>,
+        uses: Arc<dyn AssetUses>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -86,6 +89,7 @@ impl AssetsCore {
             contents,
             images,
             authorizer,
+            uses,
             clock,
             limits: Limits::default(),
         }
@@ -203,6 +207,7 @@ impl AssetsCore {
     }
 
     /// Deletes an asset, if the agent may write where it is.
+    /// An asset still in use is not deleted, whoever asks: the places using it would show a hole.
     /// Its stored pieces are removed afterwards.
     /// Deleting it again changes nothing.
     pub async fn delete(&self, id: &str, agent: &Agent) -> Result<(), AssetsError> {
@@ -212,6 +217,9 @@ impl AssetsCore {
             .await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
+            if !self.uses.uses_of(transaction, &[id]).await?.is_empty() {
+                return Err(AssetsError::InUse);
+            }
             self.events
                 .execute_at(
                     transaction,
@@ -227,6 +235,25 @@ impl AssetsCore {
         })?;
 
         Ok(self.contents.forget(&id).await?)
+    }
+
+    /// Returns an asset and what it is used for, if the agent may see it.
+    /// An asset the agent may not see is reported as not found.
+    pub async fn asset(
+        &self,
+        id: &str,
+        agent: &Agent,
+    ) -> Result<(Standing<Asset>, Vec<AssetUse>), AssetsError> {
+        let id: AssetId = id.parse()?;
+        let standing = self.standing(&id).await?;
+        if standing.state.is_deleted() || !self.may_see(agent, standing.state.owner()).await? {
+            return Err(not_found(&id));
+        }
+        let uses = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(self.uses.uses_of(transaction, &[id]).await?)
+        })?;
+
+        Ok((standing, uses.into_iter().map(|(_, used)| used).collect()))
     }
 
     /// Deletes every asset of an owner, used when a project or an account is deleted.
@@ -481,12 +508,15 @@ impl AssetsCore {
             return Err(AssetsError::NoAccount);
         };
 
-        let uploads = transacting::retrying!(&*self.transactions, |transaction| {
-            Ok::<_, AssetsError>(
-                self.catalog
-                    .uploaded_by(transaction, account, sorted, after, at_most)
-                    .await?,
-            )
+        let (uploads, uses) = transacting::retrying!(&*self.transactions, |transaction| {
+            let uploads = self
+                .catalog
+                .uploaded_by(transaction, account, sorted, after, at_most)
+                .await?;
+            let ids: Vec<AssetId> = uploads.iter().map(|upload| upload.id).collect();
+            let uses = self.uses.uses_of(transaction, &ids).await?;
+
+            Ok::<_, AssetsError>((uploads, uses))
         })?;
         let mut writable: HashMap<ProjectLink, bool> = HashMap::new();
         let mut listed = Vec::with_capacity(uploads.len());
@@ -505,7 +535,16 @@ impl AssetsCore {
                     }
                 },
             };
-            listed.push(OwnUpload { upload, deletable });
+            let uses: Vec<AssetUse> = uses
+                .iter()
+                .filter(|(asset, _)| *asset == upload.id)
+                .map(|(_, used)| used.clone())
+                .collect();
+            listed.push(OwnUpload {
+                deletable: deletable && uses.is_empty(),
+                upload,
+                uses,
+            });
         }
         let last = listed
             .last()
@@ -552,7 +591,7 @@ impl AssetsCore {
         })
     }
 
-    /// Removes the name and email of a deleted account.
+    /// Removes the name and email of a deleted account, and ends the use of its picture.
     pub async fn forget_person(
         &self,
         within: Option<&mut Transaction>,
@@ -563,9 +602,149 @@ impl AssetsCore {
             self.catalog
                 .forget_person(transaction, account, version, self.clock.now())
                 .await?;
+            self.uses
+                .stop_using(
+                    transaction,
+                    Purpose::AccountPicture,
+                    &Holder::Account(account.clone()),
+                    version,
+                    self.clock.now(),
+                )
+                .await?;
 
             Ok::<_, AssetsError>(())
         })
+    }
+
+    /// Records an account's new picture, as the accounts feature reported it at a version.
+    ///
+    /// Only an image of the account's own can be its picture. Any other id is not recorded,
+    /// and the account then shows no picture as far as the assets feature is concerned.
+    /// With `drop_previous`, the picture shown before is deleted, if it is the account's own and nothing uses it any more.
+    /// Its stored bytes are removed later, by the chore that removes stray contents.
+    pub async fn picture_changed(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        picture: &str,
+        previous: Option<&str>,
+        drop_previous: bool,
+    ) -> Result<(), AssetsError> {
+        let own = self.own_image(account, picture).await?;
+        let dropped = match (drop_previous, previous) {
+            (true, Some(previous)) => self.own_image(account, previous).await?,
+            _ => None,
+        };
+        let holder = Holder::Account(account.clone());
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            match own {
+                Some(picture) => {
+                    self.uses
+                        .use_as(
+                            transaction,
+                            &picture,
+                            Purpose::AccountPicture,
+                            &holder,
+                            version,
+                        )
+                        .await?
+                }
+                None => {
+                    self.uses
+                        .stop_using(
+                            transaction,
+                            Purpose::AccountPicture,
+                            &holder,
+                            version,
+                            self.clock.now(),
+                        )
+                        .await?
+                }
+            }
+            if let Some(previous) = dropped {
+                self.dropped_if_unused(transaction, &previous).await?;
+            }
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Records that an account shows no picture any more, as the accounts feature reported it at a version.
+    /// With `drop`, the picture is deleted, if it is the account's own and nothing uses it any more.
+    pub async fn picture_removed(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        picture: &str,
+        drop: bool,
+    ) -> Result<(), AssetsError> {
+        let dropped = match drop {
+            true => self.own_image(account, picture).await?,
+            false => None,
+        };
+        let holder = Holder::Account(account.clone());
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.uses
+                .stop_using(
+                    transaction,
+                    Purpose::AccountPicture,
+                    &holder,
+                    version,
+                    self.clock.now(),
+                )
+                .await?;
+            if let Some(picture) = dropped {
+                self.dropped_if_unused(transaction, &picture).await?;
+            }
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Returns the asset with this id if it is an image of the account's own that is not deleted.
+    async fn own_image(
+        &self,
+        account: &AccountId,
+        id: &str,
+    ) -> Result<Option<AssetId>, AssetsError> {
+        let Ok(id) = id.parse::<AssetId>() else {
+            return Ok(None);
+        };
+        match self.events.latest(&AggregateId::from(&id)).await {
+            Ok(standing) => Ok((!standing.state.is_deleted()
+                && *standing.state.owner() == Owner::Account(account.clone()))
+            .then_some(id)),
+            Err(ServiceError::NotFound { .. }) => Ok(None),
+            Err(failed) => Err(failed.into()),
+        }
+    }
+
+    /// Deletes an asset as the system, in the given transaction, unless something still uses it.
+    /// Its stored bytes are left to the chore that removes stray contents.
+    async fn dropped_if_unused(
+        &self,
+        transaction: &mut Transaction,
+        id: &AssetId,
+    ) -> Result<(), AssetsError> {
+        if !self.uses.uses_of(transaction, &[*id]).await?.is_empty() {
+            return Ok(());
+        }
+        self.events
+            .execute_at(
+                transaction,
+                &AggregateId::from(id),
+                None,
+                AssetCommand::Delete,
+                &Agent::System,
+            )
+            .await?;
+        self.catalog.forget(transaction, id).await?;
+
+        Ok(())
     }
 
     /// Stores a project's name, as the projects feature reported it.
@@ -602,7 +781,7 @@ impl AssetsCore {
         })
     }
 
-    /// Deletes old tombstones, both from the access tables and from the stored names.
+    /// Deletes old tombstones, from the access tables, the stored names and the uses of assets.
     /// A tombstone keeps a late, outdated message from bringing deleted data back.
     /// Once it is old enough, no such message can arrive any more.
     /// Returns how many tombstones were deleted.
@@ -620,8 +799,12 @@ impl AssetsCore {
                 .catalog
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
+            let uses = self
+                .uses
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-            Ok::<_, AssetsError>(access + names)
+            Ok::<_, AssetsError>(access + names + uses)
         })
     }
 

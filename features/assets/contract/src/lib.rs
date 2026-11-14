@@ -40,6 +40,27 @@ pub struct AssetDTO {
     pub widths: Vec<u32>,
     pub original_size: u64,
     pub total_size: u64,
+    #[serde(default)]
+    pub uses: Vec<AssetUseDTO>,
+}
+
+/// What uses an asset.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "id", rename_all = "kebab-case")]
+pub enum HolderDTO {
+    Account(String),
+}
+
+/// One use of an asset: what it is used for, and by what.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AssetUseDTO {
+    pub purpose: String,
+    pub by: HolderDTO,
+}
+
+/// What an asset can be used for.
+pub mod purpose {
+    pub const ACCOUNT_PICTURE: &str = "account-picture";
 }
 
 /// One of the signed-in account's uploads.
@@ -56,6 +77,8 @@ pub struct UploadDTO {
     pub total_size: u64,
     pub uploaded_at: String,
     pub deletable: bool,
+    #[serde(default)]
+    pub uses: Vec<AssetUseDTO>,
 }
 
 /// A page of the signed-in account's uploads, and the cursor for the next page.
@@ -158,8 +181,9 @@ pub mod refused {
     pub const LIMIT_UNCOUNTABLE: &str = "asset-limit-uncountable";
     pub const SORT_UNKNOWN: &str = "asset-sort-unknown";
     pub const CURSOR_INVALID: &str = "asset-cursor-invalid";
+    pub const IN_USE: &str = "asset-in-use";
 
-    pub const EVERY: [&str; 11] = [
+    pub const EVERY: [&str; 12] = [
         ID_INVALID,
         NOT_AN_IMAGE,
         IMAGE_UNREADABLE,
@@ -171,6 +195,7 @@ pub mod refused {
         LIMIT_UNCOUNTABLE,
         SORT_UNKNOWN,
         CURSOR_INVALID,
+        IN_USE,
     ];
 }
 

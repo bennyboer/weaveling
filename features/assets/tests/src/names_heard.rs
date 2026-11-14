@@ -274,8 +274,8 @@ async fn the_names_of_the_deleted_are_let_go_of_with_the_tombstones() {
         .await
         .expect("forgetting should succeed");
 
-    // then: both names' tombstones are let go of
-    assert_eq!(forgotten, 2);
+    // then: both names' tombstones are let go of, and the one of Ada's picture
+    assert_eq!(forgotten, 3);
     // and: what was forgotten once is not forgotten again
     assert_eq!(
         bench

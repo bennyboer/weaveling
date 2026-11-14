@@ -1,6 +1,6 @@
 use assets_contract::{
     AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
-    UploadDTO, UploadsDTO, UsageDTO, sort,
+    UploadDTO, UploadsDTO, UsageDTO, purpose, sort,
 };
 use gloo_net::http::Request;
 use time::OffsetDateTime;
@@ -40,8 +40,26 @@ impl UploadsSorted {
     }
 }
 
+/// What an upload is used for.
+/// `Other` stands for a purpose this client does not know yet, told by a newer server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    AccountPicture,
+    Other,
+}
+
+impl Purpose {
+    fn of(named: &str) -> Self {
+        match named {
+            purpose::ACCOUNT_PICTURE => Self::AccountPicture,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// One of the signed-in account's uploads.
 /// `project` is missing for the account's own images, and `project_name` also when the name is not known.
+/// `uses` says what the upload is used for. An upload in use cannot be deleted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Upload {
     pub id: String,
@@ -50,6 +68,7 @@ pub struct Upload {
     pub total_size: u64,
     pub uploaded_at: OffsetDateTime,
     pub deletable: bool,
+    pub uses: Vec<Purpose>,
 }
 
 /// One page of uploads, and the cursor for the next page, if there is one.
@@ -174,6 +193,11 @@ fn read(told: UploadDTO) -> Result<Upload, ApiError> {
         uploaded_at: OffsetDateTime::parse(&told.uploaded_at, &Rfc3339)
             .map_err(|_| ApiError::Unexpected)?,
         deletable: told.deletable,
+        uses: told
+            .uses
+            .iter()
+            .map(|used| Purpose::of(&used.purpose))
+            .collect(),
         id: told.id,
     })
 }
@@ -309,6 +333,8 @@ pub async fn take_back_limit(account: &str) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod tests {
+    use assets_contract::{AssetUseDTO, HolderDTO};
+
     use super::*;
 
     #[test]
@@ -338,6 +364,7 @@ mod tests {
             total_size: 2_048,
             uploaded_at: "2026-11-13T10:00:00Z".to_owned(),
             deletable: true,
+            uses: Vec::new(),
         };
 
         // expect: the project is read from the one, and none from the other
@@ -390,6 +417,35 @@ mod tests {
         assert_eq!(
             projects_listing("loom", Some("2048.project_1")),
             "/api/assets/storage/projects?sort=most-used&after=2048.project_1&search=loom"
+        );
+    }
+
+    #[test]
+    fn an_upload_s_uses_are_read_and_a_purpose_unknown_here_is_kept_as_other() {
+        // given: an upload used as a picture and for something this client does not know
+        let told = UploadDTO {
+            id: "asset_1".to_owned(),
+            owner: OwnerDTO::Account("account_ada".to_owned()),
+            project_name: None,
+            format: "png".to_owned(),
+            width: 64,
+            height: 64,
+            total_size: 2_048,
+            uploaded_at: "2026-11-13T10:00:00Z".to_owned(),
+            deletable: false,
+            uses: ["account-picture", "idea-cover"]
+                .into_iter()
+                .map(|named| AssetUseDTO {
+                    purpose: named.to_owned(),
+                    by: HolderDTO::Account("account_ada".to_owned()),
+                })
+                .collect(),
+        };
+
+        // expect: both uses are read, the unknown one as another purpose
+        assert_eq!(
+            read(told).expect("a readable upload").uses,
+            vec![Purpose::AccountPicture, Purpose::Other]
         );
     }
 
