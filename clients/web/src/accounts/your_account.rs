@@ -1,12 +1,17 @@
 use accounts_contract::refused;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
+use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::components::A;
 use time::{Duration, OffsetDateTime};
 
-use crate::accounts::{CurrentSession, SignInState, SignedInAccount, service};
+use crate::accounts::{
+    CurrentSession, SecondFactorInUse, SignInState, SignedInAccount, picture, service,
+};
 use crate::act::{Act, Here};
+use crate::assets::service as assets;
+use crate::assets::storage_page;
 use crate::dialog;
 use crate::http::{ApiError, Particular};
 use crate::moment;
@@ -15,6 +20,7 @@ use crate::projects::service as projects;
 use crate::route;
 use crate::shell;
 use crate::speech;
+use crate::speech::Speech;
 
 const KEPT_BEFORE_DELETION: Duration = Duration::days(30);
 
@@ -56,33 +62,18 @@ fn overview(session: CurrentSession, account: SignedInAccount) -> impl IntoView 
 
     (
         html::h1().child(speech::said("your-account-heading")),
-        html::dl().class("who-you-are").child((
-            html::div().child((
-                html::dt().child(speech::said("sign-up-name")),
-                html::dd().child(account.name.clone()),
-            )),
-            html::div().child((
-                html::dt().child(speech::said("sign-in-email")),
-                html::dd().child(account.email.clone()),
-            )),
+        html::div().class("account-cards").child((
+            picture::profile_card(session, account.clone()),
+            security_offered.then(|| security_card(account.second_factor)),
+            storage_card(),
         )),
-        security_offered.then(|| {
-            html::p().class("hint").child((
-                speech::said("your-account-security"),
-                " ",
-                view! { <A href=route::SECURITY>{speech::said("security-heading")}</A> },
-            ))
-        }),
-        html::p().class("hint").child((
-            speech::said("your-account-storage"),
-            " ",
-            view! { <A href=route::STORAGE>{speech::said("storage-heading")}</A> },
-        )),
-        html::section().class("deleting").child((
-            html::h2().child(speech::said("your-account-delete-heading")),
-            html::p()
-                .class("hint")
-                .child(speech::said("your-account-delete-hint")),
+        html::section().class("card deleting").child((
+            html::div().child((
+                html::h2().child(speech::said("your-account-delete-heading")),
+                html::p()
+                    .class("hint")
+                    .child(speech::said("your-account-delete-hint")),
+            )),
             html::button()
                 .r#type("button")
                 .class("danger")
@@ -95,6 +86,54 @@ fn overview(session: CurrentSession, account: SignedInAccount) -> impl IntoView 
             Deleting::HandingOver(projects) => Some(handing_over(projects, close).into_any()),
         },
     )
+}
+
+/// The card that says how the account signs in, and leads to its security page.
+fn security_card(factor: Option<SecondFactorInUse>) -> impl IntoView {
+    let on = factor.is_some();
+    let details = move || {
+        let factor = factor.as_ref()?;
+        let mut ways = Vec::new();
+        if factor.answered_by_totp {
+            ways.push(speech::say("security-app"));
+        }
+        if factor.answered_by_key {
+            ways.push(speech::say("another-way-key"));
+        }
+        let mut args = FluentArgs::new();
+        args.set("left", factor.recovery_codes_left);
+        ways.push(speech::say_with("your-account-codes-left", &args));
+
+        Some(ways.join(" · "))
+    };
+
+    html::section().class("card security").child((
+        html::h2().child(speech::said("security-heading")),
+        html::p().class("status").child(if on {
+            speech::said("your-account-security-on")
+        } else {
+            speech::said("your-account-security-off")
+        }),
+        move || details().map(|details| html::p().class("hint").child(details)),
+        view! { <A href=route::SECURITY>{speech::said("your-account-security-manage")}</A> },
+    ))
+}
+
+/// The card that says how much storage the account's media use, and leads to them.
+fn storage_card() -> impl IntoView {
+    let speech = expect_context::<Speech>();
+    let usage = RwSignal::new(None);
+    task::spawn_local(async move {
+        if let Ok(told) = assets::usage().await {
+            usage.set(Some(told));
+        }
+    });
+
+    html::section().class("card storage").child((
+        html::h2().child(speech::said("storage-heading")),
+        move || usage.get().map(|usage| storage_page::used(usage, speech)),
+        view! { <A href=route::STORAGE>{speech::said("your-account-storage-link")}</A> },
+    ))
 }
 
 fn asking(

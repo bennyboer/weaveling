@@ -2,7 +2,7 @@ use accounts_contract::{
     AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
     KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO, LockRequest,
     NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest,
-    PasswordResetRequest, PreferredWayRequest, PromoteKeyRequest, RecoveryCodesDTO,
+    PasswordResetRequest, PictureRequest, PreferredWayRequest, PromoteKeyRequest, RecoveryCodesDTO,
     RenameKeyRequest, SendCodeRequest, ServiceModeDTO, SettingUpTotpDTO, SignInRequest,
     SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
     TotpCodeRequest, VerifyEmailRequest, WaysInDTO, deletion_asked_by, key_role, refused,
@@ -37,6 +37,7 @@ const INSTANCE_ACCOUNTS: &str = "/api/accounts";
 const TOTP: &str = "/api/accounts/current/totp";
 const KEYS: &str = "/api/accounts/current/keys";
 const PREFERRED_WAY: &str = "/api/accounts/current/second-step/preferred";
+const PICTURE: &str = "/api/accounts/current/picture";
 const KEY_CHALLENGE: &str = "/api/accounts/current/keys/challenge";
 const ANSWERED_BY_KEY: &str = "/api/sessions/current/key";
 const KEY_ASKED: &str = "/api/sessions/current/key/challenge";
@@ -379,6 +380,35 @@ fn way_of(told: &str) -> Result<SecondStepWay, ApiError> {
     }
 }
 
+/// Shows another image as the signed-in account's picture.
+/// With `drop_previous`, the picture shown before is deleted, if nothing else uses it.
+pub async fn change_picture(picture: &str, drop_previous: bool) -> Result<(), ApiError> {
+    let payload = PictureRequest {
+        picture: picture.to_owned(),
+        drop_previous,
+    };
+
+    http::checked(
+        http::sent_with(Request::put(PICTURE), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Shows no picture any more. With `drop`, the image is deleted too, if nothing else uses it.
+pub async fn remove_picture(drop: bool) -> Result<(), ApiError> {
+    let address = if drop {
+        format!("{PICTURE}?drop=true")
+    } else {
+        PICTURE.to_owned()
+    };
+
+    http::checked(http::sent(Request::delete(&address)).await?, SUBJECT)
+        .await
+        .map(|_| ())
+}
+
 pub async fn choose_preferred_way(way: PreferredWay) -> Result<(), ApiError> {
     let payload = PreferredWayRequest {
         preferred_way: match way {
@@ -569,6 +599,7 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
         operator_wanted: signed_in.operator_wanted,
         second_factor,
         owes_second_factor: signed_in.stage == stage::SECOND_FACTOR_OWED,
+        picture: signed_in.picture,
         deletion: match (signed_in.stage.as_str(), signed_in.deletion) {
             (stage::DELETION_PENDING, Some(deletion)) => Some(PendingDeletion {
                 until: moment(&deletion.until)?,

@@ -2,6 +2,7 @@ use assets_contract::{
     AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
     UploadDTO, UploadsDTO, UsageDTO, purpose, sort,
 };
+use assets_contract::{AssetDTO, HolderDTO};
 use gloo_net::http::Request;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -228,6 +229,34 @@ pub async fn usage() -> Result<Usage, ApiError> {
     })
 }
 
+/// Uploads an image as the signed-in account's own, and returns the new asset's id.
+pub async fn upload_own(bytes: &[u8]) -> Result<String, ApiError> {
+    let uploaded: AssetDTO =
+        http::parsed(http::sent_bytes(Request::post(ASSETS), bytes).await?, ASSET).await?;
+
+    Ok(uploaded.id)
+}
+
+/// Whether the asset is used for nothing but the given account's picture.
+/// Only then may the account decide to delete it when it shows another picture.
+pub async fn used_only_as_picture_of(id: &str, account: &str) -> Result<bool, ApiError> {
+    let told: AssetDTO = http::parsed(
+        http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
+        ASSET,
+    )
+    .await?;
+
+    Ok(only_as_picture_of(&told, account))
+}
+
+fn only_as_picture_of(told: &AssetDTO, account: &str) -> bool {
+    matches!(
+        told.uses.as_slice(),
+        [used] if used.purpose == purpose::ACCOUNT_PICTURE
+            && used.by == HolderDTO::Account(account.to_owned())
+    )
+}
+
 pub async fn delete(id: &str) -> Result<(), ApiError> {
     http::checked(
         http::sent(Request::delete(&format!("{ASSETS}/{id}"))).await?,
@@ -333,7 +362,7 @@ pub async fn take_back_limit(account: &str) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod tests {
-    use assets_contract::{AssetUseDTO, HolderDTO};
+    use assets_contract::AssetUseDTO;
 
     use super::*;
 
@@ -447,6 +476,49 @@ mod tests {
             read(told).expect("a readable upload").uses,
             vec![Purpose::AccountPicture, Purpose::Other]
         );
+    }
+
+    #[test]
+    fn an_asset_is_only_a_picture_when_that_is_its_one_use_and_the_account_is_this_one() {
+        // given: an asset told with some uses
+        let told = |uses: Vec<AssetUseDTO>| AssetDTO {
+            id: "asset_1".to_owned(),
+            version: 1,
+            owner: OwnerDTO::Account("account_ada".to_owned()),
+            format: "jpeg".to_owned(),
+            width: 512,
+            height: 512,
+            widths: vec![96, 192, 384, 512],
+            original_size: 40_000,
+            total_size: 90_000,
+            uses,
+        };
+        let picture_of = |account: &str| AssetUseDTO {
+            purpose: purpose::ACCOUNT_PICTURE.to_owned(),
+            by: HolderDTO::Account(account.to_owned()),
+        };
+
+        // expect: Ada's picture alone is hers to decide about
+        assert!(only_as_picture_of(
+            &told(vec![picture_of("account_ada")]),
+            "account_ada"
+        ));
+        // and: not when it is someone else's, used for more, or used for nothing
+        assert!(!only_as_picture_of(
+            &told(vec![picture_of("account_bo")]),
+            "account_ada"
+        ));
+        assert!(!only_as_picture_of(
+            &told(vec![
+                picture_of("account_ada"),
+                AssetUseDTO {
+                    purpose: "idea-cover".to_owned(),
+                    by: HolderDTO::Account("account_ada".to_owned()),
+                },
+            ]),
+            "account_ada"
+        ));
+        assert!(!only_as_picture_of(&told(vec![]), "account_ada"));
     }
 
     #[test]

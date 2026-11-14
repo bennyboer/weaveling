@@ -183,6 +183,7 @@ export type Server = {
   deletionPending: boolean;
   keptAccount: number;
   toHandOver: string[];
+  picture: string | null;
 };
 
 export type HeldKey = {
@@ -272,6 +273,7 @@ export async function aServerWithAccounts(
     deletionPending: false,
     keptAccount: 0,
     toHandOver: [],
+    picture: null,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -315,6 +317,7 @@ export async function aServerWithAccounts(
             ...(server.signedInAs ?? ADA),
             operator: server.operator,
             operator_wanted: operatorWanted(server),
+            ...(server.picture ? { picture: server.picture } : {}),
             ...(server.secondFactor
               ? { second_factor: secondFactorTold(server) }
               : {}),
@@ -351,6 +354,7 @@ export async function aServerWithAccounts(
         ...ADA,
         operator: server.operator,
         operator_wanted: operatorWanted(server),
+        ...(server.picture ? { picture: server.picture } : {}),
       },
     });
   });

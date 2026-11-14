@@ -4,11 +4,14 @@ use leptos::{IntoView, ev, html, view};
 use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, SignedInAccount};
+use crate::assets::service as assets;
 use crate::avatar;
 use crate::route;
 use crate::speech;
 use crate::speech::Speech;
 
+/// The width asked for the picture in the masthead, which shows it 32 pixels wide.
+const MASTHEAD_PICTURE: u32 = 96;
 pub fn account_in_masthead() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let open = RwSignal::new(false);
@@ -57,7 +60,14 @@ fn account_menu(
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open.get().to_string())
                 .on(ev::click, move |_| open.update(|open| *open = !*open))
-                .child(avatar::initial_of(&account.name)),
+                .child(match &account.picture {
+                    Some(picture) => html::img()
+                        .class("picture")
+                        .src(assets::content(picture, MASTHEAD_PICTURE))
+                        .alt("")
+                        .into_any(),
+                    None => avatar::initial_of(&account.name).into_any(),
+                }),
             move || {
                 open.get().then(|| {
                     html::div().class("menu").role("menu").child((

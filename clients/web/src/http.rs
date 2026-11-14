@@ -73,6 +73,18 @@ pub(crate) async fn sent_with(
         .map_err(|_| ApiError::Offline)
 }
 
+pub(crate) async fn sent_bytes(
+    request: RequestBuilder,
+    bytes: &[u8],
+) -> Result<Response, ApiError> {
+    request
+        .body(js_sys::Uint8Array::from(bytes))
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)
+}
+
 pub(crate) async fn parsed<T: DeserializeOwned>(
     response: Response,
     subject: &'static str,

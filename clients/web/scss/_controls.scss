@@ -105,3 +105,31 @@ button.copying {
   color: var(--muted);
   font-style: italic;
 }
+
+meter {
+  appearance: none;
+  height: 0.6rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+
+  &::-webkit-meter-bar {
+    height: 100%;
+    border: none;
+    border-radius: 999px;
+    background: var(--line);
+  }
+
+  &::-webkit-meter-optimum-value,
+  &::-webkit-meter-suboptimum-value,
+  &::-webkit-meter-even-less-good-value {
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
+  &::-moz-meter-bar {
+    border-radius: 999px;
+    background: var(--accent);
+  }
+}

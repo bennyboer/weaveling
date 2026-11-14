@@ -7,6 +7,7 @@ mod key_dialogs;
 mod listed;
 pub mod listing;
 mod lock_dialog;
+mod picture;
 mod recovery_note;
 mod role_dialog;
 mod roster;
@@ -38,6 +39,8 @@ pub struct SignedInAccount {
     pub second_factor: Option<SecondFactorInUse>,
     pub owes_second_factor: bool,
     pub deletion: Option<PendingDeletion>,
+    /// The id of the image the account shows as its picture, if it shows one.
+    pub picture: Option<String>,
 }
 
 /// An account that is marked to be deleted on a certain day.
@@ -234,6 +237,15 @@ impl CurrentSession {
         self.by_recovery_code.set(false);
     }
 
+    /// Shows another picture for the signed-in account, or none.
+    pub fn picture_shown(self, picture: Option<String>) {
+        self.state.update(|state| {
+            if let SignInState::SignedIn(account) = state {
+                account.picture = picture;
+            }
+        });
+    }
+
     pub fn became_operator(self) {
         self.state.update(|state| {
             if let SignInState::SignedIn(account) = state {
@@ -303,6 +315,7 @@ mod tests {
                 second_factor: None,
                 owes_second_factor: false,
                 deletion: None,
+                picture: None,
             })),
             Screen::Work
         );
@@ -324,6 +337,7 @@ mod tests {
                     until: time::macros::datetime!(2026-12-09 10:00 UTC),
                     by_the_operator: false,
                 }),
+                picture: None,
             })),
             Screen::DeletionPending
         );

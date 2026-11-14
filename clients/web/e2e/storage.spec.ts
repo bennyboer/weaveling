@@ -145,7 +145,7 @@ test("the account page leads to the storage too", async ({ page }) => {
   await page.goto("/account");
 
   // when: she follows the link to her storage
-  await page.getByRole("main").getByRole("link", { name: "Storage" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Your media" }).click();
 
   // then: the storage is shown
   await expect(page).toHaveURL(/\/account\/storage$/);
