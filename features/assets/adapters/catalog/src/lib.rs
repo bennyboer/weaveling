@@ -8,6 +8,13 @@ mod account_limits_suite;
 mod memory;
 #[cfg(test)]
 mod suite;
+mod uses_memory;
+#[cfg(feature = "postgres")]
+mod uses_postgres;
+#[cfg(feature = "sqlite")]
+mod uses_sqlite;
+#[cfg(test)]
+mod uses_suite;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -25,6 +32,11 @@ pub use account_limits_postgres::PostgresAccountLimits;
 #[cfg(feature = "sqlite")]
 pub use account_limits_sqlite::SqliteAccountLimits;
 pub use memory::InMemoryAssetCatalog;
+pub use uses_memory::InMemoryAssetUses;
+#[cfg(feature = "postgres")]
+pub use uses_postgres::PostgresAssetUses;
+#[cfg(feature = "sqlite")]
+pub use uses_sqlite::SqliteAssetUses;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresAssetCatalog;

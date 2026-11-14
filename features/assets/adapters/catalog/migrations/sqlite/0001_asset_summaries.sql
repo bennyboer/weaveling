@@ -49,3 +49,16 @@ CREATE TABLE asset_project_names (
 );
 
 CREATE INDEX asset_project_names_by_gone_at ON asset_project_names (gone_at);
+
+CREATE TABLE asset_uses (
+    purpose  TEXT NOT NULL,
+    holder_kind TEXT NOT NULL,
+    holder   TEXT NOT NULL,
+    version  INTEGER           NOT NULL,
+    asset    TEXT,
+    gone_at  TEXT,
+    PRIMARY KEY (purpose, holder_kind, holder)
+);
+
+CREATE INDEX asset_uses_by_asset ON asset_uses (asset);
+CREATE INDEX asset_uses_by_gone_at ON asset_uses (gone_at);

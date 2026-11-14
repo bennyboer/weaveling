@@ -11,6 +11,7 @@ mod images;
 mod limits;
 mod preparing;
 mod storage;
+mod uses;
 
 pub use account_limits::AccountLimits;
 pub use asset::{
@@ -30,3 +31,4 @@ pub use preparing::PREPARED_AT_ONCE;
 pub use storage::{
     AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
 };
+pub use uses::{AssetUse, AssetUses, Holder, Purpose};

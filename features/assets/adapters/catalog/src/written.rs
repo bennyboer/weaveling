@@ -1,5 +1,6 @@
 use assets_core::{
-    CatalogError, Format, Held, Holders, Owner, ProjectLink, Sorted, UploadsSorted, Usage,
+    CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, Sorted,
+    UploadsSorted, Usage,
 };
 use eventsourcing::AccountId;
 
@@ -41,6 +42,35 @@ pub(crate) fn format_read(format: &str) -> Result<Format, CatalogError> {
 
 fn unreadable(why: String) -> CatalogError {
     CatalogError::Backend(why.into())
+}
+
+/// How a holder is written: its kind and its id.
+pub(crate) fn holder_written(holder: &Holder) -> (&'static str, String) {
+    match holder {
+        Holder::Account(account) => (ACCOUNT, account.to_string()),
+    }
+}
+
+/// Reads a holder back from its stored kind and id. An unknown kind is an error.
+pub(crate) fn holder_read(kind: &str, holder: &str) -> Result<Holder, CatalogError> {
+    match kind {
+        ACCOUNT => Ok(Holder::Account(AccountId::from(holder))),
+        unknown => Err(unreadable(format!("no holder is of the kind {unknown}"))),
+    }
+}
+
+pub(crate) fn purpose_written(purpose: Purpose) -> &'static str {
+    match purpose {
+        Purpose::AccountPicture => "account-picture",
+    }
+}
+
+/// Reads a purpose back. An unknown purpose is an error.
+pub(crate) fn purpose_read(purpose: &str) -> Result<Purpose, CatalogError> {
+    match purpose {
+        "account-picture" => Ok(Purpose::AccountPicture),
+        unknown => Err(unreadable(format!("no asset is used for {unknown}"))),
+    }
 }
 
 pub(crate) fn format_written(format: Format) -> &'static str {
