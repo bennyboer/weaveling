@@ -240,3 +240,34 @@ test("a file that is no image is refused before anything is uploaded", async ({ 
   await expect(page.getByRole("alert")).toHaveText("This file could not be read as an image.");
   expect(told.uploaded).toEqual([]);
 });
+
+for (const width of [1280, 320]) {
+  test(`the account page fits a ${width}px window, its cards beside each other only when there is room`, async ({
+    page,
+  }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 900 });
+    // and: Ada on her account page
+    await onHerAccountPage(page);
+    await expect(page.getByRole("heading", { name: "Storage" })).toBeVisible();
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: the storage card is beside the profile on a wide window and below it on a phone
+    const profile = await page.locator(".card.profile").boundingBox();
+    const storage = await page.locator(".card.storage").boundingBox();
+    expect(profile && storage).toBeTruthy();
+    if (width >= 800) {
+      expect(storage!.x, "the storage card is beside the profile").toBeGreaterThan(
+        profile!.x + profile!.width,
+      );
+    } else {
+      expect(storage!.y, "the storage card is below the profile").toBeGreaterThan(
+        profile!.y + profile!.height,
+      );
+    }
+  });
+}

@@ -7,6 +7,7 @@ use crate::accounts::{CurrentSession, SignInState};
 use crate::act::{Act, Here};
 use crate::assets::service;
 use crate::assets::service::{Purpose, Upload, UploadsSorted, Usage};
+use crate::blocks;
 use crate::dialog;
 use crate::http::ApiError;
 use crate::moment;
@@ -189,16 +190,9 @@ pub(crate) fn used(usage: Usage, speech: Speech) -> impl IntoView {
         }
     };
 
-    html::div().class("usage").child((
-        html::p().child(told),
-        usage.most.map(|most| {
-            html::meter()
-                .attr("min", 0)
-                .attr("max", most as f64)
-                .attr("value", usage.used as f64)
-                .attr("aria-label", move || speech.say("storage-heading"))
-        }),
-    ))
+    blocks::usage(told, usage.used, usage.most, move || {
+        speech.say("storage-heading")
+    })
 }
 
 fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {

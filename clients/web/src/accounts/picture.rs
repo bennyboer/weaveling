@@ -9,6 +9,7 @@ use crate::act::{Act, Here};
 use crate::assets::service as assets;
 use crate::assets::squaring;
 use crate::avatar;
+use crate::blocks;
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -126,82 +127,85 @@ pub fn profile_card(session: CurrentSession, account: SignedInAccount) -> impl I
     let email = account.email.clone();
     let heading = account.name.clone();
 
-    html::section().class("card profile").child((
-        move || match shown.get() {
-            Some(picture) => html::img()
-                .class("account-picture")
-                .src(assets::content(&picture, SHOWN))
-                .alt("")
-                .into_any(),
-            None => html::span()
-                .class(format!("account-picture initial {tint}"))
-                .attr("aria-hidden", "true")
-                .child(avatar::initial_of(&name))
-                .into_any(),
-        },
-        html::h2().child(heading),
-        html::p().class("email").child(email),
-        html::div().class("picture-actions").child((
-            html::label()
-                .class("button")
-                .attr("aria-busy", move || {
-                    (uploading.get() || changing.running()).then_some("true")
-                })
-                .child((
-                    move || {
-                        if shown.with(Option::is_some) {
-                            speech::say("your-account-picture-change")
-                        } else {
-                            speech::say("your-account-picture-choose")
-                        }
-                    },
-                    html::input()
-                        .r#type("file")
-                        .class("visually-hidden")
-                        .attr("accept", ACCEPTED)
-                        .on(ev::change, move |event| {
-                            if let Some(input) = event
-                                .target()
-                                .and_then(|target| target.dyn_into::<HtmlInputElement>().ok())
-                            {
-                                chosen(input);
+    blocks::card(
+        "profile",
+        (
+            move || match shown.get() {
+                Some(picture) => html::img()
+                    .class("account-picture")
+                    .src(assets::content(&picture, SHOWN))
+                    .alt("")
+                    .into_any(),
+                None => html::span()
+                    .class(format!("account-picture initial {tint}"))
+                    .attr("aria-hidden", "true")
+                    .child(avatar::initial_of(&name))
+                    .into_any(),
+            },
+            html::h2().child(heading),
+            html::p().class("email").child(email),
+            html::div().class("picture-actions").child((
+                html::label()
+                    .class("button")
+                    .attr("aria-busy", move || {
+                        (uploading.get() || changing.running()).then_some("true")
+                    })
+                    .child((
+                        move || {
+                            if shown.with(Option::is_some) {
+                                speech::say("your-account-picture-change")
+                            } else {
+                                speech::say("your-account-picture-choose")
                             }
-                        }),
-                )),
+                        },
+                        html::input()
+                            .r#type("file")
+                            .class("visually-hidden")
+                            .attr("accept", ACCEPTED)
+                            .on(ev::change, move |event| {
+                                if let Some(input) = event
+                                    .target()
+                                    .and_then(|target| target.dyn_into::<HtmlInputElement>().ok())
+                                {
+                                    chosen(input);
+                                }
+                            }),
+                    )),
+                move || {
+                    shown.with(Option::is_some).then(|| {
+                        html::button()
+                            .r#type("button")
+                            .attr("aria-busy", move || removing.busy())
+                            .on(ev::click, move |_| removing.start(()))
+                            .child(speech::said("your-account-picture-remove"))
+                    })
+                },
+            )),
+            html::p()
+                .class("hint")
+                .child(speech::said("your-account-picture-hint")),
             move || {
-                shown.with(Option::is_some).then(|| {
-                    html::button()
-                        .r#type("button")
-                        .attr("aria-busy", move || removing.busy())
-                        .on(ev::click, move |_| removing.start(()))
-                        .child(speech::said("your-account-picture-remove"))
+                unreadable.get().then(|| {
+                    html::p()
+                        .class("problem")
+                        .role("alert")
+                        .child(speech::said("your-account-picture-unreadable"))
                 })
             },
-        )),
-        html::p()
-            .class("hint")
-            .child(speech::said("your-account-picture-hint")),
-        move || {
-            unreadable.get().then(|| {
-                html::p()
-                    .class("problem")
-                    .role("alert")
-                    .child(speech::said("your-account-picture-unreadable"))
-            })
-        },
-        move || {
-            asking
-                .with(|asking| *asking == Asking::Nothing)
-                .then(|| refused.get().map(problem::problem))
-        },
-        move || match asking.get() {
-            Asking::Nothing => None,
-            Asking::Replacing { picture } => {
-                Some(replacing(picture, changing, asking, refused).into_any())
-            }
-            Asking::Removing => Some(removing_dialog(changing, asking, refused).into_any()),
-        },
-    ))
+            move || {
+                asking
+                    .with(|asking| *asking == Asking::Nothing)
+                    .then(|| refused.get().map(problem::problem))
+            },
+            move || match asking.get() {
+                Asking::Nothing => None,
+                Asking::Replacing { picture } => {
+                    Some(replacing(picture, changing, asking, refused).into_any())
+                }
+                Asking::Removing => Some(removing_dialog(changing, asking, refused).into_any()),
+            },
+        ),
+    )
 }
 
 /// What follows an upload: asking whether to keep the picture shown before, or showing the new one at once.

@@ -5,6 +5,7 @@ mod appearances;
 mod asking;
 mod assets;
 mod avatar;
+mod blocks;
 mod boards;
 mod copy_button;
 mod dialog;

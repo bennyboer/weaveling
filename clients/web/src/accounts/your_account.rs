@@ -12,6 +12,7 @@ use crate::accounts::{
 use crate::act::{Act, Here};
 use crate::assets::service as assets;
 use crate::assets::storage_page;
+use crate::blocks;
 use crate::dialog;
 use crate::http::{ApiError, Particular};
 use crate::moment;
@@ -45,12 +46,14 @@ pub fn YourAccountPage() -> impl IntoView {
 
     (
         shell::masthead(None),
-        html::main()
-            .class("operating your-account")
-            .child(move || match session.state.get() {
+        blocks::page(
+            "your-account",
+            speech::said("your-account-heading"),
+            move || match session.state.get() {
                 SignInState::SignedIn(account) => Some(overview(session, account)),
                 _ => None,
-            }),
+            },
+        ),
     )
 }
 
@@ -61,25 +64,21 @@ fn overview(session: CurrentSession, account: SignedInAccount) -> impl IntoView 
         session.totp_offered() || session.keys_offered() || account.second_factor.is_some();
 
     (
-        html::h1().child(speech::said("your-account-heading")),
-        html::div().class("account-cards").child((
+        blocks::cards((
             picture::profile_card(session, account.clone()),
             security_offered.then(|| security_card(account.second_factor)),
             storage_card(),
         )),
-        html::section().class("card deleting").child((
-            html::div().child((
-                html::h2().child(speech::said("your-account-delete-heading")),
-                html::p()
-                    .class("hint")
-                    .child(speech::said("your-account-delete-hint")),
-            )),
+        blocks::irreversible(
+            "deleting",
+            speech::said("your-account-delete-heading"),
+            speech::said("your-account-delete-hint"),
             html::button()
                 .r#type("button")
                 .class("danger")
                 .on(ev::click, move |_| deleting.set(Deleting::Asking))
                 .child(speech::said("your-account-delete")),
-        )),
+        ),
         move || match deleting.get() {
             Deleting::Not => None,
             Deleting::Asking => Some(asking(session, deleting, close).into_any()),
@@ -107,16 +106,19 @@ fn security_card(factor: Option<SecondFactorInUse>) -> impl IntoView {
         Some(ways.join(" · "))
     };
 
-    html::section().class("card security").child((
-        html::h2().child(speech::said("security-heading")),
-        html::p().class("status").child(if on {
-            speech::said("your-account-security-on")
-        } else {
-            speech::said("your-account-security-off")
-        }),
-        move || details().map(|details| html::p().class("hint").child(details)),
-        view! { <A href=route::SECURITY>{speech::said("your-account-security-manage")}</A> },
-    ))
+    blocks::card(
+        "security",
+        (
+            html::h2().child(speech::said("security-heading")),
+            html::p().class("status").child(if on {
+                speech::said("your-account-security-on")
+            } else {
+                speech::said("your-account-security-off")
+            }),
+            move || details().map(|details| html::p().class("hint").child(details)),
+            view! { <A href=route::SECURITY>{speech::said("your-account-security-manage")}</A> },
+        ),
+    )
 }
 
 /// The card that says how much storage the account's media use, and leads to them.
@@ -129,11 +131,14 @@ fn storage_card() -> impl IntoView {
         }
     });
 
-    html::section().class("card storage").child((
-        html::h2().child(speech::said("storage-heading")),
-        move || usage.get().map(|usage| storage_page::used(usage, speech)),
-        view! { <A href=route::STORAGE>{speech::said("your-account-storage-link")}</A> },
-    ))
+    blocks::card(
+        "storage",
+        (
+            html::h2().child(speech::said("storage-heading")),
+            move || usage.get().map(|usage| storage_page::used(usage, speech)),
+            view! { <A href=route::STORAGE>{speech::said("your-account-storage-link")}</A> },
+        ),
+    )
 }
 
 fn asking(
