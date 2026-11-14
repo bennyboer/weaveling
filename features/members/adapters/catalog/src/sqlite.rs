@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use clock::text;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, Pictured, ProjectLink,
+    ProjectMembers, Role,
 };
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
@@ -80,6 +81,20 @@ const LEAVING_ONE: &str = "
     SELECT account, until
     FROM leaving_accounts
     WHERE account = ?1 AND until IS NOT NULL
+";
+
+const REMEMBER_PICTURE: &str = "
+    INSERT INTO pictures (account, version, picture)
+    VALUES (?1, ?2, ?3)
+    ON CONFLICT (account) DO UPDATE
+    SET version = excluded.version, picture = excluded.picture
+    WHERE pictures.version < excluded.version
+";
+
+const PICTURE_ONE: &str = "
+    SELECT picture
+    FROM pictures
+    WHERE account = ?1 AND picture IS NOT NULL
 ";
 
 const LEDGER: &str = "_sqlx_migrations_memberships";
@@ -316,6 +331,44 @@ impl MembershipCatalog for SqliteMembershipCatalog {
                             format!("until holds {until:?}, which is no time").into(),
                         )
                     })?,
+                });
+            }
+        }
+        found.sort_by(|one, other| one.account.as_str().cmp(other.account.as_str()));
+
+        Ok(found)
+    }
+
+    async fn remember_picture(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        picture: Option<&str>,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PICTURE)
+            .bind(account.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(picture)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {
+        let mut found = Vec::new();
+        for account in accounts {
+            let picture: Option<String> = sqlx::query_scalar(PICTURE_ONE)
+                .bind(account.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(unreachable)?;
+            if let Some(picture) = picture {
+                found.push(Pictured {
+                    account: account.clone(),
+                    picture,
                 });
             }
         }

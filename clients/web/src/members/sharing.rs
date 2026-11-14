@@ -88,7 +88,7 @@ fn sharing(
         titled,
         "share",
         close,
-        html::div().class("operating sharing").child((
+        html::div().class("sharing").child((
             move || owning.get().then(|| listing::invite_form(invited)),
             html::section().child((
                 html::h3().child(speech::said("share-people")),

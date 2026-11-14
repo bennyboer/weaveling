@@ -40,6 +40,8 @@ pub struct MemberDTO {
     pub email: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaving_until: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

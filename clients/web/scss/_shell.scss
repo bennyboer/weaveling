@@ -62,7 +62,7 @@
     border: 1px solid var(--line);
     border-radius: 0.4rem;
     background: none;
-    color: var(--accent);
+    color: var(--ink);
     flex-shrink: 0;
     cursor: pointer;
 
@@ -488,6 +488,7 @@
 .avatar {
   display: grid;
   place-items: center;
+  object-fit: cover;
   width: 1.6rem;
   height: 1.6rem;
   border-radius: 50%;

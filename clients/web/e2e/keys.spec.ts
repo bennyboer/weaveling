@@ -98,9 +98,10 @@ test("a security key made by the browser is added under its name, the first seco
   );
   await page.getByLabel("I have kept them somewhere safe").check();
   await page.getByRole("button", { name: "Done" }).click();
-  // and: the key is listed by its name, beside the recovery codes
+  // and: the key is listed by its name as the second step, and all recovery codes are left
   await expect(ways(page)).toContainText("Security key “YubiKey blue”");
-  await expect(ways(page)).toContainText("10 of 10 left");
+  await expect(ways(page)).toContainText("second step");
+  await expect(page.getByRole("main")).toContainText("10 of 10 left");
   expect(server.keys.map((key) => key.name)).toEqual(["YubiKey blue"]);
 });
 
@@ -441,10 +442,10 @@ test("turning the app off beside a key keeps the recovery codes", async ({
   // then: the app is gone, while the key and the recovery codes stay
   await expect(ways(page)).not.toContainText("Authenticator app");
   await expect(ways(page)).toContainText("Security key “YubiKey blue”");
-  await expect(ways(page)).toContainText("10 of 10 left");
+  await expect(page.getByRole("main")).toContainText("10 of 10 left");
 });
 
-test("a passkey is added to sign in alone, listed apart from the second step, with no codes", async ({
+test("a passkey is added to sign in alone, marked so, with no codes", async ({
   page,
 }) => {
   // given: an author on their security page, with a key at hand
@@ -459,10 +460,10 @@ test("a passkey is added to sign in alone, listed apart from the second step, wi
   await naming.getByLabel("Name").fill("MacBook");
   await naming.getByRole("button", { name: "Add the key" }).click();
 
-  // then: it is listed under signing in, as a passkey
+  // then: it is listed as a passkey that signs in alone
   await expect(page.getByText("The key is added.")).toBeVisible();
-  const signingIn = page.getByRole("main").getByRole("list").first();
-  await expect(signingIn).toContainText("Passkey “MacBook”");
+  await expect(ways(page)).toContainText("Passkey “MacBook”");
+  await expect(ways(page)).toContainText("signs in alone");
   // and: no recovery codes are shown, the second step still off
   await expect(
     page.getByRole("heading", { name: "Keep these recovery codes" }),
@@ -656,3 +657,43 @@ test("one who just signed up is offered a passkey or a second step, which can wa
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
 });
+
+for (const width of [1280, 320]) {
+  test(`the security page fits a ${width}px window, with its ways and codes`, async ({ page }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 1000 });
+    // and: an author whose second step a key and the app answer, on their security page
+    const server = await aServerWithAccounts(page);
+    server.totpOffered = true;
+    await page.goto("/");
+    await signIn(page, ADA.email, HER_PASSWORD);
+    aKeyHeld(server, "YubiKey blue");
+    server.secondFactor!.answered_by_totp = true;
+    await page.goto("/account/security");
+    await expect(ways(page)).toContainText("Security key “YubiKey blue”");
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: the codes card is beside the second step on a wide window and below it on a phone
+    const secondStep = await page.locator(".card.second-step").boundingBox();
+    const codes = await page.locator(".card.codes").boundingBox();
+    expect(secondStep && codes).toBeTruthy();
+    if (width >= 800) {
+      expect(codes!.x, "the codes are beside the second step").toBeGreaterThan(
+        secondStep!.x + secondStep!.width,
+      );
+    } else {
+      expect(codes!.y, "the codes are below the second step").toBeGreaterThan(
+        secondStep!.y + secondStep!.height,
+      );
+    }
+    // and: a key's menu opens in full, inside the window
+    await page.getByRole("button", { name: "Actions for YubiKey blue" }).click();
+    const removing = page.getByRole("menuitem", { name: "Remove" });
+    await removing.scrollIntoViewIfNeeded();
+    await expect(removing).toBeInViewport({ ratio: 1 });
+  });
+}

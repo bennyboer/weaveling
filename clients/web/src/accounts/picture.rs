@@ -2,12 +2,13 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 use wasm_bindgen::JsCast;
-use web_sys::{File, HtmlInputElement};
+use web_sys::{HtmlInputElement, ImageBitmap};
 
 use crate::accounts::{CurrentSession, SignedInAccount, service};
 use crate::act::{Act, Here};
 use crate::assets::service as assets;
-use crate::assets::squaring;
+use crate::assets::squaring::Square;
+use crate::assets::{framing, squaring};
 use crate::avatar;
 use crate::blocks;
 use crate::dialog;
@@ -77,9 +78,8 @@ pub fn profile_card(session: CurrentSession, account: SignedInAccount) -> impl I
     });
 
     let uploading = RwSignal::new(false);
-    let me_choosing = me.clone();
+    let framing = RwSignal::new_local(None::<ImageBitmap>);
     let chosen = move |input: HtmlInputElement| {
-        let me = me_choosing.clone();
         refused.set(None);
         unreadable.set(false);
         let Some(file) = input.files().and_then(|files| files.get(0)) else {
@@ -88,7 +88,29 @@ pub fn profile_card(session: CurrentSession, account: SignedInAccount) -> impl I
         input.set_value("");
         uploading.set(true);
         spawn_local(async move {
-            let next = uploaded(&file, shown.get_untracked(), &me).await;
+            let image = squaring::decoded(&file).await;
+            uploading.set(false);
+            match image {
+                Ok(image) => framing.set(Some(image)),
+                Err(_) => unreadable.set(true),
+            }
+        });
+    };
+    let let_go = move || {
+        if let Some(image) = framing.try_update(Option::take).flatten() {
+            image.close();
+        }
+    };
+    let me_framing = me.clone();
+    let framed = move |square: Square| {
+        let Some(image) = framing.try_update(Option::take).flatten() else {
+            return;
+        };
+        let me = me_framing.clone();
+        uploading.set(true);
+        spawn_local(async move {
+            let next = uploaded(&image, square, shown.get_untracked(), &me).await;
+            image.close();
             uploading.set(false);
             match next {
                 Ok(Next::Ask(picture)) => asking.set(Asking::Replacing { picture }),
@@ -204,6 +226,12 @@ pub fn profile_card(session: CurrentSession, account: SignedInAccount) -> impl I
                 }
                 Asking::Removing => Some(removing_dialog(changing, asking, refused).into_any()),
             },
+            move || {
+                framing.get().map(|image| {
+                    let framed = framed.clone();
+                    framing::framing_dialog(image, framed, let_go)
+                })
+            },
         ),
     )
 }
@@ -219,10 +247,15 @@ enum Failed {
     Refused(ApiError),
 }
 
-/// Squares the chosen file, uploads it, and decides what follows.
+/// Cuts the chosen square from the image, uploads it, and decides what follows.
 /// The account is asked about the picture shown before only if nothing but its picture uses it.
-async fn uploaded(file: &File, previous: Option<String>, me: &str) -> Result<Next, Failed> {
-    let bytes = squaring::squared(file)
+async fn uploaded(
+    image: &ImageBitmap,
+    square: Square,
+    previous: Option<String>,
+    me: &str,
+) -> Result<Next, Failed> {
+    let bytes = squaring::cut(image, square)
         .await
         .map_err(|_| Failed::Unreadable)?;
     let picture = assets::upload_own(&bytes).await.map_err(Failed::Refused)?;

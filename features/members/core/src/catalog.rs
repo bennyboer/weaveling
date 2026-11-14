@@ -36,6 +36,13 @@ pub struct Leaving {
     pub until: OffsetDateTime,
 }
 
+/// The picture an account shows, as the accounts feature last reported it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pictured {
+    pub account: AccountId,
+    pub picture: String,
+}
+
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("the list of members could not be reached")]
@@ -113,6 +120,20 @@ pub trait MembershipCatalog: Send + Sync {
 
     /// Returns those of the given accounts that are leaving, by account.
     async fn leaving(&self, accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError>;
+
+    /// Stores which picture an account shows.
+    /// `picture` is none if the account shows no picture, or is already gone.
+    /// The account's version is compared, so an older message that arrives late changes nothing.
+    async fn remember_picture(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        picture: Option<&str>,
+    ) -> Result<(), CatalogError>;
+
+    /// Returns those of the given accounts that show a picture, by account.
+    async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError>;
 }
 
 impl ProjectMembers {

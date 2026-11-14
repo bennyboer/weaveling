@@ -1,0 +1,94 @@
+:is(.signing-in, .operating, .page, .sharing) {
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+
+    > span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+  }
+
+  .problem {
+    margin: 0;
+  }
+
+  .hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  h2 + .hint {
+    margin-top: 0;
+  }
+
+  .notice {
+    margin: 0 0 1.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--accent);
+  }
+
+  .turning {
+    display: block;
+    margin-top: 1rem;
+    padding: 0;
+    border: none;
+    color: var(--muted);
+    text-decoration: underline;
+
+    &:hover {
+      color: var(--ink);
+    }
+  }
+
+  select {
+    appearance: none;
+    padding: 0.6rem 2.25rem 0.6rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: var(--paper) var(--chevron) no-repeat right 0.75rem center / 0.9rem;
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--muted);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--ink);
+      outline-offset: -1px;
+    }
+  }
+
+  .invite {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+
+    .field {
+      flex: 1 1 16rem;
+      margin: 0;
+
+      &.as {
+        flex: none;
+        align-self: stretch;
+
+        select {
+          flex: 1;
+        }
+      }
+    }
+  }
+}

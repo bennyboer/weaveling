@@ -3,7 +3,8 @@ use std::error::Error;
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, Pictured, ProjectLink,
+    ProjectMembers, Role,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
@@ -84,6 +85,21 @@ const LEAVING: &str = "
     SELECT account, until
     FROM leaving_accounts
     WHERE account = ANY($1) AND until IS NOT NULL
+    ORDER BY account
+";
+
+const REMEMBER_PICTURE: &str = "
+    INSERT INTO pictures (account, version, picture)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (account) DO UPDATE
+    SET version = EXCLUDED.version, picture = EXCLUDED.picture
+    WHERE pictures.version < EXCLUDED.version
+";
+
+const PICTURES: &str = "
+    SELECT account, picture
+    FROM pictures
+    WHERE account = ANY($1) AND picture IS NOT NULL
     ORDER BY account
 ";
 
@@ -313,6 +329,44 @@ impl MembershipCatalog for PostgresMembershipCatalog {
                 Ok(Leaving {
                     account: AccountId::from(account),
                     until: row.try_get("until").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn remember_picture(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        picture: Option<&str>,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PICTURE)
+            .bind(account.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(picture)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {
+        let asked: Vec<&str> = accounts.iter().map(AccountId::as_str).collect();
+        let rows = sqlx::query(PICTURES)
+            .bind(&asked)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        rows.iter()
+            .map(|row| {
+                let account: String = row.try_get("account").map_err(unreachable)?;
+
+                Ok(Pictured {
+                    account: AccountId::from(account),
+                    picture: row.try_get("picture").map_err(unreachable)?,
                 })
             })
             .collect()

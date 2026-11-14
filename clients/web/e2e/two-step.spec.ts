@@ -132,7 +132,7 @@ test("a code of the app turns it on and shows the recovery codes once, to be kep
   // then: the app shows as a way of answering the second step, with all ten codes left
   const ways = page.getByRole("main").getByRole("list");
   await expect(ways).toContainText("Authenticator app");
-  await expect(ways).toContainText("10 of 10 left");
+  await expect(page.getByRole("main")).toContainText("10 of 10 left");
   await page.getByRole("button", { name: "Actions for the authenticator app" }).click();
   await expect(page.getByRole("menuitem", { name: "Set up again" })).toBeVisible();
   // and: the codes are not shown again

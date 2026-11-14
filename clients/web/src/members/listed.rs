@@ -16,6 +16,7 @@ pub struct Member {
     pub role: Role,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub picture: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +70,7 @@ pub fn listed(member: MemberDTO) -> Result<Member, ApiError> {
         account: member.account,
         name: member.name,
         email: member.email,
+        picture: member.picture,
     })
 }
 
@@ -83,6 +85,7 @@ mod tests {
             name: Some("Ada Lovelace".to_owned()),
             email: Some("ada@example.com".to_owned()),
             leaving_until: None,
+            picture: Some("asset_ada".to_owned()),
         }
     }
 
@@ -101,6 +104,7 @@ mod tests {
                     role: read,
                     name: Some("Ada Lovelace".to_owned()),
                     email: Some("ada@example.com".to_owned()),
+                    picture: Some("asset_ada".to_owned()),
                 })
             );
         }

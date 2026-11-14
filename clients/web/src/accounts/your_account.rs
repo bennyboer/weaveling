@@ -49,6 +49,8 @@ pub fn YourAccountPage() -> impl IntoView {
         blocks::page(
             "your-account",
             speech::said("your-account-heading"),
+            None,
+            (),
             move || match session.state.get() {
                 SignInState::SignedIn(account) => Some(overview(session, account)),
                 _ => None,

@@ -255,7 +255,13 @@ fn stacked(held: Vec<Member>) -> impl IntoView {
     html::span().class("stack").child((
         held.iter()
             .take(AVATARS_SHOWN)
-            .map(|member| avatar::avatar(&member.account, member.name.as_deref()))
+            .map(|member| {
+                avatar::avatar(
+                    &member.account,
+                    member.name.as_deref(),
+                    member.picture.as_deref(),
+                )
+            })
             .collect::<Vec<_>>(),
         beyond.map(|beyond| {
             html::span()

@@ -163,8 +163,8 @@ async function anOperatorLookingAtTheStorage(
   return storage;
 }
 
-const listed = (page: Page) => page.locator(".storage-accounts .storage-use > li");
-const projectsListed = (page: Page) => page.locator(".storage-projects .storage-use > li");
+const listed = (page: Page) => page.locator(".storage-accounts .list-row");
+const projectsListed = (page: Page) => page.locator(".storage-projects .list-row");
 
 const THE_LOOM: Project = {
   project: "project_loom",
@@ -220,6 +220,20 @@ test("an account is found by its name or address, and none matching says so", as
   await page.getByLabel("Find an account").fill("nobody");
   // then: no account matches
   await expect(page.getByText("No account matches.")).toBeVisible();
+});
+
+test("typing a search asks the server once typing pauses, not at every key", async ({ page }) => {
+  // given: an operator looking at the storage
+  const storage = await anOperatorLookingAtTheStorage(page);
+  await expect(listed(page)).toHaveCount(2);
+  const before = storage.searched.length;
+
+  // when: she types a name key by key
+  await page.getByLabel("Find an account").pressSequentially("hedy", { delay: 40 });
+
+  // then: Hedy alone is listed, after asking the server once
+  await expect(listed(page)).toHaveCount(1);
+  expect(storage.searched.slice(before)).toEqual(["hedy"]);
 });
 
 test("an account without a known name is shown by its id", async ({ page }) => {
@@ -354,3 +368,60 @@ test("a project is found by its name, and none matching says so", async ({ page 
   await expect(page.getByText("No project matches.")).toBeVisible();
   await expect(page.getByText("No account uses any storage yet.")).toBeVisible();
 });
+
+for (const width of [1280, 320]) {
+  test(`the storage overview fits a ${width}px window, the lists beside each other only when there is room`, async ({
+    page,
+  }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 900 });
+    // and: an operator looking at the storage of accounts and projects
+    await anOperatorLookingAtTheStorage(page, [HEDY, GRACE], [THE_LOOM, THE_WEFT]);
+    await expect(listed(page)).toHaveCount(2);
+    await expect(projectsListed(page)).toHaveCount(2);
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: the projects are beside the accounts on a wide window and below them on a phone
+    const accounts = await page.locator(".storage-accounts").boundingBox();
+    const projects = await page.locator(".storage-projects").boundingBox();
+    expect(accounts && projects).toBeTruthy();
+    if (width >= 800) {
+      expect(projects!.x, "the projects are beside the accounts").toBeGreaterThan(
+        accounts!.x + accounts!.width,
+      );
+    } else {
+      expect(projects!.y, "the projects are below the accounts").toBeGreaterThan(
+        accounts!.y + accounts!.height,
+      );
+    }
+    // and: each account's limit can be changed
+    await expect(row(page, "Grace Hopper").getByRole("button", { name: "Change limit" })).toBeInViewport();
+  });
+}
+
+test("on a phone the limit dialog fits the window, its buttons below each other", async ({ page }) => {
+  // given: a phone
+  await page.setViewportSize({ width: 390, height: 800 });
+  // and: an operator looking at the storage
+  await anOperatorLookingAtTheStorage(page);
+
+  // when: she opens the limit of an account with its own limit
+  await row(page, "Hedy Lamarr").getByRole("button", { name: "Change limit" }).click();
+  const dialog = page.getByRole("dialog", { name: "Storage limit for Hedy Lamarr" });
+
+  // then: the dialog fits the window
+  const box = (await dialog.boundingBox())!;
+  expect(box.x, "the dialog starts inside the window").toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, "the dialog ends inside the window").toBeLessThanOrEqual(390);
+  // and: its buttons stand below each other, saving on top
+  const save = (await dialog.getByRole("button", { name: "Save" }).boundingBox())!;
+  const fallback = (await dialog.getByRole("button", { name: "Use the default limit" }).boundingBox())!;
+  const cancel = (await dialog.getByRole("button", { name: "Cancel" }).boundingBox())!;
+  expect(save.y).toBeLessThan(fallback.y);
+  expect(fallback.y).toBeLessThan(cancel.y);
+});
+

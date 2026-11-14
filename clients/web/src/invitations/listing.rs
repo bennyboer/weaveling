@@ -2,6 +2,8 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use crate::avatar;
+use crate::blocks;
 use crate::invitations::invited::{Invited, Inviting};
 use crate::invitations::listed::{DeclineReason, ListedInvitation, Scope, Status};
 use crate::invitations::service::InvitedInto;
@@ -19,10 +21,25 @@ fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
     speech::say_with(key, &told)
 }
 
+/// The invitations as a list card, with the form to invite someone at its top.
+/// An instance's invitations are headed "Invitations", a project's "Invited".
 pub fn invitations_listing(into: InvitedInto) -> impl IntoView {
+    let heading = match into {
+        InvitedInto::Instance => "instance-invitations-heading",
+        InvitedInto::Project(_) => "members-invited",
+    };
     let invited = Invited::asked(into);
 
-    (invite_form(invited), invited_list(invited))
+    blocks::list_card(
+        "invitations",
+        speech::said(heading),
+        (),
+        (
+            html::div().class("inviting").child(invite_form(invited)),
+            invited_list(invited),
+        ),
+        (),
+    )
 }
 
 pub fn invite_form(invited: Invited) -> impl IntoView {
@@ -41,22 +58,23 @@ pub fn invited_list(invited: Invited) -> impl IntoView {
                     .child(speech::said("instance-invitations-none"))
             })
         },
-        html::ul().class("invitations").child(move || {
-            invited
-                .invitations
-                .shown()
-                .into_iter()
-                .map(|invitation| listed(invited, invitation))
-                .collect_view()
-        }),
+        html::div()
+            .class("invitations")
+            .child(blocks::rows(move || {
+                invited
+                    .invitations
+                    .shown()
+                    .into_iter()
+                    .map(|invitation| listed(invited, invitation))
+                    .collect_view()
+            })),
         move || {
             invited.next.get().map(|next| {
-                html::button()
-                    .r#type("button")
-                    .class("more")
-                    .disabled(move || invited.loading.get())
-                    .on(ev::click, move |_| invited.load(Some(next.clone())))
-                    .child(speech::said("instance-invitations-more"))
+                blocks::more(
+                    "instance-invitations-more",
+                    move || invited.loading.get(),
+                    move |_| invited.load(Some(next.clone())),
+                )
             })
         },
     )
@@ -144,12 +162,11 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
         ),
     };
 
-    html::li().child((
-        html::div().class("who").child((
-            html::p().class("email").child(invitation.email),
-            html::p().class("issued").child(issued),
-        )),
-        html::div().class("marks").child((
+    blocks::row(
+        avatar::avatar(&invitation.email, Some(&invitation.email), None),
+        invitation.email.clone(),
+        issued,
+        (
             html::span().class(mark).child(told),
             match &invitation.scope {
                 Scope::Instance => None,
@@ -159,8 +176,8 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
                         .child(speech::said(role.message())),
                 ),
             },
-        )),
-        html::div().class("actions").child((
+        ),
+        (
             again.map(|again| {
                 let pressed = again.clone();
 
@@ -181,6 +198,6 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
                     .on(ev::click, move |_| invited.withdraw(id.clone()))
                     .child(speech::said("instance-invitation-withdraw"))
             }),
-        )),
-    ))
+        ),
+    )
 }

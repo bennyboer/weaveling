@@ -1,3 +1,4 @@
+pub mod framing;
 pub mod instance_storage;
 pub mod service;
 pub mod squaring;

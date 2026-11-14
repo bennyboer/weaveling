@@ -6106,6 +6106,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-accounts-contract",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventpublishing",

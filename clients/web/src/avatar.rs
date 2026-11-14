@@ -1,7 +1,13 @@
 use leptos::prelude::*;
 use leptos::{IntoView, html};
 
+use crate::assets::service as assets;
+
 const TINTS: usize = 5;
+
+/// The width asked for a picture in an avatar.
+/// Avatars are at most 40 pixels wide, so this stays sharp on screens with twice the pixel density.
+const PICTURE: u32 = 96;
 
 pub fn initial_of(name: &str) -> String {
     name.chars()
@@ -18,11 +24,23 @@ pub fn tint_of(account: &str) -> String {
     format!("tint-{}", summed % TINTS)
 }
 
-pub fn avatar(account: &str, name: Option<&str>) -> impl IntoView + use<> {
-    html::span()
-        .class(format!("avatar {}", tint_of(account)))
-        .attr("aria-hidden", "true")
-        .child(name.map(initial_of).unwrap_or_else(|| "?".to_owned()))
+/// Shows an account by its picture, or by the first letter of its name where it has none.
+/// The letter stands on the account's own tint.
+/// The avatar is only decoration, as the name is always written beside it.
+pub fn avatar(account: &str, name: Option<&str>, picture: Option<&str>) -> impl IntoView + use<> {
+    match picture {
+        Some(picture) => html::img()
+            .class("avatar")
+            .src(assets::content(picture, PICTURE))
+            .alt("")
+            .attr("aria-hidden", "true")
+            .into_any(),
+        None => html::span()
+            .class(format!("avatar {}", tint_of(account)))
+            .attr("aria-hidden", "true")
+            .child(name.map(initial_of).unwrap_or_else(|| "?".to_owned()))
+            .into_any(),
+    }
 }
 
 #[cfg(test)]

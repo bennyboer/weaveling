@@ -58,6 +58,7 @@ mod tests {
             role,
             name: None,
             email: None,
+            picture: None,
         }
     }
 

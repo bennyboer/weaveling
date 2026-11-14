@@ -7,6 +7,8 @@ use leptos::{IntoView, ev, html};
 use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState};
+use crate::avatar;
+use crate::blocks;
 use crate::http::ApiError;
 use crate::live::Subscription;
 use crate::members::intent::Intent;
@@ -190,7 +192,7 @@ pub fn people(people: People) -> impl IntoView {
                     .then(|| leaving::leaving(people, left.clone()))
             }
         },
-        html::ul().class("members").child(move || {
+        html::div().class("members").child(blocks::rows(move || {
             let own = people.own();
             let owning = people.owning();
             people
@@ -201,7 +203,7 @@ pub fn people(people: People) -> impl IntoView {
                     listed(people, member, yourself, owning, left.clone())
                 })
                 .collect_view()
-        }),
+        })),
     )
 }
 
@@ -220,18 +222,15 @@ fn listed(
 ) -> impl IntoView {
     let named = member.name.clone();
     let account = member.account.clone();
-    let role = if yourself && people.the_only_owner() {
-        html::p()
-            .class("role")
-            .child(speech::said("members-only-owner"))
-            .into_any()
+    let (held, choice) = if yourself && people.the_only_owner() {
+        (Some(blocks::mark(speech::said("members-only-owner"))), None)
     } else if owning {
-        role_choice(people, &member).into_any()
+        (None, Some(role_choice(people, &member)))
     } else {
-        html::p()
-            .class("role")
-            .child(speech::said(member.role.message()))
-            .into_any()
+        (
+            Some(blocks::mark(speech::said(member.role.message()))),
+            None,
+        )
     };
     let action = if yourself {
         Some(
@@ -258,22 +257,25 @@ fn listed(
         })
     };
 
-    html::li().child((
-        html::div().class("who").child((
-            html::p().class("name").child((
-                move || shown_name(&named),
-                yourself.then(|| html::span().class("you").child(speech::said("members-you"))),
-            )),
-            member
-                .email
-                .map(|email| html::p().class("email").child(email)),
-        )),
-        role,
-        html::div().class("actions").child(action),
-    ))
+    let pictured = member.name.clone();
+
+    blocks::row(
+        avatar::avatar(
+            &member.account,
+            pictured.as_deref(),
+            member.picture.as_deref(),
+        ),
+        (
+            move || shown_name(&named),
+            yourself.then(|| html::span().class("you").child(speech::said("members-you"))),
+        ),
+        member.email.unwrap_or_default(),
+        held,
+        (choice, action),
+    )
 }
 
-fn role_choice(people: People, member: &Member) -> impl IntoView {
+fn role_choice(people: People, member: &Member) -> impl IntoView + use<> {
     let account = member.account.clone();
     let named = member.name.clone();
     let held = member.role;

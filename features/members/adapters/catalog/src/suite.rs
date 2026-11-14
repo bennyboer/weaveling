@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Leaving, Member, Membership, MembershipCatalog, Person, ProjectLink,
+    CatalogError, Leaving, Member, Membership, MembershipCatalog, Person, Pictured, ProjectLink,
     ProjectMembers, Role,
 };
 use time::OffsetDateTime;
@@ -136,6 +136,23 @@ impl<C: MembershipCatalog> Committing<'_, C> {
                 .map_err(Tried::Refused)?;
 
             Ok(forgotten)
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn remember_picture(
+        &self,
+        account: &AccountId,
+        version: u64,
+        picture: Option<&str>,
+    ) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .remember_picture(transaction, account, Version::of(version), picture)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
         })
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
@@ -828,6 +845,131 @@ pub async fn accounts_no_longer_leaving_are_forgotten_no_more_than_asked_at_a_ti
     }
 }
 
+async fn pictured(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+    account: &AccountId,
+    version: u64,
+    picture: Option<&str>,
+) {
+    catalog
+        .remember_picture(account, version, picture)
+        .await
+        .expect("remembering should succeed");
+}
+
+async fn pictures(catalog: &impl MembershipCatalog, accounts: &[AccountId]) -> Vec<Pictured> {
+    catalog
+        .pictures(accounts)
+        .await
+        .expect("asking should succeed")
+}
+
+fn a_picture(account: AccountId, picture: &str) -> Pictured {
+    Pictured {
+        account,
+        picture: picture.to_owned(),
+    }
+}
+
+pub async fn the_pictures_asked_for_are_told_by_account_and_no_others(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // expect: nobody shows a picture before anything is told
+    assert!(
+        pictures(catalog.uncommitted(), &[ada(), grace()])
+            .await
+            .is_empty()
+    );
+
+    // when: three accounts are told showing a picture
+    pictured(catalog, &hedy(), 2, Some("asset_hedy")).await;
+    pictured(catalog, &grace(), 4, Some("asset_grace")).await;
+    pictured(catalog, &ada(), 3, Some("asset_ada")).await;
+
+    // then: asking for two of them and someone unknown tells the two, by account
+    assert_eq!(
+        pictures(
+            catalog.uncommitted(),
+            &[grace(), AccountId::from("account_nobody"), ada()]
+        )
+        .await,
+        vec![
+            a_picture(ada(), "asset_ada"),
+            a_picture(grace(), "asset_grace"),
+        ]
+    );
+    // and: asking for nobody tells nobody
+    assert!(pictures(catalog.uncommitted(), &[]).await.is_empty());
+}
+
+pub async fn a_newer_picture_replaces_the_older_and_an_older_one_heard_late_changes_nothing(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: an account told showing a picture at its third version
+    pictured(catalog, &ada(), 3, Some("asset_first")).await;
+
+    // when: it is told showing another one at its fifth
+    pictured(catalog, &ada(), 5, Some("asset_second")).await;
+    // then: it shows the newer one
+    assert_eq!(
+        pictures(catalog.uncommitted(), &[ada()]).await,
+        vec![a_picture(ada(), "asset_second")]
+    );
+
+    // when: a picture of an older or the same version is heard late
+    for late in [4, 5] {
+        pictured(catalog, &ada(), late, Some("asset_late")).await;
+    }
+    // then: it still shows the newer one
+    assert_eq!(
+        pictures(catalog.uncommitted(), &[ada()]).await,
+        vec![a_picture(ada(), "asset_second")]
+    );
+}
+
+pub async fn a_removed_picture_is_shown_no_more_even_if_an_older_one_is_heard_late(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: two accounts told showing a picture
+    pictured(catalog, &ada(), 3, Some("asset_ada")).await;
+    pictured(catalog, &grace(), 3, Some("asset_grace")).await;
+
+    // when: one of them is told showing none at a newer version
+    pictured(catalog, &ada(), 4, None).await;
+
+    // then: only the other shows a picture
+    assert_eq!(
+        pictures(catalog.uncommitted(), &[ada(), grace()]).await,
+        vec![a_picture(grace(), "asset_grace")]
+    );
+
+    // when: an older picture of hers is heard late
+    pictured(catalog, &ada(), 3, Some("asset_ada")).await;
+    // then: she still shows none
+    assert!(
+        pictures(catalog.uncommitted(), &[ada()]).await.is_empty(),
+        "a removal heard before the picture it undoes must not bring the picture back"
+    );
+}
+
+pub async fn a_picture_told_in_a_dropped_transaction_was_never_heard(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: an account told showing a picture in a transaction
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember_picture(&mut transaction, &ada(), Version::of(3), Some("asset_ada"))
+        .await
+        .expect("remembering should succeed");
+
+    // when: the transaction is dropped
+    drop(transaction);
+
+    // then: she shows no picture
+    assert!(pictures(catalog.uncommitted(), &[ada()]).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -904,6 +1046,22 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             accounts_no_longer_leaving_are_forgotten_no_more_than_asked_at_a_time
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_pictures_asked_for_are_told_by_account_and_no_others
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_newer_picture_replaces_the_older_and_an_older_one_heard_late_changes_nothing
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_removed_picture_is_shown_no_more_even_if_an_older_one_is_heard_late
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_picture_told_in_a_dropped_transaction_was_never_heard
         );
     };
 }

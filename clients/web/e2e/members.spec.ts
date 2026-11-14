@@ -77,7 +77,7 @@ test("without accounts a project has no members to show", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Members" })).toHaveCount(0);
 });
 
-type Listed = { account: string; role: string; name?: string; email?: string };
+type Listed = { account: string; role: string; name?: string; email?: string; picture?: string };
 
 async function membersServed(page: Page, listed: Listed[]) {
   const asked = {
@@ -757,3 +757,67 @@ test("on a phone, Share is in the More menu and the dialog fits the screen", asy
   expect(shown!.x).toBeGreaterThanOrEqual(0);
   expect(shown!.x + shown!.width).toBeLessThanOrEqual(360);
 });
+
+test("a member with a picture is shown by it, one without by the initial, in the list and the masthead", async ({
+  page,
+}) => {
+  // given: an owner on the members page, Grace with a picture and Hedy without
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author", picture: "asset_grace" },
+    { ...HEDY, role: "reader" },
+  ]);
+
+  // then: Grace's row shows her picture
+  const grace = page.locator(".members li").filter({ hasText: "Grace Hopper" });
+  await expect(grace.locator("img.avatar")).toHaveAttribute(
+    "src",
+    "/api/assets/asset_grace/content?width=96",
+  );
+  // and: Hedy's row shows her initial
+  const hedy = page.locator(".members li").filter({ hasText: "Hedy Lamarr" });
+  await expect(hedy.locator("img")).toHaveCount(0);
+  await expect(hedy.locator(".avatar")).toHaveText("H");
+  // and: the masthead shows Grace's picture among the members
+  await expect(
+    page.getByRole("banner").locator('img.avatar[src="/api/assets/asset_grace/content?width=96"]'),
+  ).toHaveCount(1);
+});
+
+for (const width of [1280, 320]) {
+  test(`the members page fits a ${width}px window, the roles beside each other only when there is room`, async ({
+    page,
+  }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 900 });
+    // and: an owner on the members page with an author and a reader
+    await onTheMembersPage(page, [
+      { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+      { ...GRACE, role: "author" },
+      { ...HEDY, role: "reader" },
+    ]);
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: inviting someone is offered in the head of the people
+    await expect(page.getByRole("link", { name: "Invite someone" })).toBeVisible();
+    // and: the roles stand beside each other on a wide window and below each other on a phone
+    const owner = await page.locator(".card.role").filter({ hasText: "Owner" }).boundingBox();
+    const reader = await page.locator(".card.role").filter({ hasText: "Reader" }).boundingBox();
+    expect(owner && reader).toBeTruthy();
+    if (width >= 800) {
+      expect(reader!.y, "the roles share a line").toBe(owner!.y);
+    } else {
+      expect(reader!.y, "the roles are below each other").toBeGreaterThan(owner!.y + owner!.height);
+    }
+    // and: a member's role and removal can be reached
+    const grace = page.locator(".members li").filter({ hasText: "Grace Hopper" });
+    await expect(page.getByLabel("Role of Grace Hopper")).toBeInViewport();
+    await grace.getByRole("button", { name: "Remove" }).scrollIntoViewIfNeeded();
+    await expect(grace.getByRole("button", { name: "Remove" })).toBeInViewport();
+  });
+}
+

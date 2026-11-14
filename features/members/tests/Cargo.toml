@@ -20,6 +20,7 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+accounts-contract = { version = "0.1.0", path = "../../accounts/contract", package = "weaveling-accounts-contract" }
 
 members-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-members-catalog" }
 members-contract = { version = "0.1.0", path = "../contract", package = "weaveling-members-contract" }

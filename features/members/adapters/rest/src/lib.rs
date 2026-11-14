@@ -126,6 +126,7 @@ fn to_dto(member: &ListedMember) -> MemberDTO {
         name: member.name.clone(),
         email: member.email.clone(),
         leaving_until: member.leaving_until.map(text::serialize),
+        picture: member.picture.clone(),
     }
 }
 

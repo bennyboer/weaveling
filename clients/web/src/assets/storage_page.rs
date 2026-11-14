@@ -21,6 +21,10 @@ use crate::speech::Speech;
 /// They are shown 64 pixels wide, so this stays sharp on screens with three times the pixel density.
 const THUMBNAIL: u32 = 192;
 
+/// The width asked for an upload shown bigger.
+/// It is shown at most about 760 pixels wide, so this stays sharp on screens with twice the pixel density.
+const VIEWED: u32 = 1_536;
+
 /// What the storage page shows and is doing.
 /// `asked` counts the lists asked for, so an answer to an older one is ignored.
 #[derive(Clone, Copy)]
@@ -32,7 +36,15 @@ struct Shelf {
     loading: RwSignal<bool>,
     refused: RwSignal<Option<ApiError>>,
     deleting: RwSignal<Option<Upload>>,
+    viewing: RwSignal<Option<Viewed>>,
     asked: StoredValue<u64>,
+}
+
+/// An upload shown bigger in a dialog: its id, and the words that say whose it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Viewed {
+    id: String,
+    whose: String,
 }
 
 impl Shelf {
@@ -45,6 +57,7 @@ impl Shelf {
             loading: RwSignal::new(false),
             refused: RwSignal::new(None),
             deleting: RwSignal::new(None),
+            viewing: RwSignal::new(None),
             asked: StoredValue::new(0),
         };
         shelf.load(None);
@@ -107,12 +120,16 @@ pub fn StoragePage() -> impl IntoView {
 
     (
         shell::masthead(None),
-        html::main()
-            .class("operating storage")
-            .child(move || match session.state() {
+        blocks::page(
+            "storage",
+            speech::said("storage-heading"),
+            Some("storage-lead"),
+            (),
+            move || match session.state() {
                 SignInState::SignedIn(_) => Some(storage()),
                 _ => None,
-            }),
+            },
+        ),
     )
 }
 
@@ -121,60 +138,75 @@ fn storage() -> impl IntoView {
     let speech = expect_context::<Speech>();
 
     (
-        html::h1().child(speech::said("storage-heading")),
-        move || shelf.usage.get().map(|usage| used(usage, speech)),
-        html::p().class("hint").child(speech::said("storage-hint")),
-        html::label().class("field sorting").child((
-            html::span().child(speech::said("storage-sort")),
-            html::select()
-                .on(ev::change, move |event| {
-                    if let Some(sorted) = UploadsSorted::of(&event_target_value(&event)) {
-                        shelf.sort(sorted);
-                    }
-                })
-                .child((
-                    html::option()
-                        .value(UploadsSorted::Newest.named())
-                        .selected(move || shelf.sorted.get() == UploadsSorted::Newest)
-                        .child(speech::said("storage-sort-newest")),
-                    html::option()
-                        .value(UploadsSorted::Largest.named())
-                        .selected(move || shelf.sorted.get() == UploadsSorted::Largest)
-                        .child(speech::said("storage-sort-largest")),
-                )),
-        )),
+        move || {
+            shelf
+                .usage
+                .get()
+                .map(|usage| blocks::usage_card(used(usage, speech), speech::said("storage-hint")))
+        },
         move || {
             shelf
                 .deleting
                 .with(Option::is_none)
                 .then(|| shelf.refused.get().map(problem::problem))
         },
-        move || {
-            let nothing = shelf.uploads.with(Vec::is_empty)
-                && shelf.next.with(Option::is_none)
-                && !shelf.loading.get();
-            nothing.then(|| html::p().class("hint").child(speech::said("storage-none")))
-        },
-        html::ul().class("uploads").child(move || {
-            shelf
-                .uploads
-                .get()
-                .into_iter()
-                .map(|upload| listed(shelf, upload, speech))
-                .collect_view()
-        }),
-        move || {
-            shelf.next.get().map(|next| {
-                html::button()
-                    .r#type("button")
-                    .class("more")
-                    .disabled(move || shelf.loading.get())
-                    .on(ev::click, move |_| shelf.load(Some(next.clone())))
-                    .child(speech::said("storage-more"))
-            })
-        },
+        blocks::list_card(
+            "uploads",
+            speech::said("storage-media"),
+            sorting(shelf),
+            (
+                move || {
+                    let nothing = shelf.uploads.with(Vec::is_empty)
+                        && shelf.next.with(Option::is_none)
+                        && !shelf.loading.get();
+                    nothing.then(|| html::p().class("hint").child(speech::said("storage-none")))
+                },
+                blocks::rows(move || {
+                    shelf
+                        .uploads
+                        .get()
+                        .into_iter()
+                        .map(|upload| listed(shelf, upload, speech))
+                        .collect_view()
+                }),
+            ),
+            move || {
+                shelf.next.get().map(|next| {
+                    blocks::more(
+                        "storage-more",
+                        move || shelf.loading.get(),
+                        move |_| shelf.load(Some(next.clone())),
+                    )
+                })
+            },
+        ),
         move || shelf.deleting.get().map(|upload| deletion(shelf, upload)),
+        move || shelf.viewing.get().map(|viewed| viewing(shelf, viewed)),
     )
+}
+
+fn sorting(shelf: Shelf) -> impl IntoView {
+    html::label().class("sorting").child((
+        html::span()
+            .class("visually-hidden")
+            .child(speech::said("storage-sort")),
+        html::select()
+            .on(ev::change, move |event| {
+                if let Some(sorted) = UploadsSorted::of(&event_target_value(&event)) {
+                    shelf.sort(sorted);
+                }
+            })
+            .child((
+                html::option()
+                    .value(UploadsSorted::Newest.named())
+                    .selected(move || shelf.sorted.get() == UploadsSorted::Newest)
+                    .child(speech::said("storage-sort-newest")),
+                html::option()
+                    .value(UploadsSorted::Largest.named())
+                    .selected(move || shelf.sorted.get() == UploadsSorted::Largest)
+                    .child(speech::said("storage-sort-largest")),
+            )),
+    ))
 }
 
 pub(crate) fn used(usage: Usage, speech: Speech) -> impl IntoView {
@@ -217,18 +249,31 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
     };
     let deletable = upload.deletable;
     let asked = upload.clone();
+    let telling = whose.clone();
+    let shown = id.clone();
 
-    html::li().child((
-        html::img()
-            .class("thumbnail")
-            .src(service::content(&id, THUMBNAIL))
-            .alt("")
-            .attr("loading", "lazy"),
-        html::div().class("who").child((
-            html::p().class("name").child(whose),
-            html::p().class("detail").child(detail),
-        )),
-        html::div().class("actions").child(if deletable {
+    blocks::row(
+        html::button()
+            .r#type("button")
+            .class("thumbnail-button")
+            .attr("aria-label", move || speech.say("storage-view"))
+            .on(ev::click, move |_| {
+                shelf.viewing.set(Some(Viewed {
+                    id: shown.clone(),
+                    whose: telling(),
+                }))
+            })
+            .child(
+                html::img()
+                    .class("thumbnail")
+                    .src(service::content(&id, THUMBNAIL))
+                    .alt("")
+                    .attr("loading", "lazy"),
+            ),
+        whose,
+        detail,
+        (!deletable).then(|| blocks::mark(speech::said(not_deletable_because(&upload.uses)))),
+        deletable.then(|| {
             html::button()
                 .r#type("button")
                 .class("danger")
@@ -237,26 +282,44 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
                     shelf.deleting.set(Some(asked.clone()));
                 })
                 .child(speech::said("storage-delete"))
-                .into_any()
-        } else {
-            html::p()
-                .class("hint")
-                .child(speech::said(not_deletable_because(&upload.uses)))
-                .into_any()
         }),
-    ))
+    )
 }
 
-/// The message that says why an upload cannot be deleted.
-/// An upload in use says what it is used for. Otherwise it is in a project the account may not write in.
+/// The mark that says why an upload cannot be deleted.
+/// An upload in use says what it is used for. Otherwise it is in a project the account may only read.
 fn not_deletable_because(uses: &[Purpose]) -> &'static str {
     if uses.contains(&Purpose::AccountPicture) {
-        "storage-in-use-as-picture"
+        "storage-mark-picture"
     } else if !uses.is_empty() {
-        "storage-in-use"
+        "storage-mark-in-use"
     } else {
-        "storage-not-deletable"
+        "storage-mark-read-only"
     }
+}
+
+/// A dialog that shows an upload bigger, as large as the window allows.
+fn viewing(shelf: Shelf, viewed: Viewed) -> impl IntoView {
+    let close = move || shelf.viewing.set(None);
+    let whose = viewed.whose;
+
+    dialog::modal(
+        Signal::derive(move || whose.clone()),
+        "viewing-upload",
+        close,
+        (
+            html::img()
+                .class("viewed")
+                .src(service::content(&viewed.id, VIEWED))
+                .alt(""),
+            html::div().class("dialog-actions").child(
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| close())
+                    .child(speech::said("storage-view-close")),
+            ),
+        ),
+    )
 }
 
 fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
@@ -307,11 +370,14 @@ mod tests {
         // expect: a picture says it is one
         assert_eq!(
             not_deletable_because(&[Purpose::Other, Purpose::AccountPicture]),
-            "storage-in-use-as-picture"
+            "storage-mark-picture"
         );
         // and: a use this client does not know says only that it is in use
-        assert_eq!(not_deletable_because(&[Purpose::Other]), "storage-in-use");
-        // and: an upload used for nothing is in a project the account may not write in
-        assert_eq!(not_deletable_because(&[]), "storage-not-deletable");
+        assert_eq!(
+            not_deletable_because(&[Purpose::Other]),
+            "storage-mark-in-use"
+        );
+        // and: an upload used for nothing is in a project the account may only read
+        assert_eq!(not_deletable_because(&[]), "storage-mark-read-only");
     }
 }

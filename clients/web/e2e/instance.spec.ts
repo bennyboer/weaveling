@@ -484,7 +484,7 @@ test("every row keeps its buttons beside what it tells, marked or not", async ({
   // then: every row keeps its buttons beside what it tells, aligned
   const rightEdges: number[] = [];
   for (const name of ["Hedy Lamarr", "Grace Hopper", "Ada Lovelace"]) {
-    const who = await row(page, name).locator(".who").boundingBox();
+    const who = await row(page, name).locator(".text").boundingBox();
     const actions = await row(page, name).locator(".actions").boundingBox();
     expect(who && actions).toBeTruthy();
     expect(actions!.y, `${name}'s buttons stand beside the infos`).toBeLessThan(
@@ -495,3 +495,40 @@ test("every row keeps its buttons beside what it tells, marked or not", async ({
 
   expect(new Set(rightEdges).size, `right edges ${rightEdges}`).toBe(1);
 });
+
+for (const width of [1280, 320]) {
+  test(`the accounts fit a ${width}px window, the sections beside the heading only when there is room`, async ({
+    page,
+  }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 900 });
+    // and: an operator looking at the accounts
+    await anOperatorWith(page);
+    await expect(row(page, "Hedy Lamarr")).toContainText("hedy@example.com");
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: the sections stand beside the heading on a wide window and below it on a phone
+    const heading = await page.getByRole("heading", { name: "Manage instance" }).boundingBox();
+    const sections = await page.getByRole("navigation", { name: "Sections" }).boundingBox();
+    expect(heading && sections).toBeTruthy();
+    if (width >= 800) {
+      expect(sections!.x, "the sections are beside the heading").toBeGreaterThan(
+        heading!.x + heading!.width,
+      );
+    } else {
+      expect(sections!.y, "the sections are below the heading").toBeGreaterThan(
+        heading!.y + heading!.height,
+      );
+    }
+    // and: every section can be reached
+    for (const name of ["Accounts", "Invitations", "Storage"]) {
+      await expect(
+        page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name }),
+      ).toBeInViewport({ ratio: 1 });
+    }
+  });
+}

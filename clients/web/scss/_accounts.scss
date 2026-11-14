@@ -7,27 +7,6 @@
     margin-bottom: 2rem;
   }
 
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-
-    > span {
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
-  }
-
-  .problem {
-    margin: 0;
-  }
-
   .code-boxes {
     position: relative;
     display: grid;
@@ -62,35 +41,9 @@
     }
   }
 
-  .hint,
   .sent-to {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .sent-to {
-    margin-bottom: 1.5rem;
-    font-size: 1rem;
-  }
-
-  .notice {
     margin: 0 0 1.5rem;
-    padding: 0.5rem 0.75rem;
-    border-left: 3px solid var(--accent);
-  }
-
-  .turning {
-    display: block;
-    margin-top: 1rem;
-    padding: 0;
-    border: none;
     color: var(--muted);
-    text-decoration: underline;
-
-    &:hover {
-      color: var(--ink);
-    }
   }
 }
 
@@ -104,12 +57,12 @@
   margin-bottom: 1.25rem;
 }
 
-.operating .accounts .mark.leaving {
+.list-card.accounts .mark.leaving {
   border-color: var(--danger, #b5654f);
   color: var(--danger, #e39a84);
 }
 
-.operating.your-account .profile {
+.page.your-account .profile {
   grid-row: span 2;
   align-items: center;
   text-align: center;
@@ -167,104 +120,26 @@
   }
 }
 
-.operating .sections {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--line);
-
-  a {
-    margin-bottom: -1px;
-    padding: 0.5rem 0.9rem;
-    border-bottom: 2px solid transparent;
-    color: var(--muted);
-    text-decoration: none;
-
-    &:hover {
-      color: inherit;
-    }
-
-    &[aria-current="page"] {
-      border-bottom-color: currentColor;
-      color: inherit;
-    }
+.list-card.accounts {
+  .mark.operator {
+    border-color: var(--accent);
+    color: var(--accent);
   }
-}
 
-.operating:is(:has(> .sections), .members-page) {
-  width: min(44rem, 100% - 2rem);
-}
+  @media (max-width: 44rem) {
+    .between {
+      display: none;
+    }
 
-.operating :is(.accounts, .invitations, .members) {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-
-  li {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) fit-content(60%);
-    grid-template-areas:
-      "who actions"
-      "marks actions";
-    align-items: center;
-    column-gap: 1rem;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--line);
-
-    @media (max-width: 36rem) {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-areas:
-        "who"
-        "marks"
-        "actions";
+    .email,
+    .signed-up {
+      display: block;
     }
   }
 
-  .who {
-    grid-area: who;
-    min-width: 0;
-
-    p {
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
-  }
-
-  .name {
-    font-size: 1.05rem;
-  }
-
-  .email,
-  .signed-up,
-  .issued {
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .marks {
-    grid-area: marks;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    padding-top: 0.4rem;
-  }
-
-  .mark {
-    padding: 0.1rem 0.5rem;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    font-size: 0.8rem;
-    white-space: nowrap;
-
-    &.locked {
-      border-color: var(--alarm);
-      color: var(--alarm);
-    }
-
-    &.expired,
-    &.declined {
-      color: var(--muted);
-    }
+  .mark.locked {
+    border-color: var(--alarm);
+    color: var(--alarm);
   }
 
   .lock {
@@ -280,7 +155,7 @@
   }
 }
 
-:is(.operating .accounts .actions, .operating.security .way-actions) {
+:is(.list-card.accounts .actions, .page.security .way-actions) {
   position: relative;
 
   .menu-button {
@@ -325,74 +200,6 @@
   }
 }
 
-.operating :is(.accounts, .invitations, .members) .actions {
-  grid-area: actions;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-
-  @media (max-width: 36rem) {
-    justify-content: flex-start;
-    padding-top: 0.6rem;
-  }
-}
-
-.operating .more {
-  margin-top: 1rem;
-}
-
-.operating select {
-  appearance: none;
-  padding: 0.6rem 2.25rem 0.6rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 0.375rem;
-  background: var(--paper) var(--chevron) no-repeat right 0.75rem center / 0.9rem;
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--muted);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--ink);
-    outline-offset: -1px;
-  }
-}
-
-.operating .invite {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-
-  .field {
-    flex: 1 1 16rem;
-    margin: 0;
-
-    &.as {
-      flex: none;
-      align-self: stretch;
-
-      select {
-        flex: 1;
-      }
-    }
-  }
-}
-
-.operating .invitations .email {
-  color: inherit;
-  font-size: 1.05rem;
-}
-
-.operating h2 + .hint {
-  margin-top: 0;
-}
 
 .dialog.change-role {
   width: min(30rem, 92vw);
@@ -501,6 +308,9 @@
 
     button,
     a {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
       border: none;
       border-radius: 0.25rem;
       text-align: left;
@@ -510,6 +320,13 @@
 
       &:hover {
         background: color-mix(in srgb, var(--ink) 8%, transparent);
+      }
+
+      svg {
+        flex: none;
+        width: 1rem;
+        height: 1rem;
+        color: var(--muted);
       }
     }
   }
@@ -667,44 +484,41 @@
   }
 }
 
-.operating .members {
-  li {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "who role actions";
+.members .you {
+  margin-left: 0.4rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.members .list-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.page.members-page .invite-someone {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.page.members-page .roles {
+  margin-top: 1.25rem;
+
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    @media (max-width: 44rem) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
-  .you {
-    margin-left: 0.4rem;
-    color: var(--muted);
-    font-size: 0.9rem;
+  .card {
+    gap: 0.4rem;
+    padding: 1.25rem;
   }
 
-  .role {
-    grid-area: role;
+  h3 {
     margin: 0;
-    color: var(--muted);
-  }
-
-  select.role {
-    justify-self: start;
-  }
-
-  @media (max-width: 36rem) {
-    li {
-      grid-template-columns: auto minmax(0, 1fr);
-      grid-template-areas:
-        "who who"
-        "role actions";
-      row-gap: 0.6rem;
-    }
-
-    .actions {
-      padding-top: 0;
-    }
-  }
-
-  + .hint {
-    margin-top: 1.25rem;
+    font: 500 1.25rem/1.2 var(--heading);
   }
 }
 
@@ -861,10 +675,7 @@
     gap: 0.5rem;
     align-items: center;
   }
-
 }
-
-
 
 @media print {
   .security :is(.buttons, .kept, .notice, .primary) {
@@ -920,57 +731,6 @@
 .signing-in input.recovery-code {
   font-family: ui-monospace, monospace;
   letter-spacing: 0.08em;
-}
-
-.operating.security .actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.6rem;
-  margin: 1.25rem 0 0;
-
-  > .asking:has(form) {
-    flex-basis: 100%;
-    order: 1;
-  }
-}
-
-.operating.security {
-  .ways {
-    margin: 0.5rem 0 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .way {
-    display: flex;
-    align-items: center;
-    gap: 0.9rem;
-    padding: 0.9rem 0;
-    border-top: 1px solid var(--line);
-
-    &:last-child {
-      border-bottom: 1px solid var(--line);
-    }
-  }
-
-  .what {
-    flex: 1;
-    min-width: 0;
-
-    p {
-      margin: 0;
-    }
-  }
-
-  .meta {
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-
-  .asking {
-    margin: 1rem 0 0;
-  }
 }
 
 .signing-in .key-asked {
@@ -1041,7 +801,7 @@
   }
 }
 
-.operating.security .welcome {
+.page.security .welcome {
   margin: 0 0 1.5rem;
   padding: 0.75rem 1rem;
   border-left: 3px solid var(--accent);
@@ -1052,10 +812,10 @@
   }
 }
 
-.operating.security .preferred-way {
+.page.security .preferred-way {
   display: flex;
   flex-direction: column;
-  margin: 0.75rem 0 1.25rem;
+  margin: 0.25rem 0 0;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
@@ -1136,97 +896,54 @@
 }
 
 
-.operating.storage {
-  width: min(44rem, 100% - 2rem);
+.storage .uploads .thumbnail-button {
+  display: block;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: zoom-in;
 
-  .usage {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    margin-bottom: 1rem;
-
-    p {
-      margin: 0;
-    }
-
-    meter {
-      width: 100%;
-      height: 0.6rem;
-    }
-  }
-
-  .sorting {
-    margin: 1.5rem 0 0.5rem;
-    max-width: 16rem;
-  }
-
-  .uploads {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-
-    li {
-      display: grid;
-      grid-template-columns: 4rem minmax(0, 1fr) fit-content(40%);
-      align-items: center;
-      column-gap: 1rem;
-      padding: 0.75rem 0;
-      border-bottom: 1px solid var(--line);
-
-      @media (max-width: 36rem) {
-        grid-template-columns: 4rem minmax(0, 1fr);
-
-        .actions {
-          grid-column: 2;
-          padding-top: 0.4rem;
-        }
-      }
-    }
-
-    .thumbnail {
-      width: 4rem;
-      height: 4rem;
-      object-fit: cover;
-      border-radius: 0.375rem;
-      background: var(--line);
-    }
-
-    .who p {
-      margin: 0;
-      overflow-wrap: anywhere;
-    }
-
-    .detail {
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    .actions .hint {
-      max-width: 14rem;
-    }
+  &:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
   }
 }
 
-.operating .finding {
-  margin: 0.5rem 0 1rem;
-  max-width: 20rem;
+.dialog.viewing-upload {
+  width: auto;
+  max-width: min(48rem, 100vw - 2rem);
+  box-sizing: border-box;
+
+  .viewed {
+    display: block;
+    max-width: 100%;
+    max-height: 70vh;
+    margin: 0 auto 1rem;
+    border-radius: 0.5rem;
+  }
 }
 
-.operating .storage-use .used {
-  font-size: 0.85rem;
+.storage .uploads .thumbnail {
+  width: 4rem;
+  height: 4rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  background: var(--line);
 }
 
-.operating .limit {
+.dialog.limiting {
+  width: min(34rem, 100vw - 2rem);
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.dialog.limiting .limit {
   display: flex;
   gap: 0.75rem;
 
   .field:first-child {
     flex: 1;
   }
-}
-
-.operating :is(.storage-accounts, .storage-projects) {
-  margin-top: 2rem;
 }
 
 .visually-hidden {
@@ -1238,7 +955,7 @@
   white-space: nowrap;
 }
 
-.operating.your-account .profile {
+.page.your-account .profile {
   .account-picture {
     width: 12rem;
     height: 12rem;
@@ -1307,5 +1024,43 @@
   .dialog-actions {
     flex-direction: column-reverse;
     align-items: stretch;
+  }
+}
+
+.page.security .asking form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  .buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+}
+
+.page.security .list-card > .asking {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+
+  @media (max-width: 44rem) {
+    padding: 1rem 1.1rem;
+  }
+}
+
+.page.security .codes > button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.page.security button.adding {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
   }
 }

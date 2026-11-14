@@ -78,6 +78,13 @@ So nobody hands a book to an account that is about to go.
 A leaving account can still be removed.
 The members list shows until when each leaving member stays, `leaving_until`.
 
+**Members are listed with their picture.**
+The listener `remember-pictures` receives `account.picture.changed` and `account.picture.removed`.
+It stores, by the account's version, which picture the account shows, or that it shows none (`remember_picture`, `pictures`, in `pictures` on PostgreSQL and SQLite).
+An older message that arrives after a newer one changes nothing.
+The members list shows each member's picture id, `picture`, to everyone who may read the members.
+A member without a picture is listed without one, and the client shows the initial.
+
 **A deleted account is removed.**
 The listener `let-go-of-deleted-account` receives `account.deleted`.
 It removes the account from every project it is in (`MembersCommand::LetGo`, which only the system may use):
@@ -86,6 +93,7 @@ It removes the account from every project it is in (`MembersCommand::LetGo`, whi
 - If nobody else was in the project, the members are `Abandoned` after the removal. This is published as `members.abandoned`, so that projects deletes the project. Abandoned members refuse everything except being disbanded.
 
 The account's person is forgotten (`forget_person`).
+Its picture is stored as none, as of the account's version, so a picture message that arrives late cannot bring it back.
 Its leaving row is kept, with no date, as a guard against a message that arrives late.
 An account that is no longer leaving, because it was kept or is gone, stores since when (`settled_at`).
 The chore `forget-old-member-tombstones` forgets those rows `TOMBSTONES_KEPT_FOR` later, when no message about its leaving can be retried any more.

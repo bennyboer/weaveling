@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use accounts_contract::{DELETED, PICTURE_CHANGED};
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum::http::StatusCode;
@@ -9,13 +10,16 @@ use clock::FixedClock;
 use eventsourcing::{
     AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, ServiceError, Version,
 };
+use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_catalog::InMemoryMembershipCatalog;
 use members_contract::{ChangeRoleRequest, MemberDTO, MembershipDTO, refused, role};
 use members_core::{
-    KIND, MembersAuthorizer, MembersCore, MembersCoreError, MembersError, MembersEvent, Person,
-    ProjectLink, Role,
+    KIND, MembersAuthorizer, MembersCore, MembersCoreError, MembersError, MembersEvent,
+    MembershipCatalog, Person, ProjectLink, Role,
 };
-use serde_json::Value;
+use members_messaging::{LetGoOfDeletedAccountListener, RememberPicturesListener};
+use messaging::{Listener, Message};
+use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
@@ -24,6 +28,7 @@ const PROJECT: &str = "project_1";
 struct Members {
     core: MembersCore,
     store: Arc<InMemoryEventStore<MembersEvent>>,
+    catalog: Arc<InMemoryMembershipCatalog>,
 }
 
 impl Members {
@@ -59,7 +64,7 @@ async fn a_project_of_three() -> Members {
         store.clone(),
         Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
-        Arc::new(MembersAuthorizer::new(catalog)),
+        Arc::new(MembersAuthorizer::new(catalog.clone())),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
     core.found(None, PROJECT, "account_ada")
@@ -86,7 +91,11 @@ async fn a_project_of_three() -> Members {
         .await
         .expect("remembering should succeed");
     }
-    let members = Members { core, store };
+    let members = Members {
+        core,
+        store,
+        catalog,
+    };
     members.told().await;
 
     members
@@ -107,6 +116,7 @@ fn a_member(account: &str, named: &str) -> MemberDTO {
         name: person_of(account).map(|(name, _)| name.to_owned()),
         email: person_of(account).map(|(_, email)| email.to_owned()),
         leaving_until: None,
+        picture: None,
     }
 }
 
@@ -205,6 +215,7 @@ async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_list
                 name: Some("Ada Lovelace".to_owned()),
                 email: Some("ada@example.com".to_owned()),
                 leaving_until: None,
+                picture: None,
             },
             MemberDTO {
                 account: "account_grace".to_owned(),
@@ -212,6 +223,7 @@ async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_list
                 name: Some("Grace Hopper".to_owned()),
                 email: Some("grace@example.com".to_owned()),
                 leaving_until: None,
+                picture: None,
             },
             MemberDTO {
                 account: "account_bo".to_owned(),
@@ -219,6 +231,7 @@ async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_list
                 name: None,
                 email: None,
                 leaving_until: None,
+                picture: None,
             },
         ],
         "owners invite and manage, so they see whom they deal with"
@@ -746,4 +759,103 @@ async fn a_member_leaving_keeps_their_role_is_listed_as_leaving_and_may_still_be
         .assert_status(StatusCode::NO_CONTENT);
     // then: she is gone
     assert_eq!(members.listed().await.len(), 2);
+}
+
+fn hearing<H: KeptHandler>(handler: H) -> Inboxed<H> {
+    Inboxed::new(
+        handler,
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+            OffsetDateTime::UNIX_EPOCH,
+        )))),
+    )
+}
+
+fn told_of_grace(routing: &str, version: u64, event: Value) -> Message {
+    eventpublishing::published(
+        routing,
+        "account",
+        "account_grace",
+        version,
+        event,
+        &Agent::Account(AccountId::from("account_grace")),
+        OffsetDateTime::UNIX_EPOCH,
+    )
+}
+
+fn grace_changed_her_picture(version: u64, picture: &str) -> Message {
+    told_of_grace(
+        PICTURE_CHANGED,
+        version,
+        json!({
+            "version": version,
+            "name": "PICTURE_CHANGED",
+            "picture": picture,
+            "previous": null,
+            "drop_previous": false,
+        }),
+    )
+}
+
+#[tokio::test]
+async fn members_are_listed_with_their_picture_and_a_deleted_account_s_picture_never_comes_back() {
+    // given: a project of three
+    let members = a_project_of_three().await;
+    let pictures = hearing(RememberPicturesListener::new(members.core.clone()));
+
+    // when: its author's picture change is heard
+    pictures
+        .handle(&grace_changed_her_picture(4, "asset_grace"))
+        .await
+        .expect("a picture change is taken in");
+
+    // then: the owner sees her listed with that picture
+    assert_eq!(
+        members.listed().await,
+        vec![
+            a_member("account_ada", role::OWNER),
+            MemberDTO {
+                picture: Some("asset_grace".to_owned()),
+                ..a_member("account_grace", role::AUTHOR)
+            },
+            a_member("account_bo", role::READER),
+        ]
+    );
+    // and: so does the reader
+    let as_reader = members
+        .as_account("account_bo")
+        .get(&format!("/members?project={PROJECT}"))
+        .await;
+    as_reader.assert_status_ok();
+    assert_eq!(
+        as_reader.json::<Vec<MemberDTO>>()[1].picture.as_deref(),
+        Some("asset_grace"),
+        "the picture is shown to whoever may read the members, like the name"
+    );
+
+    // when: her account is deleted at its ninth version
+    hearing(LetGoOfDeletedAccountListener::new(members.core.clone()))
+        .handle(&told_of_grace(
+            DELETED,
+            9,
+            json!({ "version": 9, "name": "DELETED" }),
+        ))
+        .await
+        .expect("a deletion is taken in");
+    // and: an older picture change of hers is heard late
+    pictures
+        .handle(&grace_changed_her_picture(6, "asset_late"))
+        .await
+        .expect("a late picture change is taken in");
+
+    // then: her picture is not known any more
+    assert!(
+        members
+            .catalog
+            .pictures(&[AccountId::from("account_grace")])
+            .await
+            .expect("asking should succeed")
+            .is_empty(),
+        "a deleted account's picture must not come back with a late message"
+    );
 }

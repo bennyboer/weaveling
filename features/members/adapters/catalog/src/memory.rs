@@ -4,7 +4,8 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    CatalogError, Leaving, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Leaving, Membership, MembershipCatalog, Person, Pictured, ProjectLink,
+    ProjectMembers, Role,
 };
 use time::OffsetDateTime;
 use transacting::{Failure, Transaction};
@@ -15,12 +16,15 @@ type Trash = BTreeMap<String, (Version, bool)>;
 
 type LeavingAccounts = BTreeMap<String, (Version, Option<OffsetDateTime>, Option<OffsetDateTime>)>;
 
+type Pictures = BTreeMap<String, (Version, Option<String>)>;
+
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
     kept: Arc<RwLock<Kept>>,
     people: Arc<RwLock<BTreeMap<String, Person>>>,
     trash: Arc<RwLock<Trash>>,
     leaving: Arc<RwLock<LeavingAccounts>>,
+    pictures: Arc<RwLock<Pictures>>,
 }
 
 impl InMemoryMembershipCatalog {
@@ -57,10 +61,16 @@ impl InMemoryMembershipCatalog {
             .read()
             .expect("membership catalog lock poisoned")
             .clone();
+        let pictures = self
+            .pictures
+            .read()
+            .expect("membership catalog lock poisoned")
+            .clone();
         let into_kept = self.kept.clone();
         let into_people = self.people.clone();
         let into_trash = self.trash.clone();
         let into_leaving = self.leaving.clone();
+        let into_pictures = self.pictures.clone();
 
         transacting::memory::undo_on_rollback(transaction, move || {
             *into_kept.write().expect("membership catalog lock poisoned") = kept;
@@ -73,6 +83,9 @@ impl InMemoryMembershipCatalog {
             *into_leaving
                 .write()
                 .expect("membership catalog lock poisoned") = leaving;
+            *into_pictures
+                .write()
+                .expect("membership catalog lock poisoned") = pictures;
         })
         .map_err(unreachable)
     }
@@ -287,6 +300,46 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
                 accounts
                     .contains(&account)
                     .then_some(Leaving { account, until })
+            })
+            .collect())
+    }
+
+    async fn remember_picture(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        version: Version,
+        picture: Option<&str>,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut pictures = self
+            .pictures
+            .write()
+            .expect("membership catalog lock poisoned");
+        if pictures
+            .get(account.as_str())
+            .is_none_or(|(known, _)| *known < version)
+        {
+            pictures.insert(account.to_string(), (version, picture.map(str::to_owned)));
+        }
+
+        Ok(())
+    }
+
+    async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {
+        let known = self
+            .pictures
+            .read()
+            .expect("membership catalog lock poisoned");
+
+        Ok(known
+            .iter()
+            .filter_map(|(account, (_, picture))| {
+                let account = AccountId::from(account.as_str());
+                let picture = picture.clone()?;
+                accounts
+                    .contains(&account)
+                    .then_some(Pictured { account, picture })
             })
             .collect())
     }

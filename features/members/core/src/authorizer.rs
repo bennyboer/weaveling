@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     use transacting::Transaction;
 
-    use crate::catalog::{Leaving, Membership, Person, ProjectMembers};
+    use crate::catalog::{Leaving, Membership, Person, Pictured, ProjectMembers};
 
     struct Kept {
         roles: Mutex<Vec<(String, AccountId, Role)>>,
@@ -186,6 +186,20 @@ mod tests {
         }
 
         async fn leaving(&self, _accounts: &[AccountId]) -> Result<Vec<Leaving>, CatalogError> {
+            Ok(Vec::new())
+        }
+
+        async fn remember_picture(
+            &self,
+            _transaction: &mut Transaction,
+            _account: &AccountId,
+            _version: Version,
+            _picture: Option<&str>,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        async fn pictures(&self, _accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {
             Ok(Vec::new())
         }
 

@@ -201,6 +201,27 @@ test("an upload is deleted after asking, and the storage used goes down", async 
   expect(shelf.deleted).toEqual(["asset_map"]);
 });
 
+test("an upload is shown bigger in a dialog when its thumbnail is clicked", async ({ page }) => {
+  // given: Ada's portrait in her storage
+  await aShelf(page, [THE_PORTRAIT]);
+  await signedIn(page);
+  await page.goto("/account/storage");
+
+  // when: she clicks its thumbnail
+  await uploads(page).nth(0).getByRole("button", { name: "Show bigger" }).click();
+
+  // then: it is shown bigger, titled by whose it is
+  const viewing = page.getByRole("dialog", { name: "Your own file" });
+  await expect(viewing.locator("img")).toHaveAttribute(
+    "src",
+    `/api/assets/${THE_PORTRAIT.id}/content?width=1536`,
+  );
+  // when: she closes it
+  await viewing.getByRole("button", { name: "Close" }).click();
+  // then: the dialog is gone
+  await expect(viewing).toHaveCount(0);
+});
+
 test("cancelling keeps the upload", async ({ page }) => {
   // given: Ada with her portrait
   const shelf = await aShelf(page, [THE_PORTRAIT]);
@@ -229,9 +250,9 @@ test("an upload in a project she can no longer write in says why it cannot be de
   // when: she opens her storage
   await page.goto("/account/storage");
 
-  // then: the upload is shown without a delete button, and says why
+  // then: the upload is shown without a delete button, marked as read only
   await expect(uploads(page).nth(0)).toContainText("In a project");
-  await expect(uploads(page).nth(0)).toContainText("Only authors of the project can delete it.");
+  await expect(uploads(page).nth(0)).toContainText("read only");
   await expect(uploads(page).nth(0).getByRole("button", { name: "Delete" })).toHaveCount(0);
 });
 
@@ -265,7 +286,52 @@ test("an upload in use as her picture says so and cannot be deleted", async ({ p
   // when: she opens her storage
   await page.goto("/account/storage");
 
-  // then: the portrait says it is her picture, without a delete button
-  await expect(uploads(page).nth(0)).toContainText("In use as your account picture.");
+  // then: the portrait is marked as her picture, without a delete button
+  await expect(uploads(page).nth(0)).toContainText("your account picture");
   await expect(uploads(page).nth(0).getByRole("button", { name: "Delete" })).toHaveCount(0);
 });
+
+for (const width of [1280, 320]) {
+  test(`the storage fits a ${width}px window, its marks beside the row or below its detail`, async ({
+    page,
+  }) => {
+    // given: a window of the given width
+    await page.setViewportSize({ width, height: 900 });
+    // and: Ada's portrait, shown as her account picture, and a map she may delete
+    await aShelf(page, [
+      {
+        ...THE_PORTRAIT,
+        deletable: false,
+        uses: [{ purpose: "account-picture", by: { kind: "account", id: "account_ada" } }],
+      },
+      anUpload("asset_map", MB, "2026-11-12T12:00:00Z", { project: "project_loom", name: "The Loom" }),
+    ]);
+    await signedIn(page);
+
+    // when: she opens her storage
+    await page.goto("/account/storage");
+    await expect(uploads(page)).toHaveCount(2);
+
+    // then: nothing on the page is wider than the window
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
+    // and: the mark is beside the detail on a wide window and below it on a phone
+    const portrait = uploads(page).filter({ hasText: "your account picture" });
+    const detail = await portrait.locator(".detail").boundingBox();
+    const mark = await portrait.getByText("your account picture").boundingBox();
+    expect(detail && mark).toBeTruthy();
+    if (width >= 800) {
+      expect(mark!.x, "the mark is beside the detail").toBeGreaterThan(detail!.x + detail!.width);
+    } else {
+      expect(mark!.y, "the mark is below the detail").toBeGreaterThanOrEqual(
+        detail!.y + detail!.height,
+      );
+    }
+    // and: the delete button can be reached
+    await expect(
+      uploads(page).filter({ hasText: "The Loom" }).getByRole("button", { name: "Delete" }),
+    ).toBeInViewport();
+  });
+}

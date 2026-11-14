@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::time::Duration;
 
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
@@ -9,6 +10,8 @@ use crate::act::{Act, Here};
 use crate::assets::service;
 use crate::assets::service::{AccountStorage, ProjectStorage, Usage};
 use crate::assets::storage_page;
+use crate::avatar;
+use crate::blocks;
 use crate::dialog;
 use crate::http::ApiError;
 use crate::problem;
@@ -17,6 +20,9 @@ use crate::speech;
 use crate::speech::Speech;
 
 const MEGABYTE: u64 = 1024 * 1024;
+
+/// How long typing in a search field must pause before the list is asked for.
+const SEARCH_AFTER: Duration = Duration::from_millis(300);
 const GIGABYTE: u64 = 1024 * MEGABYTE;
 
 /// The unit a limit is entered in.
@@ -197,22 +203,45 @@ impl Overview {
     }
 }
 
-/// The search field above a list.
+/// The search field in the head of a list.
+/// Its label is only read out; the hint inside the field shows what to type.
+/// The list is asked for only once typing has paused for `SEARCH_AFTER`, not at every key.
 fn finding<T: Clone + Send + Sync + 'static>(
     paged: Paged<T>,
     label: &'static str,
     hint: &'static str,
-    load: impl Fn() + 'static,
+    load: impl Fn() + Copy + 'static,
 ) -> impl IntoView {
-    html::label().class("field finding").child((
-        html::span().child(speech::said(label)),
+    let waiting = StoredValue::new(None::<TimeoutHandle>);
+    on_cleanup(move || {
+        if let Some(handle) = waiting.get_value() {
+            handle.clear();
+        }
+    });
+
+    html::label().class("finding").child((
+        html::span()
+            .class("visually-hidden")
+            .child(speech::said(label)),
         html::input()
             .r#type("search")
             .attr("placeholder", move || speech::say(hint))
             .prop("value", move || paged.search.get())
             .on(ev::input, move |event| {
                 paged.search.set(event_target_value(&event));
-                load();
+                if let Some(handle) = waiting.get_value() {
+                    handle.clear();
+                }
+                waiting.set_value(
+                    set_timeout(
+                        move || {
+                            waiting.set_value(None);
+                            load();
+                        },
+                        SEARCH_AFTER,
+                    )
+                    .ok(),
+                );
             }),
     ))
 }
@@ -244,12 +273,11 @@ fn more<T: Clone + Send + Sync + 'static>(
     move || {
         let load = load.clone();
         paged.next.get().map(|next| {
-            html::button()
-                .r#type("button")
-                .class("more")
-                .disabled(move || paged.loading.get())
-                .on(ev::click, move |_| load(next.clone()))
-                .child(speech::said("storage-more"))
+            blocks::more(
+                "storage-more",
+                move || paged.loading.get(),
+                move |_| load(next.clone()),
+            )
         })
     }
 }
@@ -261,71 +289,78 @@ pub fn storage_overview() -> impl IntoView {
 
     (
         move || {
-            overview
-                .instance
-                .get()
-                .map(|usage| storage_page::used(usage, speech))
+            overview.instance.get().map(|usage| {
+                blocks::usage_card(
+                    storage_page::used(usage, speech),
+                    speech::said("instance-storage-hint"),
+                )
+            })
         },
-        html::p()
-            .class("hint")
-            .child(speech::said("instance-storage-hint")),
         move || {
             overview
                 .limiting
                 .with(Option::is_none)
                 .then(|| overview.refused.get().map(problem::problem))
         },
-        html::section().class("storage-accounts").child((
-            html::h2().child(speech::said("instance-storage-accounts")),
-            finding(
-                overview.accounts,
-                "instance-storage-find",
-                "instance-storage-find-hint",
-                move || overview.load_accounts(None),
+        blocks::cards((
+            blocks::list_card(
+                "storage-accounts",
+                speech::said("instance-storage-accounts"),
+                finding(
+                    overview.accounts,
+                    "instance-storage-find",
+                    "instance-storage-find-hint",
+                    move || overview.load_accounts(None),
+                ),
+                (
+                    empty(
+                        overview.accounts,
+                        "instance-storage-no-match",
+                        "instance-storage-none",
+                    ),
+                    blocks::rows(move || {
+                        overview
+                            .accounts
+                            .listed
+                            .get()
+                            .into_iter()
+                            .map(|account| listed(overview, account, speech))
+                            .collect_view()
+                    }),
+                ),
+                more(overview.accounts, move |next| {
+                    overview.load_accounts(Some(next))
+                }),
             ),
-            empty(
-                overview.accounts,
-                "instance-storage-no-match",
-                "instance-storage-none",
+            blocks::list_card(
+                "storage-projects",
+                speech::said("instance-storage-projects"),
+                finding(
+                    overview.projects,
+                    "instance-storage-find-project",
+                    "instance-storage-find-project-hint",
+                    move || overview.load_projects(None),
+                ),
+                (
+                    empty(
+                        overview.projects,
+                        "instance-storage-no-project-match",
+                        "instance-storage-no-projects",
+                    ),
+                    blocks::rows(move || {
+                        overview
+                            .projects
+                            .listed
+                            .get()
+                            .into_iter()
+                            .map(|project| project_listed(project, speech))
+                            .collect_view()
+                    }),
+                ),
+                more(overview.projects, move |next| {
+                    overview.load_projects(Some(next))
+                }),
             ),
-            html::ul().class("accounts storage-use").child(move || {
-                overview
-                    .accounts
-                    .listed
-                    .get()
-                    .into_iter()
-                    .map(|account| listed(overview, account, speech))
-                    .collect_view()
-            }),
-            more(overview.accounts, move |next| {
-                overview.load_accounts(Some(next))
-            }),
-        )),
-        html::section().class("storage-projects").child((
-            html::h2().child(speech::said("instance-storage-projects")),
-            finding(
-                overview.projects,
-                "instance-storage-find-project",
-                "instance-storage-find-project-hint",
-                move || overview.load_projects(None),
-            ),
-            empty(
-                overview.projects,
-                "instance-storage-no-project-match",
-                "instance-storage-no-projects",
-            ),
-            html::ul().class("accounts storage-use").child(move || {
-                overview
-                    .projects
-                    .listed
-                    .get()
-                    .into_iter()
-                    .map(|project| project_listed(project, speech))
-                    .collect_view()
-            }),
-            more(overview.projects, move |next| {
-                overview.load_projects(Some(next))
-            }),
         )),
         move || {
             overview
@@ -334,6 +369,21 @@ pub fn storage_overview() -> impl IntoView {
                 .map(|account| limit_dialog(overview, account))
         },
     )
+}
+
+/// How much a row uses, as a small bar with the words beside it.
+/// Without a limit there is no bar, only the words.
+fn gauge(usage: Usage, speech: Speech) -> impl IntoView {
+    html::span().class("gauge").child((
+        usage.most.map(|most| {
+            html::meter()
+                .attr("min", 0)
+                .attr("max", most as f64)
+                .attr("value", usage.used as f64)
+                .attr("aria-hidden", "true")
+        }),
+        html::span().class("used").child(usage_told(usage, speech)),
+    ))
 }
 
 /// How much is used of a limit, for example "2 MB of 1 GB used", or only "2 MB used" without a limit.
@@ -363,30 +413,32 @@ fn project_listed(project: ProjectStorage, speech: Speech) -> impl IntoView {
         .collect::<Vec<_>>()
         .join(", ");
     let has_owners = !project.owners.is_empty();
+    let name = project
+        .name
+        .clone()
+        .unwrap_or_else(|| project.project.clone());
 
-    html::li().child(
-        html::div().class("who").child((
-            html::p().class("name").child(
-                project
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| project.project.clone()),
-            ),
+    blocks::row(
+        avatar::avatar(&project.project, Some(&name), None),
+        name.clone(),
+        (
             has_owners.then(|| {
-                html::p().class("email").child(move || {
+                html::span().class("owners").child(move || {
                     let mut args = FluentArgs::new();
                     args.set("names", owners.clone());
                     speech.say_with("instance-storage-owners", &args)
                 })
             }),
-            html::p().class("used").child(usage_told(
+            gauge(
                 Usage {
                     used: project.used,
                     most: project.most,
                 },
                 speech,
-            )),
-        )),
+            ),
+        ),
+        (),
+        (),
     )
 }
 
@@ -402,25 +454,24 @@ fn listed(overview: Overview, account: AccountStorage, speech: Speech) -> impl I
         used: account.used,
         most: account.most,
     };
-    let told = usage_told(usage, speech);
     let limitable = account.most.is_some();
     let asked = account.clone();
+    let name = named(&account);
 
-    html::li().child((
-        html::div().class("who").child((
-            html::p().class("name").child(named(&account)),
+    blocks::row(
+        avatar::avatar(&account.account, account.name.as_deref(), None),
+        name,
+        (
             account
                 .email
                 .clone()
-                .map(|email| html::p().class("email").child(email)),
-            html::p().class("used").child(told),
-        )),
-        html::div().class("marks").child(account.own_limit.then(|| {
-            html::span()
-                .class("mark")
-                .child(speech::said("instance-storage-own-limit"))
-        })),
-        html::div().class("actions").child(limitable.then(|| {
+                .map(|email| html::span().class("email").child(email)),
+            gauge(usage, speech),
+        ),
+        account
+            .own_limit
+            .then(|| blocks::mark(speech::said("instance-storage-own-limit"))),
+        limitable.then(|| {
             html::button()
                 .r#type("button")
                 .on(ev::click, move |_| {
@@ -428,8 +479,8 @@ fn listed(overview: Overview, account: AccountStorage, speech: Speech) -> impl I
                     overview.limiting.set(Some(asked.clone()));
                 })
                 .child(speech::said("instance-storage-change-limit"))
-        })),
-    ))
+        }),
+    )
 }
 
 /// What the limit dialog asks of the server.

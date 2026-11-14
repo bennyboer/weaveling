@@ -34,6 +34,10 @@ pub enum Icon {
     Trash,
     Home,
     Key,
+    Person,
+    Shield,
+    Archive,
+    SignOut,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -72,6 +76,14 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::Trash => {
             "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"
         }
+        Icon::Person => {
+            "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"
+        }
+        Icon::Shield => {
+            "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+        }
+        Icon::Archive => "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
+        Icon::SignOut => "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
         Icon::UnfoldAll => "m7 15 5 5 5-5M7 9l5-5 5 5",
         Icon::FoldAll => "m7 20 5-5 5 5M7 4l5 5 5-5",
         Icon::Cogwheel => {

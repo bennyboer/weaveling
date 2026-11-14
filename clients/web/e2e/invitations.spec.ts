@@ -243,16 +243,20 @@ for (const width of [1280, 320]) {
     const button = await page
       .getByRole("button", { name: "Invite" })
       .boundingBox();
-    const sections = await page
-      .getByRole("navigation", { name: "Sections" })
+    const heading = await page
+      .getByRole("heading", { name: "Invitations", level: 2 })
       .boundingBox();
-    expect(field && button && sections).toBeTruthy();
+    expect(field && button && heading).toBeTruthy();
 
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sideways, "the page does not scroll sideways").toBe(0);
     expect(field!.height, "an address is a line, not a box").toBeLessThan(
       button!.height * 1.5,
     );
-    expect(Math.round(field!.x), "the field begins where the page does").toBe(
-      Math.round(sections!.x),
+    expect(Math.round(field!.x), "the field begins where the card's heading does").toBe(
+      Math.round(heading!.x),
     );
     if (width >= 800) {
       expect(

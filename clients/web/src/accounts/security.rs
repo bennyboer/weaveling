@@ -14,6 +14,7 @@ use crate::accounts::{
     key_dialogs, service,
 };
 use crate::act::{Act, Here};
+use crate::blocks;
 use crate::copy_button::copy_button;
 use crate::http::ApiError;
 use crate::icons::{self, Icon};
@@ -25,6 +26,9 @@ use crate::shell;
 use crate::speech;
 
 const QUIET_ZONE: i32 = 2;
+
+/// How many recovery codes are drawn at once.
+const RECOVERY_CODES: u64 = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Step {
@@ -42,18 +46,24 @@ pub fn SecurityPage() -> impl IntoView {
     let step = RwSignal::new(Step::Overview);
     let turned_off = RwSignal::new(false);
 
-    (
-        shell::masthead(None),
-        html::main()
+    (shell::masthead(None), move || match step.get() {
+        Step::Overview => blocks::page(
+            "security",
+            speech::said("security-heading"),
+            Some("security-hint"),
+            (),
+            overview(session, step, turned_off),
+        )
+        .into_any(),
+        Step::SettingUp(setting_up) => html::main()
             .class("operating security")
-            .child(move || match step.get() {
-                Step::Overview => overview(session, step, turned_off).into_any(),
-                Step::SettingUp(setting_up) => {
-                    setting_up_view(session, setting_up, step).into_any()
-                }
-                Step::Keeping { codes, notice } => keeping(codes, notice, step).into_any(),
-            }),
-    )
+            .child(setting_up_view(session, setting_up, step))
+            .into_any(),
+        Step::Keeping { codes, notice } => html::main()
+            .class("operating security")
+            .child(keeping(codes, notice, step))
+            .into_any(),
+    })
 }
 
 /// Greets someone who has just signed up.
@@ -261,33 +271,7 @@ fn overview(
                             .child(speech::said("two-step-turned-off"))
                     })
                 },
-                html::h1().child(speech::said("security-heading")),
                 welcome(welcomed),
-                html::p().class("hint").child(speech::said("security-hint")),
-                move || {
-                    let passkeys: Vec<HeldKey> = keys
-                        .get()
-                        .into_iter()
-                        .filter(|key| key.signs_in_alone)
-                        .collect();
-                    (!passkeys.is_empty()).then(|| {
-                        (
-                            html::h2().child(speech::said("security-signing-in")),
-                            html::ul().class("ways").child(
-                                passkeys
-                                    .into_iter()
-                                    .map(|key| key_row(key, menu, dialog))
-                                    .collect_view(),
-                            ),
-                        )
-                    })
-                },
-                html::h2().child(speech::said("security-second-step")),
-                factor.is_none().then(|| {
-                    html::p()
-                        .class("hint")
-                        .child(speech::said("security-second-step-hint"))
-                }),
                 move || {
                     said.get().map(|message| {
                         html::p()
@@ -296,61 +280,50 @@ fn overview(
                             .child(speech::said(message))
                     })
                 },
-                factor
-                    .filter(|factor| factor.answered_by_totp && factor.answered_by_key)
-                    .map(|factor| preferred_way_choice(session, factor, refused)),
-                html::ul().class("ways").child((
-                    move || {
-                        keys.get()
-                            .into_iter()
-                            .filter(|key| !key.signs_in_alone)
-                            .map(|key| key_row(key, menu, dialog))
-                            .collect_view()
-                    },
-                    app.map(|app| app_row(app, menu, asking)),
-                    factor.map(|factor| codes_row(factor, asking)),
-                )),
-                move || match asking.get() {
-                    Some(Asked::Drawing) => drawing(session, step, asking).into_any(),
-                    Some(Asked::TurningOff) => turning_off(session, turned_off, asking).into_any(),
-                    Some(Asked::SettingUp) => setting_up(step, asking).into_any(),
-                    Some(Asked::AddingKey { passkey }) => {
-                        adding_key(passkey, asking, dialog, said).into_any()
-                    }
-                    None => ().into_any(),
-                },
                 move || refused.get().map(problem::problem),
-                html::div().class("actions").child((
-                    (session.keys_offered() && authenticator::supported()).then(|| {
-                        (
-                            html::button()
-                                .r#type("button")
-                                .on(ev::click, move |_| {
-                                    said.set(None);
-                                    asking.set(Some(Asked::AddingKey { passkey: true }))
-                                })
-                                .child(speech::said("security-add-passkey")),
-                            html::button()
-                                .r#type("button")
-                                .on(ev::click, move |_| {
-                                    said.set(None);
-                                    asking.set(Some(Asked::AddingKey { passkey: false }))
-                                })
-                                .child(speech::said("security-add-key")),
-                        )
-                    }),
-                    (app.is_none() && session.totp_offered()).then(|| {
-                        html::button()
-                            .r#type("button")
-                            .on(ev::click, move |_| asking.set(Some(Asked::SettingUp)))
-                            .child(speech::said("security-set-up-app"))
-                    }),
+                blocks::cards((
+                    second_step_card(session, factor, refused),
+                    factor.map(|factor| codes_card(session, step, factor, asking)),
+                )),
+                blocks::list_card(
+                    "ways",
+                    speech::said("security-ways"),
+                    adding(session, app.is_none(), asking, said),
+                    (
+                        move || match asking.get() {
+                            Some(Asked::TurningOff) => {
+                                Some(turning_off(session, turned_off, asking).into_any())
+                            }
+                            Some(Asked::SettingUp) => Some(setting_up(step, asking).into_any()),
+                            Some(Asked::AddingKey { passkey }) => {
+                                Some(adding_key(passkey, asking, dialog, said).into_any())
+                            }
+                            Some(Asked::Drawing) | None => None,
+                        },
+                        move || {
+                            (keys.with(Vec::is_empty) && app.is_none()).then(|| {
+                                html::p()
+                                    .class("hint")
+                                    .child(speech::said("security-ways-none"))
+                            })
+                        },
+                        blocks::rows((
+                            move || {
+                                let mut held = keys.get();
+                                held.sort_by_key(|key| !key.signs_in_alone);
+                                held.into_iter()
+                                    .map(|key| key_row(key, menu, dialog))
+                                    .collect_view()
+                            },
+                            app.map(|app| app_row(app, menu, asking)),
+                        )),
+                    ),
                     (!session.keys_offered() && !session.totp_offered()).then(|| {
                         html::p()
-                            .class("hint")
+                            .class("hint unavailable")
                             .child(speech::said("two-step-unavailable"))
                     }),
-                )),
+                ),
                 move || {
                     dialog.get().map(|shown| match shown {
                         KeyDialog::Naming(_) => {
@@ -390,6 +363,120 @@ fn overview(
         }
         _ => setup::without_accounts().into_any(),
     }
+}
+
+/// The card that says whether a second step is asked after the password.
+/// When more than one way answers it, the card also lets the account choose which is asked first.
+fn second_step_card(
+    session: CurrentSession,
+    factor: Option<SecondFactorInUse>,
+    refused: RwSignal<Option<ApiError>>,
+) -> impl IntoView {
+    blocks::card(
+        "second-step",
+        (
+            html::h2().child(speech::said("security-second-step")),
+            html::p().class("status").child(match factor {
+                Some(factor) => speech::say_about(
+                    "security-second-step-on",
+                    "when",
+                    &moment::human_time(factor.since),
+                ),
+                None => speech::say("security-second-step-off"),
+            }),
+            factor.is_none().then(|| {
+                html::p()
+                    .class("hint")
+                    .child(speech::said("security-second-step-hint"))
+            }),
+            factor
+                .filter(|factor| factor.answered_by_totp && factor.answered_by_key)
+                .map(|factor| preferred_way_choice(session, factor, refused)),
+        ),
+    )
+}
+
+/// The card that says how many recovery codes are left, with a button to draw new ones.
+/// Drawing asks for the password right in the card.
+fn codes_card(
+    session: CurrentSession,
+    step: RwSignal<Step>,
+    factor: SecondFactorInUse,
+    asking: RwSignal<Option<Asked>>,
+) -> impl IntoView {
+    let left = factor.recovery_codes_left;
+
+    blocks::card(
+        "codes",
+        (
+            html::h2().child(speech::said("security-codes")),
+            blocks::usage(
+                speech::say_about("security-codes-left", "left", &left.to_string()),
+                left as u64,
+                Some(RECOVERY_CODES),
+                || speech::say("security-codes"),
+            ),
+            move || match asking.get() {
+                Some(Asked::Drawing) => Some(drawing(session, step, asking).into_any()),
+                _ => Some(
+                    html::button()
+                        .r#type("button")
+                        .on(ev::click, move |_| asking.set(Some(Asked::Drawing)))
+                        .child(speech::said("two-step-draw-codes"))
+                        .into_any(),
+                ),
+            },
+        ),
+    )
+}
+
+/// The buttons that add a way to sign in.
+/// Each is offered only when this Weaveling instance supports it.
+fn adding(
+    session: CurrentSession,
+    without_app: bool,
+    asking: RwSignal<Option<Asked>>,
+    said: RwSignal<Option<&'static str>>,
+) -> impl IntoView {
+    (
+        (session.keys_offered() && authenticator::supported()).then(|| {
+            (
+                adding_button("security-add-passkey", "security-new-passkey", move || {
+                    said.set(None);
+                    asking.set(Some(Asked::AddingKey { passkey: true }))
+                }),
+                adding_button("security-add-key", "security-new-key", move || {
+                    said.set(None);
+                    asking.set(Some(Asked::AddingKey { passkey: false }))
+                }),
+            )
+        }),
+        (without_app && session.totp_offered()).then(|| {
+            adding_button("security-set-up-app", "security-app", move || {
+                asking.set(Some(Asked::SettingUp))
+            })
+        }),
+    )
+}
+
+/// A button that adds a way to sign in.
+/// It shows a plus and the short name of the way, so that all of them fit in one row.
+/// Screen readers and the tooltip still tell the whole action, like "Add a passkey".
+fn adding_button(
+    told: &'static str,
+    shown: &'static str,
+    pressed: impl Fn() + 'static,
+) -> impl IntoView {
+    html::button()
+        .r#type("button")
+        .class("adding")
+        .attr("aria-label", move || speech::say(told))
+        .attr("title", move || speech::say(told))
+        .on(ev::click, move |_| pressed())
+        .child((
+            icons::mark(Icon::Plus),
+            html::span().child(speech::said(shown)),
+        ))
 }
 
 /// A menu item: its message, whether it is dangerous, and what choosing it does.
@@ -513,31 +600,28 @@ fn key_row(
     let renamed = key.clone();
     let removed = key.clone();
     let changed = key.clone();
-    let (named, changing, change): (&str, &'static str, KeyDialog) = if key.signs_in_alone {
-        (
-            "security-passkey-named",
-            "key-demote",
-            KeyDialog::Demoting(changed),
-        )
-    } else {
-        (
-            "security-key-named",
-            "key-promote",
-            KeyDialog::Promoting(changed),
-        )
-    };
+    let (named, marked, changing, change): (&str, &str, &'static str, KeyDialog) =
+        if key.signs_in_alone {
+            (
+                "security-passkey-named",
+                "security-mark-alone",
+                "key-demote",
+                KeyDialog::Demoting(changed),
+            )
+        } else {
+            (
+                "security-key-named",
+                "security-mark-second-step",
+                "key-promote",
+                KeyDialog::Promoting(changed),
+            )
+        };
 
-    html::li().class("way").child((
-        html::div().class("what").child((
-            html::p()
-                .class("name")
-                .child(speech::say_about(named, "name", &key.name)),
-            html::p().class("meta").child(speech::say_about(
-                "security-key-added",
-                "when",
-                &moment::human_time(key.since),
-            )),
-        )),
+    blocks::row(
+        (),
+        speech::say_about(named, "name", &key.name),
+        speech::say_about("security-key-added", "when", &moment::human_time(key.since)),
+        blocks::mark(speech::said(marked)),
         way_menu(
             menu,
             key.id.clone(),
@@ -560,7 +644,7 @@ fn key_row(
                 ),
             ],
         ),
-    ))
+    )
 }
 
 fn app_row(
@@ -568,15 +652,15 @@ fn app_row(
     menu: RwSignal<Option<String>>,
     asking: RwSignal<Option<Asked>>,
 ) -> impl IntoView {
-    html::li().class("way").child((
-        html::div().class("what").child((
-            html::p().class("name").child(speech::said("security-app")),
-            html::p().class("meta").child(speech::say_about(
-                "security-app-on-since",
-                "when",
-                &moment::human_time(app.since),
-            )),
-        )),
+    blocks::row(
+        (),
+        speech::said("security-app"),
+        speech::say_about(
+            "security-app-on-since",
+            "when",
+            &moment::human_time(app.since),
+        ),
+        blocks::mark(speech::said("security-mark-second-step")),
         way_menu(
             menu,
             THE_APP.to_owned(),
@@ -594,28 +678,7 @@ fn app_row(
                 ),
             ],
         ),
-    ))
-}
-
-fn codes_row(factor: SecondFactorInUse, asking: RwSignal<Option<Asked>>) -> impl IntoView {
-    html::li().class("way").child((
-        html::div().class("what").child((
-            html::p()
-                .class("name")
-                .child(speech::said("security-codes")),
-            html::p().class("meta").child(speech::say_about(
-                "security-codes-left",
-                "left",
-                &factor.recovery_codes_left.to_string(),
-            )),
-        )),
-        html::div().class("way-actions").child(
-            html::button()
-                .r#type("button")
-                .on(ev::click, move |_| asking.set(Some(Asked::Drawing)))
-                .child(speech::said("two-step-draw-codes")),
-        ),
-    ))
+    )
 }
 
 fn setting_up_view(

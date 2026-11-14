@@ -6,6 +6,8 @@ use leptos_router::components::A;
 use crate::accounts::{CurrentSession, SignInState, SignedInAccount};
 use crate::assets::service as assets;
 use crate::avatar;
+use crate::icons;
+use crate::icons::Icon;
 use crate::route;
 use crate::speech;
 use crate::speech::Speech;
@@ -78,6 +80,7 @@ fn account_menu(
                         html::hr(),
                         view! {
                             <A href=route::ACCOUNT attr:role="menuitem">
+                                {icons::mark(Icon::Person)}
                                 {speech::said("your-account-heading")}
                             </A>
                         },
@@ -87,18 +90,21 @@ fn account_menu(
                         .then(|| {
                             view! {
                                 <A href=route::SECURITY attr:role="menuitem">
+                                    {icons::mark(Icon::Shield)}
                                     {speech::said("security-heading")}
                                 </A>
                             }
                         }),
                         view! {
                             <A href=route::STORAGE attr:role="menuitem">
+                                {icons::mark(Icon::Archive)}
                                 {speech::said("storage-heading")}
                             </A>
                         },
                         account.operator.then(|| {
                             view! {
                                 <A href=route::INSTANCE_ACCOUNTS attr:role="menuitem">
+                                    {icons::mark(Icon::Cogwheel)}
                                     {speech::said("account-menu-operator")}
                                 </A>
                             }
@@ -106,6 +112,7 @@ fn account_menu(
                         (!account.operator && session.operator_wanted()).then(|| {
                             view! {
                                 <A href=route::SETUP attr:role="menuitem">
+                                    {icons::mark(Icon::Cogwheel)}
                                     {speech::said("set-up-instead")}
                                 </A>
                             }
@@ -114,7 +121,7 @@ fn account_menu(
                             .r#type("button")
                             .role("menuitem")
                             .on(ev::click, move |_| session.sign_out())
-                            .child(speech::said("sign-out")),
+                            .child((icons::mark(Icon::SignOut), speech::said("sign-out"))),
                     ))
                 })
             },

@@ -115,9 +115,52 @@ async function onHerAccountPage(page: Page, picture: string | null = null) {
 const accountButton = (page: Page) =>
   page.getByRole("banner").getByRole("button", { name: "Account: Ada Lovelace" });
 
-async function chosen(page: Page, label: string, file = A_PIXEL, name = "me.png") {
+async function offered(page: Page, label: string, file = A_PIXEL, name = "me.png") {
   await page.getByLabel(label).setInputFiles({ name, mimeType: "image/png", buffer: file });
 }
+
+/// Chooses a file and takes it as framed at first, the square in its middle.
+async function chosen(page: Page, label: string, file = A_PIXEL) {
+  await offered(page, label, file);
+  await framing(page).getByRole("button", { name: "Use this picture" }).click();
+}
+
+const framing = (page: Page) =>
+  page.getByRole("dialog", { name: "Choose what your picture shows" });
+
+/// Draws a PNG 200 pixels wide and 100 high, red on its left half and blue on its right half.
+async function halves(page: Page): Promise<Buffer> {
+  const written = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 200;
+    canvas.height = 100;
+    const drawing = canvas.getContext("2d")!;
+    drawing.fillStyle = "#ff0000";
+    drawing.fillRect(0, 0, 100, 100);
+    drawing.fillStyle = "#0000ff";
+    drawing.fillRect(100, 0, 100, 100);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+
+  return Buffer.from(written, "base64");
+}
+
+/// Reads the colour in the middle of an uploaded image, as red, green and blue.
+async function middleOf(page: Page, uploaded: Buffer): Promise<number[]> {
+  return page.evaluate(async (bytes) => {
+    const image = await createImageBitmap(new Blob([new Uint8Array(bytes)]));
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const drawing = canvas.getContext("2d")!;
+    drawing.drawImage(image, 0, 0);
+    const [red, green, blue] = drawing.getImageData(image.width / 2, image.height / 2, 1, 1).data;
+    return [red, green, blue];
+  }, [...uploaded]);
+}
+
+const isRed = ([red, , blue]: number[]) => red > 200 && blue < 60;
+const isBlue = ([red, , blue]: number[]) => blue > 200 && red < 60;
 
 test("a first picture is uploaded as a square JPEG and shown at once, in the masthead too", async ({
   page,
@@ -234,11 +277,71 @@ test("a file that is no image is refused before anything is uploaded", async ({ 
   const told = await onHerAccountPage(page);
 
   // when: she chooses a file that only claims to be an image
-  await chosen(page, "Choose a picture…", Buffer.from("not an image at all"), "notes.png");
+  await offered(page, "Choose a picture…", Buffer.from("not an image at all"), "notes.png");
 
   // then: she is told, and nothing was uploaded
   await expect(page.getByRole("alert")).toHaveText("This file could not be read as an image.");
+  await expect(framing(page)).toHaveCount(0);
   expect(told.uploaded).toEqual([]);
+});
+
+test("the picture is dragged to show another part, and exactly that square is uploaded", async ({
+  page,
+}) => {
+  // given: Ada on her account page, with an image red on its left and blue on its right
+  const told = await onHerAccountPage(page);
+  const image = await halves(page);
+
+  // when: she chooses it
+  await offered(page, "Choose a picture…", image);
+  // then: she is asked what it should show
+  const view = framing(page).getByRole("group", { name: /^The picture/ });
+  await expect(view).toBeVisible();
+
+  // when: she drags the picture all the way to the right and takes it
+  const box = (await view.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await framing(page).getByRole("button", { name: "Use this picture" }).click();
+
+  // then: the square uploaded is the red left half
+  await expect.poll(() => told.uploaded.length).toBe(1);
+  expect(isRed(await middleOf(page, told.uploaded[0]))).toBe(true);
+  await expect(framing(page)).toHaveCount(0);
+});
+
+test("the picture is zoomed with the slider and moved with the arrow keys", async ({ page }) => {
+  // given: Ada on her account page, with an image red on its left and blue on its right
+  const told = await onHerAccountPage(page);
+  await offered(page, "Choose a picture…", await halves(page));
+
+  // when: she zooms in all the way and moves the picture left with the arrow keys
+  await framing(page).getByLabel("Zoom").fill("4");
+  await framing(page).getByRole("group", { name: /^The picture/ }).focus();
+  for (let press = 0; press < 30; press++) {
+    await page.keyboard.press("ArrowLeft");
+  }
+  await framing(page).getByRole("button", { name: "Use this picture" }).click();
+
+  // then: the square uploaded is a small part of the blue right half
+  await expect.poll(() => told.uploaded.length).toBe(1);
+  expect(isBlue(await middleOf(page, told.uploaded[0]))).toBe(true);
+});
+
+test("cancelling the framing uploads nothing and keeps the picture as it was", async ({ page }) => {
+  // given: Ada on her account page, showing no picture
+  const told = await onHerAccountPage(page);
+
+  // when: she chooses a picture, then cancels
+  await offered(page, "Choose a picture…");
+  await framing(page).getByRole("button", { name: "Cancel" }).click();
+
+  // then: nothing was uploaded, and her initial is still shown
+  await expect(framing(page)).toHaveCount(0);
+  expect(told.uploaded).toEqual([]);
+  await expect(accountButton(page)).toHaveText("A");
 });
 
 for (const width of [1280, 320]) {

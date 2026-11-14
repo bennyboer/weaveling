@@ -19,6 +19,7 @@ pub struct ListedMember {
     pub name: Option<String>,
     pub email: Option<String>,
     pub leaving_until: Option<OffsetDateTime>,
+    pub picture: Option<String>,
 }
 
 #[derive(Clone)]
@@ -254,6 +255,25 @@ impl MembersCore {
         })
     }
 
+    /// Stores which picture an account shows.
+    /// It is none if the account removed its picture.
+    /// The accounts feature reports this with the account's version.
+    pub async fn remember_picture(
+        &self,
+        within: Option<&mut Transaction>,
+        account: &AccountId,
+        version: Version,
+        picture: Option<String>,
+    ) -> Result<(), MembersCoreError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_picture(transaction, account, version, picture.as_deref())
+                .await?;
+
+            Ok(())
+        })
+    }
+
     /// Forgets the accounts that stopped leaving before the given time.
     /// By then, no message about their leaving can be retried any more.
     pub async fn forget_tombstones_laid_before(
@@ -272,6 +292,7 @@ impl MembersCore {
     }
 
     /// Removes a deleted account from every project it is in, as of its version, and forgets who it was.
+    /// Its picture is forgotten as of that version too, so a late picture message cannot bring it back.
     /// Where it was the last owner, the longest-standing other member is made owner.
     /// A project it was alone in is abandoned.
     pub async fn let_go_of(
@@ -308,6 +329,9 @@ impl MembersCore {
             self.catalog.forget_person(transaction, account).await?;
             self.catalog
                 .remember_leaving(transaction, account, version, None, self.clock.now())
+                .await?;
+            self.catalog
+                .remember_picture(transaction, account, version, None)
                 .await?;
 
             Ok(())
@@ -426,6 +450,7 @@ impl MembersCore {
             .collect();
         let people = self.catalog.people(&accounts).await?;
         let leaving = self.catalog.leaving(&accounts).await?;
+        let pictures = self.catalog.pictures(&accounts).await?;
         let owning = self
             .authorizer
             .may(agent, Act::Manage, project.as_str())
@@ -445,6 +470,10 @@ impl MembersCore {
                         .iter()
                         .find(|gone| gone.account == member.account)
                         .map(|gone| gone.until),
+                    picture: pictures
+                        .iter()
+                        .find(|pictured| pictured.account == member.account)
+                        .map(|pictured| pictured.picture.clone()),
                     account: member.account,
                     role: member.role,
                 }

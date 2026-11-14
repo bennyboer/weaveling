@@ -9,6 +9,8 @@ use crate::accounts::roster::{Intent, Roster};
 use crate::accounts::{
     CurrentSession, SignInState, deletion_dialog, lock_dialog, role_dialog, ways_in_dialog,
 };
+use crate::avatar;
+use crate::blocks;
 use crate::icons;
 use crate::icons::Icon;
 use crate::moment;
@@ -51,26 +53,30 @@ pub fn accounts_listing() -> impl IntoView {
                 || roster.deleting.with(Option::is_some);
             (!in_dialog).then(|| roster.refused.get().map(problem::problem))
         },
-        html::ul().class("accounts").child(move || {
-            roster
-                .shown()
-                .into_iter()
-                .map(|account| {
-                    let yourself = own_email().as_deref() == Some(account.email.as_str());
-                    listed(roster, account, yourself)
+        blocks::list_card(
+            "accounts",
+            speech::said("instance-accounts-heading"),
+            (),
+            blocks::rows(move || {
+                roster
+                    .shown()
+                    .into_iter()
+                    .map(|account| {
+                        let yourself = own_email().as_deref() == Some(account.email.as_str());
+                        listed(roster, account, yourself)
+                    })
+                    .collect_view()
+            }),
+            move || {
+                roster.next.get().map(|next| {
+                    blocks::more(
+                        "instance-accounts-more",
+                        move || roster.loading.get(),
+                        move |_| roster.load(Some(next.clone())),
+                    )
                 })
-                .collect_view()
-        }),
-        move || {
-            roster.next.get().map(|next| {
-                html::button()
-                    .r#type("button")
-                    .class("more")
-                    .disabled(move || roster.loading.get())
-                    .on(ev::click, move |_| roster.load(Some(next.clone())))
-                    .child(speech::said("instance-accounts-more"))
-            })
-        },
+            },
+        ),
         move || {
             roster.seeing_ways_in.get().map(|account| {
                 ways_in_dialog::ways_in_dialog(account, roster, move || {
@@ -287,13 +293,16 @@ fn listed(roster: Roster, account: ListedAccount, yourself: bool) -> impl IntoVi
         "instance-account-signed-up",
         &[("when", moment::human_time(account.signed_up_at))],
     );
-    html::li().child((
-        html::div().class("who").child((
-            html::p().class("name").child(account.name.clone()),
-            html::p().class("email").child(account.email.clone()),
-            html::p().class("signed-up").child(signed_up),
-        )),
-        html::div().class("marks").child((
+
+    blocks::row(
+        avatar::avatar(&account.id, Some(&account.name), None),
+        account.name.clone(),
+        (
+            html::span().class("email").child(account.email.clone()),
+            html::span().class("between").child(" · "),
+            html::span().class("signed-up").child(signed_up),
+        ),
+        (
             (!account.verified).then(|| {
                 html::span()
                     .class("mark")
@@ -301,7 +310,7 @@ fn listed(roster: Roster, account: ListedAccount, yourself: bool) -> impl IntoVi
             }),
             account.operator.then(|| {
                 html::span()
-                    .class("mark")
+                    .class("mark operator")
                     .child(speech::said("instance-account-operator"))
             }),
             account.second_factor.then(|| {
@@ -324,7 +333,7 @@ fn listed(roster: Roster, account: ListedAccount, yourself: bool) -> impl IntoVi
                     html::span().class("reason").child(lock.reason),
                 ))
             }),
-        )),
+        ),
         acting,
-    ))
+    )
 }

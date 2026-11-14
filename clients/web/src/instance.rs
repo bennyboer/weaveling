@@ -1,9 +1,10 @@
 use leptos::prelude::*;
-use leptos::{IntoView, component, html, view};
+use leptos::{IntoView, component, view};
 use leptos_router::components::{A, Redirect};
 
 use crate::accounts::{CurrentSession, SignInState, listing};
 use crate::assets::instance_storage;
+use crate::blocks;
 use crate::invitations;
 use crate::invitations::service::InvitedInto;
 use crate::route;
@@ -41,46 +42,42 @@ pub fn InstanceStoragePage() -> impl IntoView {
 fn instance_page(section: Section) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
 
+    let operating =
+        move || matches!(session.state(), SignInState::SignedIn(account) if account.operator);
+
     (
         shell::masthead(None),
-        html::main()
-            .class("operating")
-            .child(move || match session.state() {
-                SignInState::SignedIn(account) if account.operator => operating(section).into_any(),
+        blocks::page(
+            "instance",
+            speech::said("operator-heading"),
+            Some("operator-you-are"),
+            move || operating().then(sections),
+            move || match session.state() {
+                SignInState::SignedIn(account) if account.operator => match section {
+                    Section::Accounts => listing::accounts_listing().into_any(),
+                    Section::Invitations => {
+                        invitations::listing::invitations_listing(InvitedInto::Instance).into_any()
+                    }
+                    Section::Storage => instance_storage::storage_overview().into_any(),
+                },
                 SignInState::SignedIn(_) => {
                     view! { <Redirect path=route::SETUP options=setup::replacing() /> }.into_any()
                 }
                 _ => setup::without_accounts().into_any(),
-            }),
-    )
-}
-
-fn operating(section: Section) -> impl IntoView {
-    (
-        html::h1().child(speech::said("operator-heading")),
-        html::p()
-            .class("hint")
-            .child(speech::said("operator-you-are")),
-        sections(),
-        match section {
-            Section::Accounts => listing::accounts_listing().into_any(),
-            Section::Invitations => {
-                invitations::listing::invitations_listing(InvitedInto::Instance).into_any()
-            }
-            Section::Storage => instance_storage::storage_overview().into_any(),
-        },
+            },
+        ),
     )
 }
 
 fn sections() -> impl IntoView {
-    html::nav()
-        .class("sections")
-        .attr("aria-label", move || speech::say("instance-sections"))
-        .child(view! {
+    blocks::tabs(
+        "instance-sections",
+        view! {
             <A href=route::INSTANCE_ACCOUNTS>{speech::said("instance-accounts-heading")}</A>
             <A href=route::INSTANCE_INVITATIONS>
                 {speech::said("instance-invitations-heading")}
             </A>
             <A href=route::INSTANCE_STORAGE>{speech::said("storage-heading")}</A>
-        })
+        },
+    )
 }
