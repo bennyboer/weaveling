@@ -58,6 +58,24 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onPresent)]
     pub fn on_present(this: &ProseEditor, present: &Closure<dyn Fn(String)>);
 
+    #[wasm_bindgen(method, js_name = onSelectionShown)]
+    pub fn on_selection_shown(this: &ProseEditor, shown: &Closure<dyn Fn(String)>);
+
+    #[wasm_bindgen(method, js_name = onToToolbar)]
+    pub fn on_to_toolbar(this: &ProseEditor, reached: &Closure<dyn Fn()>);
+
+    #[wasm_bindgen(method, js_name = toggleBold)]
+    pub fn toggle_bold(this: &ProseEditor);
+
+    #[wasm_bindgen(method, js_name = toggleItalic)]
+    pub fn toggle_italic(this: &ProseEditor);
+
+    #[wasm_bindgen(method, js_name = quoteSelection)]
+    pub fn quote_selection(this: &ProseEditor);
+
+    #[wasm_bindgen(method, js_name = clearFormatting)]
+    pub fn clear_formatting(this: &ProseEditor);
+
     #[wasm_bindgen(method, js_name = arriveWhenSynced)]
     pub fn arrive_when_synced(this: &ProseEditor, towards: &str);
 

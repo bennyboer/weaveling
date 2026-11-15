@@ -8,6 +8,7 @@ use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::writing::choosing;
+use crate::writing::formatting;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -49,6 +50,8 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(bool)>,
             Closure<dyn Fn(u32)>,
             Closure<dyn Fn(String)>,
+            Closure<dyn Fn(String)>,
+            Closure<dyn Fn()>,
             Closure<dyn Fn(String) -> bool>,
         )>,
     );
@@ -149,6 +152,18 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 }
             });
             editor.on_present(&present);
+            let selection_shown = Closure::<dyn Fn(String)>::new({
+                let scene = scene.clone();
+
+                move |told: String| state.formatting.told(&scene, &told)
+            });
+            editor.on_selection_shown(&selection_shown);
+            let to_toolbar = Closure::<dyn Fn()>::new({
+                let scene = scene.clone();
+
+                move || formatting::reached(&scene)
+            });
+            editor.on_to_toolbar(&to_toolbar);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
@@ -164,6 +179,8 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 saving,
                 caret_moved,
                 present,
+                selection_shown,
+                to_toolbar,
                 selecting,
             )));
         }
@@ -193,6 +210,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             state.word_count.let_go_of(&scene);
             state.labels.let_go_of(&scene);
             state.presence.let_go_of(&scene);
+            state.formatting.let_go_of(&scene);
             kept.set_value(None);
         }
     });

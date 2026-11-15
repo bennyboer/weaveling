@@ -8,6 +8,7 @@ mod cursor_kept;
 mod drawers;
 mod editors;
 mod focus;
+mod formatting;
 mod going_back;
 mod heading;
 mod inspecting;

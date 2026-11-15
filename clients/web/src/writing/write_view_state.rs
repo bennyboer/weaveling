@@ -16,6 +16,7 @@ use crate::writing::copying::Copying;
 use crate::writing::drawers;
 use crate::writing::editors::Editors;
 use crate::writing::focus::Focus;
+use crate::writing::formatting::Formatting;
 use crate::writing::inspector::Inspector;
 use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
@@ -61,6 +62,7 @@ pub struct WriteViewState {
     pub side: Side,
     pub loose: LooseScenes,
     pub presence: Presence,
+    pub formatting: Formatting,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
     pub quiet_note: QuietNote,
 }
@@ -102,6 +104,7 @@ impl WriteViewState {
             side,
             loose,
             presence: Presence::of(project),
+            formatting: Formatting::nothing(),
             connection: StoredValue::new_local(SyncConnection::new()),
             quiet_note: expect_context::<QuietNote>(),
         };

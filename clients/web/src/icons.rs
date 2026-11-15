@@ -38,6 +38,10 @@ pub enum Icon {
     Shield,
     Archive,
     SignOut,
+    Bold,
+    Italic,
+    Quote,
+    ClearFormatting,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -83,6 +87,10 @@ pub fn mark(icon: Icon) -> impl IntoView {
             "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
         }
         Icon::Archive => "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
+        Icon::Bold => "M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8",
+        Icon::Italic => "M19 4h-9M14 20H5M15 4 9 20",
+        Icon::Quote => "M7 7h3v4c0 2.5-1 4-3 5M15 7h3v4c0 2.5-1 4-3 5",
+        Icon::ClearFormatting => "M4 7V4h16v3M5 20h6M13 4 8 20M15 15l5 5M20 15l-5 5",
         Icon::SignOut => "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
         Icon::UnfoldAll => "m7 15 5 5 5-5M7 9l5-5 5 5",
         Icon::FoldAll => "m7 20 5-5 5 5M7 4l5 5 5-5",

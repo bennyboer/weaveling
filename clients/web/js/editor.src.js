@@ -156,6 +156,16 @@ export class ProseEditor {
     this.breaking = null;
     this.changed = () => {};
     this.caretMoved = () => {};
+    this.selectionShown = () => {};
+    this.toToolbar = () => {};
+    this.pressing = false;
+    this.letGo = () => {
+      if (this.pressing) {
+        this.pressing = false;
+        this.tellSelection();
+      }
+    };
+    document.addEventListener("pointerup", this.letGo);
 
     const editor = this;
 
@@ -179,6 +189,9 @@ export class ProseEditor {
         if ((tr.docChanged || tr.selectionSet) && this.hasFocus()) {
           editor.caretMoved(this.state.selection.head);
         }
+        if (tr.docChanged || tr.selectionSet || tr.storedMarksSet) {
+          editor.tellSelection();
+        }
       },
       state: EditorState.create({
         schema,
@@ -195,6 +208,19 @@ export class ProseEditor {
                 return false;
               },
               handleDOMEvents: {
+                pointerdown: () => {
+                  this.pressing = true;
+                  this.selectionShown("");
+
+                  return false;
+                },
+                blur: (_, event) => {
+                  if (!event.relatedTarget?.closest?.(".formatting")) {
+                    this.selectionShown("");
+                  }
+
+                  return false;
+                },
                 focus: (view) => {
                   this.holdTheCaret();
 
@@ -220,6 +246,14 @@ export class ProseEditor {
             "Mod-i": toggleMark(schema.marks.em),
             "Mod-b": toggleMark(schema.marks.strong),
             "Mod-Shift-2": (state, dispatch) => this.quoting(state, dispatch),
+            "Alt-F10": (state) => {
+              if (state.selection.empty) {
+                return false;
+              }
+              this.toToolbar();
+
+              return true;
+            },
           }),
           keymap({
             Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
@@ -346,6 +380,84 @@ export class ProseEditor {
 
   onCaretMoved(caretMoved) {
     this.caretMoved = caretMoved;
+  }
+
+  onSelectionShown(shown) {
+    this.selectionShown = shown;
+  }
+
+  onToToolbar(toToolbar) {
+    this.toToolbar = toToolbar;
+  }
+
+  tellSelection() {
+    const inToolbar = document.activeElement?.closest?.(".formatting");
+    if (this.pressing || !this.view || (!this.view.hasFocus() && !inToolbar)) {
+      return;
+    }
+    const { state } = this.view;
+    const { from, to, empty } = state.selection;
+    const row = this.view.dom.closest(".scene-row");
+    if (empty || !(state.selection instanceof TextSelection) || !row) {
+      this.selectionShown("");
+      return;
+    }
+    const around = row.getBoundingClientRect();
+    const start = this.view.coordsAtPos(from);
+    const end = this.view.coordsAtPos(to);
+    const middle = start.top === end.top ? (start.left + end.left) / 2 : start.left;
+
+    this.selectionShown(
+      JSON.stringify({
+        above: start.top - around.top,
+        below: end.bottom - around.top,
+        across: Math.min(Math.max(middle - around.left, 0), around.width),
+        bold: this.marked(state, schema.marks.strong),
+        italic: this.marked(state, schema.marks.em),
+      }),
+    );
+  }
+
+  marked(state, mark) {
+    const { from, to } = state.selection;
+    let all = true;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (node.isText && !mark.isInSet(node.marks)) {
+        all = false;
+      }
+    });
+
+    return all;
+  }
+
+  toggleBold() {
+    this.command(toggleMark(schema.marks.strong));
+  }
+
+  toggleItalic() {
+    this.command(toggleMark(schema.marks.em));
+  }
+
+  quoteSelection() {
+    this.command((state, dispatch) => this.quoting(state, dispatch));
+  }
+
+  clearFormatting() {
+    this.command((state, dispatch) => {
+      const { from, to } = state.selection;
+      dispatch(
+        state.tr
+          .removeMark(from, to, schema.marks.strong)
+          .removeMark(from, to, schema.marks.em),
+      );
+
+      return true;
+    });
+  }
+
+  command(command) {
+    command(this.view.state, (tr) => this.view.dispatch(tr));
+    this.tellSelection();
   }
 
   onPresent(present) {
@@ -653,6 +765,7 @@ export class ProseEditor {
   }
 
   destroy() {
+    document.removeEventListener("pointerup", this.letGo);
     if (holdingTheCaret === this) {
       holdingTheCaret = null;
     }

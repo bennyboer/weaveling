@@ -20,6 +20,7 @@ use crate::writing::bringing_back::Landing;
 use crate::writing::contents;
 use crate::writing::drawers;
 use crate::writing::focus;
+use crate::writing::formatting;
 use crate::writing::going_back;
 use crate::writing::heading;
 use crate::writing::inspecting;
@@ -640,11 +641,15 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
             }
 
             (
-                html::div().class("scene-row").child((
-                    menus::scene_margin(scene.clone(), state),
-                    presence::shown(scene.clone(), state.presence),
-                    scene_in_flow::scene_in_flow(scene.clone(), state),
-                )),
+                html::div()
+                    .class("scene-row")
+                    .attr("data-scene-row", scene.to_string())
+                    .child((
+                        menus::scene_margin(scene.clone(), state),
+                        presence::shown(scene.clone(), state.presence),
+                        formatting::toolbar(scene.clone(), state),
+                        scene_in_flow::scene_in_flow(scene.clone(), state),
+                    )),
                 section.clone().map(|section| {
                     (
                         pending_after(section.clone(), scene.clone(), state),
