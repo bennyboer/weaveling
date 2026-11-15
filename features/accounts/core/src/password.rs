@@ -68,6 +68,14 @@ impl PasswordHash {
         &STAND_IN
     }
 
+    /// Builds the stand-in now, unless it is built already.
+    /// The accounts call this when they are set up.
+    /// Otherwise the first sign-in with an address nobody has would take longer than any other.
+    /// That would tell that the address has no account.
+    pub fn ready_stand_in() {
+        LazyLock::force(&STAND_IN);
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

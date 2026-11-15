@@ -12,11 +12,12 @@ use axum::body;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum_test::{TestServer, WsMessage};
-use clock::SystemClock;
+use clock::{Clock, FixedClock, SystemClock};
 use eventsourcing::Agent;
 use live_contract::SESSION_ENDED;
 use outbox::Cadence;
 use serde_json::{Value, json};
+use time::OffsetDateTime;
 use tower::ServiceExt;
 use weaveling_service_api::{
     Accounts, Adapters, MailCaps, Mailing, Relays, ServedClient, SignUp, Storage,
@@ -685,6 +686,21 @@ async fn an_operator_signed_in_on_a_server_signing_up(
     named: &str,
     sign_up: SignUp,
 ) -> OperatorSignedIn {
+    an_operator_signed_in_on_a_server_mailing_at_most(
+        named,
+        sign_up,
+        MailCaps::default(),
+        Arc::new(SystemClock),
+    )
+    .await
+}
+
+async fn an_operator_signed_in_on_a_server_mailing_at_most(
+    named: &str,
+    sign_up: SignUp,
+    caps: MailCaps,
+    clock: Arc<dyn Clock>,
+) -> OperatorSignedIn {
     let drop = std::env::temp_dir().join(format!(
         "weaveling-{named}-mail-drop-{}",
         std::process::id()
@@ -695,8 +711,8 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         Accounts::On,
         Mailing::Dropped { into: drop.clone() }.mailer(),
         Some("https://weaveling.example.com".to_owned()),
-        MailCaps::default(),
-        Arc::new(SystemClock),
+        caps,
+        clock,
     )
     .await
     .expect("nothing kept in memory needs preparing")
@@ -757,19 +773,19 @@ async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged
     // when: who is signed in is asked
     let told: Value = signed_in.server.get("/api/sessions/current").await.json();
 
-    // then: no operator is wanted any more
-    assert_eq!(
-        told["operator_wanted"], false,
-        "with an operator there, nobody is asked to set the instance up any more"
-    );
-    // and: an operator code signs nobody up
-    signed_in
+    // then: she is told who she is, an operator
+    assert_eq!(told["operator"], true);
+    // and: nothing about whether the instance wants an operator
+    assert!(told.get("operator_wanted").is_none(), "{told}");
+    // and: an operator code signs nobody up, refused as a wrong code
+    let refused = signed_in
         .server
         .post("/api/accounts")
         .do_not_save_cookies()
         .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password", "operator_code": "0123456789abcdef0123456789abcdef" }))
-        .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .await;
+    refused.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(refused.json::<Value>()["type"], "operator-code-wrong");
 
     signed_in.end().await;
 }
@@ -827,6 +843,53 @@ async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_where_the
         "{}",
         mailed[0]
     );
+
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn invitations_and_codes_count_toward_one_cap_on_mail_across_the_instance() {
+    // given: an operator signed in on a server mailing anyone at most three times an hour, her own code the first
+    // and: a clock standing still in the middle of an hour, so the hour cannot turn while the test runs
+    let signed_in = an_operator_signed_in_on_a_server_mailing_at_most(
+        "sharing-the-cap",
+        SignUp::Open,
+        MailCaps {
+            anyone_each_hour: 3,
+            ..MailCaps::default()
+        },
+        Arc::new(FixedClock::new(
+            OffsetDateTime::now_utc()
+                .replace_minute(30)
+                .expect("half past is a minute every hour has"),
+        )),
+    )
+    .await;
+    // and: a new password asked for an address, the second
+    signed_in
+        .server
+        .post("/api/accounts/password-reset")
+        .json(&json!({ "email": "nobody@example.com" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    // and: an address invited, the third
+    signed_in
+        .server
+        .post("/api/invitations")
+        .json(&json!({ "email": "grace@example.com" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // when: she invites another address
+    let refused = signed_in
+        .server
+        .post("/api/invitations")
+        .json(&json!({ "email": "bea@example.com" }))
+        .await;
+
+    // then: it waits for the next hour, the cap used up by codes and invitations together
+    refused.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(refused.json::<Value>()["type"], "too-many-tries");
 
     signed_in.end().await;
 }

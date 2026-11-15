@@ -596,7 +596,6 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> Result<SignedInAccount, ApiEr
         name: signed_in.name,
         email: signed_in.email,
         operator: signed_in.operator,
-        operator_wanted: signed_in.operator_wanted,
         second_factor,
         owes_second_factor: signed_in.stage == stage::SECOND_FACTOR_OWED,
         picture: signed_in.picture,

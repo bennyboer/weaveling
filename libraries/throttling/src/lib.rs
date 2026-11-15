@@ -1,3 +1,4 @@
+mod cap;
 mod forgetting;
 mod memory;
 mod rule;
@@ -9,6 +10,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
 
+pub use cap::HourlyCap;
 pub use forgetting::ForgetOldTries;
 pub use memory::InMemoryThrottles;
 pub use rule::{Admission, Rule, Tries, hour_of};

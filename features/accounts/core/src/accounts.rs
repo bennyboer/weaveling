@@ -17,7 +17,7 @@ use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use mailing::Mailer;
-use throttling::{Admission, Rule, Throttles};
+use throttling::{Admission, HourlyCap, Throttles};
 use time::Duration;
 use tokio::sync::watch;
 use transacting::{Transaction, Transactions};
@@ -28,6 +28,7 @@ use crate::catalog::{AccountCatalog, AccountSummary};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::key_ceremonies::KeyCeremonies;
+use crate::password::PasswordHash;
 use crate::secrets::{
     EmailAddresses, InvitationTickets, KeyCredentials, Operators, Passwords, SecondFactors,
     SecretStores, SecretsError, Sessions, Verifications,
@@ -45,7 +46,6 @@ pub use totp::SettingUpTotp;
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 
 const MAILING_ANYONE: &str = "mailing-anyone";
-const THE_INSTANCE: &str = "instance";
 
 /// The default number of mails per hour that anyone may make the instance send.
 pub const MAIL_EACH_HOUR: u32 = 100;
@@ -70,7 +70,7 @@ pub struct AccountsCore {
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
     signing_up: SigningUp,
-    mail_each_hour: u32,
+    mailing_anyone: HourlyCap,
     sessions_checked: Arc<watch::Sender<u64>>,
 }
 
@@ -95,6 +95,7 @@ impl AccountsCore {
             second_factors,
             key_credentials,
         } = secrets;
+        PasswordHash::ready_stand_in();
 
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
@@ -103,6 +104,7 @@ impl AccountsCore {
             passwords,
             verifications,
             sessions,
+            mailing_anyone: HourlyCap::new(MAILING_ANYONE, MAIL_EACH_HOUR, throttles.clone()),
             throttles,
             operators,
             invitation_tickets,
@@ -115,7 +117,6 @@ impl AccountsCore {
             mailer,
             clock,
             signing_up: SigningUp::Open,
-            mail_each_hour: MAIL_EACH_HOUR,
             sessions_checked: Arc::new(watch::Sender::new(0)),
         }
     }
@@ -125,13 +126,19 @@ impl AccountsCore {
     }
 
     /// Limits the mails that anyone may make the instance send to `mail_each_hour` per hour, across the whole instance.
-    /// This covers codes, and notices that an address already has an account.
+    /// This covers codes, notices that an address already has an account, and invitations handed this cap.
     /// It stops anyone from using the instance to mail strangers in bulk.
     pub fn capping_mail(self, mail_each_hour: u32) -> Self {
         Self {
-            mail_each_hour,
+            mailing_anyone: self.mailing_anyone.allowing(mail_each_hour),
             ..self
         }
+    }
+
+    /// The cap on mail that anyone may make the instance send, counted across the whole instance.
+    /// Other features that mail strangers, such as invitations, count their mail in it too.
+    pub fn mail_cap(&self) -> HourlyCap {
+        self.mailing_anyone.clone()
     }
 
     pub async fn catalogue(
@@ -191,20 +198,9 @@ impl AccountsCore {
 
     pub(super) async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
         self.admitted(Guarded::SendingCodes, email.as_str()).await?;
-        let now = self.clock.now();
-        let (this_hour, left) = throttling::hour_of(THE_INSTANCE, now);
-        match self
-            .throttles
-            .admit(
-                MAILING_ANYONE,
-                &this_hour,
-                Rule::capped(self.mail_each_hour),
-                now,
-            )
-            .await?
-        {
+        match self.mailing_anyone.admit(self.clock.now()).await? {
             Admission::Admitted => Ok(()),
-            Admission::Wait(_) => Err(AccountsError::Throttled { wait: left }),
+            Admission::Wait(wait) => Err(AccountsError::Throttled { wait }),
         }
     }
 

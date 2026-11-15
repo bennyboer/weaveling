@@ -78,7 +78,7 @@ test("a wrong code says so and empties the boxes, keeping the password", async (
 
   // then: it says so, empties the code and keeps the password
   await expect(page.getByRole("alert")).toHaveText(
-    "That is not the code we sent.",
+    "That code is wrong or no longer valid. Ask for a new one if needed.",
   );
   await expect(page.getByLabel("Code")).toHaveValue("");
   await expect(page.getByLabel("New password")).toHaveValue(HER_NEW_PASSWORD);

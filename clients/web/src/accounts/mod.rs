@@ -35,7 +35,6 @@ pub struct SignedInAccount {
     pub name: String,
     pub email: String,
     pub operator: bool,
-    pub operator_wanted: bool,
     pub second_factor: Option<SecondFactorInUse>,
     pub owes_second_factor: bool,
     pub deletion: Option<PendingDeletion>,
@@ -149,12 +148,6 @@ impl CurrentSession {
         self.signing_up.get()
     }
 
-    /// Whether this Weaveling instance has no operator yet.
-    /// Only a signed-in account is told this.
-    pub fn operator_wanted(self) -> bool {
-        matches!(self.state.get(), SignInState::SignedIn(account) if account.operator_wanted)
-    }
-
     pub fn keys_offered(self) -> bool {
         self.keys_offered.get()
     }
@@ -250,7 +243,6 @@ impl CurrentSession {
         self.state.update(|state| {
             if let SignInState::SignedIn(account) = state {
                 account.operator = true;
-                account.operator_wanted = false;
             }
         });
     }
@@ -311,7 +303,6 @@ mod tests {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,
-                operator_wanted: false,
                 second_factor: None,
                 owes_second_factor: false,
                 deletion: None,
@@ -330,7 +321,6 @@ mod tests {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,
-                operator_wanted: false,
                 second_factor: None,
                 owes_second_factor: false,
                 deletion: Some(PendingDeletion {

@@ -170,7 +170,7 @@ test("setting up has an address of its own", async ({ page }) => {
   await expect(page.getByLabel("Code from the server's log")).toBeVisible();
 });
 
-test("signed in while nobody runs the instance, the menu leads to becoming its operator", async ({
+test("signed in while nobody runs the instance, the menu does not tell so, and the setup address makes her the operator", async ({
   page,
 }) => {
   // given: an author signed in while nobody runs the instance
@@ -179,44 +179,47 @@ test("signed in while nobody runs the instance, the menu leads to becoming its o
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
 
-  // when: she chooses to set it up from her menu
+  // then: her menu offers no setting up, which would tell anyone the instance is unclaimed
   await page
     .getByRole("banner")
     .getByRole("button", { name: "Account: Ada Lovelace" })
     .click();
-  await page
-    .getByRole("menuitem", { name: "Set up this Weaveling instance" })
-    .click();
+  await expect(page.getByRole("menuitem")).not.toHaveText([/set up/i]);
+  await page.keyboard.press("Escape");
 
-  // then: she is offered to become its operator
-  await expect(page).toHaveURL(/\/setup$/);
+  // when: she opens the setting up address and enters the logged code
+  await page.goto("/setup");
   await expect(
     page.getByRole("heading", { name: "Become the operator" }),
   ).toBeVisible();
+  await page.getByLabel("Code").fill(THE_OPERATOR_CODE);
+  await page.getByRole("button", { name: "Become the operator" }).click();
+
+  // then: she runs the instance
+  await expect.poll(() => server.operator).toBe(true);
 });
 
-test("signed in where someone runs the instance, setting up says so", async ({
+test("signed in where someone runs the instance, setting up looks the same and the code is refused as wrong", async ({
   page,
 }) => {
-  // given: an author signed in where someone runs the instance
+  // given: an author signed in where someone else runs the instance
   await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
-  // then: her menu offers no setting up
-  await page
-    .getByRole("banner")
-    .getByRole("button", { name: "Account: Ada Lovelace" })
-    .click();
-  await expect(
-    page.getByRole("menuitem", { name: "Set up this Weaveling instance" }),
-  ).toHaveCount(0);
 
   // when: she opens the setting up address
   await page.goto("/setup");
 
-  // then: she is told it is set up already
+  // then: she is offered the same form as on an unclaimed instance
+  await expect(
+    page.getByRole("heading", { name: "Become the operator" }),
+  ).toBeVisible();
+  // when: she enters the code the server once logged
+  await page.getByLabel("Code").fill(THE_OPERATOR_CODE);
+  await page.getByRole("button", { name: "Become the operator" }).click();
+
+  // then: it is refused as a wrong code, which tells nothing about who runs the instance
   await expect(page.getByRole("main")).toContainText(
-    "This Weaveling instance is already set up",
+    "This is not the code the server logged.",
   );
-  await expect(page.getByLabel("Code")).toHaveCount(0);
 });

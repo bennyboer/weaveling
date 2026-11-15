@@ -109,14 +109,6 @@ fn account_menu(
                                 </A>
                             }
                         }),
-                        (!account.operator && session.operator_wanted()).then(|| {
-                            view! {
-                                <A href=route::SETUP attr:role="menuitem">
-                                    {icons::mark(Icon::Cogwheel)}
-                                    {speech::said("set-up-instead")}
-                                </A>
-                            }
-                        }),
                         html::button()
                             .r#type("button")
                             .role("menuitem")

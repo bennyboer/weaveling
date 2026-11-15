@@ -17,7 +17,7 @@ use eventsourcing::{
     RefusesAppending, ServiceError, Standing,
 };
 use inbox::InMemoryInbox;
-use mailing::FakeMailbox;
+use mailing::{FakeMailbox, Mail, Mailer, Unsent};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
@@ -123,6 +123,18 @@ impl Wired {
             self.catalog.clone(),
             self.trash.clone(),
             self.mailbox.clone(),
+            self.clock.clone(),
+        )
+    }
+
+    pub fn failing_to_mail(&self) -> AccountsCore {
+        AccountsCore::new(
+            self.store.clone(),
+            Arc::new(InMemoryTransactions::new()),
+            SecretStores::kept_by(self.secrets.clone(), self.throttles.clone()),
+            self.catalog.clone(),
+            self.trash.clone(),
+            Arc::new(RefusesMailing),
             self.clock.clone(),
         )
     }
@@ -263,6 +275,18 @@ async fn finished(transaction: Transaction) {
         .finish()
         .await
         .expect("finishing should succeed");
+}
+
+struct RefusesMailing;
+
+#[async_trait]
+impl Mailer for RefusesMailing {
+    async fn send(&self, mail: Mail) -> Result<(), Unsent> {
+        Err(Unsent {
+            to: mail.to,
+            because: "the mail server cannot be reached".to_owned(),
+        })
+    }
 }
 
 struct RefusesOpening(Arc<InMemorySecrets>);

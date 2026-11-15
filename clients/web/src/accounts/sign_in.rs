@@ -912,9 +912,7 @@ fn owing_as(page: Page) -> impl IntoView {
 
 fn refused_the_code(answer: &Result<(), ApiError>) -> bool {
     matches!(answer, Err(ApiError::Rejected(refusal))
-    if refusal.kind.as_deref().is_some_and(|kind| {
-        [refused::CODE_WRONG, refused::CODE_EXPIRED, refused::CODE_EXHAUSTED].contains(&kind)
-    }))
+    if refusal.kind.as_deref() == Some(refused::CODE_WRONG))
 }
 
 fn sent_to(page: Page) -> impl IntoView {

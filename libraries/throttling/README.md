@@ -48,4 +48,6 @@ match self
 
 **Per address, never per IP.** This was decided for accounts. Many people share one IP address behind a NAT. A throttle by IP would let one person slow down all of them.
 
+**A cap across the instance.** `HourlyCap` allows a number of tries each hour, whoever makes them, counted afresh every hour. It keeps its count in the throttles it was made with. Several features share one cap by holding clones of it. The accounts make the cap on mail anyone may cause, and hand it to the invitations, so codes and invitations are counted together.
+
 **Why a library.** The accounts feature throttles signing in and sending codes. The invitations feature throttles inviting an address. Each keeps its own count, in its own database. Each decides what is free. But the rule must be one and the same: how long a wait grows, and when tries are forgotten.

@@ -167,7 +167,7 @@ async fn a_wrong_code_is_refused_as_wrong() {
 }
 
 #[tokio::test]
-async fn an_expired_or_exhausted_code_is_refused_as_such() {
+async fn an_expired_or_exhausted_code_is_refused_as_wrong() {
     // given: an account signed up with a code sent
     let (wired, server) = a_server();
     server
@@ -182,8 +182,8 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
         .clock
         .set(clock::at(1_700_000_000) + Duration::hours(1));
 
-    // then: verifying with it is refused as expired
-    refused_as(
+    // then: verifying with it is refused as wrong
+    let expired = refused_as(
         server
             .post("/accounts/verification")
             .json(&VerifyEmailRequest {
@@ -191,7 +191,7 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
                 code: code.clone(),
             })
             .await,
-        refused::CODE_EXPIRED,
+        refused::CODE_WRONG,
     );
 
     // when: the code is good again but every try is spent on wrong guesses
@@ -207,8 +207,8 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
             .await;
     }
 
-    // then: verifying with it is refused as exhausted
-    refused_as(
+    // then: verifying with it is refused as wrong too
+    let exhausted = refused_as(
         server
             .post("/accounts/verification")
             .json(&VerifyEmailRequest {
@@ -216,8 +216,116 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
                 code,
             })
             .await,
-        refused::CODE_EXHAUSTED,
+        refused::CODE_WRONG,
     );
+    // and: both are told exactly as a code nobody was sent
+    let never_sent = refused_as(
+        server
+            .post("/accounts/verification")
+            .json(&VerifyEmailRequest {
+                email: "nobody@example.com".to_owned(),
+                code: "123456".to_owned(),
+            })
+            .await,
+        refused::CODE_WRONG,
+    );
+    assert_eq!(
+        (&expired, &exhausted),
+        (&never_sent, &never_sent),
+        "a refusal of their own would tell that the address has an account"
+    );
+}
+
+#[tokio::test]
+async fn guessing_codes_is_held_back_after_as_many_tries_whether_or_not_the_address_has_an_account()
+{
+    // given: an account signed up, and an address nobody has
+    let (_wired, server) = a_server();
+    server
+        .post("/accounts")
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+
+    for email in [ADA, "nobody@example.com"] {
+        let guessed = || {
+            server
+                .post("/accounts/verification")
+                .json(&VerifyEmailRequest {
+                    email: email.to_owned(),
+                    code: "999999".to_owned(),
+                })
+        };
+
+        // when: ten codes are guessed for the address
+        for _ in 0..10 {
+            // then: each is refused as wrong
+            refused_as(guessed().await, refused::CODE_WRONG);
+        }
+
+        // and: the next is held back
+        let held_back = guessed().await;
+        held_back.assert_status(StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            held_back.json::<Value>()["type"],
+            refused::THROTTLED,
+            "{email}: being held back only for an address with an account would tell that it has one"
+        );
+    }
+}
+
+#[tokio::test]
+async fn guessing_reset_codes_is_held_back_for_an_address_nobody_has() {
+    // given: a server
+    let (_wired, server) = a_server();
+    let guessed = || {
+        server.post("/accounts/password").json(&NewPasswordRequest {
+            email: "nobody@example.com".to_owned(),
+            code: "999999".to_owned(),
+            password: HER_PASSWORD.to_owned(),
+        })
+    };
+
+    // when: ten codes are guessed for an address nobody has
+    for _ in 0..10 {
+        // then: each is refused as wrong
+        refused_as(guessed().await, refused::CODE_WRONG);
+    }
+
+    // and: the next is held back, as it would be for an address with an account
+    guessed().await.assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn asking_for_a_code_while_the_mail_cannot_be_sent_is_accepted_as_any_other() {
+    // given: an account signed up
+    let (wired, server) = a_server();
+    server
+        .post("/accounts")
+        .json(&a_sign_up(ADA, "Ada", HER_PASSWORD))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    // and: a server whose mail cannot be sent
+    let failing = TestServer::new(accounts_rest::router(wired.failing_to_mail()));
+
+    // when: a code is asked for again for its address
+    let again = failing
+        .post("/accounts/verification/code")
+        .json(&SendCodeRequest {
+            email: ADA.to_owned(),
+        })
+        .await;
+    // and: a new password is asked for
+    let reset = failing
+        .post("/accounts/password-reset")
+        .json(&PasswordResetRequest {
+            email: ADA.to_owned(),
+        })
+        .await;
+
+    // then: both are accepted, as for an address nobody has
+    again.assert_status(StatusCode::ACCEPTED);
+    reset.assert_status(StatusCode::ACCEPTED);
 }
 
 #[tokio::test]

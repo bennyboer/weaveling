@@ -27,13 +27,13 @@ use crate::session::{TokenDigest, hex};
 pub struct KeyCeremonies {
     webauthn: Webauthn,
     adding: Arc<UnderWay<AccountId, Registration>>,
-    answering: Arc<UnderWay<TokenDigest, SecurityKeyAuthentication>>,
+    answering: Arc<UnderWay<AccountId, Answering>>,
     sealing: Arc<Aes256Gcm>,
     signed_in: Arc<Mutex<HashMap<SigningIn, OffsetDateTime>>>,
 }
 
 /// What the server keeps of a ceremony, between asking the browser and getting its answer.
-/// It is keyed by the account the ceremony is for, or by the session that owes a second step.
+/// It is keyed by the account the ceremony is for, so each account holds at most one of each kind.
 /// A sign-in before anybody is known is not kept here; it is sealed and handed to the browser instead.
 /// It is never written to storage, so after a restart the ceremony just has to begin again.
 #[derive(Debug)]
@@ -104,6 +104,14 @@ impl Debug for SigningIn {
     }
 }
 
+/// A touch asked for to answer a second step, as webauthn-rs asked for it.
+/// It names the session that owes the second step, and only that session can finish it.
+#[derive(Debug)]
+struct Answering {
+    owing: TokenDigest,
+    state: SecurityKeyAuthentication,
+}
+
 /// A key being made, as webauthn-rs asked for it: a passkey or a security key.
 #[derive(Debug)]
 enum Registration {
@@ -146,10 +154,24 @@ impl<K: Clone + Eq + Hash, S> UnderWay<K, S> {
     /// Takes out the ceremony, so it can be used only once.
     /// It must still be in time.
     fn take(&self, by: &K, now: OffsetDateTime) -> Result<S, CeremonyFailed> {
-        self.0
-            .lock()
-            .expect("the ceremonies are not poisoned")
-            .remove(by)
+        self.take_if(by, now, |_| true)
+    }
+
+    /// Takes out the ceremony only if it is the one asked for, so it can be used only once.
+    /// It must still be in time.
+    /// A ceremony that is not the one asked for stays held.
+    fn take_if(
+        &self,
+        by: &K,
+        now: OffsetDateTime,
+        asked_for: impl FnOnce(&S) -> bool,
+    ) -> Result<S, CeremonyFailed> {
+        let mut held = self.0.lock().expect("the ceremonies are not poisoned");
+        if !held.get(by).is_some_and(|(state, _)| asked_for(state)) {
+            return Err(CeremonyFailed::NothingUnderWay);
+        }
+
+        held.remove(by)
             .filter(|(_, begun)| now - *begun < KeyCeremonies::LASTS)
             .map(|(state, _)| state)
             .ok_or(CeremonyFailed::NothingUnderWay)
@@ -315,10 +337,12 @@ impl KeyCeremonies {
     }
 
     /// Asks the browser for a touch of one of the held keys, to answer the second step this session owes.
-    /// The ceremony is held by the session.
-    /// So another session, signed in with the password, cannot replace it by asking too.
+    /// The ceremony is held by the account, so one account cannot crowd out the ceremonies of others by asking again and again.
+    /// Asking again for the same account replaces what was asked before, from whichever of its sessions.
+    /// Only the session that asked can finish it.
     pub(crate) fn begin_answering(
         &self,
+        account: &AccountId,
         owing: &TokenDigest,
         held: &[(KeyId, KeyCredential)],
         now: OffsetDateTime,
@@ -332,21 +356,32 @@ impl KeyCeremonies {
             .webauthn
             .start_securitykey_authentication(&keys)
             .map_err(|_| CeremonyFailed::Refused)?;
-        self.answering.hold(owing, state, now);
+        self.answering.hold(
+            account,
+            Answering {
+                owing: owing.clone(),
+                state,
+            },
+            now,
+        );
 
         Ok(serde_json::to_value(asked).expect("what a browser is asked is plain data"))
     }
 
-    /// Finishes the session's answering with the browser's answer, once.
+    /// Finishes the account's answering with the browser's answer, once.
+    /// Only the session that asked for the touch can finish it.
     /// Returns the key that answered, and its updated credential with the counter moved on.
     pub(crate) fn finish_answering(
         &self,
+        account: &AccountId,
         owing: &TokenDigest,
         answer: &Value,
         held: &[(KeyId, KeyCredential)],
         now: OffsetDateTime,
     ) -> Result<(KeyId, String), CeremonyFailed> {
-        let state = self.answering.take(owing, now)?;
+        let Answering { state, .. } = self
+            .answering
+            .take_if(account, now, |answering| answering.owing == *owing)?;
         let answer: PublicKeyCredential =
             serde_json::from_value(answer.clone()).map_err(|_| CeremonyFailed::Refused)?;
         let answered = self

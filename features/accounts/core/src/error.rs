@@ -32,10 +32,6 @@ pub enum AccountsError {
     InvalidLockReason(InvalidLockReason),
     #[error("this is not the code that was sent")]
     CodeWrong,
-    #[error("this code has run out; ask for a new one")]
-    CodeExpired,
-    #[error("this code was tried too often; ask for a new one")]
-    CodeExhausted,
     #[error("this address and password do not sign in")]
     SignInRefused,
     #[error("this address is not verified yet")]

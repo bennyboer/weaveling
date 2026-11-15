@@ -225,6 +225,11 @@ This is read from the `Acting` that the accounts' gate passes on with the reques
 **An address can be invited three times before it has to wait.**
 A throttle of the invitations' own, from [`throttling`](../../libraries/throttling), enforces this.
 So if an operator's account is taken over, it cannot flood a stranger's inbox.
+**One account has only so many invitations mailed each hour**, 20 unless `[mail] invitations_each_hour` says otherwise.
+**Every invitation also counts toward the mail the whole instance sends each hour.**
+That is the same cap the accounts count their codes in, `[mail] anyone_each_hour`.
+The server hands the accounts' cap to the invitations (`counting_mail_in`), so codes and invitations are counted together.
+Past any of these caps, inviting waits as `too-many-tries`.
 **The link is made from the `Origin`** of the operator's request.
 An operator is trusted, so the server needs no setting with its own address.
 

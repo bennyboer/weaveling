@@ -115,7 +115,10 @@ There is one exception, for the first account.
 While nobody is an operator, a sign-up that brings the operator code from the server's log is let in.
 The code is only checked in that case.
 It makes that account the operator once its address is confirmed.
-Meanwhile, `/api/service/mode` reports `operator_wanted`.
+Nothing tells anyone whether the instance has an operator yet.
+Once it has one, every operator code is refused as `operator-code-wrong`, the same as a code that was never drawn.
+Becoming the operator by a code is refused the same way.
+A sign-up without a code is still refused as `signing-up-by-invitation-only`.
 `POST /accounts/by-invitation` takes the link's token, a name and a password.
 It creates the account as confirmed and opens its session right away.
 It answers the same way signing in does.
@@ -140,8 +143,13 @@ A locked account is let in with no session at all.
 
 **Nothing tells a stranger whether an address has an account.**
 Signing in with an address nobody has does the same Argon2 work, and is refused with the same words.
+The hash it checks against is made when the accounts are set up, so the first such sign-in takes no longer than the others.
 Signing up with an address that is taken is answered like any other sign-up, and the address's owner gets a mail.
 Throttles count per address, whether or not an account stands behind it.
+Guesses at a code to confirm an address or set a new password are counted by the address too, so an address nobody has is held back after as many tries.
+A code that has run out, or was tried too often, is refused as `verification-code-wrong`, like a wrong code.
+Asking for a code again, or for a new password, answers 202 even when the mail cannot be sent.
+The failure is logged, without the code.
 A locked account is told that it is locked only once its password is right.
 
 **The operator** is the account that entered the code the server logs at start, at a time when there was no operator.

@@ -77,10 +77,10 @@
 # log = true
 #
 # How many mails anyone may have the instance send each hour, across the
-# instance: codes to confirm an address or reset a password, and word that an
-# address has an account already. Past it, they wait for the next hour, so
-# nobody mails strangers in bulk through the instance. A whole number above
-# nought; left out, 100.
+# instance: codes to confirm an address or reset a password, word that an
+# address has an account already, and invitations. Past it, they wait for the
+# next hour, so nobody mails strangers in bulk through the instance. A whole
+# number above nought; left out, 100.
 # WEAVELING_MAIL_ANYONE_EACH_HOUR
 # anyone_each_hour = 100
 #

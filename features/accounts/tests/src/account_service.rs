@@ -232,10 +232,10 @@ async fn after_too_many_wrong_codes_not_even_the_right_one_counts() {
     // and: as many wrong guesses as allowed
     let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES).await;
 
-    // then: the right code is refused
+    // then: the right code is refused as if it were wrong
     assert!(matches!(
         wired.accounts.verify(ADA, &right).await,
-        Err(AccountsError::CodeExhausted)
+        Err(AccountsError::CodeWrong)
     ));
     // and: the address is unverified
     assert!(
@@ -256,10 +256,10 @@ async fn a_code_lasts_a_quarter_of_an_hour() {
         .clock
         .set(clock::at(1_700_000_000) + Duration::minutes(15) + Duration::seconds(1));
 
-    // then: the code has expired
+    // then: the code has expired, refused as if it were wrong
     assert!(matches!(
         wired.accounts.verify(ADA, &code).await,
-        Err(AccountsError::CodeExpired)
+        Err(AccountsError::CodeWrong)
     ));
     // and: the address is unverified
     assert!(!is_verified(&wired, &id).await);
@@ -603,7 +603,7 @@ async fn a_try_is_counted_even_when_the_verification_cannot_be_kept() {
     assert!(
         matches!(
             wired.accounts.verify(ADA, &right).await,
-            Err(AccountsError::CodeExhausted)
+            Err(AccountsError::CodeWrong)
         ),
         "a try is counted in a transaction of its own, so a failure after it cannot give it back"
     );

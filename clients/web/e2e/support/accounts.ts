@@ -1,7 +1,5 @@
 import type { Page, Route, WebSocketRoute } from "@playwright/test";
 
-const operatorWanted = (server: { operatorWanted: boolean; operator: boolean }) =>
-  server.operatorWanted && !server.operator;
 
 export const ADA = {
   account: "account_1",
@@ -316,7 +314,6 @@ export async function aServerWithAccounts(
           json: {
             ...(server.signedInAs ?? ADA),
             operator: server.operator,
-            operator_wanted: operatorWanted(server),
             ...(server.picture ? { picture: server.picture } : {}),
             ...(server.secondFactor
               ? { second_factor: secondFactorTold(server) }
@@ -353,7 +350,6 @@ export async function aServerWithAccounts(
       json: {
         ...ADA,
         operator: server.operator,
-        operator_wanted: operatorWanted(server),
         ...(server.picture ? { picture: server.picture } : {}),
       },
     });
@@ -374,7 +370,6 @@ export async function aServerWithAccounts(
         json: {
           ...ADA,
           operator: server.operator,
-          operator_wanted: operatorWanted(server),
         },
       });
     }
@@ -451,10 +446,10 @@ export async function aServerWithAccounts(
       .request()
       .postDataJSON();
     if (server.signingUp === "invitation") {
-      if (!server.operatorWanted || server.operator || !operator_code) {
+      if (!operator_code) {
         return refusing(route, 403, "signing-up-by-invitation-only");
       }
-      if (operator_code.trim() !== THE_OPERATOR_CODE) {
+      if (!server.operatorWanted || server.operator || operator_code.trim() !== THE_OPERATOR_CODE) {
         return refusing(route, 422, "operator-code-wrong");
       }
     }
@@ -748,7 +743,6 @@ export async function aServerWithAccounts(
       json: {
         ...ADA,
         operator: server.operator,
-        operator_wanted: operatorWanted(server),
         second_factor: secondFactorTold(server),
       },
     });
@@ -787,7 +781,6 @@ export async function aServerWithAccounts(
       json: {
         ...ADA,
         operator: server.operator,
-        operator_wanted: operatorWanted(server),
         ...(server.secondFactor
           ? { second_factor: secondFactorTold(server) }
           : {}),
@@ -880,7 +873,7 @@ export async function aServerWithAccounts(
       return refusing(route, 401, "not-signed-in");
     }
     const { code } = route.request().postDataJSON();
-    if (code.trim() !== THE_OPERATOR_CODE) {
+    if (!server.operatorWanted || code.trim() !== THE_OPERATOR_CODE) {
       return refusing(route, 422, "operator-code-wrong");
     }
     server.operator = true;
@@ -949,7 +942,6 @@ export async function aServerWithAccounts(
         email: ADA.email,
         verified: true,
         operator: server.operator,
-        operator_wanted: operatorWanted(server),
         signed_up_at: "2026-10-21T08:00:00Z",
         locks: [],
       },

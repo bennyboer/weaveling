@@ -104,10 +104,6 @@ pub struct SignedInDTO {
     pub email: String,
     pub stage: String,
     pub operator: bool,
-    /// Whether nobody runs the instance yet.
-    /// It is only set for an account that is fully signed in, so nobody else learns that the instance is unclaimed.
-    #[serde(default)]
-    pub operator_wanted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub second_factor: Option<SecondFactorDTO>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -383,8 +379,6 @@ pub mod refused {
     pub const PASSWORD_TOO_SHORT: &str = "password-too-short";
     pub const PASSWORD_TOO_LONG: &str = "password-too-long";
     pub const CODE_WRONG: &str = "verification-code-wrong";
-    pub const CODE_EXPIRED: &str = "verification-code-expired";
-    pub const CODE_EXHAUSTED: &str = "verification-code-exhausted";
     pub const SIGN_IN_REFUSED: &str = "sign-in-refused";
     pub const NOT_VERIFIED: &str = "address-not-verified";
     pub const NOT_SIGNED_IN: &str = "not-signed-in";
@@ -433,7 +427,7 @@ pub mod refused {
     pub const NO_DELETION_PENDING: &str = "no-deletion-pending";
     pub const DELETION_ASKED_BY_THE_OPERATOR: &str = "deletion-asked-by-the-operator";
 
-    pub const EVERY: [&str; 57] = [
+    pub const EVERY: [&str; 55] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -442,8 +436,6 @@ pub mod refused {
         PASSWORD_TOO_SHORT,
         PASSWORD_TOO_LONG,
         CODE_WRONG,
-        CODE_EXPIRED,
-        CODE_EXHAUSTED,
         SIGN_IN_REFUSED,
         NOT_VERIFIED,
         NOT_SIGNED_IN,

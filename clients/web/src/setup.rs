@@ -24,10 +24,7 @@ pub fn SetUpPage() -> impl IntoView {
                     view! { <Redirect path=route::INSTANCE_ACCOUNTS options=replacing() /> }
                         .into_any()
                 }
-                SignInState::SignedIn(_) if session.operator_wanted() => {
-                    becoming(session).into_any()
-                }
-                SignInState::SignedIn(_) => set_up_already().into_any(),
+                SignInState::SignedIn(_) => becoming(session).into_any(),
                 _ => without_accounts().into_any(),
             }),
     )
@@ -84,13 +81,6 @@ fn becoming(session: CurrentSession) -> impl IntoView {
                     .attr("aria-busy", move || becoming.busy())
                     .child(speech::said("operator-become-confirm")),
             )),
-    )
-}
-
-fn set_up_already() -> impl IntoView {
-    (
-        html::h1().child(speech::said("set-up-heading")),
-        html::p().class("hint").child(speech::said("set-up-done")),
     )
 }
 

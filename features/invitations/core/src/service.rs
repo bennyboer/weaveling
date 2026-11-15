@@ -4,7 +4,7 @@ use clock::Clock;
 use email::EmailAddress;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
 use mailing::{Mail, Mailer};
-use throttling::{Admission, Rule, Throttles};
+use throttling::{Admission, HourlyCap, Rule, Throttles};
 use transacting::Transaction;
 
 use crate::catalog::InvitationSummary;
@@ -28,6 +28,7 @@ pub struct InvitationService {
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
     each_hour: u32,
+    mail_cap: Option<HourlyCap>,
 }
 
 impl InvitationService {
@@ -43,6 +44,7 @@ impl InvitationService {
             mailer,
             clock,
             each_hour: INVITATIONS_EACH_HOUR,
+            mail_cap: None,
         }
     }
 
@@ -222,9 +224,17 @@ impl InvitationService {
         Self { each_hour, ..self }
     }
 
+    pub fn counting_mail_in(self, mail_cap: HourlyCap) -> Self {
+        Self {
+            mail_cap: Some(mail_cap),
+            ..self
+        }
+    }
+
     /// Checks whether an invitation may be mailed.
     /// Only a few invitations may be mailed to the same address.
     /// The same account may only have so many mailed each hour.
+    /// Every invitation also counts toward the mail the whole instance sends each hour, when a cap for it is given.
     /// This stops anyone from mailing strangers in bulk through invitations.
     pub async fn admitted(&self, to: &EmailAddress, by: &Agent) -> Result<(), InvitationsError> {
         let now = self.clock.now();
@@ -235,17 +245,22 @@ impl InvitationService {
         {
             return Err(InvitationsError::Throttled { wait });
         }
-        let Agent::Account(account) = by else {
+        if let Agent::Account(account) = by {
+            let (this_hour, left) = throttling::hour_of(&account.to_string(), now);
+            if let Admission::Wait(_) = self
+                .throttles
+                .admit(INVITING_BY, &this_hour, Rule::capped(self.each_hour), now)
+                .await?
+            {
+                return Err(InvitationsError::Throttled { wait: left });
+            }
+        }
+        let Some(mail_cap) = &self.mail_cap else {
             return Ok(());
         };
-        let (this_hour, left) = throttling::hour_of(&account.to_string(), now);
-        match self
-            .throttles
-            .admit(INVITING_BY, &this_hour, Rule::capped(self.each_hour), now)
-            .await?
-        {
+        match mail_cap.admit(now).await? {
             Admission::Admitted => Ok(()),
-            Admission::Wait(_) => Err(InvitationsError::Throttled { wait: left }),
+            Admission::Wait(wait) => Err(InvitationsError::Throttled { wait }),
         }
     }
 }

@@ -590,7 +590,7 @@ async fn a_touch_given_for_another_accounts_asking_answers_nothing() {
 }
 
 #[tokio::test]
-async fn another_session_asking_for_a_key_takes_nothing_from_the_first() {
+async fn asking_again_for_the_same_account_replaces_what_was_asked_before() {
     // given: Ada owing her second factor, asked for a touch
     let bench = bench();
     let (_, mut authenticator) = with_a_key(&bench, ADA).await;
@@ -600,25 +600,66 @@ async fn another_session_asking_for_a_key_takes_nothing_from_the_first() {
         .begin_answering_with_key(&hers)
         .await
         .expect("answering begins");
-    // and: someone who knows her password, signed in too and asking
+    // and: another session of hers, signed in too and asking
     let theirs = bench.session_of(ADA).await;
-    bench
+    let asked_again = bench
         .accounts
         .begin_answering_with_key(&theirs)
         .await
         .expect("answering begins");
 
-    // when: she touches her key for what she was asked
+    // when: she touches her key for what she was asked first
     let answered = bench
         .accounts
         .answer_with_key(&hers, &touch_of(&mut authenticator, asked))
         .await;
 
+    // then: nothing is asked of her session any more
+    assert!(
+        matches!(answered, Err(AccountsError::NoKeyBeingAsked)),
+        "an account holds one ask at a time, so it cannot crowd out the asks of others:          {answered:?}"
+    );
+    // and: the later ask is still answered, by the session that made it
+    bench
+        .accounts
+        .answer_with_key(&theirs, &touch_of(&mut authenticator, asked_again))
+        .await
+        .expect("a session's touch for another's ask leaves that ask standing");
+}
+
+#[tokio::test]
+async fn one_account_asking_again_and_again_crowds_out_no_other_accounts_touch() {
+    // given: Ada owing her second factor, asked for a touch
+    let bench = bench();
+    let (_, mut hers_to_touch) = with_a_key(&bench, ADA).await;
+    let hers = bench.session_of(ADA).await;
+    let asked = bench
+        .accounts
+        .begin_answering_with_key(&hers)
+        .await
+        .expect("answering begins");
+    // and: someone with a key of their own, owing their second factor
+    with_a_key(&bench, GRACE).await;
+    let theirs = bench.session_of(GRACE).await;
+
+    // when: they ask for a touch more times than the instance holds asks at once
+    for _ in 0..1_001 {
+        bench
+            .accounts
+            .begin_answering_with_key(&theirs)
+            .await
+            .expect("answering begins");
+    }
+    // and: Ada touches her key for what she was asked
+    let answered = bench
+        .accounts
+        .answer_with_key(&hers, &touch_of(&mut hers_to_touch, asked))
+        .await;
+
     // then: it answers her second step
     assert!(
         answered.is_ok(),
-        "what one session is asked is its own, so another cannot keep it from being answered: \
-         {answered:?}"
+        "each ask replaces the account's last one, so asking again pushes out nobody else's:          {answered:?}"
     );
 }
 

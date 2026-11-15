@@ -8,7 +8,7 @@ use clock::Clock;
 use email::EmailAddress;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use mailing::Mailer;
-use throttling::Throttles;
+use throttling::{HourlyCap, Throttles};
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
@@ -73,6 +73,15 @@ impl InvitationsCore {
     pub fn capping_invitations(self, each_hour: u32) -> Self {
         Self {
             service: self.service.capping(each_hour),
+            ..self
+        }
+    }
+
+    /// Counts every invitation mailed toward the cap on mail across the whole instance.
+    /// The accounts count their codes in the same cap, so together they send no more than it allows each hour.
+    pub fn counting_mail_in(self, mail_cap: HourlyCap) -> Self {
+        Self {
+            service: self.service.counting_mail_in(mail_cap),
             ..self
         }
     }

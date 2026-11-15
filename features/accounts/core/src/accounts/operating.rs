@@ -39,6 +39,9 @@ impl AccountsCore {
         Ok(kept.then_some(code))
     }
 
+    /// Makes the account the operator by the code the server logged.
+    /// Once the instance has an operator, every code is refused as wrong.
+    /// So the refusal does not tell whether the instance has an operator.
     pub async fn become_operator(&self, id: &AccountId, code: &str) -> Result<(), AccountsError> {
         if !self.get(id).await?.state.is_verified() {
             return Err(AccountsError::NotVerifiedYet);

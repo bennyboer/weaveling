@@ -30,6 +30,9 @@ impl AccountsCore {
         self.signed_up(email, name, password, None).await
     }
 
+    /// Signs up with the operator code, where signing up is by invitation.
+    /// Once somebody operates the instance, every code is refused as wrong.
+    /// So the refusal does not tell whether the instance has an operator.
     pub async fn sign_up_to_operate(
         &self,
         email: &str,
@@ -38,11 +41,8 @@ impl AccountsCore {
         code: &str,
     ) -> Result<(), AccountsError> {
         if self.signing_up == SigningUp::ByInvitation {
-            if !self.operator_wanted().await? {
-                return Err(AccountsError::SigningUpByInvitationOnly);
-            }
             let code = OperatorCode::presented(code).digest();
-            if !self.operators.holds_code(&code).await? {
+            if self.operators.any_appointed().await? || !self.operators.holds_code(&code).await? {
                 return Err(AccountsError::OperatorCodeWrong);
             }
 
@@ -50,10 +50,6 @@ impl AccountsCore {
         }
 
         self.signed_up(email, name, password, None).await
-    }
-
-    pub async fn operator_wanted(&self) -> Result<bool, AccountsError> {
-        Ok(!self.operators.any_appointed().await?)
     }
 
     pub(super) async fn signed_up(

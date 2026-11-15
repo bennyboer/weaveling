@@ -146,22 +146,23 @@ impl Adapters {
         }
         let accounts = match accounts {
             Accounts::On => {
+                let accounts =
+                    accounts_wiring::assembled_accounts(&storage, &context, mailer.clone())
+                        .await?
+                        .capping_mail(caps.anyone_each_hour);
                 features.push(
                     invitations_wiring::assembled_invitations(
                         &storage,
                         &context,
-                        mailer.clone(),
+                        mailer,
                         links_to,
                         caps.invitations_each_hour,
+                        accounts.core.mail_cap(),
                     )
                     .await?,
                 );
                 features.push(wiring::assemble::<NotificationsFeature>(&storage, &context).await?);
-                Some(
-                    accounts_wiring::assembled_accounts(&storage, &context, mailer)
-                        .await?
-                        .capping_mail(caps.anyone_each_hour),
-                )
+                Some(accounts)
             }
             Accounts::Off => None,
         };

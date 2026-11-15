@@ -17,7 +17,7 @@ pub struct UnreadableMailCap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailCaps {
     /// Mails that anyone may cause to be sent, counted across the whole instance.
-    /// These are codes, and notices that an address already has an account.
+    /// These are codes, notices that an address already has an account, and invitations.
     pub anyone_each_hour: u32,
     /// Invitations, by the account inviting.
     pub invitations_each_hour: u32,

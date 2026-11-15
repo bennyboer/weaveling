@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use acting::Acting;
 use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Version};
 use invitations_core::{InvitationEvent, InvitationId, InvitationsError, KIND, Scope};
+use throttling::{Admission, HourlyCap, InMemoryThrottles};
 use time::Duration;
 
 use crate::wiring;
@@ -259,4 +262,53 @@ async fn an_account_invites_so_many_each_hour_while_another_still_may() {
     )
     .await
     .expect("each account is counted on its own");
+}
+
+#[tokio::test]
+async fn invitations_count_toward_the_mail_the_whole_instance_sends_each_hour() {
+    // given: an instance sending at most three mails an hour, at twenty to the hour and a little
+    let wired = wiring::a_workbench();
+    let mail_cap = HourlyCap::new("mailing-anyone", 3, Arc::new(InMemoryThrottles::default()));
+    let invitations = wired.invitations.clone().counting_mail_in(mail_cap.clone());
+    // and: one mail already sent by others counted in it, as a code would be
+    assert_eq!(
+        mail_cap
+            .admit(clock::at(1_700_000_000))
+            .await
+            .expect("admitting should succeed"),
+        Admission::Admitted
+    );
+
+    // when: an operator invites two addresses
+    invitations
+        .invite_to_instance(&wiring::an_operator(), "one@example.com", ORIGIN)
+        .await
+        .expect("the first is mailed");
+    invitations
+        .invite_to_instance(&wiring::an_operator(), "two@example.com", ORIGIN)
+        .await
+        .expect("the second is mailed");
+
+    // then: the cap is used up for everyone else, until the next hour
+    assert_eq!(
+        mail_cap
+            .admit(clock::at(1_700_000_000))
+            .await
+            .expect("admitting should succeed"),
+        Admission::Wait(Duration::minutes(46) + Duration::seconds(40)),
+        "invitations mail strangers too, so they must count toward what the instance sends"
+    );
+    // and: a third invitation waits for the next hour too
+    let third = invitations
+        .invite_to_instance(&wiring::an_operator(), "three@example.com", ORIGIN)
+        .await;
+    assert!(
+        matches!(
+            third,
+            Err(InvitationsError::Throttled { wait })
+                if wait == Duration::minutes(46) + Duration::seconds(40)
+        ),
+        "{third:?}"
+    );
+    assert!(wired.sent_to("three@example.com").await.is_empty());
 }

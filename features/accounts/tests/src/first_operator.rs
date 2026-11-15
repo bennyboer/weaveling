@@ -37,14 +37,6 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
     let code = an_operator_code(&wired).await;
     let accounts = by_invitation(&wired);
 
-    // then: an operator is wanted
-    assert!(
-        accounts
-            .operator_wanted()
-            .await
-            .expect("asking should succeed")
-    );
-
     // when: the first account signs up with the code and becomes operator by it
     accounts
         .sign_up_to_operate(ADA, "Ada", HER_PASSWORD, &format!(" {code}\n"))
@@ -63,23 +55,107 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
         .await
         .expect("the code was only looked at when signing up, so it is still there to take");
 
-    // then: no operator is wanted any more
-    assert!(
-        !accounts
-            .operator_wanted()
-            .await
-            .expect("asking should succeed")
-    );
-    // and: nobody else signs up with the code
+    // then: nobody else signs up with the code
     assert!(matches!(
         accounts
             .sign_up_to_operate(GRACE, "Grace", HER_PASSWORD, &code)
             .await,
-        Err(AccountsError::SigningUpByInvitationOnly)
+        Err(AccountsError::OperatorCodeWrong)
     ));
     assert!(
         !held(&wired, GRACE).await,
         "once someone runs the instance, the way in is by invitation alone"
+    );
+}
+
+async fn operated_by_ada(wired: &Wired) -> String {
+    let code = an_operator_code(wired).await;
+    let accounts = &wired.accounts;
+    accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    accounts
+        .verify(ADA, &wired.last_code_sent_to(ADA))
+        .await
+        .expect("the address is confirmed");
+    let ada = accounts
+        .sign_in(ADA, HER_PASSWORD)
+        .await
+        .expect("signing in should succeed");
+    accounts
+        .become_operator(&ada, &code)
+        .await
+        .expect("the code makes her the operator");
+
+    code
+}
+
+#[tokio::test]
+async fn once_someone_operates_a_code_to_sign_up_by_is_refused_as_wrong() {
+    // given: an instance signing up by invitation, run by Ada
+    let wired = wiring::wired();
+    let code = operated_by_ada(&wired).await;
+    let accounts = by_invitation(&wired);
+
+    // when: another signs up with the code she used, and with a made-up one
+    let used = accounts
+        .sign_up_to_operate(GRACE, "Grace", HER_PASSWORD, &code)
+        .await;
+    let made_up = accounts
+        .sign_up_to_operate(
+            GRACE,
+            "Grace",
+            HER_PASSWORD,
+            "0123456789abcdef0123456789abcdef",
+        )
+        .await;
+
+    // then: both are refused as a wrong code, as before anyone operated
+    assert!(
+        matches!(used, Err(AccountsError::OperatorCodeWrong)),
+        "a refusal of its own would tell anyone that the instance has an operator: {used:?}"
+    );
+    assert!(
+        matches!(made_up, Err(AccountsError::OperatorCodeWrong)),
+        "{made_up:?}"
+    );
+    // and: no account is made
+    assert!(!held(&wired, GRACE).await);
+    // and: signing up without a code is still by invitation only
+    assert!(matches!(
+        accounts.sign_up(GRACE, "Grace", HER_PASSWORD).await,
+        Err(AccountsError::SigningUpByInvitationOnly)
+    ));
+}
+
+#[tokio::test]
+async fn once_someone_operates_becoming_the_operator_by_a_code_is_refused_as_wrong() {
+    // given: an instance run by Ada
+    let wired = wiring::wired();
+    let code = operated_by_ada(&wired).await;
+    // and: Grace, signed up and confirmed
+    let accounts = &wired.accounts;
+    accounts
+        .sign_up(GRACE, "Grace", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    accounts
+        .verify(GRACE, &wired.last_code_sent_to(GRACE))
+        .await
+        .expect("the address is confirmed");
+    let grace = accounts
+        .sign_in(GRACE, HER_PASSWORD)
+        .await
+        .expect("signing in should succeed");
+
+    // when: she tries to become the operator with the code Ada used
+    let refused = accounts.become_operator(&grace, &code).await;
+
+    // then: it is refused as a wrong code
+    assert!(
+        matches!(refused, Err(AccountsError::OperatorCodeWrong)),
+        "{refused:?}"
     );
 }
 

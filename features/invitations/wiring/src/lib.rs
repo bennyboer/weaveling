@@ -21,7 +21,7 @@ use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
-use throttling::{ForgetOldTries, InMemoryThrottles, Throttles};
+use throttling::{ForgetOldTries, HourlyCap, InMemoryThrottles, Throttles};
 use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
@@ -39,6 +39,9 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
     pub links_to: Option<String>,
     pub invitations_each_hour: u32,
+    /// The cap on mail across the whole instance, shared with the accounts.
+    /// Without it, invitations are capped only by address and by who invites.
+    pub mail_cap: Option<HourlyCap>,
 }
 
 fn authorizer(ports: &Ports, context: &Context) -> Arc<dyn Authorizer> {
@@ -62,7 +65,15 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
         context.clock.clone(),
     );
 
+    crate::limited(invitations, ports)
+}
+
+fn limited(invitations: InvitationsCore, ports: &Ports) -> InvitationsCore {
     let invitations = invitations.capping_invitations(ports.invitations_each_hour);
+    let invitations = match &ports.mail_cap {
+        Some(mail_cap) => invitations.counting_mail_in(mail_cap.clone()),
+        None => invitations,
+    };
     match &ports.links_to {
         Some(public_url) => invitations.linking_to(public_url),
         None => invitations,
@@ -75,11 +86,13 @@ pub async fn assembled_invitations(
     mailer: Arc<dyn Mailer>,
     links_to: Option<String>,
     invitations_each_hour: u32,
+    mail_cap: HourlyCap,
 ) -> Result<Assembled, Unprepared> {
     let ports = Ports {
         mailer,
         links_to,
         invitations_each_hour,
+        mail_cap: Some(mail_cap),
         ..wiring::ports::<InvitationFeature>(storage, context).await?
     };
     let wired = InvitationFeature::wire(&ports, context);
@@ -120,6 +133,7 @@ impl Feature for InvitationFeature {
             mailer: Arc::new(LoggingMailer),
             links_to: None,
             invitations_each_hour: INVITATIONS_EACH_HOUR,
+            mail_cap: None,
             outbox,
         }
     }
@@ -150,6 +164,7 @@ impl Feature for InvitationFeature {
             mailer: Arc::new(LoggingMailer),
             links_to: None,
             invitations_each_hour: INVITATIONS_EACH_HOUR,
+            mail_cap: None,
             outbox,
         })
     }
@@ -192,6 +207,7 @@ impl Feature for InvitationFeature {
             mailer: Arc::new(LoggingMailer),
             links_to: None,
             invitations_each_hour: INVITATIONS_EACH_HOUR,
+            mail_cap: None,
             outbox,
         })
     }
@@ -229,11 +245,7 @@ impl Feature for InvitationFeature {
             crate::authorizer(ports, context),
             context.clock.clone(),
         );
-        let invitations = invitations.capping_invitations(ports.invitations_each_hour);
-        let invitations = match &ports.links_to {
-            Some(public_url) => invitations.linking_to(public_url),
-            None => invitations,
-        };
+        let invitations = crate::limited(invitations, ports);
 
         Wired::serving(invitations_rest::router(invitations.clone()))
             .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))

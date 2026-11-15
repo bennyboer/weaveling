@@ -942,9 +942,6 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
-        operator_wanted: signed_in.session.stage == Stage::SignedIn
-            && !signed_in.account.is_operator()
-            && accounts.operator_wanted().await.map_err(problem_of)?,
         deletion: signed_in.account.pending_deletion().map(deletion_told),
         picture: signed_in.account.picture().map(ToString::to_string),
         second_factor: signed_in.account.second_factor().zip(asked_way).map(
@@ -1133,8 +1130,6 @@ fn problem_of(refusal: AccountsError) -> Problem {
             }
         },
         AccountsError::CodeWrong => Problem::unprocessable(refused::CODE_WRONG, refusal),
-        AccountsError::CodeExpired => Problem::unprocessable(refused::CODE_EXPIRED, refusal),
-        AccountsError::CodeExhausted => Problem::unprocessable(refused::CODE_EXHAUSTED, refusal),
         AccountsError::SignInRefused => Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal),
         AccountsError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
         AccountsError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),

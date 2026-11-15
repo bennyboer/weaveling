@@ -76,7 +76,7 @@ test("a wrong code says so and stays", async ({ page }) => {
 
   // then: she is told it is wrong
   await expect(page.getByRole("alert")).toHaveText(
-    "That is not the code we sent.",
+    "That code is wrong or no longer valid. Ask for a new one if needed.",
   );
   // and: she is still asked to confirm her address
   await expect(
@@ -205,7 +205,7 @@ test("a wrong code is sent once, and the boxes empty for the next", async ({
 
   // then: she is told it is wrong
   await expect(page.getByRole("alert")).toHaveText(
-    "That is not the code we sent.",
+    "That code is wrong or no longer valid. Ask for a new one if needed.",
   );
   // and: the boxes are emptied
   await expect(page.getByLabel("Code")).toHaveValue("");

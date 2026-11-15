@@ -254,13 +254,13 @@ async fn guesses_at_a_reset_code_are_counted_like_any_others() {
             .await;
     }
 
-    // then: even the right code is refused as used up
+    // then: even the right code is refused, as if it were wrong
     assert!(matches!(
         wired
             .accounts
             .reset_password(ADA, &code, HER_NEW_PASSWORD)
             .await,
-        Err(AccountsError::CodeExhausted)
+        Err(AccountsError::CodeWrong)
     ));
 }
 

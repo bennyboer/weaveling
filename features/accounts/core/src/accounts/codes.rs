@@ -21,17 +21,22 @@ impl AccountsCore {
             return Ok(());
         }
 
-        self.mail_code(&id, &email, CodePurpose::ConfirmAddress)
+        self.mail_code_asked_for(&id, &email, CodePurpose::ConfirmAddress)
             .await
     }
 
     pub async fn verify(&self, email: &str, code: &str) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
+        self.admitted(
+            Guarded::GuessingCodes(CodePurpose::ConfirmAddress),
+            email.as_str(),
+        )
+        .await?;
         let Some(id) = self.email_addresses.holder(&email).await? else {
             return Err(AccountsError::CodeWrong);
         };
         let code = self
-            .checked_code(&id, CodePurpose::ConfirmAddress, code)
+            .checked_code(&id, &email, CodePurpose::ConfirmAddress, code)
             .await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
@@ -56,7 +61,7 @@ impl AccountsCore {
             return Ok(());
         };
 
-        self.mail_code(&id, &email, CodePurpose::ResetPassword)
+        self.mail_code_asked_for(&id, &email, CodePurpose::ResetPassword)
             .await
     }
 
@@ -68,11 +73,16 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         let password = Password::new(password)?;
+        self.admitted(
+            Guarded::GuessingCodes(CodePurpose::ResetPassword),
+            email.as_str(),
+        )
+        .await?;
         let Some((id, _account)) = self.whose(&email).await? else {
             return Err(AccountsError::CodeWrong);
         };
         let code = self
-            .checked_code(&id, CodePurpose::ResetPassword, code)
+            .checked_code(&id, &email, CodePurpose::ResetPassword, code)
             .await?;
         let hashed = password.hashed_aside().await;
 
@@ -102,14 +112,16 @@ impl AccountsCore {
         Ok(())
     }
 
-    pub(super) async fn checked_code(
+    /// Checks a code typed for the account, once its guess is admitted by the address.
+    /// A code that is wrong, has run out, or was tried too often is refused the same way.
+    /// So the answer tells no more than that the code does not work.
+    async fn checked_code(
         &self,
         id: &AccountId,
+        email: &EmailAddress,
         purpose: CodePurpose,
         code: &str,
     ) -> Result<CodeDigest, AccountsError> {
-        let guessing = Guarded::GuessingCodes(purpose);
-        self.admitted(guessing, &id.to_string()).await?;
         let attempt = transacting::retrying!(&*self.transactions, |transaction| {
             Ok::<_, AccountsError>(
                 self.verifications
@@ -117,23 +129,36 @@ impl AccountsCore {
                     .await?,
             )
         })?;
-        let pending = match attempt {
-            Attempt::Nothing => return Err(AccountsError::CodeWrong),
-            Attempt::Exhausted => return Err(AccountsError::CodeExhausted),
-            Attempt::Counted(pending) => pending,
+        let Attempt::Counted(pending) = attempt else {
+            return Err(AccountsError::CodeWrong);
         };
-
-        if self.clock.now() > pending.until {
-            return Err(AccountsError::CodeExpired);
-        }
-        if !pending.digest.admits(code) {
+        if self.clock.now() > pending.until || !pending.digest.admits(code) {
             return Err(AccountsError::CodeWrong);
         }
         self.throttles
-            .clear(guessing.as_str(), &id.to_string())
+            .clear(Guarded::GuessingCodes(purpose).as_str(), email.as_str())
             .await?;
 
         Ok(pending.digest)
+    }
+
+    /// Mails a code that was asked for again, or to set a new password.
+    /// A mail that cannot be sent is logged, and the answer is the same as if it was sent.
+    /// The answer for an address nobody has is the same too, so the answer tells nothing about the address.
+    async fn mail_code_asked_for(
+        &self,
+        id: &AccountId,
+        email: &EmailAddress,
+        purpose: CodePurpose,
+    ) -> Result<(), AccountsError> {
+        match self.mail_code(id, email, purpose).await {
+            Err(AccountsError::Unsent(unsent)) => {
+                tracing::error!(%unsent, ?purpose, "a code that was asked for could not be mailed");
+
+                Ok(())
+            }
+            mailed => mailed,
+        }
     }
 
     pub(super) async fn mail_code(

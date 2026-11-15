@@ -4913,6 +4913,7 @@ dependencies = [
  "time",
  "tokio",
  "totp-rs",
+ "tracing",
  "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",

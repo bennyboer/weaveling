@@ -102,6 +102,7 @@ impl AccountsCore {
     }
 
     /// Returns what the browser is asked, to get a touch of one of the keys that answer the account's second step.
+    /// It replaces what was asked before for the same account, so only the latest ask can be answered.
     pub async fn begin_answering_with_key(
         &self,
         token: &SessionToken,
@@ -114,7 +115,7 @@ impl AccountsCore {
         }
 
         ceremonies
-            .begin_answering(&token.digest(), &held, self.clock.now())
+            .begin_answering(&account, &token.digest(), &held, self.clock.now())
             .map_err(|_| AccountsError::KeyRefused)
     }
 
@@ -132,7 +133,7 @@ impl AccountsCore {
         let who = account.to_string();
         let held = self.second_step_credentials(&account).await?;
         let (key, renewed) = ceremonies
-            .finish_answering(&token.digest(), answer, &held, self.clock.now())
+            .finish_answering(&account, &token.digest(), answer, &held, self.clock.now())
             .map_err(|failed| match failed {
                 CeremonyFailed::NothingUnderWay => AccountsError::NoKeyBeingAsked,
                 CeremonyFailed::Refused => AccountsError::KeyRefused,
