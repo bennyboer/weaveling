@@ -10,7 +10,7 @@ use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 async fn served_with_ada_verified() -> (Wired, TestServer) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -200,7 +200,7 @@ async fn a_wrong_password_signs_nobody_in_and_sets_no_cookie() {
 #[tokio::test]
 async fn an_unverified_address_is_forbidden_until_verified() {
     // given: an account whose address is not verified
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

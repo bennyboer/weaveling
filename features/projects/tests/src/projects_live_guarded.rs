@@ -27,7 +27,8 @@ fn ada() -> Agent {
 }
 
 fn guarded() -> Guarded {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let wired =
+        wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let server = TestServer::builder()
         .http_transport()
         .build(wired.routes.clone().layer(Extension(ada())));

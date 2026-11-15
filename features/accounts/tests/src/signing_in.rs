@@ -42,7 +42,7 @@ fn refused(signed_in: Result<AccountId, AccountsError>) -> bool {
 #[tokio::test]
 async fn the_right_address_and_password_sign_a_verified_account_in() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
     // then: its address and password sign it in
@@ -59,7 +59,7 @@ async fn the_right_address_and_password_sign_a_verified_account_in() {
 #[tokio::test]
 async fn the_address_signs_in_however_it_is_typed() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
     // then: its address in other letters and spacing signs it in
@@ -76,7 +76,7 @@ async fn the_address_signs_in_however_it_is_typed() {
 #[tokio::test]
 async fn a_wrong_password_and_an_unknown_address_are_refused_in_the_same_words() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     a_verified_account(&wired, ADA, HER_PASSWORD).await;
 
     // then: a wrong password is refused
@@ -98,7 +98,7 @@ async fn a_wrong_password_and_an_unknown_address_are_refused_in_the_same_words()
 #[tokio::test]
 async fn an_address_and_a_password_of_two_accounts_do_not_sign_in() {
     // given: two verified accounts
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     a_verified_account(&wired, ADA, HER_PASSWORD).await;
     a_verified_account(&wired, BEA, HIS_PASSWORD).await;
 
@@ -110,7 +110,7 @@ async fn an_address_and_a_password_of_two_accounts_do_not_sign_in() {
 #[tokio::test]
 async fn an_address_held_but_not_yet_the_accounts_own_does_not_sign_in() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = a_verified_account(&wired, ADA, HER_PASSWORD).await;
     // and: another address held for it
     let reserved = EmailAddress::new("ada@example.org").expect("a plain address");
@@ -134,7 +134,7 @@ async fn an_address_held_but_not_yet_the_accounts_own_does_not_sign_in() {
 #[tokio::test]
 async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_in() {
     // given: an address claimed for an account never written
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .claim(
             &EmailAddress::new(ADA).expect("a plain address"),
@@ -155,7 +155,7 @@ async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_i
 #[tokio::test]
 async fn an_unverified_account_is_told_so_only_with_the_right_password() {
     // given: an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_unverified_account(&wired, ADA, HER_PASSWORD).await;
 
     // then: the right password is told it is not verified yet
@@ -173,7 +173,7 @@ async fn an_unverified_account_is_told_so_only_with_the_right_password() {
 #[tokio::test]
 async fn an_address_nobody_has_costs_the_same_work_as_a_password_checked() {
     // given: how long a password takes to check
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     PasswordHash::stand_in();
     let checking = (0..3)
         .map(|_| {

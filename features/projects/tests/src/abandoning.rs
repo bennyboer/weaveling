@@ -12,7 +12,7 @@ use trash::Trash;
 use crate::wiring::{self, Wired};
 
 fn bench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
+    wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 async fn a_project(wired: &Wired) -> String {

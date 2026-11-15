@@ -90,7 +90,7 @@ async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
 #[tokio::test]
 async fn the_holder_asks_for_their_account_to_be_deleted_for_its_password_and_is_signed_out() {
     // given: an account signed in
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let (token, _) = wired
         .accounts
@@ -135,7 +135,7 @@ async fn the_holder_asks_for_their_account_to_be_deleted_for_its_password_and_is
 #[tokio::test]
 async fn an_operator_deleting_their_account_stops_being_one_unless_the_last() {
     // given: the only operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let grace = the_operator(&wired, GRACE).await;
 
     // when: she asks for her account to be deleted
@@ -167,7 +167,7 @@ async fn an_operator_deleting_their_account_stops_being_one_unless_the_last() {
 #[tokio::test]
 async fn the_operator_marks_an_account_for_deletion_and_only_the_operator_calls_it_off() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let grace = the_operator(&wired, GRACE).await;
 
@@ -220,7 +220,7 @@ async fn the_operator_marks_an_account_for_deletion_and_only_the_operator_calls_
 #[tokio::test]
 async fn the_holder_keeps_the_account_they_asked_to_delete() {
     // given: an account its holder asked to delete
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     wired
         .accounts
@@ -269,7 +269,7 @@ async fn the_holder_keeps_the_account_they_asked_to_delete() {
 #[tokio::test]
 async fn only_a_session_opened_for_a_pending_deletion_keeps_an_account() {
     // given: an account signed in as ever
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     a_verified_account(&wired, ADA).await;
     let (signed_in, _) = wired
         .accounts
@@ -287,7 +287,7 @@ async fn only_a_session_opened_for_a_pending_deletion_keeps_an_account() {
 #[tokio::test]
 async fn only_an_operator_marks_another_account_or_keeps_it() {
     // given: two accounts, neither an operator, one asked to be deleted
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let grace = a_verified_account(&wired, GRACE).await;
     wired
@@ -341,7 +341,7 @@ async fn an_account_with_a_second_step_answers_it_before_it_is_offered_to_be_kep
 #[tokio::test]
 async fn a_session_signed_in_the_moment_deletion_is_asked_ends_with_the_others() {
     // given: an account signed in, the clock not moving on
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let (token, _) = wired
         .accounts
@@ -389,7 +389,7 @@ fn sweeping(wired: &Wired) -> &Arc<dyn Chore> {
 #[tokio::test]
 async fn an_account_asked_to_be_deleted_is_due_on_its_day_and_asking_again_moves_nothing() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
 
     // when: it is asked to be deleted, and asked again a day later
@@ -422,7 +422,7 @@ async fn an_account_asked_to_be_deleted_is_due_on_its_day_and_asking_again_moves
 async fn an_account_kept_by_its_holder_or_the_operator_is_due_no_more() {
     for by_the_operator in [false, true] {
         // given: an account asked to be deleted, and an operator
-        let wired = wiring::wired();
+        let wired = wiring::a_workbench();
         let ada = a_verified_account(&wired, ADA).await;
         let grace = the_operator(&wired, GRACE).await;
         let until = wired
@@ -463,7 +463,7 @@ async fn an_account_kept_by_its_holder_or_the_operator_is_due_no_more() {
 #[tokio::test]
 async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
     // given: an account asked to be deleted, and the operator who marked another
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let grace = the_operator(&wired, GRACE).await;
     let until = wired
@@ -498,7 +498,7 @@ async fn the_sweep_takes_an_account_whose_day_has_come_and_none_before() {
 #[tokio::test]
 async fn an_account_swept_keeps_nothing_of_its_holder_and_is_listed_no_more() {
     // given: an account asked to be deleted, listed among the accounts
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA).await;
     let until = wired
         .accounts

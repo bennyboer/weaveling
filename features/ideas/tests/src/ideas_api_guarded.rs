@@ -176,7 +176,7 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 
 async fn an_idea_in_ada_s_project() -> Guarded {
     let access = Arc::new(Faltering::default());
-    let wired = wiring::wired_keeping(
+    let wired = wiring::a_workbench_keeping(
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         access.clone(),
         true,

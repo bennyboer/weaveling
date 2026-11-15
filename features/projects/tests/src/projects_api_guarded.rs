@@ -28,7 +28,8 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 }
 
 async fn a_project_ada_owns() -> (Guarded, String) {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let wired =
+        wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let guarded = Guarded {
         ada: as_account(&wired, "account_ada"),
         grace: as_account(&wired, "account_grace"),

@@ -27,7 +27,8 @@ fn grace() -> Agent {
 }
 
 fn ideas() -> IdeasCore {
-    wiring::wired_with_accounts(Arc::new(clock::FixedClock::new(clock::at(1_700_000_000)))).ideas
+    wiring::a_workbench_with_accounts(Arc::new(clock::FixedClock::new(clock::at(1_700_000_000))))
+        .ideas
 }
 
 fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {

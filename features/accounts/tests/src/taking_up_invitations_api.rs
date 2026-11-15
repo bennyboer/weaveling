@@ -19,7 +19,7 @@ const TOKEN: &str = "a token drawn by invitations";
 const BOB: &str = "bob@example.com";
 
 async fn served_with_ada_invited() -> (Wired, TestServer) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),

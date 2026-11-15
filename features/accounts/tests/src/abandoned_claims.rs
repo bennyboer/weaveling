@@ -36,7 +36,7 @@ fn later(wired: &Wired, by: Duration) {
 #[tokio::test]
 async fn an_address_left_claimed_by_a_sign_up_that_never_came_to_be_is_free_again() {
     // given: an address claimed by no account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let never_begun = a_claim_with_no_account(&wired).await;
     // and: a while gone by since
     later(&wired, Duration::minutes(6));
@@ -61,7 +61,7 @@ async fn an_address_left_claimed_by_a_sign_up_that_never_came_to_be_is_free_agai
 #[tokio::test]
 async fn an_address_claimed_moments_ago_is_left_to_the_sign_up_under_way() {
     // given: an address claimed by no account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let under_way = a_claim_with_no_account(&wired).await;
     // and: only moments gone by since
     later(&wired, Duration::minutes(4));
@@ -82,7 +82,7 @@ async fn an_address_claimed_moments_ago_is_left_to_the_sign_up_under_way() {
 #[tokio::test]
 async fn an_address_held_by_an_account_is_never_taken_over_however_old() {
     // given: an account holding an address
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -106,7 +106,7 @@ async fn an_address_held_by_an_account_is_never_taken_over_however_old() {
 #[tokio::test]
 async fn an_invitation_to_an_address_left_claimed_still_signs_it_up() {
     // given: an address claimed by no account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let never_begun = a_claim_with_no_account(&wired).await;
     // and: an invitation to it
     wired
@@ -139,7 +139,7 @@ async fn an_invitation_to_an_address_left_claimed_still_signs_it_up() {
 #[tokio::test]
 async fn asking_for_a_code_again_for_an_address_left_claimed_sends_nothing() {
     // given: an address claimed by no account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     a_claim_with_no_account(&wired).await;
 
     // when: a code is asked for again

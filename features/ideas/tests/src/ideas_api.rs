@@ -54,7 +54,7 @@ fn a_server() -> Serving {
 }
 
 fn a_server_acting_as(acting: Agent) -> Serving {
-    let wired = wiring::wired(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
+    let wired = wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
     let server = TestServer::new(wired.routes.clone().layer(Extension(acting)));
 
     Serving { server, wired }
@@ -122,7 +122,7 @@ async fn an_idea_is_captured_by_whoever_the_request_says_acts() {
 #[tokio::test]
 async fn a_request_nobody_is_said_to_act_in_is_not_served() {
     // given: a server whose requests say nobody acts
-    let wired = wiring::wired(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
+    let wired = wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
     let server = TestServer::new(wired.routes.clone());
 
     // expect: capturing an idea is not served

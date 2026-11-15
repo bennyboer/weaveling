@@ -15,7 +15,7 @@ const THE_LOOM: &str = "project_loom";
 const THE_WEFT: &str = "project_weft";
 
 fn a_workbench() -> Wired {
-    wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))))
+    wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn account(named: &str) -> Agent {

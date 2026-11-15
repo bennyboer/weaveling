@@ -333,7 +333,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep() {
     // given: a project holding more ideas than a batch
-    let wired = wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))));
     for nth in 0..=AT_MOST {
         wired
             .ideas

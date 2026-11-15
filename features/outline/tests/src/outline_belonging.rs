@@ -15,7 +15,7 @@ const A_PROJECT: &str = "project_1";
 const ANOTHER: &str = "project_2";
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
+    wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn from_the_ideas(routing: &str, idea: &str, body: serde_json::Value) -> Message {

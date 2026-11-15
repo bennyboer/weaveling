@@ -63,7 +63,7 @@ async fn a_session_cookie(server: &TestServer, email: &str) -> String {
 }
 
 async fn an_instance_with_ada_and_grace_its_operator() -> Instance {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = a_verified_account(&wired, ADA, "Ada").await;
     wired.clock.set(clock::at(1_700_000_060));
     let grace = a_verified_account(&wired, GRACE, "Grace").await;

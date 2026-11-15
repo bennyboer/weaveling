@@ -17,7 +17,7 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 fn served() -> (Wired, TestServer) {
-    let wired = wiring::wired(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let wired = wiring::a_workbench(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let server = TestServer::builder()
         .http_transport()
         .build(wired.routes.clone().layer(Extension(Agent::Local)));

@@ -8,7 +8,7 @@ use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 async fn served_with_ada_signed_in() -> (Wired, TestServer, String) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

@@ -38,7 +38,7 @@ struct Bench {
 }
 
 fn bench() -> Bench {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
 
     Bench {
         roles: inboxed(RememberRolesListener::new(wired.projects.clone())),

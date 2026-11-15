@@ -10,6 +10,22 @@ Boards, the outline and scenes link to ideas and scenes that they do not own. Th
 
 `owner_of(kind, id, owner_kind)` returns the owner. It returns nothing for a thing this feature has not received a message about yet.
 
+This is how the boards use it. A listener stores the project of each idea captured, and pinning an idea checks it first:
+
+```rust
+belongings
+    .remember(&mut transaction, IDEA, idea, PROJECT, project)
+    .await?;
+
+if belongings
+    .owner_of(IDEA, idea.as_str(), PROJECT)
+    .await?
+    .is_some_and(|known| known != project.as_str())
+{
+    return Err(BoardsError::IdeaNotThere);
+}
+```
+
 **Unknown is not refused.** A board may pin an idea that was captured a moment ago, before the capture message has reached the board. So a feature refuses only things it knows to belong elsewhere.
 
 **Each feature creates the table in its own database.** This works like the [registry](../registry/README.md). So this is a shared mechanism, not shared data. `kind` keeps ideas and scenes apart. The migration ledger is `_sqlx_migrations_belongings`.

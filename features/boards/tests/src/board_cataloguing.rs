@@ -10,7 +10,7 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))))
+    wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))))
 }
 
 fn recorded(id: &BoardId, event: BoardEvent, version: u64) -> Recorded<BoardEvent> {

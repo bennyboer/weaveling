@@ -109,7 +109,7 @@ async fn in_the_trash(wired: &Wired) -> bool {
 #[tokio::test]
 async fn an_invitation_into_a_project_in_the_trash_waits_and_is_taken_up_once_it_is_restored() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_the_project()).await;
@@ -150,7 +150,7 @@ async fn an_invitation_into_a_project_in_the_trash_waits_and_is_taken_up_once_it
 #[tokio::test]
 async fn signing_up_by_an_invitation_into_a_project_in_the_trash_waits_until_it_is_restored() {
     // given: an invitation into a project
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, &a_ticket_into_the_project()).await;
     // and: the project in the trash
     tell(&wired, trashed(5)).await;
@@ -180,7 +180,7 @@ async fn signing_up_by_an_invitation_into_a_project_in_the_trash_waits_until_it_
 #[tokio::test]
 async fn an_invitation_into_the_instance_is_untouched_by_any_project_s_trash() {
     // given: an invitation into the instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, &a_ticket(InvitationScope::Instance)).await;
     // and: a project in the trash
     tell(&wired, trashed(5)).await;
@@ -196,7 +196,7 @@ async fn an_invitation_into_the_instance_is_untouched_by_any_project_s_trash() {
 #[tokio::test]
 async fn an_invitation_into_a_project_in_the_trash_may_still_be_turned_down() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_the_project()).await;
@@ -217,7 +217,7 @@ async fn an_invitation_into_a_project_in_the_trash_may_still_be_turned_down() {
 #[tokio::test]
 async fn an_older_trashing_heard_after_the_restoring_leaves_the_invitation_good() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_the_project()).await;
@@ -237,7 +237,7 @@ async fn an_older_trashing_heard_after_the_restoring_leaves_the_invitation_good(
 #[tokio::test]
 async fn a_deleted_project_s_trash_is_forgotten() {
     // given: a project in the trash
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     tell(&wired, trashed(5)).await;
     let then = in_the_trash(&wired).await;
@@ -256,7 +256,7 @@ async fn a_deleted_project_s_trash_is_forgotten() {
 #[tokio::test]
 async fn a_hearing_that_does_not_commit_leaves_the_project_out_of_the_trash() {
     // given: a listener whose hearing does not commit
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let listener = Inboxed::new(
         RememberTrashedProjectsListener::new(wired.accounts.clone()),
         Arc::new(InMemoryTransactions::refusing_commits()),

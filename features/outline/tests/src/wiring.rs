@@ -173,20 +173,20 @@ pub struct Wired {
     told: AtomicU64,
 }
 
-pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    wired_on(clock, false)
+pub fn a_workbench(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_on(clock, false)
 }
 
 /// A feature with accounts.
 /// Nobody but the system may do anything until the feature is told their role.
-pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
-    wired_on(clock, true)
+pub fn a_workbench_with_accounts(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_on(clock, true)
 }
 
 /// A feature with accounts, where the author owns the first two projects.
 /// Nobody else is a member.
-pub async fn wired_where_the_author_owns(clock: Arc<dyn Clock>) -> Wired {
-    let wired = wired_with_accounts(clock);
+pub async fn a_workbench_where_the_author_owns(clock: Arc<dyn Clock>) -> Wired {
+    let wired = a_workbench_with_accounts(clock);
     for project in ["project_1", "project_2"] {
         wired.give(project, "author-7", Some(Role::Owner)).await;
     }
@@ -194,7 +194,7 @@ pub async fn wired_where_the_author_owns(clock: Arc<dyn Clock>) -> Wired {
     wired
 }
 
-fn wired_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
+fn a_workbench_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
     let access = Arc::new(WhoMayDoWhat::default());
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));

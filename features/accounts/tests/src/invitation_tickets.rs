@@ -87,7 +87,7 @@ async fn ticket_for(wired: &Wired, digest: &str) -> Option<InvitationTicket> {
 #[tokio::test]
 async fn an_issued_invitation_leaves_a_ticket_for_its_address_until_it_ends() {
     // given: no invitation yet
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an invitation's issue is heard
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
@@ -109,7 +109,7 @@ async fn an_issued_invitation_leaves_a_ticket_for_its_address_until_it_ends() {
 #[tokio::test]
 async fn a_withdrawn_invitation_leaves_no_ticket_and_the_others_kept() {
     // given: two issued invitations
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
     tell(&wired, issued("invitation_bob", "bob@example.com", "cd34")).await;
 
@@ -125,7 +125,7 @@ async fn a_withdrawn_invitation_leaves_no_ticket_and_the_others_kept() {
 #[tokio::test]
 async fn an_invitation_turned_down_leaves_no_ticket_nor_one_told_again_and_the_others_kept() {
     // given: two issued invitations
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
     tell(&wired, issued("invitation_bob", "bob@example.com", "cd34")).await;
 
@@ -147,7 +147,7 @@ async fn an_invitation_turned_down_leaves_no_ticket_nor_one_told_again_and_the_o
 #[tokio::test]
 async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
     // given: a withdrawn invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
     tell(&wired, withdrawn("invitation_ada")).await;
 
@@ -165,7 +165,7 @@ async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
 #[tokio::test]
 async fn an_accepted_invitation_is_not_heard() {
     // given: the listener keeping tickets
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let tickets = heard_by(&wired, wired.accounts.clone());
 
     // then: it hears issues, withdrawals, declines and retirements
@@ -182,7 +182,7 @@ async fn an_accepted_invitation_is_not_heard() {
 #[tokio::test]
 async fn an_issue_to_no_address_or_until_no_time_is_refused() {
     // given: the listener keeping tickets
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let tickets = heard_by(&wired, wired.accounts.clone());
     // and: issues to no address, until no time, or of nothing useful
     let mut no_time = issued("invitation_ada", ADA, "ab12");
@@ -222,7 +222,7 @@ fn issued_into_a_project(invitation: &str, to: &str, digest: &str) -> Message {
 #[tokio::test]
 async fn an_invitation_into_a_project_keeps_its_ticket_even_for_an_address_with_an_account() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -279,7 +279,7 @@ async fn an_invitation_into_a_project_keeps_its_ticket_even_for_an_address_with_
 #[tokio::test]
 async fn an_issue_to_an_address_with_an_account_already_is_declined_by_that_account() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -325,7 +325,7 @@ async fn an_issue_to_an_address_with_an_account_already_is_declined_by_that_acco
 #[tokio::test]
 async fn an_issue_told_again_after_its_ticket_signed_the_address_up_declines_nothing() {
     // given: an account signed up by an invitation's ticket
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let digest = InvitationToken::presented("a token").digest();
     tell(&wired, issued("invitation_ada", ADA, digest.as_str())).await;
     wired
@@ -367,7 +367,7 @@ fn retired(invitation: &str) -> Message {
 #[tokio::test]
 async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
     // given: a withdrawn invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
     tell(&wired, withdrawn("invitation_ada")).await;
     // and: an issued one
@@ -400,7 +400,7 @@ async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
 #[tokio::test]
 async fn an_issue_to_an_address_with_an_account_whose_decline_failed_is_declined_when_told_again() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

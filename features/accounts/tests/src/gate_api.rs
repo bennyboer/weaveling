@@ -22,7 +22,7 @@ async fn how_it_acts(Extension(acting): Extension<Acting>) -> String {
 }
 
 async fn behind_the_gate() -> (Wired, TestServer, TestServer) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

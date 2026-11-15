@@ -24,7 +24,7 @@ fn guarded() -> Guarded {
     let clock = Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH));
 
     Guarded {
-        wired: wiring::wired_with_accounts(clock.clone()),
+        wired: wiring::a_workbench_with_accounts(clock.clone()),
         clock,
     }
 }

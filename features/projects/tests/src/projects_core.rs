@@ -24,7 +24,7 @@ fn a_service() -> Wired {
 }
 
 fn a_service_on(clock: Arc<FixedClock>) -> Wired {
-    wiring::wired(clock)
+    wiring::a_workbench(clock)
 }
 
 async fn a_project(wired: &Wired, named: &str) -> String {

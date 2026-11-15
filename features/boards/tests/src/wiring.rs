@@ -45,16 +45,16 @@ pub struct Wired {
 }
 
 /// Boards without accounts, where everyone may do everything.
-pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    wired_keeping(clock, Arc::new(InMemoryAccess::new()), false)
+pub fn a_workbench(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_keeping(clock, Arc::new(InMemoryAccess::new()), false)
 }
 
 /// Boards with accounts, where who may do what is stored in the boards' own access records.
-pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
-    wired_keeping(clock, Arc::new(InMemoryAccess::new()), true)
+pub fn a_workbench_with_accounts(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_keeping(clock, Arc::new(InMemoryAccess::new()), true)
 }
 
-pub fn wired_keeping(
+pub fn a_workbench_keeping(
     clock: Arc<dyn Clock>,
     access: Arc<dyn AccessCatalog>,
     with_accounts: bool,

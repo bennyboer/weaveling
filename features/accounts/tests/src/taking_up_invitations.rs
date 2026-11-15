@@ -77,7 +77,7 @@ async fn invitations_taken_up_by(wired: &Wired, account: &AccountId) -> Vec<Stri
 #[tokio::test]
 async fn an_account_takes_up_an_invitation_to_its_address_once() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -114,7 +114,7 @@ async fn an_account_takes_up_an_invitation_to_its_address_once() {
 #[tokio::test]
 async fn an_invitation_to_another_address_is_refused_naming_it_and_left_for_it() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let bob = an_account(&wired, BOB).await;
     // and: an invitation to another address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -140,7 +140,7 @@ async fn an_invitation_to_another_address_is_refused_naming_it_and_left_for_it()
 #[tokio::test]
 async fn an_invitation_to_the_instance_is_only_for_signing_up() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation to the instance to its address
     let to_the_instance = InvitationTicket {
@@ -168,7 +168,7 @@ async fn an_invitation_to_the_instance_is_only_for_signing_up() {
 #[tokio::test]
 async fn a_token_nobody_was_given_or_one_withdrawn_takes_nothing_up() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: a withdrawn invitation to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -192,12 +192,12 @@ async fn a_token_nobody_was_given_or_one_withdrawn_takes_nothing_up() {
 async fn an_invitation_is_taken_up_to_its_last_moment_and_no_longer() {
     // given: an account invited at the invitation's last moment
     let last = clock::at(1_700_000_000) + Duration::days(7);
-    let on_time = wiring::wired();
+    let on_time = wiring::a_workbench();
     let ada_on_time = an_account(&on_time, ADA).await;
     an_invitation(&on_time, &a_ticket_into_a_project(ADA)).await;
     on_time.clock.set(last);
     // and: one a second past it
-    let late = wiring::wired();
+    let late = wiring::a_workbench();
     let ada_late = an_account(&late, ADA).await;
     an_invitation(&late, &a_ticket_into_a_project(ADA)).await;
     late.clock.set(last + Duration::seconds(1));
@@ -220,7 +220,7 @@ async fn an_invitation_is_taken_up_to_its_last_moment_and_no_longer() {
 #[tokio::test]
 async fn an_account_takes_up_an_invitation_to_its_address_by_its_id_once() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -258,7 +258,7 @@ async fn an_account_takes_up_an_invitation_to_its_address_by_its_id_once() {
 #[tokio::test]
 async fn by_its_id_an_invitation_to_another_address_is_as_good_as_not_there_and_left_for_it() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let bob = an_account(&wired, BOB).await;
     // and: an invitation to another address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -294,7 +294,7 @@ async fn by_its_id_an_invitation_to_another_address_is_as_good_as_not_there_and_
 #[tokio::test]
 async fn by_its_id_an_invitation_run_out_is_told_so() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation to its address run out
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -339,7 +339,7 @@ async fn invitations_turned_down_by(wired: &Wired, account: &AccountId) -> Vec<S
 #[tokio::test]
 async fn an_account_turns_down_an_invitation_to_its_address_once_and_may_take_it_up_no_more() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -376,7 +376,7 @@ async fn an_account_turns_down_an_invitation_to_its_address_once_and_may_take_it
 #[tokio::test]
 async fn an_account_turns_down_an_invitation_to_its_address_by_its_id() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -408,7 +408,7 @@ async fn an_account_turns_down_an_invitation_to_its_address_by_its_id() {
 #[tokio::test]
 async fn nobody_turns_down_an_invitation_to_another_address_and_it_is_left_for_it() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let bob = an_account(&wired, BOB).await;
     // and: an invitation to another address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -453,7 +453,7 @@ async fn nobody_turns_down_an_invitation_to_another_address_and_it_is_left_for_i
 #[tokio::test]
 async fn an_invitation_run_out_is_not_turned_down() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation to its address run out
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -480,11 +480,11 @@ async fn an_invitation_to_the_instance_is_turned_down_by_the_link_or_by_its_id()
         by_an_operator: true,
         ..a_ticket_into_a_project(ADA)
     };
-    let by_the_link = wiring::wired();
+    let by_the_link = wiring::a_workbench();
     let ada = an_account(&by_the_link, ADA).await;
     an_invitation(&by_the_link, &to_the_instance).await;
     // and: another one so invited
-    let by_its_id = wiring::wired();
+    let by_its_id = wiring::a_workbench();
     let ada_too = an_account(&by_its_id, ADA).await;
     an_invitation(&by_its_id, &to_the_instance).await;
 
@@ -513,7 +513,7 @@ async fn an_invitation_to_the_instance_is_turned_down_by_the_link_or_by_its_id()
 #[tokio::test]
 async fn a_take_up_whose_account_cannot_be_kept_leaves_the_invitation_to_be_taken_up_again() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -551,7 +551,7 @@ async fn a_take_up_whose_account_cannot_be_kept_leaves_the_invitation_to_be_take
 async fn a_turning_down_whose_account_cannot_be_kept_leaves_the_invitation_to_be_turned_down_again()
 {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;
@@ -587,7 +587,7 @@ async fn a_turning_down_whose_account_cannot_be_kept_leaves_the_invitation_to_be
 #[tokio::test]
 async fn a_take_up_that_lost_a_race_takes_the_ticket_again_in_a_fresh_transaction_and_lands() {
     // given: an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = an_account(&wired, ADA).await;
     // and: an invitation into a project to its address
     an_invitation(&wired, &a_ticket_into_a_project(ADA)).await;

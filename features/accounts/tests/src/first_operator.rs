@@ -33,7 +33,7 @@ async fn held(wired: &Wired, address: &str) -> bool {
 async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_account_in_to_operate()
  {
     // given: an instance signing up by invitation with an operator code drawn
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = an_operator_code(&wired).await;
     let accounts = by_invitation(&wired);
 
@@ -94,7 +94,7 @@ async fn operated_by_ada(wired: &Wired) -> String {
 #[tokio::test]
 async fn once_someone_operates_a_code_to_sign_up_by_is_refused_as_wrong() {
     // given: an instance signing up by invitation, run by Ada
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = operated_by_ada(&wired).await;
     let accounts = by_invitation(&wired);
 
@@ -132,7 +132,7 @@ async fn once_someone_operates_a_code_to_sign_up_by_is_refused_as_wrong() {
 #[tokio::test]
 async fn once_someone_operates_becoming_the_operator_by_a_code_is_refused_as_wrong() {
     // given: an instance run by Ada
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = operated_by_ada(&wired).await;
     // and: Grace, signed up and confirmed
     let accounts = &wired.accounts;
@@ -162,7 +162,7 @@ async fn once_someone_operates_becoming_the_operator_by_a_code_is_refused_as_wro
 #[tokio::test]
 async fn the_code_from_the_log_lets_only_the_first_account_in_and_only_it_operate() {
     // given: an instance signing up by invitation with an operator code drawn
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = an_operator_code(&wired).await;
     let accounts = by_invitation(&wired);
     // and: the first account signed up with it
@@ -200,7 +200,7 @@ async fn the_code_from_the_log_lets_only_the_first_account_in_and_only_it_operat
 #[tokio::test]
 async fn a_code_held_for_one_makes_nobody_else_the_operator() {
     // given: an instance where anyone may sign up, its code held for the first to sign up with it
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = an_operator_code(&wired).await;
     let by_invitation = by_invitation(&wired);
     by_invitation
@@ -235,7 +235,7 @@ async fn a_code_held_for_one_makes_nobody_else_the_operator() {
 #[tokio::test]
 async fn a_code_that_is_not_the_logged_one_lets_nobody_in() {
     // given: an instance signing up by invitation with an operator code drawn
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_operator_code(&wired).await;
 
     // then: signing up to operate with another code is refused
@@ -253,7 +253,7 @@ async fn a_code_that_is_not_the_logged_one_lets_nobody_in() {
 #[tokio::test]
 async fn where_anyone_may_sign_up_a_code_changes_nothing() {
     // given: an instance anyone may sign up to
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up to operate with any code
     wired

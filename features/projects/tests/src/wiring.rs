@@ -162,17 +162,17 @@ impl AccessCatalog for Unreliable {
     }
 }
 
-pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    wired_with(clock, false)
+pub fn a_workbench(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_with(clock, false)
 }
 
 /// Wired with accounts.
 /// Who may do what follows what the feature heard from the members feature, or what was given by `give`.
-pub fn wired_with_accounts(clock: Arc<dyn Clock>) -> Wired {
-    wired_with(clock, true)
+pub fn a_workbench_with_accounts(clock: Arc<dyn Clock>) -> Wired {
+    a_workbench_with(clock, true)
 }
 
-fn wired_with(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
+fn a_workbench_with(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));

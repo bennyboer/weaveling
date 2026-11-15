@@ -52,7 +52,7 @@ async fn summary_of(wired: &Wired, id: &AccountId) -> AccountSummary {
 #[tokio::test]
 async fn an_account_is_listed_once_it_has_signed_up() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up
     let ada = signed_up(&wired, ADA).await;
@@ -67,7 +67,7 @@ async fn an_account_is_listed_once_it_has_signed_up() {
 #[tokio::test]
 async fn what_happens_to_an_account_reaches_the_list() {
     // given: two verified accounts
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = signed_up(&wired, ADA).await;
     let grace = signed_up(&wired, GRACE).await;
     verified(&wired, ADA).await;

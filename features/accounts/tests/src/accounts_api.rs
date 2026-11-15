@@ -12,7 +12,7 @@ use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 fn a_server() -> (Wired, TestServer) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let server = TestServer::new(wired.routes.clone());
 
     (wired, server)

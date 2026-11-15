@@ -46,7 +46,7 @@ fn after(minutes: i64) -> time::OffsetDateTime {
 #[tokio::test]
 async fn five_wrong_passwords_are_free_and_the_next_try_must_wait_a_minute() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
 
     // when: five wrong passwords are tried
@@ -63,7 +63,7 @@ async fn five_wrong_passwords_are_free_and_the_next_try_must_wait_a_minute() {
 #[tokio::test]
 async fn once_the_wait_is_over_the_right_password_signs_in_and_the_count_starts_over() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
     // and: five wrong passwords tried
     signing_in_wrongly(&wired, ADA, 5).await;
@@ -90,7 +90,7 @@ async fn once_the_wait_is_over_the_right_password_signs_in_and_the_count_starts_
 #[tokio::test]
 async fn each_wrong_password_past_the_free_ones_doubles_the_wait() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
     // and: five wrong passwords tried
     signing_in_wrongly(&wired, ADA, 5).await;
@@ -109,7 +109,7 @@ async fn each_wrong_password_past_the_free_ones_doubles_the_wait() {
 #[tokio::test]
 async fn a_try_refused_for_waiting_is_not_counted() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
     // and: five wrong passwords tried
     signing_in_wrongly(&wired, ADA, 5).await;
@@ -133,7 +133,7 @@ async fn a_try_refused_for_waiting_is_not_counted() {
 #[tokio::test]
 async fn an_address_nobody_has_waits_alike() {
     // given: no accounts
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: five wrong passwords are tried for an address nobody has
     signing_in_wrongly(&wired, "nobody@example.com", 5).await;
@@ -149,7 +149,7 @@ async fn an_address_nobody_has_waits_alike() {
 #[tokio::test]
 async fn the_right_password_clears_the_count_even_before_the_address_is_confirmed() {
     // given: an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, false).await;
     // and: four wrong passwords tried
     signing_in_wrongly(&wired, ADA, 4).await;
@@ -172,7 +172,7 @@ async fn the_right_password_clears_the_count_even_before_the_address_is_confirme
 #[tokio::test]
 async fn tries_a_day_old_are_forgotten() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
     // and: five wrong passwords tried
     signing_in_wrongly(&wired, ADA, 5).await;
@@ -203,7 +203,7 @@ fn mails_to(wired: &Wired, email: &str) -> usize {
 #[tokio::test]
 async fn signing_up_and_two_codes_again_are_free_and_the_next_must_wait_a_minute() {
     // given: an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, false).await;
     // and: its code sent again twice
     for _ in 0..2 {
@@ -227,7 +227,7 @@ async fn signing_up_and_two_codes_again_are_free_and_the_next_must_wait_a_minute
 #[tokio::test]
 async fn asking_to_reset_counts_with_the_codes_sent_again() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
     // and: its code sent again
     wired
@@ -249,7 +249,7 @@ async fn asking_to_reset_counts_with_the_codes_sent_again() {
 #[tokio::test]
 async fn signing_up_again_and_again_with_one_address_must_wait_too() {
     // given: an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, false).await;
     // and: its address signed up with twice more
     for _ in 0..2 {
@@ -272,7 +272,7 @@ async fn signing_up_again_and_again_with_one_address_must_wait_too() {
 #[tokio::test]
 async fn an_address_nobody_has_waits_to_be_sent_to_alike() {
     // given: three resets asked for an address nobody has
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     for _ in 0..3 {
         wired
             .accounts
@@ -292,7 +292,7 @@ async fn an_address_nobody_has_waits_to_be_sent_to_alike() {
 #[tokio::test]
 async fn a_send_refused_for_waiting_is_not_counted() {
     // given: an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, false).await;
     // and: its code sent again twice
     for _ in 0..2 {
@@ -323,7 +323,7 @@ async fn a_send_refused_for_waiting_is_not_counted() {
 #[tokio::test]
 async fn a_sign_up_refused_for_what_it_asks_is_not_counted() {
     // given: three sign-ups refused for a short password
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     for _ in 0..3 {
         assert!(matches!(
             wired.accounts.sign_up(ADA, "Ada", "short").await,
@@ -338,7 +338,7 @@ async fn a_sign_up_refused_for_what_it_asks_is_not_counted() {
 #[tokio::test]
 async fn wrong_passwords_sent_at_once_are_checked_no_more_often_than_the_free_tries() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired, true).await;
 
     // when: twenty wrong passwords are sent at once
@@ -364,7 +364,7 @@ fn waits_for<T>(told: &Result<T, AccountsError>) -> bool {
 #[tokio::test]
 async fn mail_anyone_may_have_sent_is_capped_across_the_instance_each_hour() {
     // given: an instance sending at most two such mails an hour, at twenty to the hour and a little
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let accounts = wired.accounts.clone().capping_mail(2);
     let asked = |address: &'static str| {
         let accounts = accounts.clone();

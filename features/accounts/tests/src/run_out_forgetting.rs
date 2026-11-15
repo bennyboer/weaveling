@@ -44,7 +44,7 @@ async fn held(wired: &Wired, digest: &TokenDigest) -> bool {
 #[tokio::test]
 async fn sessions_and_codes_run_out_a_day_ago_are_forgotten_every_hour() {
     // given: a code sent on signing up, run out a day and a second ago
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let now = wired.clock.now();
     wired
         .accounts

@@ -21,7 +21,7 @@ pub struct Served {
 }
 
 pub async fn served(accounts: impl Fn(&Wired) -> AccountsCore) -> Served {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

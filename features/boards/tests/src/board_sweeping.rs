@@ -19,7 +19,7 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 async fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeletedListener) {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     for project in ["project_1", "project_2"] {
         wired
             .give(project, &AccountId::from("author-7"), Some(Role::Owner))

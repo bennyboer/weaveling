@@ -34,7 +34,8 @@ fn as_account(wired: &Wired, account: &str) -> TestServer {
 }
 
 async fn an_outline_ada_owns() -> Guarded {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let wired =
+        wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     wired.give(PROJECT, "account_ada", Some(Role::Owner)).await;
     let ada = as_account(&wired, "account_ada");
     let opened = ada

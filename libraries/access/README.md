@@ -16,6 +16,18 @@ Some features need to know whether someone may read or change a project, or whet
 
 Some things end: a membership, an account's operator role, a project that was disbanded. Each of these stays as a tombstone that records when it ended. So an older message that arrives afterwards does not bring it back. `forget_tombstones_laid_before(before, at_most)` deletes old tombstones. Each feature's tombstone chore calls it once no late message can arrive any more.
 
+For example, a feature's listener stores a new role in its own transaction, and a request is then checked through the `Authorizer` built on the catalog:
+
+```rust
+access
+    .remember_role(&mut transaction, project, &account, version, Some(Role::Author), now)
+    .await?;
+
+if !authorizer.may(&agent, Act::Write, project).await? {
+    return Err(BoardsError::NotAnAuthor);
+}
+```
+
 **`KeptAccess` is the `Authorizer` built on this catalog.** It answers the way the members feature itself would:
 
 - The system may do everything.

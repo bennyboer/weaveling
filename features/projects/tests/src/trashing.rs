@@ -40,7 +40,7 @@ fn bench() -> Bench {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
     Bench {
-        wired: wiring::wired(clock.clone()),
+        wired: wiring::a_workbench(clock.clone()),
         clock,
     }
 }
@@ -357,7 +357,7 @@ async fn a_purge_of_a_project_restored_meanwhile_only_takes_its_entry_out() {
 #[tokio::test]
 async fn only_an_owner_trashes_restores_and_sees_the_trash() {
     // given: a project ada owns and grace authors
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))
@@ -414,7 +414,7 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
 #[tokio::test]
 async fn an_owner_changing_a_project_in_the_trash_hears_it_is_there_and_others_that_it_is_gone() {
     // given: a project ada owns, trashed
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = wired
         .projects
         .start("Shared", &RawDetails::default(), &an_account(ADA))

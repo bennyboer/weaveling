@@ -42,7 +42,7 @@ async fn signed_up(wired: &Wired, email: &str) -> AccountId {
 }
 
 fn bench() -> Bench {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let accounts = wired
         .accounts
         .clone()
@@ -342,7 +342,7 @@ async fn a_name_another_key_has_is_refused_without_spending_the_adding() {
 #[tokio::test]
 async fn without_a_public_url_no_key_is_added() {
     // given: an instance not told where it is served
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let ada = signed_up(&wired, ADA).await;
 
     // when: adding a key begins

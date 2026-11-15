@@ -60,7 +60,7 @@ async fn is_locked(wired: &Wired, id: &AccountId) -> bool {
 #[tokio::test]
 async fn an_operator_locks_an_account_and_its_sessions_end_at_once() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     // and: a session of the account
     let (token, _) = wired
@@ -92,7 +92,7 @@ async fn an_operator_locks_an_account_and_its_sessions_end_at_once() {
 #[tokio::test]
 async fn a_lock_is_told_as_the_operators_doing() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // when: the operator locks the account
@@ -118,7 +118,7 @@ async fn a_lock_is_told_as_the_operators_doing() {
 #[tokio::test]
 async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_right() {
     // given: a locked account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -144,7 +144,7 @@ async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_rig
 #[tokio::test]
 async fn only_an_operator_locks_or_unlocks() {
     // given: two accounts and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     let hedy = a_verified_account(&wired, "hedy@example.com").await;
 
@@ -178,7 +178,7 @@ async fn only_an_operator_locks_or_unlocks() {
 #[tokio::test]
 async fn an_unlocked_account_signs_in_again() {
     // given: a locked account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -204,7 +204,7 @@ async fn an_unlocked_account_signs_in_again() {
 #[tokio::test]
 async fn an_operator_cannot_lock_themselves() {
     // given: an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (_ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // then: locking itself is refused
@@ -219,7 +219,7 @@ async fn an_operator_cannot_lock_themselves() {
 #[tokio::test]
 async fn an_account_is_locked_only_with_a_reason() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // then: a lock with a blank reason is refused
@@ -234,7 +234,7 @@ async fn an_account_is_locked_only_with_a_reason() {
 #[tokio::test]
 async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
     // given: a locked account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -267,7 +267,7 @@ async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
 #[tokio::test]
 async fn unlocking_brings_back_no_session_the_lock_ended() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     // and: a session of the account ended by a lock
     let (token, _) = wired
@@ -305,7 +305,7 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
 #[tokio::test]
 async fn a_lock_reaches_the_end_of_the_account_s_sessions_at_once() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     // and: someone waiting on the end of the account's session
     let (token, signed_in) = wired
@@ -330,7 +330,7 @@ async fn a_lock_reaches_the_end_of_the_account_s_sessions_at_once() {
 #[tokio::test]
 async fn a_lock_that_lost_a_race_is_tried_again_and_lands() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // when: the operator locks the account, losing four races first
@@ -347,7 +347,7 @@ async fn a_lock_that_lost_a_race_is_tried_again_and_lands() {
 #[tokio::test]
 async fn a_lock_that_lost_every_race_it_may_try_is_a_conflict() {
     // given: an account and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     // when: the operator locks the account, losing every race it may try

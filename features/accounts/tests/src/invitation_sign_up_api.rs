@@ -13,7 +13,7 @@ use crate::wiring::{ADA, HER_PASSWORD, Wired};
 const TOKEN: &str = "a token drawn by invitations";
 
 async fn an_open_invitation() -> (Wired, TestServer) {
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),
@@ -140,7 +140,7 @@ async fn an_address_with_an_account_already_is_refused_by_its_kind() {
 #[tokio::test]
 async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_its_kind() {
     // given: an operator code drawn
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let code = wired
         .accounts
         .draw_operator_code()
@@ -178,7 +178,7 @@ async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_
 #[tokio::test]
 async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
     // given: signing up by invitation only
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let server = TestServer::new(accounts_rest::router(
         wired.accounts.clone().signing_up(SigningUp::ByInvitation),
     ));
@@ -202,7 +202,7 @@ async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_it
 #[tokio::test]
 async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
     // given: an open invitation from an owner rather than an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),

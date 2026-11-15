@@ -45,7 +45,7 @@ async fn holder(wired: &Wired, address: &str) -> Option<AccountId> {
 #[tokio::test]
 async fn an_invitation_signs_its_address_up_confirmed_and_ready_to_sign_in() {
     // given: an invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
 
     // when: its address signs up by it
@@ -107,7 +107,7 @@ async fn an_invitation_signs_its_address_up_confirmed_and_ready_to_sign_in() {
 #[tokio::test]
 async fn a_token_copied_with_space_around_it_is_the_same_token() {
     // given: an invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
 
     // then: its token with space around it signs up
@@ -119,7 +119,7 @@ async fn a_token_copied_with_space_around_it_is_the_same_token() {
 #[tokio::test]
 async fn an_invitation_lets_one_account_in() {
     // given: an invitation one account signed up by
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
     signs_up(&wired, TOKEN)
         .await
@@ -135,7 +135,7 @@ async fn an_invitation_lets_one_account_in() {
 #[tokio::test]
 async fn a_token_nobody_was_given_or_one_withdrawn_signs_nobody_up() {
     // given: a withdrawn invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
     wired
         .forget_ticket("invitation_1")
@@ -157,11 +157,11 @@ async fn a_token_nobody_was_given_or_one_withdrawn_signs_nobody_up() {
 async fn an_invitation_holds_to_its_last_moment_and_no_longer() {
     // given: an invitation at its last moment
     let last = clock::at(1_700_000_000) + Duration::days(7);
-    let on_time = wiring::wired();
+    let on_time = wiring::a_workbench();
     an_invitation(&on_time, ADA, TOKEN).await;
     on_time.clock.set(last);
     // and: one a second past it
-    let late = wiring::wired();
+    let late = wiring::a_workbench();
     an_invitation(&late, ADA, TOKEN).await;
     late.clock.set(last + Duration::seconds(1));
 
@@ -181,7 +181,7 @@ async fn an_invitation_holds_to_its_last_moment_and_no_longer() {
 #[tokio::test]
 async fn a_name_or_password_refused_leaves_the_invitation_to_be_used() {
     // given: an invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
 
     // then: a blank name is refused
@@ -210,7 +210,7 @@ async fn a_name_or_password_refused_leaves_the_invitation_to_be_used() {
 #[tokio::test]
 async fn an_address_with_an_account_already_is_told_to_sign_in() {
     // given: an address with an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -236,7 +236,7 @@ async fn an_address_with_an_account_already_is_told_to_sign_in() {
 #[tokio::test]
 async fn an_expired_invitation_tells_nothing_of_its_address() {
     // given: an address with an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -261,7 +261,7 @@ async fn an_expired_invitation_tells_nothing_of_its_address() {
 #[tokio::test]
 async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
     // given: signing up by invitation only
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let accounts = wired.accounts.clone().signing_up(SigningUp::ByInvitation);
     // and: an invitation
     an_invitation(&wired, ADA, TOKEN).await;
@@ -327,7 +327,7 @@ async fn still_there(wired: &Wired) -> Option<InvitationTicket> {
 #[tokio::test]
 async fn where_anyone_may_sign_up_a_project_s_invitation_signs_its_address_up_and_is_taken_up() {
     // given: an owner's invitation into a project
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation_into_a_project(&wired, false).await;
 
     // when: its address signs up by it
@@ -356,10 +356,10 @@ async fn where_anyone_may_sign_up_a_project_s_invitation_signs_its_address_up_an
 #[tokio::test]
 async fn where_signing_up_is_by_invitation_only_an_operator_s_invitation_into_a_project_lets_in() {
     // given: an operator's invitation into a project
-    let by_an_operator = wiring::wired();
+    let by_an_operator = wiring::a_workbench();
     an_invitation_into_a_project(&by_an_operator, true).await;
     // and: an owner's
-    let by_an_owner = wiring::wired();
+    let by_an_owner = wiring::a_workbench();
     an_invitation_into_a_project(&by_an_owner, false).await;
 
     // then: where signing up is by invitation only the operator's signs its address up
@@ -392,7 +392,7 @@ async fn where_signing_up_is_by_invitation_only_an_operator_s_invitation_into_a_
 #[tokio::test]
 async fn an_address_with_an_account_keeps_its_invitation_to_take_up_signed_in() {
     // given: an address with an account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -418,7 +418,7 @@ async fn an_address_with_an_account_keeps_its_invitation_to_take_up_signed_in() 
 async fn a_sign_up_by_invitation_whose_account_cannot_be_kept_leaves_the_link_to_sign_up_by_again()
 {
     // given: an invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
 
     // when: its address signs up by it while accounts cannot be kept
@@ -459,7 +459,7 @@ async fn a_sign_up_by_invitation_whose_account_cannot_be_kept_leaves_the_link_to
 async fn a_sign_up_by_invitation_whose_session_cannot_be_opened_makes_no_account_and_leaves_the_link()
  {
     // given: an invitation
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     an_invitation(&wired, ADA, TOKEN).await;
 
     // when: its address signs up by it while sessions cannot be opened

@@ -43,7 +43,7 @@ fn a_server() -> Serving {
 }
 
 fn a_server_on(clock: Arc<FixedClock>) -> Serving {
-    let wired = wiring::wired(clock);
+    let wired = wiring::a_workbench(clock);
     let server = TestServer::new(wired.routes.clone().layer(Extension(Agent::Local)));
 
     Serving { server, wired }

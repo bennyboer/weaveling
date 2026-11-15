@@ -21,7 +21,7 @@ use crate::wiring;
 use crate::wiring::{Faltering, Wired};
 
 async fn a_workbench() -> Wired {
-    let wired = wiring::wired_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
+    let wired = wiring::a_workbench_with_accounts(Arc::new(FixedClock::new(clock::at(1_000))));
     wired
         .give("project_1", &AccountId::from("author-7"), Some(Role::Owner))
         .await;
@@ -302,7 +302,7 @@ async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
 async fn letting_go_in_the_system_s_name_does_not_wait_on_knowing_whom_to_let_in() {
     // given: a board holding an idea, its project's owner known
     let access = Arc::new(Faltering::default());
-    let wired = wiring::wired_keeping(
+    let wired = wiring::a_workbench_keeping(
         Arc::new(FixedClock::new(clock::at(1_000))),
         access.clone(),
         true,

@@ -56,7 +56,7 @@ impl Wired {
     }
 }
 
-pub fn wired() -> Wired {
+pub fn a_workbench() -> Wired {
     let clock = Arc::new(FixedClock::new(clock::at(1_700_000_000)));
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));

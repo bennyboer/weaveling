@@ -99,7 +99,7 @@ async fn ada_alone_owning_a_project_grace_is_in(
 #[tokio::test]
 async fn the_last_owner_of_a_project_others_are_in_hands_it_over_before_the_account_is_deleted() {
     // given: ada alone owns a project grace is in, as the members told accounts
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace, listener) = ada_alone_owning_a_project_grace_is_in(&wired).await;
     // expect: the listener hears every change to members
     for routing in [FOUNDED, JOINED, ROLE_CHANGED, DISBANDED] {
@@ -136,7 +136,7 @@ async fn the_last_owner_of_a_project_others_are_in_hands_it_over_before_the_acco
 async fn a_project_in_the_trash_or_deleted_is_nothing_to_hand_over() {
     for gone in ["trashed", "disbanded"] {
         // given: ada alone owns a project grace is in
-        let wired = wiring::wired();
+        let wired = wiring::a_workbench();
         let (ada, _, listener) = ada_alone_owning_a_project_grace_is_in(&wired).await;
 
         // when: the project is put in the trash, or deleted and its members disbanded
@@ -167,7 +167,7 @@ async fn a_project_in_the_trash_or_deleted_is_nothing_to_hand_over() {
 #[tokio::test]
 async fn the_operator_is_refused_too_while_there_is_a_project_to_hand_over() {
     // given: ada alone owns a project grace is in, and an operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, _, _) = ada_alone_owning_a_project_grace_is_in(&wired).await;
     let operator = a_verified_account(&wired, "hedy@example.com").await;
     let code = wired

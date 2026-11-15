@@ -39,7 +39,7 @@ async fn is_verified(wired: &Wired, id: &AccountId) -> bool {
 #[tokio::test]
 async fn signing_up_sends_a_code_to_the_address_and_leaves_it_unverified() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up
     let id = ada_signed_up(&wired).await;
@@ -53,7 +53,7 @@ async fn signing_up_sends_a_code_to_the_address_and_leaves_it_unverified() {
 #[tokio::test]
 async fn an_account_signs_itself_up() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up
     let id = ada_signed_up(&wired).await;
@@ -70,7 +70,7 @@ async fn an_account_signs_itself_up() {
 #[tokio::test]
 async fn the_code_mailed_is_kept_only_as_a_digest_that_admits_it() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up, mailed a code
     let id = ada_signed_up(&wired).await;
@@ -99,7 +99,7 @@ async fn the_code_mailed_is_kept_only_as_a_digest_that_admits_it() {
 #[tokio::test]
 async fn the_password_is_kept_only_as_a_hash_that_admits_it() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // when: an account signs up
     let id = ada_signed_up(&wired).await;
@@ -119,7 +119,7 @@ async fn the_password_is_kept_only_as_a_hash_that_admits_it() {
 #[tokio::test]
 async fn the_code_that_was_sent_verifies_the_address() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
 
     // when: it verifies with the code sent
@@ -136,7 +136,7 @@ async fn the_code_that_was_sent_verifies_the_address() {
 #[tokio::test]
 async fn a_used_code_is_used_up() {
     // given: an account verified with the code sent
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired).await;
     let code = wired.last_code_sent_to(ADA);
     wired
@@ -155,7 +155,7 @@ async fn a_used_code_is_used_up() {
 #[tokio::test]
 async fn the_address_is_verified_however_it_is_typed() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
 
     // when: it verifies with its address typed otherwise
@@ -172,7 +172,7 @@ async fn the_address_is_verified_however_it_is_typed() {
 #[tokio::test]
 async fn a_wrong_code_is_refused_and_leaves_the_address_unverified() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     // and: a code other than the one sent
     let wrong = if wired.last_code_sent_to(ADA) == "000000" {
@@ -208,7 +208,7 @@ async fn guessed_wrong(wired: &Wired, times: u32) -> String {
 #[tokio::test]
 async fn one_guess_short_of_the_limit_the_right_code_still_counts() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     // and: one wrong guess fewer than allowed
     let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES - 1).await;
@@ -227,7 +227,7 @@ async fn one_guess_short_of_the_limit_the_right_code_still_counts() {
 #[tokio::test]
 async fn after_too_many_wrong_codes_not_even_the_right_one_counts() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     // and: as many wrong guesses as allowed
     let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES).await;
@@ -247,7 +247,7 @@ async fn after_too_many_wrong_codes_not_even_the_right_one_counts() {
 #[tokio::test]
 async fn a_code_lasts_a_quarter_of_an_hour() {
     // given: an account signed up with a code sent
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     let code = wired.last_code_sent_to(ADA);
 
@@ -280,7 +280,7 @@ async fn a_code_lasts_a_quarter_of_an_hour() {
 #[tokio::test]
 async fn asking_again_sends_a_new_code_and_the_old_one_no_longer_counts() {
     // given: an account signed up with a code sent
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     let old = wired.last_code_sent_to(ADA);
 
@@ -313,7 +313,7 @@ async fn asking_again_sends_a_new_code_and_the_old_one_no_longer_counts() {
 #[tokio::test]
 async fn asking_again_once_verified_or_for_an_address_nobody_has_sends_nothing() {
     // given: a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired).await;
     wired
         .accounts
@@ -343,7 +343,7 @@ async fn asking_again_once_verified_or_for_an_address_nobody_has_sends_nothing()
 #[tokio::test]
 async fn signing_up_with_an_address_already_taken_makes_no_account_and_tells_its_owner() {
     // given: an account signed up
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
 
     // when: someone else signs up with its address
@@ -391,7 +391,7 @@ async fn signing_up_with_an_address_already_taken_makes_no_account_and_tells_its
 #[tokio::test]
 async fn verifying_an_address_nobody_signed_up_with_is_just_a_wrong_code() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // then: verifying an address nobody has is a wrong code
     assert!(matches!(
@@ -403,7 +403,7 @@ async fn verifying_an_address_nobody_signed_up_with_is_just_a_wrong_code() {
 #[tokio::test]
 async fn what_is_given_is_checked_before_anything_is_kept() {
     // given: a fresh instance
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
 
     // then: a sign up with a bad address, name or password is refused
     for (email, name, password) in [
@@ -533,7 +533,7 @@ impl EventStore<AccountEvent> for Refusing {
 #[tokio::test]
 async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     // given: an instance whose accounts cannot be kept
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let accounts = AccountsCore::new(
         Arc::new(Refusing),
         Arc::new(InMemoryTransactions::new()),
@@ -564,7 +564,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
 #[tokio::test]
 async fn a_verification_whose_event_cannot_be_kept_leaves_the_code_open() {
     // given: an account signed up with a code sent
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let id = ada_signed_up(&wired).await;
     let code = wired.last_code_sent_to(ADA);
 
@@ -590,7 +590,7 @@ async fn a_verification_whose_event_cannot_be_kept_leaves_the_code_open() {
 #[tokio::test]
 async fn a_try_is_counted_even_when_the_verification_cannot_be_kept() {
     // given: an account signed up with a code sent
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_up(&wired).await;
     let code = wired.last_code_sent_to(ADA);
     // and: a verification with it that could not be kept

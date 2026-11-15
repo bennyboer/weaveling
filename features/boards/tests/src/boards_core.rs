@@ -31,7 +31,7 @@ fn a_key(of: &str) -> RoutingKey {
 fn a_workbench() -> (Wired, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
-    (wiring::wired(clock.clone()), clock)
+    (wiring::a_workbench(clock.clone()), clock)
 }
 
 async fn an_open_board(wired: &Wired) -> BoardId {

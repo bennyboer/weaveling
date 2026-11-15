@@ -61,7 +61,7 @@ async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
 #[tokio::test]
 async fn an_operator_makes_another_account_an_operator_who_may_then_act_as_one() {
     // given: an operator and a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
 
     // when: the operator appoints the account
@@ -93,7 +93,7 @@ async fn an_operator_makes_another_account_an_operator_who_may_then_act_as_one()
 #[tokio::test]
 async fn an_operator_takes_the_role_away_and_it_counts_at_once() {
     // given: two operators
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
@@ -120,7 +120,7 @@ async fn an_operator_takes_the_role_away_and_it_counts_at_once() {
 #[tokio::test]
 async fn an_operator_may_give_up_the_role_but_not_as_the_last() {
     // given: a single operator
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
 
     // then: giving up the role is refused
@@ -154,7 +154,7 @@ async fn an_operator_may_give_up_the_role_but_not_as_the_last() {
 #[tokio::test]
 async fn only_an_operator_makes_or_unmakes_one() {
     // given: an operator and an account that is none
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
 
     // then: the account may not appoint
@@ -175,7 +175,7 @@ async fn only_an_operator_makes_or_unmakes_one() {
 #[tokio::test]
 async fn an_account_refusing_the_role_is_not_appointed() {
     // given: an operator and an unverified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, false).await;
 
     // then: appointing the account is refused by it
@@ -199,7 +199,7 @@ async fn an_account_refusing_the_role_is_not_appointed() {
 #[tokio::test]
 async fn a_locked_account_is_not_made_an_operator() {
     // given: an operator and a locked account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
@@ -221,7 +221,7 @@ async fn a_locked_account_is_not_made_an_operator() {
 #[tokio::test]
 async fn a_dismissal_whose_event_cannot_be_kept_leaves_the_operator_appointed() {
     // given: two operators
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
     wired
         .accounts
@@ -253,7 +253,7 @@ async fn a_dismissal_whose_event_cannot_be_kept_leaves_the_operator_appointed() 
 #[tokio::test]
 async fn an_appointment_whose_event_cannot_be_kept_appoints_nobody() {
     // given: an operator and a verified account
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
 
     // when: the operator appoints the account while events cannot be kept

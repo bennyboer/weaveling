@@ -19,7 +19,8 @@ use crate::wiring::Wired;
 
 async fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeletedListener) {
     let wired =
-        wiring::wired_where_the_author_owns(Arc::new(FixedClock::new(clock::at(1_000)))).await;
+        wiring::a_workbench_where_the_author_owns(Arc::new(FixedClock::new(clock::at(1_000))))
+            .await;
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(wired.outlines.clone());
 
     (wired, sweep)

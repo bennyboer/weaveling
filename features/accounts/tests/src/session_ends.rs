@@ -65,7 +65,7 @@ pub(crate) async fn still_running(waiting: &mut JoinHandle<()>) -> bool {
 #[tokio::test]
 async fn signing_out_reaches_the_session_s_end_at_once() {
     // given: a session
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (token, end) = ada_signed_in(&wired).await;
     // and: its end awaited
     let waiting = awaited(end).await;
@@ -84,7 +84,7 @@ async fn signing_out_reaches_the_session_s_end_at_once() {
 #[tokio::test]
 async fn signing_out_elsewhere_leaves_this_session_running() {
     // given: a session
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (_, end) = ada_signed_in(&wired).await;
     // and: another one of hers elsewhere
     let (elsewhere, _) = a_session(&wired).await;
@@ -108,7 +108,7 @@ async fn signing_out_elsewhere_leaves_this_session_running() {
 #[tokio::test]
 async fn a_session_s_end_is_reached_at_its_last_moment() {
     // given: a session
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (token, _) = ada_signed_in(&wired).await;
     // and: its end awaited with a last moment soon
     let until = wired.clock.now() + time::Duration::milliseconds(300);
@@ -126,7 +126,7 @@ async fn a_session_s_end_is_reached_at_its_last_moment() {
 #[tokio::test]
 async fn a_session_already_over_is_ended_from_the_start() {
     // given: a session signed out of
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     let (token, end) = ada_signed_in(&wired).await;
     wired
         .accounts
@@ -193,7 +193,7 @@ impl Sessions for Unreachable {
 #[tokio::test]
 async fn a_session_that_cannot_be_asked_about_is_not_taken_for_ended() {
     // given: sessions that can go out of reach
-    let wired = wiring::wired();
+    let wired = wiring::a_workbench();
     ada_signed_in(&wired).await;
     let sessions = Arc::new(Unreachable {
         kept: wired.secrets.clone(),

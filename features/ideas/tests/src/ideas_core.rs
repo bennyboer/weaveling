@@ -18,7 +18,7 @@ use ideas_core::{
 fn a_workbench() -> (IdeasCore, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
 
-    (wiring::wired(clock.clone()).ideas, clock)
+    (wiring::a_workbench(clock.clone()).ideas, clock)
 }
 
 async fn a_captured_idea(ideas: &IdeasCore) -> IdeaId {
@@ -270,7 +270,8 @@ async fn an_idea_captured_later_sorts_after_one_captured_earlier() {
 #[tokio::test]
 async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
     // given: an idea with ninety-nine events
-    let Wired { ideas, store, .. } = wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))));
+    let Wired { ideas, store, .. } =
+        wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = ideas
         .capture("project_1", "The Loom", &eventsourcing::an_author())
         .await
@@ -331,7 +332,8 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
 #[tokio::test]
 async fn an_idea_survives_on_its_snapshot_alone() {
     // given: an idea with a hundred events
-    let Wired { ideas, store, .. } = wiring::wired(Arc::new(FixedClock::new(clock::at(1_000))));
+    let Wired { ideas, store, .. } =
+        wiring::a_workbench(Arc::new(FixedClock::new(clock::at(1_000))));
     let id = ideas
         .capture("project_1", "The Loom", &eventsourcing::an_author())
         .await

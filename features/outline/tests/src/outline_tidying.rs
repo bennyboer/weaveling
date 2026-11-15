@@ -24,7 +24,7 @@ use crate::wiring;
 use crate::wiring::Wired;
 
 async fn a_workbench() -> Wired {
-    wiring::wired_where_the_author_owns(Arc::new(FixedClock::new(clock::at(1_000)))).await
+    wiring::a_workbench_where_the_author_owns(Arc::new(FixedClock::new(clock::at(1_000)))).await
 }
 
 fn a_scene(named: &str) -> Attachment {
