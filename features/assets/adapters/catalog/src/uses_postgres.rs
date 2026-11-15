@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use assets_core::{AssetId, AssetUse, AssetUses, CatalogError, Holder, Purpose};
 use async_trait::async_trait;
 use eventsourcing::Version;
@@ -10,20 +12,29 @@ use crate::written::{
     holder_read, holder_written, purpose_read, purpose_written, size_written, unreachable,
 };
 
-const TOLD: &str = "
-    INSERT INTO asset_uses (purpose, holder_kind, holder, version, asset, gone_at)
-    VALUES ($1, $2, $3, $4, $5, $6)
+const HOLD: &str = "
+    INSERT INTO asset_use_holders (purpose, holder_kind, holder, version, gone_at)
+    VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (purpose, holder_kind, holder) DO UPDATE
-    SET version = excluded.version, asset = excluded.asset, gone_at = excluded.gone_at
-    WHERE asset_uses.version < excluded.version
+    SET version = excluded.version, gone_at = excluded.gone_at
+    WHERE asset_use_holders.version < excluded.version
+    RETURNING version
+";
+
+const LET_GO: &str =
+    "DELETE FROM asset_uses WHERE purpose = $1 AND holder_kind = $2 AND holder = $3";
+
+const USE: &str = "
+    INSERT INTO asset_uses (purpose, holder_kind, holder, asset)
+    SELECT $1, $2, $3, UNNEST($4::TEXT[])
 ";
 
 const USES_OF: &str =
     "SELECT asset, purpose, holder_kind, holder FROM asset_uses WHERE asset = ANY($1)";
 
 const FORGET_OLD: &str = "
-    DELETE FROM asset_uses WHERE (purpose, holder_kind, holder) IN (
-        SELECT purpose, holder_kind, holder FROM asset_uses
+    DELETE FROM asset_use_holders WHERE (purpose, holder_kind, holder) IN (
+        SELECT purpose, holder_kind, holder FROM asset_use_holders
         WHERE gone_at < $1
         ORDER BY gone_at, purpose, holder_kind, holder
         LIMIT $2
@@ -31,6 +42,7 @@ const FORGET_OLD: &str = "
 ";
 
 /// What uses which asset, stored in Postgres next to the assets.
+/// `asset_use_holders` keeps each holder's version and tombstone, `asset_uses` the assets it uses.
 #[derive(Debug, Default)]
 pub struct PostgresAssetUses;
 
@@ -40,51 +52,49 @@ impl PostgresAssetUses {
     }
 }
 
-async fn told(
-    transaction: &mut Transaction,
-    purpose: Purpose,
-    by: &Holder,
-    version: Version,
-    asset: Option<&AssetId>,
-    gone_at: Option<OffsetDateTime>,
-) -> Result<(), CatalogError> {
-    let (holder_kind, holder) = holder_written(by);
-    sqlx::query(TOLD)
-        .bind(purpose_written(purpose))
-        .bind(holder_kind)
-        .bind(holder)
-        .bind(size_written(version.count())?)
-        .bind(asset.map(ToString::to_string))
-        .bind(gone_at)
-        .execute(connection(transaction).map_err(unreachable)?)
-        .await
-        .map_err(unreachable)?;
-
-    Ok(())
-}
-
 #[async_trait]
 impl AssetUses for PostgresAssetUses {
-    async fn use_as(
-        &self,
-        transaction: &mut Transaction,
-        asset: &AssetId,
-        purpose: Purpose,
-        by: &Holder,
-        version: Version,
-    ) -> Result<(), CatalogError> {
-        told(transaction, purpose, by, version, Some(asset), None).await
-    }
-
-    async fn stop_using(
+    async fn used_for(
         &self,
         transaction: &mut Transaction,
         purpose: Purpose,
         by: &Holder,
+        assets: &BTreeSet<AssetId>,
         version: Version,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        told(transaction, purpose, by, version, None, Some(at)).await
+        let purpose = purpose_written(purpose);
+        let (holder_kind, holder) = holder_written(by);
+        let stored: Option<i64> = sqlx::query_scalar(HOLD)
+            .bind(purpose)
+            .bind(holder_kind)
+            .bind(&holder)
+            .bind(size_written(version.count())?)
+            .bind(assets.is_empty().then_some(at))
+            .fetch_optional(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        if stored.is_none() {
+            return Ok(());
+        }
+
+        sqlx::query(LET_GO)
+            .bind(purpose)
+            .bind(holder_kind)
+            .bind(&holder)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(USE)
+            .bind(purpose)
+            .bind(holder_kind)
+            .bind(&holder)
+            .bind(assets.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn uses_of(

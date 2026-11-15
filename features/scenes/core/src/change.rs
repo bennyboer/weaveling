@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +40,12 @@ pub enum SceneChange {
         project: ProjectLink,
         words: usize,
     },
+    ImagesChanged {
+        scene: SceneId,
+        project: ProjectLink,
+        images: BTreeSet<String>,
+        version: u64,
+    },
 }
 
 impl SceneChange {
@@ -49,7 +57,8 @@ impl SceneChange {
             | Self::Created { scene, .. }
             | Self::Retitled { scene, .. }
             | Self::OpeningChanged { scene, .. }
-            | Self::WordsCounted { scene, .. } => *scene,
+            | Self::WordsCounted { scene, .. }
+            | Self::ImagesChanged { scene, .. } => *scene,
         }
     }
 
@@ -61,7 +70,8 @@ impl SceneChange {
             | Self::Created { project, .. }
             | Self::Retitled { project, .. }
             | Self::OpeningChanged { project, .. }
-            | Self::WordsCounted { project, .. } => project,
+            | Self::WordsCounted { project, .. }
+            | Self::ImagesChanged { project, .. } => project,
         }
     }
 }

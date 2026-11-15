@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use assets_core::{AssetId, AssetUse, AssetUses, CatalogError, Holder, Purpose};
@@ -7,15 +7,15 @@ use eventsourcing::Version;
 use time::OffsetDateTime;
 use transacting::{Transaction, memory};
 
-/// What a holder uses for one purpose: the asset, or none once it stopped, as of a version.
+/// What a holder uses for one purpose as of a version: a set of assets, and when it was emptied.
 #[derive(Debug, Clone)]
-struct Slot {
+struct Uses {
     version: u64,
-    asset: Option<AssetId>,
+    assets: BTreeSet<AssetId>,
     gone_at: Option<OffsetDateTime>,
 }
 
-type Kept = HashMap<(Purpose, Holder), Slot>;
+type Kept = HashMap<(Purpose, Holder), Uses>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryAssetUses {
@@ -40,60 +40,34 @@ impl InMemoryAssetUses {
         })
         .map_err(|failure| CatalogError::Backend(Box::new(failure)))
     }
-
-    fn told(&self, purpose: Purpose, by: &Holder, slot: Slot) {
-        let mut kept = self.kept();
-        let newer = kept
-            .get(&(purpose, by.clone()))
-            .is_none_or(|held| held.version < slot.version);
-        if newer {
-            kept.insert((purpose, by.clone()), slot);
-        }
-    }
 }
 
 #[async_trait]
 impl AssetUses for InMemoryAssetUses {
-    async fn use_as(
-        &self,
-        transaction: &mut Transaction,
-        asset: &AssetId,
-        purpose: Purpose,
-        by: &Holder,
-        version: Version,
-    ) -> Result<(), CatalogError> {
-        self.undo_on_rollback(transaction)?;
-        self.told(
-            purpose,
-            by,
-            Slot {
-                version: version.count(),
-                asset: Some(*asset),
-                gone_at: None,
-            },
-        );
-
-        Ok(())
-    }
-
-    async fn stop_using(
+    async fn used_for(
         &self,
         transaction: &mut Transaction,
         purpose: Purpose,
         by: &Holder,
+        assets: &BTreeSet<AssetId>,
         version: Version,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
-        self.told(
-            purpose,
-            by,
-            Slot {
-                version: version.count(),
-                asset: None,
-                gone_at: Some(at),
-            },
-        );
+        let mut kept = self.kept();
+        let newer = kept
+            .get(&(purpose, by.clone()))
+            .is_none_or(|held| held.version < version.count());
+        if newer {
+            kept.insert(
+                (purpose, by.clone()),
+                Uses {
+                    version: version.count(),
+                    assets: assets.clone(),
+                    gone_at: assets.is_empty().then_some(at),
+                },
+            );
+        }
 
         Ok(())
     }
@@ -106,15 +80,19 @@ impl AssetUses for InMemoryAssetUses {
         Ok(self
             .kept()
             .iter()
-            .filter_map(|((purpose, by), slot)| {
-                let asset = slot.asset.filter(|asset| assets.contains(asset))?;
-                Some((
-                    asset,
-                    AssetUse {
-                        purpose: *purpose,
-                        by: by.clone(),
-                    },
-                ))
+            .flat_map(|((purpose, by), uses)| {
+                uses.assets
+                    .iter()
+                    .filter(|asset| assets.contains(asset))
+                    .map(|asset| {
+                        (
+                            *asset,
+                            AssetUse {
+                                purpose: *purpose,
+                                by: by.clone(),
+                            },
+                        )
+                    })
             })
             .collect())
     }
@@ -129,8 +107,8 @@ impl AssetUses for InMemoryAssetUses {
         let mut kept = self.kept();
         let mut old: Vec<(OffsetDateTime, (Purpose, Holder))> = kept
             .iter()
-            .filter_map(|(key, slot)| {
-                slot.gone_at
+            .filter_map(|(key, uses)| {
+                uses.gone_at
                     .filter(|at| *at < before)
                     .map(|at| (at, key.clone()))
             })

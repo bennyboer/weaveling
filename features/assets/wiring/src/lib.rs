@@ -10,8 +10,8 @@ use assets_core::{AccountLimits, AssetCatalog, AssetEvent, AssetUses, AssetsCore
 use assets_images::WebpImages;
 use assets_messaging::{
     RememberOperatorsListener, RememberPeopleListener, RememberPicturesListener,
-    RememberProjectNamesListener, RememberRolesListener, RememberTrashListener,
-    SweepAssetsOfDeletedOwnerListener,
+    RememberProjectNamesListener, RememberRolesListener, RememberSceneImagesListener,
+    RememberTrashListener, SweepAssetsOfDeletedOwnerListener,
 };
 use async_trait::async_trait;
 use authorizing::{AllowingEverything, Authorizer};
@@ -120,6 +120,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             ))),
             Arc::new(SweepAssetsOfDeletedOwnerListener::new(assets.clone())),
             Arc::new(hearing.inboxed(RememberPicturesListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberSceneImagesListener::new(assets.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetStrayContents {

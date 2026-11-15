@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -448,6 +449,22 @@ impl SceneStore for SqliteSceneStore {
             scene: id,
             project,
             opening: opening.to_owned(),
+        })
+        .await
+    }
+
+    async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.announce(transaction, id, |project| SceneChange::ImagesChanged {
+            scene: id,
+            project,
+            images: images.clone(),
+            version: as_of,
         })
         .await
     }

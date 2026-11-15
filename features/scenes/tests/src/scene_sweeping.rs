@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -83,6 +84,18 @@ impl SceneStore for Wavering {
         opening: &str,
     ) -> Result<(), StoreError> {
         self.held.announce_opening(transaction, id, opening).await
+    }
+
+    async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.held
+            .announce_images(transaction, id, images, as_of)
+            .await
     }
 
     async fn link(

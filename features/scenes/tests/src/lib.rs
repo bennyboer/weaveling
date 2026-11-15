@@ -23,6 +23,9 @@ mod one_connection_guarded;
 mod scene_cataloguing;
 
 #[cfg(test)]
+mod scene_images;
+
+#[cfg(test)]
 mod scenes_api;
 
 #[cfg(test)]

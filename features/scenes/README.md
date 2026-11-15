@@ -136,12 +136,29 @@ On SQLite, only one writer runs at a time, which has the same effect. In memory,
 A live scene runs one word count at a time, behind a lock of its own.
 So a count that stalls is never reported after a newer one.
 The count reads the scene's `version` before it reads the words and the opening.
-`announce_count` reports the words, and the opening if it changed, in one transaction.
+`announce_what_it_holds` reports the words, and the opening if it changed, in one transaction.
+It also reports the images the scene holds, if they changed (see below).
 It clears the scene's `uncounted` mark only `WHERE version` is still the one it read.
 So an edit stored while the count was running keeps the mark.
 If the process stops first, `count-scenes-left-uncounted` counts the scene again.
 Retitling and linking also move the version.
 So one of them landing during a count costs one more count, nothing worse.
+
+**A scene tells which images it holds** (*images in scenes, slice 3, 2026-11-15*).
+An image is a block named `figure` in the prose.
+It has the attributes `asset` (the asset's id) and `size` (`small`, `medium` or `full`).
+Its caption is the text inside it.
+A figure adds nothing to the scene's text: its caption has no words and is never the opening.
+The paragraphs before and after it stay apart.
+`Scene::images` returns the asset ids of all figures, sorted and each once.
+A figure without an asset id is left out.
+When a live scene is counted, it compares its images with the last set it told.
+If they differ, `announce_what_it_holds` tells them as `scene.images.changed` (`SceneImagesChangedDTO`), in the same transaction as the words.
+The message carries the scene, the sorted ids, and the prose version the count was taken at.
+Its context names the project, as for the other scene messages.
+A scene that was not told yet counts as changed.
+So the first count after a start, and the chore `count-scenes-left-uncounted`, tell the set again, even an empty one.
+The assets feature keeps these sets, so an image a scene shows is not deleted.
 
 **An edit the store refused is not left for eviction.**
 If a live scene's edit could not be stored, the scene is marked unsaved.
@@ -170,7 +187,7 @@ Awareness — cursors, selections, who is here — is relayed and never stored. 
 **Core owns each write's transaction.**
 `Ports` carries the feature's own `Transactions`.
 `ScenesCore` begins one transaction for every write to the store:
-creating, applying an update, retitling, linking and unlinking, deleting, and announcing a word count together with an opening that changed.
+creating, applying an update, retitling, linking and unlinking, deleting, and announcing a word count together with an opening and images that changed.
 `SceneService` carries out the write in it.
 A scene is read back only once the transaction has committed.
 The store's writes take the transaction, so a write and the message it enqueues commit together.

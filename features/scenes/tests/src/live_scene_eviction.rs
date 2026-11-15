@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -138,6 +139,22 @@ impl SceneStore for FalteringStore {
             .push((id, opening.to_owned()));
 
         Ok(())
+    }
+
+    async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        if self.faltering.load(Ordering::SeqCst) {
+            return Err(StoreError::Backend("the store is down".into()));
+        }
+
+        self.held
+            .announce_images(transaction, id, images, as_of)
+            .await
     }
 
     async fn link(

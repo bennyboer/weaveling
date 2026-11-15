@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use clock::Clock;
@@ -120,6 +121,21 @@ impl SceneService {
         Ok(self
             .store
             .announce_opening(transaction, id, opening)
+            .await?)
+    }
+
+    pub async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: &str,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), ScenesError> {
+        let id: SceneId = id.parse()?;
+
+        Ok(self
+            .store
+            .announce_images(transaction, id, images, as_of)
             .await?)
     }
 

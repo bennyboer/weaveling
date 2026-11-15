@@ -31,4 +31,4 @@ pub use preparing::PREPARED_AT_ONCE;
 pub use storage::{
     AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
 };
-pub use uses::{AssetUse, AssetUses, Holder, Purpose};
+pub use uses::{AssetUse, AssetUses, Holder, LAST_VERSION, Purpose, SceneLink};

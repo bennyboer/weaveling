@@ -385,10 +385,12 @@ fn use_told(used: &AssetUse) -> AssetUseDTO {
     AssetUseDTO {
         purpose: match used.purpose {
             Purpose::AccountPicture => purpose::ACCOUNT_PICTURE,
+            Purpose::SceneImage => purpose::SCENE_IMAGE,
         }
         .to_owned(),
         by: match &used.by {
             Holder::Account(account) => HolderDTO::Account(account.to_string()),
+            Holder::Scene(scene) => HolderDTO::Scene(scene.to_string()),
         },
     }
 }

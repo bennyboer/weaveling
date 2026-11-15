@@ -23,6 +23,7 @@ yrs = { workspace = true }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 scenes-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-scenes-catalog" }
 scenes-contract = { version = "0.1.0", path = "../contract", package = "weaveling-scenes-contract" }
 scenes-core = { version = "0.1.0", path = "../core", package = "weaveling-scenes-core" }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use access::{HearsAccess, HearsOperators, KeptAccess, Role};
@@ -26,7 +26,7 @@ use crate::preparing;
 use crate::storage::{
     AccountStorage, InstanceStorage, Listed, OwnUpload, ProjectOwner, ProjectStorage,
 };
-use crate::uses::{AssetUse, AssetUses, Holder, Purpose};
+use crate::uses::{AssetUse, AssetUses, Holder, LAST_VERSION, Purpose, SceneLink};
 
 /// How many bytes an account's uploads use together, and their limit.
 /// The limit is missing if there is none.
@@ -603,10 +603,11 @@ impl AssetsCore {
                 .forget_person(transaction, account, version, self.clock.now())
                 .await?;
             self.uses
-                .stop_using(
+                .used_for(
                     transaction,
                     Purpose::AccountPicture,
                     &Holder::Account(account.clone()),
+                    &BTreeSet::new(),
                     version,
                     self.clock.now(),
                 )
@@ -631,38 +632,25 @@ impl AssetsCore {
         previous: Option<&str>,
         drop_previous: bool,
     ) -> Result<(), AssetsError> {
-        let own = self.own_image(account, picture).await?;
+        let own = Owner::Account(account.clone());
+        let shown: BTreeSet<AssetId> = self.image_of(&own, picture).await?.into_iter().collect();
         let dropped = match (drop_previous, previous) {
-            (true, Some(previous)) => self.own_image(account, previous).await?,
+            (true, Some(previous)) => self.image_of(&own, previous).await?,
             _ => None,
         };
         let holder = Holder::Account(account.clone());
 
         transacting::joining!(&*self.transactions, within, |transaction| {
-            match own {
-                Some(picture) => {
-                    self.uses
-                        .use_as(
-                            transaction,
-                            &picture,
-                            Purpose::AccountPicture,
-                            &holder,
-                            version,
-                        )
-                        .await?
-                }
-                None => {
-                    self.uses
-                        .stop_using(
-                            transaction,
-                            Purpose::AccountPicture,
-                            &holder,
-                            version,
-                            self.clock.now(),
-                        )
-                        .await?
-                }
-            }
+            self.uses
+                .used_for(
+                    transaction,
+                    Purpose::AccountPicture,
+                    &holder,
+                    &shown,
+                    version,
+                    self.clock.now(),
+                )
+                .await?;
             if let Some(previous) = dropped {
                 self.dropped_if_unused(transaction, &previous).await?;
             }
@@ -682,17 +670,21 @@ impl AssetsCore {
         drop: bool,
     ) -> Result<(), AssetsError> {
         let dropped = match drop {
-            true => self.own_image(account, picture).await?,
+            true => {
+                self.image_of(&Owner::Account(account.clone()), picture)
+                    .await?
+            }
             false => None,
         };
         let holder = Holder::Account(account.clone());
 
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.uses
-                .stop_using(
+                .used_for(
                     transaction,
                     Purpose::AccountPicture,
                     &holder,
+                    &BTreeSet::new(),
                     version,
                     self.clock.now(),
                 )
@@ -705,19 +697,75 @@ impl AssetsCore {
         })
     }
 
-    /// Returns the asset with this id if it is an image of the account's own that is not deleted.
-    async fn own_image(
+    /// Records which images a scene holds, as the scenes feature reported it at a version of the scene's prose.
+    ///
+    /// Only the images of the scene's own project are kept as its uses. Any other id is not recorded,
+    /// so a scene cannot keep an image of another project, or an account's own image, from being deleted.
+    pub async fn scene_images_changed(
         &self,
-        account: &AccountId,
-        id: &str,
-    ) -> Result<Option<AssetId>, AssetsError> {
+        within: Option<&mut Transaction>,
+        scene: &SceneLink,
+        project: &ProjectLink,
+        images: &[String],
+        version: Version,
+    ) -> Result<(), AssetsError> {
+        let owner = Owner::Project(project.clone());
+        let mut held = BTreeSet::new();
+        for image in images {
+            if let Some(image) = self.image_of(&owner, image).await? {
+                held.insert(image);
+            }
+        }
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.uses
+                .used_for(
+                    transaction,
+                    Purpose::SceneImage,
+                    &Holder::Scene(scene.clone()),
+                    &held,
+                    version,
+                    self.clock.now(),
+                )
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Ends the uses of a deleted scene's images for good.
+    /// The tombstone laid at `at` keeps any later report about the scene from bringing them back.
+    pub async fn scene_deleted(
+        &self,
+        within: Option<&mut Transaction>,
+        scene: &SceneLink,
+        at: OffsetDateTime,
+    ) -> Result<(), AssetsError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.uses
+                .used_for(
+                    transaction,
+                    Purpose::SceneImage,
+                    &Holder::Scene(scene.clone()),
+                    &BTreeSet::new(),
+                    LAST_VERSION,
+                    at,
+                )
+                .await?;
+
+            Ok::<_, AssetsError>(())
+        })
+    }
+
+    /// Returns the asset with this id if it is an image of this owner that is not deleted.
+    async fn image_of(&self, owner: &Owner, id: &str) -> Result<Option<AssetId>, AssetsError> {
         let Ok(id) = id.parse::<AssetId>() else {
             return Ok(None);
         };
         match self.events.latest(&AggregateId::from(&id)).await {
-            Ok(standing) => Ok((!standing.state.is_deleted()
-                && *standing.state.owner() == Owner::Account(account.clone()))
-            .then_some(id)),
+            Ok(standing) => {
+                Ok((!standing.state.is_deleted() && standing.state.owner() == owner).then_some(id))
+            }
             Err(ServiceError::NotFound { .. }) => Ok(None),
             Err(failed) => Err(failed.into()),
         }

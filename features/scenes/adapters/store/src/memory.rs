@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::enqueuing::{Mapping, SceneMessageMapping};
@@ -224,6 +224,32 @@ impl SceneStore for InMemorySceneStore {
                 scene: id,
                 project,
                 words,
+            },
+        );
+
+        Ok(())
+    }
+
+    async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
+        let project = self
+            .read()
+            .get(&id)
+            .map(|stored| stored.project.clone())
+            .ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(
+            transaction,
+            SceneChange::ImagesChanged {
+                scene: id,
+                project,
+                images: images.clone(),
+                version: as_of,
             },
         );
 

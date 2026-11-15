@@ -1,12 +1,18 @@
+use std::collections::BTreeSet;
+
 use quotation::QuotationMarks;
 use yrs::types::Attrs;
 use yrs::types::text::YChange;
-use yrs::types::xml::{XmlOut, XmlTextRef};
-use yrs::{Any, Doc, OffsetKind, Out, ReadTxn, Text, Transact, XmlFragment};
+use yrs::types::xml::{XmlElementRef, XmlOut, XmlTextRef};
+use yrs::{Any, Doc, OffsetKind, Out, ReadTxn, Text, Transact, Xml, XmlFragment};
 
 pub const FRAGMENT: &str = "prose";
 
 const TEXTBLOCKS: &[&str] = &["paragraph", "heading", "code_block"];
+
+const FIGURE: &str = "figure";
+
+const ASSET: &str = "asset";
 
 fn unmarked<T: ReadTxn>(text: &XmlTextRef, txn: &T) -> String {
     text.diff(txn, YChange::identity)
@@ -22,6 +28,7 @@ fn inline_text<T: ReadTxn>(nodes: impl Iterator<Item = XmlOut>, txn: &T, out: &m
     for node in nodes {
         match node {
             XmlOut::Text(text) => out.push_str(&unmarked(&text, txn)),
+            XmlOut::Element(element) if is_figure(&element) => {}
             XmlOut::Element(element) => inline_text(element.children(txn), txn, out),
             XmlOut::Fragment(fragment) => inline_text(fragment.children(txn), txn, out),
         }
@@ -31,6 +38,7 @@ fn inline_text<T: ReadTxn>(nodes: impl Iterator<Item = XmlOut>, txn: &T, out: &m
 fn textblocks<T: ReadTxn>(nodes: impl Iterator<Item = XmlOut>, txn: &T, out: &mut Vec<String>) {
     for node in nodes {
         match node {
+            XmlOut::Element(element) if is_figure(&element) => {}
             XmlOut::Element(element) if TEXTBLOCKS.contains(&element.tag().as_ref()) => {
                 let mut text = String::new();
                 inline_text(element.children(txn), txn, &mut text);
@@ -50,6 +58,40 @@ pub(crate) fn plain_text(doc: &Doc) -> String {
     textblocks(fragment.children(&txn), &txn, &mut blocks);
 
     blocks.join("\n")
+}
+
+fn is_figure(element: &XmlElementRef) -> bool {
+    element.tag().as_ref() == FIGURE
+}
+
+fn images_among<T: ReadTxn>(
+    nodes: impl Iterator<Item = XmlOut>,
+    txn: &T,
+    out: &mut BTreeSet<String>,
+) {
+    for node in nodes {
+        match node {
+            XmlOut::Element(element) if is_figure(&element) => {
+                if let Some(Out::Any(Any::String(asset))) = element.get_attribute(txn, ASSET)
+                    && !asset.is_empty()
+                {
+                    out.insert(asset.to_string());
+                }
+            }
+            XmlOut::Element(element) => images_among(element.children(txn), txn, out),
+            XmlOut::Fragment(fragment) => images_among(fragment.children(txn), txn, out),
+            XmlOut::Text(_) => {}
+        }
+    }
+}
+
+pub(crate) fn images_in(doc: &Doc) -> BTreeSet<String> {
+    let fragment = doc.get_or_insert_xml_fragment(FRAGMENT);
+    let txn = doc.transact();
+    let mut images = BTreeSet::new();
+    images_among(fragment.children(&txn), &txn, &mut images);
+
+    images
 }
 
 const QUOTE: &str = "quote";

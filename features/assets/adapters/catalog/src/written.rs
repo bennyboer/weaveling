@@ -1,5 +1,5 @@
 use assets_core::{
-    CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, Sorted,
+    CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, SceneLink, Sorted,
     UploadsSorted, Usage,
 };
 use eventsourcing::AccountId;
@@ -7,6 +7,10 @@ use eventsourcing::AccountId;
 pub(crate) const PROJECT: &str = "project";
 pub(crate) const ACCOUNT: &str = "account";
 pub(crate) const INSTANCE: &str = "instance";
+const SCENE: &str = "scene";
+
+const ACCOUNT_PICTURE: &str = "account-picture";
+const SCENE_IMAGE: &str = "scene-image";
 
 pub(crate) fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> CatalogError {
     CatalogError::Backend(Box::new(failure))
@@ -48,6 +52,7 @@ fn unreadable(why: String) -> CatalogError {
 pub(crate) fn holder_written(holder: &Holder) -> (&'static str, String) {
     match holder {
         Holder::Account(account) => (ACCOUNT, account.to_string()),
+        Holder::Scene(scene) => (SCENE, scene.to_string()),
     }
 }
 
@@ -55,20 +60,23 @@ pub(crate) fn holder_written(holder: &Holder) -> (&'static str, String) {
 pub(crate) fn holder_read(kind: &str, holder: &str) -> Result<Holder, CatalogError> {
     match kind {
         ACCOUNT => Ok(Holder::Account(AccountId::from(holder))),
+        SCENE => Ok(Holder::Scene(SceneLink::from(holder))),
         unknown => Err(unreadable(format!("no holder is of the kind {unknown}"))),
     }
 }
 
 pub(crate) fn purpose_written(purpose: Purpose) -> &'static str {
     match purpose {
-        Purpose::AccountPicture => "account-picture",
+        Purpose::AccountPicture => ACCOUNT_PICTURE,
+        Purpose::SceneImage => SCENE_IMAGE,
     }
 }
 
 /// Reads a purpose back. An unknown purpose is an error.
 pub(crate) fn purpose_read(purpose: &str) -> Result<Purpose, CatalogError> {
     match purpose {
-        "account-picture" => Ok(Purpose::AccountPicture),
+        ACCOUNT_PICTURE => Ok(Purpose::AccountPicture),
+        SCENE_IMAGE => Ok(Purpose::SceneImage),
         unknown => Err(unreadable(format!("no asset is used for {unknown}"))),
     }
 }

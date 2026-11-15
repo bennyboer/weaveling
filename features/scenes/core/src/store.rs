@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use async_trait::async_trait;
 use thiserror::Error;
 use transacting::{Failure, LostRace, Transaction};
@@ -61,6 +63,15 @@ pub trait SceneStore: Send + Sync {
         transaction: &mut Transaction,
         id: SceneId,
         opening: &str,
+    ) -> Result<(), StoreError>;
+
+    /// Tells which images the scene holds, as counted at the given prose version.
+    async fn announce_images(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
     ) -> Result<(), StoreError>;
 
     async fn link(

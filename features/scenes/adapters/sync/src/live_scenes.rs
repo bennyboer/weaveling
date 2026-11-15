@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeSet, HashMap};
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -58,6 +58,7 @@ pub struct LiveScene {
     counting: OneAtATime<()>,
     counted_at: Mutex<Option<Moment>>,
     opening_told: Mutex<Option<String>>,
+    images_told: Mutex<Option<BTreeSet<String>>>,
     speakers: Speakers,
 }
 
@@ -73,6 +74,7 @@ impl LiveScene {
             counting: OneAtATime::new(()),
             counted_at: Mutex::new(None),
             opening_told: Mutex::new(None),
+            images_told: Mutex::new(None),
             speakers: Speakers::default(),
         }
     }
@@ -136,12 +138,20 @@ impl LiveScene {
             .expect("live scene opening lock poisoned")
             .as_ref()
             != Some(&opening);
+        let images = self.scene.images();
+        let images_changed = self
+            .images_told
+            .lock()
+            .expect("live scene images lock poisoned")
+            .as_ref()
+            != Some(&images);
 
         scenes
-            .announce_count(
+            .announce_what_it_holds(
                 &id,
                 self.scene.words(),
                 changed.then_some(opening.as_str()),
+                images_changed.then_some(&images),
                 as_of,
             )
             .await?;
@@ -149,6 +159,10 @@ impl LiveScene {
             .opening_told
             .lock()
             .expect("live scene opening lock poisoned") = Some(opening);
+        *self
+            .images_told
+            .lock()
+            .expect("live scene images lock poisoned") = Some(images);
 
         Ok(())
     }

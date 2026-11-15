@@ -5269,6 +5269,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-projects-contract",
+ "weaveling-scenes-contract",
  "weaveling-transacting",
 ]
 
@@ -5324,6 +5325,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-projects-contract",
+ "weaveling-scenes-contract",
  "weaveling-serving",
  "weaveling-transacting",
 ]
@@ -6797,6 +6799,7 @@ dependencies = [
  "weaveling-live-contract",
  "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-projects-contract",
  "weaveling-quotation",
  "weaveling-scenes-catalog",

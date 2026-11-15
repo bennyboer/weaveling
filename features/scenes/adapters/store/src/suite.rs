@@ -3,6 +3,7 @@
     allow(dead_code, unused_imports, unused_macros)
 )]
 
+use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use messaging::{Message, RoutingKey};
@@ -116,6 +117,19 @@ impl<S: SceneStore> Committing<'_, S> {
         transaction.finish().await.map_err(unreachable)
     }
 
+    pub async fn announce_images(
+        &self,
+        id: SceneId,
+        images: &BTreeSet<String>,
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .announce_images(&mut transaction, id, images, as_of)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
     pub async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
         let mut transaction = self.begun().await?;
         self.store.link(&mut transaction, id, idea).await?;
@@ -216,6 +230,20 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
         } => (
             "scene.words.counted",
             json!({ "scene": scene.to_string(), "project": project.to_string(), "words": words }),
+        ),
+        SceneChange::ImagesChanged {
+            scene,
+            project,
+            images,
+            version,
+        } => (
+            "scene.images.changed",
+            json!({
+                "scene": scene.to_string(),
+                "project": project.to_string(),
+                "images": images,
+                "version": version
+            }),
         ),
     };
 
@@ -1525,6 +1553,58 @@ pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &
     );
 }
 
+pub async fn announcing_the_images_enqueues_them_with_the_scene_s_project_and_version(
+    bench: &impl Workbench,
+) {
+    // given: a scene
+    let store = &bench.committing();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    // when: the images it holds are announced
+    store
+        .announce_images(
+            id,
+            &BTreeSet::from(["asset_loom".to_owned(), "asset_weft".to_owned()]),
+            3,
+        )
+        .await
+        .expect("announcing should succeed");
+
+    // then: they are told with the scene's project and the version they were read at
+    assert_eq!(
+        told_after_creating(bench.enqueued().await),
+        vec![(
+            "scene.images.changed".to_owned(),
+            json!({
+                "scene": id.to_string(),
+                "project": a_project().to_string(),
+                "images": ["asset_loom", "asset_weft"],
+                "version": 3
+            })
+        )]
+    );
+}
+
+pub async fn announcing_the_images_of_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: a scene never created
+    let missing = an_id(1_000);
+
+    // when: its images are announced
+    let error = store
+        .announce_images(missing, &BTreeSet::new(), 1)
+        .await
+        .expect_err("announcing should not find the scene");
+
+    // then: it is not found
+    assert!(
+        matches!(&error, StoreError::NotFound(id) if *id == missing),
+        "expected NotFound({missing}), got {error:?}"
+    );
+}
+
 pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(
     store: &Committing<'_, impl SceneStore>,
 ) {
@@ -1693,6 +1773,10 @@ macro_rules! conformance_tests {
             $workbench,
             announcing_an_opening_for_a_missing_scene_is_not_found
         );
+        $crate::suite::conformance_case!(
+            $workbench,
+            announcing_the_images_of_a_missing_scene_is_not_found
+        );
         $crate::suite::conformance_case!($workbench, a_new_scene_has_no_linked_ideas);
         $crate::suite::conformance_case!(
             $workbench,
@@ -1736,6 +1820,10 @@ macro_rules! conformance_tests {
         $crate::suite::bench_case!(
             $workbench,
             announcing_an_opening_enqueues_it_with_the_scene_s_project
+        );
+        $crate::suite::bench_case!(
+            $workbench,
+            announcing_the_images_enqueues_them_with_the_scene_s_project_and_version
         );
     };
 }

@@ -49,6 +49,7 @@ pub struct AssetDTO {
 #[serde(tag = "kind", content = "id", rename_all = "kebab-case")]
 pub enum HolderDTO {
     Account(String),
+    Scene(String),
 }
 
 /// One use of an asset: what it is used for, and by what.
@@ -61,6 +62,7 @@ pub struct AssetUseDTO {
 /// What an asset can be used for.
 pub mod purpose {
     pub const ACCOUNT_PICTURE: &str = "account-picture";
+    pub const SCENE_IMAGE: &str = "scene-image";
 }
 
 /// One of the signed-in account's uploads.

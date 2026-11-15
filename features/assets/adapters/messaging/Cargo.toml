@@ -22,3 +22,4 @@ transacting = { version = "0.1.0", path = "../../../../libraries/transacting", p
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
+scenes-contract = { version = "0.1.0", path = "../../../scenes/contract", package = "weaveling-scenes-contract" }

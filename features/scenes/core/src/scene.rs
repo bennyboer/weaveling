@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::{self, Debug, Formatter};
 
 use thiserror::Error;
@@ -105,6 +106,12 @@ impl Scene {
         projection::plain_text(&self.doc)
     }
 
+    /// Returns the ids of the images the scene holds, sorted and each once.
+    /// A figure that names no image is left out.
+    pub fn images(&self) -> BTreeSet<String> {
+        projection::images_in(&self.doc)
+    }
+
     pub fn words(&self) -> usize {
         words::words_in(&self.text())
     }
@@ -139,7 +146,7 @@ mod tests {
 
     use yrs::types::Attrs;
     use yrs::types::xml::XmlOut;
-    use yrs::{Any, Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
+    use yrs::{Any, Text, Transact, Xml, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
     use super::*;
     use crate::projection::FRAGMENT;
@@ -445,6 +452,80 @@ mod tests {
             scene.text(),
             "The loom stood silent.\nShe had not touched it since spring."
         );
+    }
+
+    fn a_figure(scene: &Scene, asset: Option<&str>, caption: &str) {
+        let fragment = scene.doc.get_or_insert_xml_fragment(FRAGMENT);
+        let mut txn = scene.doc.transact_mut();
+        let at = fragment.len(&txn);
+        let figure = fragment.insert(&mut txn, at, XmlElementPrelim::empty("figure"));
+        if let Some(asset) = asset {
+            figure.insert_attribute(&mut txn, "asset", asset);
+        }
+        figure.insert_attribute(&mut txn, "size", "medium");
+        figure.insert(&mut txn, 0, XmlTextPrelim::new(caption));
+    }
+
+    #[test]
+    fn a_figure_adds_no_words_and_keeps_the_paragraphs_around_it_apart() {
+        // given: a paragraph, a captioned figure, and another paragraph
+        let scene = Scene::empty(an_id(), a_project());
+        write(&scene, 0, "The loom stood silent.");
+        a_figure(
+            &scene,
+            Some("asset_loom"),
+            "The loom at dawn, seen from the door",
+        );
+        write(&scene, 2, "Nobody came.");
+
+        // then: its caption is not part of the prose
+        assert_eq!(
+            scene.text(),
+            "The loom stood silent.\nNobody came.",
+            "a caption describes the image, it is not prose of the scene"
+        );
+        // and: adds no words
+        assert_eq!(scene.words(), 6);
+    }
+
+    #[test]
+    fn a_figure_at_the_start_is_not_the_opening() {
+        // given: a scene that starts with a captioned figure
+        let scene = Scene::empty(an_id(), a_project());
+        a_figure(&scene, Some("asset_loom"), "The loom at dawn");
+        write(&scene, 1, "Nobody came.");
+
+        // then: the opening is the prose after it
+        assert_eq!(scene.opening(), "Nobody came.");
+    }
+
+    #[test]
+    fn a_scene_holds_the_images_of_its_figures_sorted_and_each_once() {
+        // given: figures naming two images, one of them twice
+        let scene = Scene::empty(an_id(), a_project());
+        a_figure(&scene, Some("asset_weft"), "");
+        write(&scene, 1, "The loom stood silent.");
+        a_figure(&scene, Some("asset_loom"), "Again");
+        a_figure(&scene, Some("asset_weft"), "Once more");
+        // and: figures naming no image
+        a_figure(&scene, None, "Nothing yet");
+        a_figure(&scene, Some(""), "Still nothing");
+
+        // then: the scene holds the two images, sorted
+        assert_eq!(
+            scene.images().into_iter().collect::<Vec<_>>(),
+            vec!["asset_loom".to_owned(), "asset_weft".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_scene_without_figures_holds_no_images() {
+        // given: a scene of prose alone
+        let scene = Scene::empty(an_id(), a_project());
+        write(&scene, 0, "The loom stood silent.");
+
+        // then: it holds no images
+        assert!(scene.images().is_empty());
     }
 
     #[test]
