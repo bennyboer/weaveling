@@ -17,14 +17,15 @@ extern "C" {
     #[wasm_bindgen(method)]
     pub fn close(this: &SyncConnection);
 
+    #[wasm_bindgen(method, js_name = setPeople)]
+    pub fn set_people(this: &SyncConnection, told: &str);
+
     pub type ProseEditor;
 
     #[wasm_bindgen(constructor)]
     pub fn new(
         host: &HtmlElement,
         scene: &str,
-        author: &str,
-        color: &str,
         account: &str,
         on_connected: &Closure<dyn Fn(bool)>,
         connection: &SyncConnection,
@@ -53,6 +54,9 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = onCaretMoved)]
     pub fn on_caret_moved(this: &ProseEditor, moved: &Closure<dyn Fn(u32)>);
+
+    #[wasm_bindgen(method, js_name = onPresent)]
+    pub fn on_present(this: &ProseEditor, present: &Closure<dyn Fn(String)>);
 
     #[wasm_bindgen(method, js_name = arriveWhenSynced)]
     pub fn arrive_when_synced(this: &ProseEditor, towards: &str);

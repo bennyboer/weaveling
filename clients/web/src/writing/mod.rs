@@ -20,6 +20,7 @@ mod menus;
 mod moving;
 mod opening;
 mod placing;
+mod presence;
 mod problems;
 mod question;
 mod quiet_note;

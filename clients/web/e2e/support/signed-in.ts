@@ -9,7 +9,7 @@ const PASSWORD = "a password only the tests know";
 
 export const withAccounts = process.env.WEAVELING_E2E_ACCOUNTS === "on";
 
-function lastCodeDropped(drop: string, to: string): string {
+export function lastCodeDropped(drop: string, to: string): string {
   const sent = readdirSync(drop)
     .sort()
     .map((name) => JSON.parse(readFileSync(join(drop, name), "utf8")))

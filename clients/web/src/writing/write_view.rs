@@ -28,6 +28,7 @@ use crate::writing::margin::Edge;
 use crate::writing::menus;
 use crate::writing::opening;
 use crate::writing::placing;
+use crate::writing::presence;
 use crate::writing::question;
 use crate::writing::question::Question;
 use crate::writing::quiet_note;
@@ -641,6 +642,7 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
             (
                 html::div().class("scene-row").child((
                     menus::scene_margin(scene.clone(), state),
+                    presence::shown(scene.clone(), state.presence),
                     scene_in_flow::scene_in_flow(scene.clone(), state),
                 )),
                 section.clone().map(|section| {

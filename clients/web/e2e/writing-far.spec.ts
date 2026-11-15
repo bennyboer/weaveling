@@ -291,7 +291,7 @@ test("another author's cursor shows in the scene they are writing in", async ({
   await other.close();
 });
 
-test("another author's cursor takes no style but a colour", async ({
+test("another author's cursor takes no style but a colour, whatever the other window announces", async ({
   page,
   context,
 }) => {
@@ -323,11 +323,11 @@ test("another author's cursor takes no style but a colour", async ({
   await other.keyboard.type("Written elsewhere.");
   await expect(scene(page, only)).toContainText("Written elsewhere.");
 
-  // then: its cursor shows here in the colour of no one told, the style announced left out
+  // then: its cursor shows here in a plain colour, the tint of its account or the colour of no one told
   const cursor = flow(page).locator(
     `[data-scene="${only}"] .ProseMirror-yjs-cursor`,
   );
-  await expect(cursor).toHaveAttribute("style", "border-color: #ffa500");
+  await expect(cursor).toHaveAttribute("style", /^border-color: #[0-9a-f]{6}$/i);
   await other.close();
 });
 

@@ -3,7 +3,9 @@ import { defineConfig } from "@playwright/test";
 
 import served from "./playwright.config";
 
-const drop = resolve(__dirname, "../../target/web/mail-drop", `${Date.now()}`);
+const drop =
+  process.env.WEAVELING_E2E_MAIL_DROP ??
+  resolve(__dirname, "../../target/web/mail-drop", `${Date.now()}`);
 const signedIn = resolve(
   __dirname,
   "../../target/web/e2e-accounts/signed-in.json",
@@ -33,6 +35,7 @@ export default defineConfig({
       ...inherited,
       WEAVELING_ACCOUNTS: "on",
       WEAVELING_MAIL_DROP: drop,
+      WEAVELING_PUBLIC_URL: "http://localhost:3100",
     },
     reuseExistingServer: false,
   },

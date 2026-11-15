@@ -31,6 +31,8 @@ const COLOUR = /^#[0-9a-fA-F]{6}$/;
 const COLOUR_UNTOLD = "#ffa500";
 const LONGEST_NAME = 64;
 
+let holdingTheCaret = null;
+
 const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
   ? "Alt"
   : "Ctrl";
@@ -136,15 +138,17 @@ function textOf(doc) {
 }
 
 export class ProseEditor {
-  constructor(host, scene, author, color, account, onConnected, connection) {
+  constructor(host, scene, account, onConnected, connection) {
     this.doc = new Y.Doc();
     this.fragment = this.doc.getXmlFragment(FRAGMENT);
 
     this.sync = new SceneSync(connection, scene, this.doc, onConnected);
-    this.sync.awareness.setLocalStateField("user", { name: author, color });
-    if (account) {
-      this.sync.awareness.setLocalStateField("account", account);
-    }
+    this.connection = connection;
+    this.account = account;
+    this.sync.awareness.setLocalState(null);
+    this.present = () => {};
+    this.tellPresent = () => this.present(JSON.stringify(this.othersHere()));
+    this.sync.awareness.on("change", this.tellPresent);
 
     this.leaving = () => false;
     this.selecting = () => false;
@@ -191,7 +195,11 @@ export class ProseEditor {
                 return false;
               },
               handleDOMEvents: {
-                focus: (view) => this.focusedWhereTheBrowserPutIt(view),
+                focus: (view) => {
+                  this.holdTheCaret();
+
+                  return this.focusedWhereTheBrowserPutIt(view);
+                },
               },
               handleTextInput: (view, from, to, text) =>
                 this.typedMark(view, from, to, text),
@@ -201,10 +209,10 @@ export class ProseEditor {
           markingWhereWritten(),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.sync.awareness, {
-            cursorBuilder: (user, client) =>
-              defaultCursorBuilder(asTold(user), client),
-            selectionBuilder: (user, client) =>
-              defaultSelectionBuilder(asTold(user), client),
+            cursorBuilder: (_, client) =>
+              defaultCursorBuilder(asTold(this.whoIs(client)), client),
+            selectionBuilder: (_, client) =>
+              defaultSelectionBuilder(asTold(this.whoIs(client)), client),
           }),
           yUndoPlugin(),
           keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
@@ -338,6 +346,47 @@ export class ProseEditor {
 
   onCaretMoved(caretMoved) {
     this.caretMoved = caretMoved;
+  }
+
+  onPresent(present) {
+    this.present = present;
+    this.tellPresent();
+  }
+
+  holdTheCaret() {
+    if (holdingTheCaret === this) {
+      return;
+    }
+    holdingTheCaret?.letGoOfTheCaret();
+    holdingTheCaret = this;
+    this.sync.awareness.setLocalState(this.account ? { account: this.account } : {});
+  }
+
+  letGoOfTheCaret() {
+    this.sync.awareness.setLocalState(null);
+  }
+
+  othersHere() {
+    const here = new Set();
+    for (const [client, state] of this.sync.awareness.getStates()) {
+      if (client !== this.doc.clientID && typeof state?.account === "string") {
+        here.add(state.account);
+      }
+    }
+
+    return [...here];
+  }
+
+  whoIs(client) {
+    const account = this.sync.awareness.getStates().get(client)?.account;
+    const person = this.connection.personOf(account);
+    const color = person
+      ? getComputedStyle(document.documentElement)
+          .getPropertyValue(`--${person.tint}`)
+          .trim()
+      : "";
+
+    return { name: person?.name ?? "", color };
   }
 
   landAt(at) {
@@ -604,6 +653,10 @@ export class ProseEditor {
   }
 
   destroy() {
+    if (holdingTheCaret === this) {
+      holdingTheCaret = null;
+    }
+    this.sync.awareness.off("change", this.tellPresent);
     this.view.destroy();
     this.sync.destroy();
     this.doc.destroy();

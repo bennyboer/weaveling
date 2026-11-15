@@ -4,7 +4,6 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 
-use crate::accounts::{CurrentSession, SignInState};
 use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
@@ -12,9 +11,6 @@ use crate::writing::choosing;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
-
-const AUTHOR: &str = "You";
-const COLOUR: &str = "#f59e0b";
 
 const WORDS_A_LINE: usize = 11;
 
@@ -52,15 +48,12 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(String)>,
             Closure<dyn Fn(bool)>,
             Closure<dyn Fn(u32)>,
+            Closure<dyn Fn(String)>,
             Closure<dyn Fn(String) -> bool>,
         )>,
     );
     let named = scene.to_string();
-    let session = expect_context::<CurrentSession>();
-    let account = match untrack(move || session.state()) {
-        SignInState::SignedIn(signed_in) => signed_in.account,
-        _ => String::new(),
-    };
+    let account = state.presence.own();
 
     Effect::new({
         let scene = scene.clone();
@@ -72,15 +65,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
 
             let connected = Closure::<dyn Fn(bool)>::new(|_: bool| {});
             let editor = state.connection.with_value(|connection| {
-                ProseEditor::new(
-                    &surface,
-                    scene.as_str(),
-                    AUTHOR,
-                    COLOUR,
-                    &account,
-                    &connected,
-                    connection,
-                )
+                ProseEditor::new(&surface, scene.as_str(), &account, &connected, connection)
             });
             let leaving = Closure::<dyn Fn(String) -> bool>::new({
                 let scene = scene.clone();
@@ -155,6 +140,15 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move |at: u32| state.left_off.remember(&scene, at)
             });
             editor.on_caret_moved(&caret_moved);
+            let present = Closure::<dyn Fn(String)>::new({
+                let scene = scene.clone();
+
+                move |told: String| {
+                    let accounts: Vec<String> = serde_json::from_str(&told).unwrap_or_default();
+                    state.presence.told(&scene, accounts);
+                }
+            });
+            editor.on_present(&present);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
@@ -169,6 +163,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 changed,
                 saving,
                 caret_moved,
+                present,
                 selecting,
             )));
         }
@@ -197,6 +192,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             state.saving.let_go_of(&scene);
             state.word_count.let_go_of(&scene);
             state.labels.let_go_of(&scene);
+            state.presence.let_go_of(&scene);
             kept.set_value(None);
         }
     });

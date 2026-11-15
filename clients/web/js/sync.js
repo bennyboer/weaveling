@@ -90,6 +90,14 @@ export class SyncConnection {
   close() {
     this.socket.close();
   }
+
+  setPeople(told) {
+    this.people = new Map(Object.entries(JSON.parse(told)));
+  }
+
+  personOf(account) {
+    return this.people?.get(account);
+  }
 }
 
 export class SceneSync {

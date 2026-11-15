@@ -22,6 +22,7 @@ use crate::writing::left_off::LeftOff;
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::margin::Margin;
 use crate::writing::moving::Moving;
+use crate::writing::presence::Presence;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::scene_copies::SceneCopies;
@@ -59,6 +60,7 @@ pub struct WriteViewState {
     pub focus: Focus,
     pub side: Side,
     pub loose: LooseScenes,
+    pub presence: Presence,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
     pub quiet_note: QuietNote,
 }
@@ -99,10 +101,17 @@ impl WriteViewState {
             focus: Focus::off(),
             side,
             loose,
+            presence: Presence::of(project),
             connection: StoredValue::new_local(SyncConnection::new()),
             quiet_note: expect_context::<QuietNote>(),
         };
         drawers::keep_apart(state.book_rail.drawer(), state.inspector.drawer());
+        Effect::new(move |_| {
+            let told = state.presence.people_told();
+            state
+                .connection
+                .with_value(|connection| connection.set_people(&told));
+        });
         let listing = project.clone();
         let counting = project.clone();
 

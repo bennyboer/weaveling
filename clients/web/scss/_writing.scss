@@ -630,3 +630,25 @@ body:has(.writing .scene-slot.carried) {
   cursor: grabbing;
   user-select: none;
 }
+
+.writing .scene-presence {
+  position: absolute;
+  top: 0.35rem;
+  left: calc(100% + 1rem);
+  z-index: 1;
+  display: flex;
+  gap: 0.25rem;
+
+  .avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.8rem;
+    box-shadow: 0 0 0 2px var(--paper);
+  }
+
+  @media (max-width: 44rem) {
+    top: 0;
+    right: 0;
+    left: auto;
+  }
+}
