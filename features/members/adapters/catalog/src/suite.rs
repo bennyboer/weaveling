@@ -146,13 +146,41 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         version: u64,
         picture: Option<&str>,
     ) -> Result<(), CatalogError> {
+        self.remember_picture_at(account, version, picture, OffsetDateTime::UNIX_EPOCH)
+            .await
+    }
+
+    pub async fn remember_picture_at(
+        &self,
+        account: &AccountId,
+        version: u64,
+        picture: Option<&str>,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
-                .remember_picture(transaction, account, Version::of(version), picture)
+                .remember_picture(transaction, account, Version::of(version), picture, at)
                 .await
                 .map_err(Tried::Refused)?;
 
             Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+
+    pub async fn forget_pictures_settled_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            let forgotten = self
+                .catalog
+                .forget_pictures_settled_before(transaction, before, at_most)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(forgotten)
         })
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
@@ -952,6 +980,71 @@ pub async fn a_removed_picture_is_shown_no_more_even_if_an_older_one_is_heard_la
     );
 }
 
+pub async fn pictures_removed_long_ago_are_forgotten_and_none_still_shown(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: one account that removed its picture long ago, and one that removed it lately
+    catalog
+        .remember_picture_at(&ada(), 4, None, clock::at(1_000))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_picture_at(&grace(), 4, None, clock::at(5_000))
+        .await
+        .expect("remembering should succeed");
+    // and: one that shows a picture since long ago
+    catalog
+        .remember_picture_at(&hedy(), 3, Some("asset_hedy"), clock::at(1_000))
+        .await
+        .expect("remembering should succeed");
+
+    // when: what settled before a moment between is forgotten
+    let forgotten = catalog
+        .forget_pictures_settled_before(clock::at(3_000), 10)
+        .await
+        .expect("forgetting should succeed");
+
+    // then: ada's removal alone is forgotten
+    assert_eq!(forgotten, 1);
+    // and: it no longer guards against the picture it undid, heard late
+    pictured(catalog, &ada(), 3, Some("asset_ada")).await;
+    assert_eq!(
+        pictures(catalog.uncommitted(), &[ada()]).await,
+        vec![a_picture(ada(), "asset_ada")]
+    );
+    // and: grace's still does
+    pictured(catalog, &grace(), 3, Some("asset_grace")).await;
+    assert!(pictures(catalog.uncommitted(), &[grace()]).await.is_empty());
+    // and: hedy still shows her picture
+    assert_eq!(
+        pictures(catalog.uncommitted(), &[hedy()]).await,
+        vec![a_picture(hedy(), "asset_hedy")]
+    );
+}
+
+pub async fn pictures_removed_are_forgotten_no_more_than_asked_at_a_time(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    // given: three accounts that removed their pictures long ago
+    for (account, seconds) in [(ada(), 1_000), (grace(), 2_000), (hedy(), 3_000)] {
+        catalog
+            .remember_picture_at(&account, 4, None, clock::at(seconds))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // expect: they are forgotten two at a time
+    for expected in [2, 1] {
+        assert_eq!(
+            catalog
+                .forget_pictures_settled_before(clock::at(9_000), 2)
+                .await
+                .expect("forgetting should succeed"),
+            expected
+        );
+    }
+}
+
 pub async fn a_picture_told_in_a_dropped_transaction_was_never_heard(
     catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
@@ -959,7 +1052,13 @@ pub async fn a_picture_told_in_a_dropped_transaction_was_never_heard(
     let mut transaction = catalog.begun().await;
     catalog
         .uncommitted()
-        .remember_picture(&mut transaction, &ada(), Version::of(3), Some("asset_ada"))
+        .remember_picture(
+            &mut transaction,
+            &ada(),
+            Version::of(3),
+            Some("asset_ada"),
+            OffsetDateTime::UNIX_EPOCH,
+        )
         .await
         .expect("remembering should succeed");
 
@@ -1062,6 +1161,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_picture_told_in_a_dropped_transaction_was_never_heard
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            pictures_removed_long_ago_are_forgotten_and_none_still_shown
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            pictures_removed_are_forgotten_no_more_than_asked_at_a_time
         );
     };
 }

@@ -37,5 +37,8 @@ CREATE INDEX leaving_accounts_by_settled_at ON leaving_accounts (settled_at);
 CREATE TABLE pictures (
     account          TEXT    PRIMARY KEY,
     version          INTEGER NOT NULL,
-    picture          TEXT
+    picture          TEXT,
+    settled_at       TEXT
 );
+
+CREATE INDEX pictures_by_settled_at ON pictures (settled_at);

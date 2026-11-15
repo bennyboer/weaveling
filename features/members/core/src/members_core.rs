@@ -267,7 +267,13 @@ impl MembersCore {
     ) -> Result<(), MembersCoreError> {
         transacting::joining!(&*self.transactions, within, |transaction| {
             self.catalog
-                .remember_picture(transaction, account, version, picture.as_deref())
+                .remember_picture(
+                    transaction,
+                    account,
+                    version,
+                    picture.as_deref(),
+                    self.clock.now(),
+                )
                 .await?;
 
             Ok(())
@@ -282,12 +288,16 @@ impl MembersCore {
         at_most: u64,
     ) -> Result<u64, MembersCoreError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            let forgotten = self
+            let leaving = self
                 .catalog
                 .forget_leaving_settled_before(transaction, before, at_most)
                 .await?;
+            let pictures = self
+                .catalog
+                .forget_pictures_settled_before(transaction, before, at_most)
+                .await?;
 
-            Ok::<_, MembersCoreError>(forgotten)
+            Ok::<_, MembersCoreError>(leaving + pictures)
         })
     }
 
@@ -331,7 +341,7 @@ impl MembersCore {
                 .remember_leaving(transaction, account, version, None, self.clock.now())
                 .await?;
             self.catalog
-                .remember_picture(transaction, account, version, None)
+                .remember_picture(transaction, account, version, None, self.clock.now())
                 .await?;
 
             Ok(())

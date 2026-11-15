@@ -16,7 +16,7 @@ type Trash = BTreeMap<String, (Version, bool)>;
 
 type LeavingAccounts = BTreeMap<String, (Version, Option<OffsetDateTime>, Option<OffsetDateTime>)>;
 
-type Pictures = BTreeMap<String, (Version, Option<String>)>;
+type Pictures = BTreeMap<String, (Version, Option<String>, Option<OffsetDateTime>)>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
@@ -310,6 +310,7 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
         account: &AccountId,
         version: Version,
         picture: Option<&str>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.undo_on_rollback(transaction)?;
         let mut pictures = self
@@ -318,12 +319,51 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
             .expect("membership catalog lock poisoned");
         if pictures
             .get(account.as_str())
-            .is_none_or(|(known, _)| *known < version)
+            .is_none_or(|(known, _, _)| *known < version)
         {
-            pictures.insert(account.to_string(), (version, picture.map(str::to_owned)));
+            pictures.insert(
+                account.to_string(),
+                (
+                    version,
+                    picture.map(str::to_owned),
+                    picture.is_none().then_some(at),
+                ),
+            );
         }
 
         Ok(())
+    }
+
+    async fn forget_pictures_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut pictures = self
+            .pictures
+            .write()
+            .expect("membership catalog lock poisoned");
+        let mut settled: Vec<(OffsetDateTime, String)> = pictures
+            .iter()
+            .filter_map(|(account, (_, _, settled_at))| {
+                settled_at
+                    .filter(|at| *at < before)
+                    .map(|at| (at, account.clone()))
+            })
+            .collect();
+        settled.sort();
+        let forgotten: Vec<String> = settled
+            .into_iter()
+            .take(usize::try_from(at_most).unwrap_or(usize::MAX))
+            .map(|(_, account)| account)
+            .collect();
+        for account in &forgotten {
+            pictures.remove(account);
+        }
+
+        Ok(forgotten.len() as u64)
     }
 
     async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {
@@ -334,7 +374,7 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
 
         Ok(known
             .iter()
-            .filter_map(|(account, (_, picture))| {
+            .filter_map(|(account, (_, picture, _))| {
                 let account = AccountId::from(account.as_str());
                 let picture = picture.clone()?;
                 accounts

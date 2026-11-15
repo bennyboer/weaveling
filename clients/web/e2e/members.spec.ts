@@ -672,6 +672,9 @@ test("Share opens a dialog to invite, with who has access and who is invited", a
   await expect(dialog.locator(".members li").nth(1)).toContainText("Grace Hopper");
   await expect(dialog.getByRole("heading", { name: "Invited" })).toBeVisible();
   await expect(dialog.locator(".invitations")).toContainText("ken@example.com");
+  // and: its marks keep their full height, untouched by how the masthead trims its own words
+  const mark = await dialog.locator(".invitations .mark").first().boundingBox();
+  expect(mark!.height, "a mark is as tall as its line").toBeGreaterThan(20);
 
   // when: an address is invited as a reader
   await dialog.getByLabel("Email address").fill("mary@example.com");

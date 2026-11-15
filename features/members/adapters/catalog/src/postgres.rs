@@ -89,11 +89,20 @@ const LEAVING: &str = "
 ";
 
 const REMEMBER_PICTURE: &str = "
-    INSERT INTO pictures (account, version, picture)
-    VALUES ($1, $2, $3)
+    INSERT INTO pictures (account, version, picture, settled_at)
+    VALUES ($1, $2, $3, $4)
     ON CONFLICT (account) DO UPDATE
-    SET version = EXCLUDED.version, picture = EXCLUDED.picture
+    SET version = EXCLUDED.version, picture = EXCLUDED.picture, settled_at = EXCLUDED.settled_at
     WHERE pictures.version < EXCLUDED.version
+";
+
+const FORGET_SETTLED_PICTURES: &str = "
+    DELETE FROM pictures WHERE account IN (
+        SELECT account FROM pictures
+        WHERE settled_at < $1
+        ORDER BY settled_at, account
+        LIMIT $2
+    )
 ";
 
 const PICTURES: &str = "
@@ -340,16 +349,33 @@ impl MembershipCatalog for PostgresMembershipCatalog {
         account: &AccountId,
         version: Version,
         picture: Option<&str>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PICTURE)
             .bind(account.as_str())
             .bind(i64::try_from(version.count()).map_err(unreachable)?)
             .bind(picture)
+            .bind(picture.is_none().then_some(at))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_pictures_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_SETTLED_PICTURES)
+            .bind(before)
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {

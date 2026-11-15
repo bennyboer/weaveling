@@ -195,8 +195,18 @@ mod tests {
             _account: &AccountId,
             _version: Version,
             _picture: Option<&str>,
+            _at: OffsetDateTime,
         ) -> Result<(), CatalogError> {
             Ok(())
+        }
+
+        async fn forget_pictures_settled_before(
+            &self,
+            _transaction: &mut Transaction,
+            _before: OffsetDateTime,
+            _at_most: u64,
+        ) -> Result<u64, CatalogError> {
+            Ok(0)
         }
 
         async fn pictures(&self, _accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError> {

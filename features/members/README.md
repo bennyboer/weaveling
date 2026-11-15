@@ -84,6 +84,8 @@ It stores, by the account's version, which picture the account shows, or that it
 An older message that arrives after a newer one changes nothing.
 The members list shows each member's picture id, `picture`, to everyone who may read the members.
 A member without a picture is listed without one, and the client shows the initial.
+An account that shows no picture any more stores since when (`settled_at`).
+The chore `forget-old-member-tombstones` forgets that row `TOMBSTONES_KEPT_FOR` later, once no message with an older picture can be retried any more.
 
 **A deleted account is removed.**
 The listener `let-go-of-deleted-account` receives `account.deleted`.

@@ -124,13 +124,24 @@ pub trait MembershipCatalog: Send + Sync {
     /// Stores which picture an account shows.
     /// `picture` is none if the account shows no picture, or is already gone.
     /// The account's version is compared, so an older message that arrives late changes nothing.
+    /// Showing none is kept with the time `at`, so it can be forgotten once no older message can come any more.
     async fn remember_picture(
         &self,
         transaction: &mut Transaction,
         account: &AccountId,
         version: Version,
         picture: Option<&str>,
+        at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
+
+    /// Forgets the accounts that came to show no picture before the given time, at most `at_most` of them.
+    /// By then, no message with an older picture can be retried any more, so there is nothing left to guard against.
+    async fn forget_pictures_settled_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     /// Returns those of the given accounts that show a picture, by account.
     async fn pictures(&self, accounts: &[AccountId]) -> Result<Vec<Pictured>, CatalogError>;
