@@ -4,6 +4,7 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 
+use crate::accounts::{CurrentSession, SignInState};
 use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
@@ -55,6 +56,11 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
         )>,
     );
     let named = scene.to_string();
+    let session = expect_context::<CurrentSession>();
+    let account = match untrack(move || session.state()) {
+        SignInState::SignedIn(signed_in) => signed_in.account,
+        _ => String::new(),
+    };
 
     Effect::new({
         let scene = scene.clone();
@@ -71,6 +77,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                     scene.as_str(),
                     AUTHOR,
                     COLOUR,
+                    &account,
                     &connected,
                     connection,
                 )

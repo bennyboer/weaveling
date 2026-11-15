@@ -136,12 +136,15 @@ function textOf(doc) {
 }
 
 export class ProseEditor {
-  constructor(host, scene, author, color, onConnected, connection) {
+  constructor(host, scene, author, color, account, onConnected, connection) {
     this.doc = new Y.Doc();
     this.fragment = this.doc.getXmlFragment(FRAGMENT);
 
     this.sync = new SceneSync(connection, scene, this.doc, onConnected);
     this.sync.awareness.setLocalStateField("user", { name: author, color });
+    if (account) {
+      this.sync.awareness.setLocalStateField("account", account);
+    }
 
     this.leaving = () => false;
     this.selecting = () => false;

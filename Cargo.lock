@@ -6759,6 +6759,7 @@ dependencies = [
  "async-trait",
  "axum",
  "futures-util",
+ "serde_json",
  "thiserror 2.0.21",
  "time",
  "tokio",

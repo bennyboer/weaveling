@@ -15,6 +15,7 @@ use live_contract::{SERVER_CLOSING, SESSION_ENDED};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
+use scenes_sync::awareness::Said;
 use scenes_sync::{Connection, Envelope, LARGEST_SENT, LiveScenes, Message};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
@@ -122,6 +123,20 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 
     doc.transact()
         .encode_state_as_update_v1(&StateVector::default())
+}
+
+/// An awareness update telling the state of one client of the editor.
+fn telling(client: u64, clock: u64, state: &str) -> Message {
+    Message::Awareness(scenes_sync::awareness::encode(&[Said {
+        client,
+        clock,
+        state: state.to_owned(),
+    }]))
+}
+
+/// The state an editor tells for the given account.
+fn as_account(name: &str) -> String {
+    format!(r#"{{"account":"{name}"}}"#)
 }
 
 async fn everything(heard: &mut UnboundedReceiver<Vec<u8>>) -> Vec<Message> {
@@ -298,14 +313,101 @@ async fn a_reader_is_seen_by_the_others_and_asks_who_is_there() {
     everything(&mut heard_by_bo).await;
 
     // when: the reader tells where it is and asks who is there
-    send(&mut bo, &guarded.scene, Message::Awareness(vec![1, 2, 3])).await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(7, 1, &as_account("account_bo")),
+    )
+    .await;
     send(&mut bo, &guarded.scene, Message::WhoIsHere).await;
 
     // then: the author hears both
     assert_eq!(
         everything(&mut heard_by_ada).await,
-        vec![Message::Awareness(vec![1, 2, 3]), Message::WhoIsHere],
+        vec![telling(7, 1, &as_account("account_bo")), Message::WhoIsHere],
         "where a reader's cursor is shows for everyone in the scene"
+    );
+}
+
+#[tokio::test]
+async fn what_an_editor_tells_in_the_name_of_another_account_reaches_nobody() {
+    // given: two authors' editors in a scene
+    let guarded = a_guarded_scene().await;
+    let (_ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    everything(&mut heard_by_ada).await;
+    everything(&mut heard_by_bo).await;
+
+    // when: bo's editor tells a state in ada's name, and one in no name
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(7, 1, &as_account("account_ada")),
+    )
+    .await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(8, 1, r#"{"user":{"name":"Ada"}}"#),
+    )
+    .await;
+
+    // then: ada hears neither
+    assert!(
+        everything(&mut heard_by_ada).await.is_empty(),
+        "nobody may show up in a scene as somebody else"
+    );
+}
+
+#[tokio::test]
+async fn whoever_leaves_a_scene_is_gone_for_the_others_at_once() {
+    // given: two editors in a scene, bo's having told its state
+    let guarded = a_guarded_scene().await;
+    let (_ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(7, 3, &as_account("account_bo")),
+    )
+    .await;
+    everything(&mut heard_by_ada).await;
+    everything(&mut heard_by_bo).await;
+
+    // when: bo's editor leaves the scene
+    bo.hear(&Envelope::Leave(guarded.scene.clone()).encode())
+        .await;
+
+    // then: ada hears at once that its client is gone, at the clock it last told
+    assert_eq!(
+        everything(&mut heard_by_ada).await,
+        vec![telling(7, 3, "null")],
+        "a departed editor must not linger until the others stop waiting for it"
+    );
+}
+
+#[tokio::test]
+async fn whoever_drops_their_connection_is_gone_for_the_others_at_once() {
+    // given: two editors in a scene, bo's having told its state
+    let guarded = a_guarded_scene().await;
+    let (_ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(7, 2, &as_account("account_bo")),
+    )
+    .await;
+    everything(&mut heard_by_ada).await;
+    everything(&mut heard_by_bo).await;
+
+    // when: bo's connection drops
+    drop(bo);
+
+    // then: ada hears at once that its client is gone
+    assert_eq!(
+        everything(&mut heard_by_ada).await,
+        vec![telling(7, 2, "null")]
     );
 }
 
@@ -340,7 +442,12 @@ async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more
         Envelope::Refused(guarded.scene.clone())
     );
     // when: each sends to the scene
-    send(&mut bo, &guarded.scene, Message::Awareness(vec![1, 2, 3])).await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        telling(7, 1, &as_account("account_bo")),
+    )
+    .await;
     send(
         &mut ada,
         &guarded.scene,

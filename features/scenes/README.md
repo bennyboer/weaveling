@@ -165,7 +165,7 @@ On PostgreSQL, a create that read no tombstone loses the race against the tombst
 A crash between the two left that scene standing.
 The same chore forgets the project tombstones together with the scenes' tombstones, in batches.
 
-Awareness — cursors, selections, who is here — is relayed as opaque bytes and never decoded or stored. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
+Awareness — cursors, selections, who is here — is relayed and never stored. The server reads only whose each entry is: it passes on an entry only if it names the connection's own account, and when a connection leaves a scene or drops, it tells the others at once that its entries are gone. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
 
 **Core owns each write's transaction.**
 `Ports` carries the feature's own `Transactions`.

@@ -28,6 +28,12 @@ struct Joined {
     watch: AccessWatch,
 }
 
+impl Drop for Joined {
+    fn drop(&mut self) {
+        self.present.scene().farewell(self.peer.id());
+    }
+}
+
 impl Connection {
     pub fn new(live: LiveScenes, agent: Agent, to_client: UnboundedSender<Vec<u8>>) -> Self {
         Self {
@@ -158,6 +164,22 @@ impl Connection {
         if *access == Access::Reader && message.changes_the_text() {
             return;
         }
+        let message = match message {
+            Message::Awareness(update) => {
+                let account = match &self.agent {
+                    Agent::Account(account) => Some(account.as_str()),
+                    _ => None,
+                };
+                match present
+                    .scene()
+                    .admitted_awareness(peer.id(), account, &update)
+                {
+                    Some(kept) => Message::Awareness(kept),
+                    None => return,
+                }
+            }
+            message => message,
+        };
 
         let gone = match present.receive(message) {
             Ok(reaction) => {

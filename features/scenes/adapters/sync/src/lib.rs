@@ -1,3 +1,4 @@
+pub mod awareness;
 mod connection;
 mod envelope;
 mod live_scenes;

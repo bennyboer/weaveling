@@ -17,6 +17,7 @@ use tokio::sync::{Mutex as OneAtATime, broadcast};
 use tokio::time::Instant as Moment;
 use tracing::warn;
 
+use crate::awareness::Speakers;
 use crate::protocol::Message;
 
 pub type PeerId = usize;
@@ -57,6 +58,7 @@ pub struct LiveScene {
     counting: OneAtATime<()>,
     counted_at: Mutex<Option<Moment>>,
     opening_told: Mutex<Option<String>>,
+    speakers: Speakers,
 }
 
 impl LiveScene {
@@ -71,6 +73,28 @@ impl LiveScene {
             counting: OneAtATime::new(()),
             counted_at: Mutex::new(None),
             opening_told: Mutex::new(None),
+            speakers: Speakers::default(),
+        }
+    }
+
+    /// Keeps of an awareness update only what the peer may say: its own account, for the clients it brought in.
+    /// Returns the update to pass on, or nothing when none of it may be passed on.
+    pub fn admitted_awareness(
+        &self,
+        peer: PeerId,
+        account: Option<&str>,
+        update: &[u8],
+    ) -> Option<Vec<u8>> {
+        self.speakers.admitted(peer, account, update)
+    }
+
+    /// Tells the others at once that the clients a leaving peer spoke for are gone.
+    pub fn farewell(&self, peer: PeerId) {
+        if let Some(gone) = self.speakers.farewell(peer) {
+            self.broadcast(Overheard {
+                from: peer,
+                frame: Message::Awareness(gone).encode(),
+            });
         }
     }
 

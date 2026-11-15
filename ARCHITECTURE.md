@@ -287,9 +287,16 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a scene that happens to have people in it. `LiveScenes::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
 
-**Awareness is relayed, never decoded.** The server treats awareness frames as opaque bytes and forwards them; it holds no presence state at all. Late joiners still get cursors, because on join the server broadcasts *query-awareness* and the connected peers republish themselves — an ordinary y-websocket client answers that automatically. This keeps presence genuinely ephemeral, exactly as [Presence is neither](#presence-is-neither) requires.
+**Awareness is relayed, and checked on the way.** The server holds no presence of its own and stores none: what an editor tells about itself is passed to the others and then forgotten. Late joiners still learn who is there, because on join the server broadcasts *query-awareness* and the connected peers republish themselves — an ordinary y-websocket client answers that automatically. This keeps presence genuinely ephemeral, exactly as [Presence is neither](#presence-is-neither) requires.
 
-The known cost of that choice: **the server cannot retract a departed peer's cursor**, because it does not know which client ids a connection spoke for. Stale cursors linger until the client-side timeout (~30 s). The fix is to decode just the awareness header (client id, clock, state) and broadcast a tombstone on disconnect — small, and deliberately deferred.
+*Decided 2026-11-15, for M17 slice 12:* the server reads just enough of each awareness update to check it (`adapters/sync/src/awareness.rs`).
+Each entry is a client of an editor, its clock and its state as JSON.
+An entry is passed on only if its state names the connection's own account, or, without accounts, any state.
+A connection may only speak for the clients it brought in, and may only remove those.
+The server remembers which connection speaks for which client, and at which clock.
+So when a connection leaves a scene or drops, the others are told at once that its clients are gone, at the clock they last spoke at.
+Before, the server could not retract a departed peer, and its cursor lingered until the others' timeout of about 30 seconds.
+The state's other contents stay opaque to the server.
 
 Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and a `LiveScene` is never evicted, so it lives for the process lifetime with no backpressure and no auth on the socket. The eviction race and its intended fix are written up in [TODO.md](./TODO.md).
 
@@ -352,7 +359,7 @@ Three placements that are not obvious:
 
 **Per-connection state is a `Peer`, and its lifetime is RAII.** A `LiveScene` is shared by every peer; a `Peer` is one connection — its id, its private outbound channel, and its two pump tasks. `Drop` aborts them. That matters because the shutdown ordering is otherwise load-bearing and invisible: the outbound channel closes only when *every* sender is gone, and missing one leaks a task for the process lifetime. Encoding it in `Drop` makes the mistake unavailable rather than merely documented.
 
-**Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
+**Awareness never reaches `core` at all.** It is relayed, checked only for whose it is, and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
 
 ## Ideas, scenes and views — the non-linear model
 

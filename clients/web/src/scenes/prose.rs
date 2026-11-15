@@ -25,6 +25,7 @@ extern "C" {
         scene: &str,
         author: &str,
         color: &str,
+        account: &str,
         on_connected: &Closure<dyn Fn(bool)>,
         connection: &SyncConnection,
     ) -> ProseEditor;
