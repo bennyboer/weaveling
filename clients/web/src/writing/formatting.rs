@@ -13,25 +13,32 @@ use crate::writing::write_view_state::WriteViewState;
 
 /// Where a selection is and how it is formatted, as the editor tells it.
 /// The places are in pixels, measured from the scene's row: the top of the selection, its bottom, and its middle across.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+/// `link` is the address the whole selection links to, if it is all one link.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Selected {
     above: f64,
     below: f64,
     across: f64,
     bold: bool,
     italic: bool,
+    link: Option<String>,
 }
 
 /// Which scene has text selected, and how, so its row can show the formatting toolbar.
+/// While a link is being set, the toolbar shows a field for its address instead of its buttons.
 #[derive(Clone, Copy)]
 pub struct Formatting {
     shown: RwSignal<Option<(SceneId, Selected)>>,
+    linking: RwSignal<bool>,
+    refused: RwSignal<bool>,
 }
 
 impl Formatting {
     pub fn nothing() -> Self {
         Self {
             shown: RwSignal::new(None),
+            linking: RwSignal::new(false),
+            refused: RwSignal::new(false),
         }
     }
 
@@ -51,7 +58,22 @@ impl Formatting {
             .with_untracked(|shown| shown.as_ref().is_some_and(|(at, _)| at == scene))
         {
             self.shown.set(None);
+            self.linking.set(false);
+            self.refused.set(false);
         }
+    }
+
+    /// Shows the field for a link's address, as Ctrl+K asks in the text.
+    pub fn link_asked(self, scene: &SceneId) {
+        if self.in_scene_untracked(scene) {
+            self.refused.set(false);
+            self.linking.set(true);
+        }
+    }
+
+    fn in_scene_untracked(self, scene: &SceneId) -> bool {
+        self.shown
+            .with_untracked(|shown| shown.as_ref().is_some_and(|(at, _)| at == scene))
     }
 
     fn in_scene(self, scene: &SceneId) -> Option<Selected> {
@@ -59,8 +81,13 @@ impl Formatting {
             shown
                 .as_ref()
                 .filter(|(at, _)| at == scene)
-                .map(|(_, selected)| *selected)
+                .map(|(_, selected)| selected.clone())
         })
+    }
+
+    fn done_linking(self) {
+        self.linking.set(false);
+        self.refused.set(false);
     }
 }
 
@@ -76,28 +103,14 @@ pub fn reached(scene: &SceneId) {
     }
 }
 
-/// The toolbar shown over text selected in a scene: bold, italic, quotation marks, and removing formatting.
+/// The toolbar shown over text selected in a scene: bold, italic, quotation marks, a link, and removing formatting.
 /// It stands above the selection, or below it on a touch screen, where the browser shows its own menu above.
 /// Pressing a button keeps the text focused. From the keyboard it is reached with Alt+F10,
 /// the arrow keys move between its buttons, and Escape goes back to the text.
 pub fn toolbar(scene: SceneId, state: WriteViewState) -> impl IntoView {
     move || {
         let selected = state.formatting.in_scene(&scene)?;
-        let back = scene.clone();
-        let scene = scene.clone();
-        let button =
-            move |icon: Icon, label: &'static str, pressed: Option<bool>, act: fn(&ProseEditor)| {
-                let scene = scene.clone();
-
-                html::button()
-                    .r#type("button")
-                    .attr("aria-label", move || speech::say(label))
-                    .attr("title", move || speech::say(label))
-                    .attr("aria-pressed", pressed.map(|pressed| pressed.to_string()))
-                    .on(ev::pointerdown, |event| event.prevent_default())
-                    .on(ev::click, move |_| _ = state.editors.told(&scene, act))
-                    .child(icons::mark(icon))
-            };
+        let linking = state.formatting.linking.get();
 
         Some(
             html::div()
@@ -108,51 +121,159 @@ pub fn toolbar(scene: SceneId, state: WriteViewState) -> impl IntoView {
                     "--above: {}px; --below: {}px; --across: {}px",
                     selected.above, selected.below, selected.across
                 ))
-                .on(ev::keydown, move |event| {
-                    let key = event.key();
-                    if key == "Escape" {
-                        event.prevent_default();
-                        event.stop_propagation();
-                        state.editors.told(&back, ProseEditor::focus);
-                        return;
-                    }
-                    let step: i32 = match key.as_str() {
-                        "ArrowRight" => 1,
-                        "ArrowLeft" => -1,
-                        _ => return,
-                    };
-                    event.prevent_default();
-                    event.stop_propagation();
-                    moved_within(&event, step);
-                })
-                .child((
-                    button(
-                        Icon::Bold,
-                        "formatting-bold",
-                        Some(selected.bold),
-                        ProseEditor::toggle_bold,
-                    ),
-                    button(
-                        Icon::Italic,
-                        "formatting-italic",
-                        Some(selected.italic),
-                        ProseEditor::toggle_italic,
-                    ),
-                    button(
-                        Icon::Quote,
-                        "formatting-quote",
-                        None,
-                        ProseEditor::quote_selection,
-                    ),
-                    button(
-                        Icon::ClearFormatting,
-                        "formatting-clear",
-                        None,
-                        ProseEditor::clear_formatting,
-                    ),
-                )),
+                .child(if linking {
+                    link_field(scene.clone(), selected.link.clone(), state).into_any()
+                } else {
+                    buttons(scene.clone(), &selected, state).into_any()
+                }),
         )
     }
+}
+
+fn buttons(scene: SceneId, selected: &Selected, state: WriteViewState) -> impl IntoView + use<> {
+    let back = scene.clone();
+    let button =
+        move |icon: Icon, label: &'static str, pressed: Option<bool>, act: fn(&ProseEditor)| {
+            let scene = scene.clone();
+
+            html::button()
+                .r#type("button")
+                .attr("aria-label", move || speech::say(label))
+                .attr("title", move || speech::say(label))
+                .attr("aria-pressed", pressed.map(|pressed| pressed.to_string()))
+                .on(ev::pointerdown, |event| event.prevent_default())
+                .on(ev::click, move |_| _ = state.editors.told(&scene, act))
+                .child(icons::mark(icon))
+        };
+
+    html::div()
+        .class("formatting-buttons")
+        .on(ev::keydown, move |event| {
+            let key = event.key();
+            if key == "Escape" {
+                event.prevent_default();
+                event.stop_propagation();
+                state.editors.told(&back, ProseEditor::focus);
+                return;
+            }
+            let step: i32 = match key.as_str() {
+                "ArrowRight" => 1,
+                "ArrowLeft" => -1,
+                _ => return,
+            };
+            event.prevent_default();
+            event.stop_propagation();
+            moved_within(&event, step);
+        })
+        .child((
+            button(
+                Icon::Bold,
+                "formatting-bold",
+                Some(selected.bold),
+                ProseEditor::toggle_bold,
+            ),
+            button(
+                Icon::Italic,
+                "formatting-italic",
+                Some(selected.italic),
+                ProseEditor::toggle_italic,
+            ),
+            button(
+                Icon::Quote,
+                "formatting-quote",
+                None,
+                ProseEditor::quote_selection,
+            ),
+            html::button()
+                .r#type("button")
+                .attr("aria-label", move || speech::say("formatting-link"))
+                .attr("title", move || speech::say("formatting-link"))
+                .attr("aria-pressed", selected.link.is_some().to_string())
+                .on(ev::pointerdown, |event| event.prevent_default())
+                .on(ev::click, move |_| {
+                    state.formatting.refused.set(false);
+                    state.formatting.linking.set(true);
+                })
+                .child(icons::mark(Icon::Link)),
+            button(
+                Icon::ClearFormatting,
+                "formatting-clear",
+                None,
+                ProseEditor::clear_formatting,
+            ),
+        ))
+}
+
+/// The field for a link's address, shown in the toolbar in place of its buttons.
+/// An address without a scheme is taken as a web address, or as an email address if it looks like one.
+/// Only web and email addresses are taken; anything else is refused and says so.
+fn link_field(
+    scene: SceneId,
+    held: Option<String>,
+    state: WriteViewState,
+) -> impl IntoView + use<> {
+    let address = RwSignal::new(held.clone().unwrap_or_default());
+    let field = NodeRef::<html::Input>::new();
+    field.on_load(|input| _ = input.focus());
+    let back = StoredValue::new(scene.clone());
+    let going_back = move || {
+        state.formatting.done_linking();
+        back.with_value(|back| state.editors.told(back, ProseEditor::focus));
+    };
+    let removing = scene.clone();
+
+    html::form()
+        .class("linking")
+        .on(ev::submit, move |event| {
+            event.prevent_default();
+            let typed = address.get_untracked();
+            if state.editors.told(&scene, |editor| editor.set_link(&typed)) == Some(true) {
+                going_back();
+            } else {
+                state.formatting.refused.set(true);
+            }
+        })
+        .on(ev::keydown, move |event| {
+            if event.key() == "Escape" {
+                event.prevent_default();
+                event.stop_propagation();
+                going_back();
+            }
+        })
+        .child((
+            html::input()
+                .node_ref(field)
+                .r#type("text")
+                .attr("inputmode", "url")
+                .attr("aria-label", move || speech::say("formatting-link-address"))
+                .attr("placeholder", move || {
+                    speech::say("formatting-link-address")
+                })
+                .prop("value", move || address.get())
+                .on(ev::input, move |event| {
+                    address.set(event_target_value(&event))
+                }),
+            html::button()
+                .r#type("submit")
+                .child(speech::said("formatting-link-set")),
+            held.is_some().then(|| {
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| {
+                        state.editors.told(&removing, ProseEditor::remove_link);
+                        going_back();
+                    })
+                    .child(speech::said("formatting-link-remove"))
+            }),
+            move || {
+                state.formatting.refused.get().then(|| {
+                    html::p()
+                        .class("refused")
+                        .role("alert")
+                        .child(speech::said("formatting-link-refused"))
+                })
+            },
+        ))
 }
 
 /// Moves the focus to the next or the previous button of the toolbar, going round at its ends.

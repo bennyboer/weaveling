@@ -52,6 +52,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(String)>,
             Closure<dyn Fn(String)>,
             Closure<dyn Fn()>,
+            Closure<dyn Fn()>,
             Closure<dyn Fn(String) -> bool>,
         )>,
     );
@@ -164,6 +165,12 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move || formatting::reached(&scene)
             });
             editor.on_to_toolbar(&to_toolbar);
+            let link_asked = Closure::<dyn Fn()>::new({
+                let scene = scene.clone();
+
+                move || state.formatting.link_asked(&scene)
+            });
+            editor.on_link_asked(&link_asked);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
@@ -181,6 +188,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 present,
                 selection_shown,
                 to_toolbar,
+                link_asked,
                 selecting,
             )));
         }

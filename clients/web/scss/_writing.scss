@@ -706,3 +706,50 @@ body:has(.writing .scene-slot.carried) {
   }
 }
 
+.writing .formatting {
+  .formatting-buttons {
+    display: flex;
+    gap: 0.15rem;
+  }
+
+  .linking {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    width: min(24rem, 80vw);
+
+    input {
+      flex: 1 1 12rem;
+      min-width: 0;
+      padding: 0.45rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 0.375rem;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.9rem;
+    }
+
+    button {
+      width: auto;
+      padding: 0 0.6rem;
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+
+    .refused {
+      flex-basis: 100%;
+      margin: 0;
+      color: var(--alarm);
+      font-size: 0.85rem;
+    }
+  }
+}
+
+.writing .scene .ProseMirror a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+

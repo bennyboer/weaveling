@@ -76,6 +76,15 @@ extern "C" {
     #[wasm_bindgen(method, js_name = clearFormatting)]
     pub fn clear_formatting(this: &ProseEditor);
 
+    #[wasm_bindgen(method, js_name = onLinkAsked)]
+    pub fn on_link_asked(this: &ProseEditor, asked: &Closure<dyn Fn()>);
+
+    #[wasm_bindgen(method, js_name = setLink)]
+    pub fn set_link(this: &ProseEditor, typed: &str) -> bool;
+
+    #[wasm_bindgen(method, js_name = removeLink)]
+    pub fn remove_link(this: &ProseEditor);
+
     #[wasm_bindgen(method, js_name = arriveWhenSynced)]
     pub fn arrive_when_synced(this: &ProseEditor, towards: &str);
 

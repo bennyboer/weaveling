@@ -37,9 +37,51 @@ const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
   ? "Alt"
   : "Ctrl";
 
+const LINKABLE = /^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i;
+const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+const AN_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function safeLink(href) {
+  const told = String(href ?? "").trim();
+
+  return LINKABLE.test(told) ? told : null;
+}
+
+function linkTyped(typed) {
+  const told = String(typed ?? "").trim();
+  if (told === "" || HAS_SCHEME.test(told)) {
+    return safeLink(told);
+  }
+
+  return safeLink(AN_EMAIL.test(told) ? `mailto:${told}` : `https://${told}`);
+}
+
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
   marks: basic.spec.marks
+    .update("link", {
+      attrs: { href: {} },
+      inclusive: false,
+      parseDOM: [
+        {
+          tag: "a[href]",
+          getAttrs: (dom) => {
+            const href = safeLink(dom.getAttribute("href"));
+
+            return href ? { href } : false;
+          },
+        },
+      ],
+      toDOM: (mark) => {
+        const href = safeLink(mark.attrs.href);
+
+        return [
+          "a",
+          href ? { href, title: href, rel: "noopener noreferrer nofollow" } : {},
+          0,
+        ];
+      },
+    })
     .addToStart("quote", {
       attrs: { side: { default: "opening" } },
       inclusive: false,
@@ -158,6 +200,7 @@ export class ProseEditor {
     this.caretMoved = () => {};
     this.selectionShown = () => {};
     this.toToolbar = () => {};
+    this.linkAsked = () => {};
     this.pressing = false;
     this.letGo = () => {
       if (this.pressing) {
@@ -227,6 +270,7 @@ export class ProseEditor {
                   return this.focusedWhereTheBrowserPutIt(view);
                 },
               },
+              handleClick: (view, pos, event) => this.openedLink(view, pos, event),
               handleTextInput: (view, from, to, text) =>
                 this.typedMark(view, from, to, text),
               clipboardTextSerializer: (slice) => writtenText(slice.content),
@@ -246,6 +290,14 @@ export class ProseEditor {
             "Mod-i": toggleMark(schema.marks.em),
             "Mod-b": toggleMark(schema.marks.strong),
             "Mod-Shift-2": (state, dispatch) => this.quoting(state, dispatch),
+            "Mod-k": (state) => {
+              if (state.selection.empty) {
+                return false;
+              }
+              this.linkAsked();
+
+              return true;
+            },
             "Alt-F10": (state) => {
               if (state.selection.empty) {
                 return false;
@@ -390,6 +442,75 @@ export class ProseEditor {
     this.toToolbar = toToolbar;
   }
 
+  onLinkAsked(linkAsked) {
+    this.linkAsked = linkAsked;
+  }
+
+  linkAt(state) {
+    const { from, to } = state.selection;
+    let href;
+    let one = true;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (!node.isText) {
+        return;
+      }
+      const link = schema.marks.link.isInSet(node.marks);
+      const here = link ? safeLink(link.attrs.href) : null;
+      if (href === undefined) {
+        href = here;
+      } else if (href !== here) {
+        one = false;
+      }
+    });
+
+    return one ? (href ?? null) : null;
+  }
+
+  setLink(typed) {
+    const href = linkTyped(typed);
+    if (!href) {
+      return false;
+    }
+    this.command((state, dispatch) => {
+      const { from, to } = state.selection;
+      dispatch(
+        state.tr
+          .removeMark(from, to, schema.marks.link)
+          .addMark(from, to, schema.marks.link.create({ href })),
+      );
+
+      return true;
+    });
+
+    return true;
+  }
+
+  removeLink() {
+    this.command((state, dispatch) => {
+      const { from, to } = state.selection;
+      dispatch(state.tr.removeMark(from, to, schema.marks.link));
+
+      return true;
+    });
+  }
+
+  openedLink(view, pos, event) {
+    if (!event.ctrlKey && !event.metaKey) {
+      return false;
+    }
+    const node = view.state.doc.nodeAt(pos);
+    const link =
+      (node && schema.marks.link.isInSet(node.marks)) ||
+      schema.marks.link.isInSet(view.state.doc.resolve(pos).marks());
+    const href = link ? safeLink(link.attrs.href) : null;
+    if (!href) {
+      return false;
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
+
+    return true;
+  }
+
   tellSelection() {
     const inToolbar = document.activeElement?.closest?.(".formatting");
     if (this.pressing || !this.view || (!this.view.hasFocus() && !inToolbar)) {
@@ -414,6 +535,7 @@ export class ProseEditor {
         across: Math.min(Math.max(middle - around.left, 0), around.width),
         bold: this.marked(state, schema.marks.strong),
         italic: this.marked(state, schema.marks.em),
+        link: this.linkAt(state),
       }),
     );
   }
@@ -448,7 +570,8 @@ export class ProseEditor {
       dispatch(
         state.tr
           .removeMark(from, to, schema.marks.strong)
-          .removeMark(from, to, schema.marks.em),
+          .removeMark(from, to, schema.marks.em)
+          .removeMark(from, to, schema.marks.link),
       );
 
       return true;

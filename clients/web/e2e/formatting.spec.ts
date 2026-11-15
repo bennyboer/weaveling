@@ -96,3 +96,102 @@ test("the toolbar sets the selection in the book's quotation marks, and goes whe
   // then: the toolbar is gone
   await expect(toolbar(page)).toHaveCount(0);
 });
+
+test("a link is set from the toolbar, opens with Ctrl and a click, and is taken off again", async ({
+  page,
+  context,
+}) => {
+  // given: the first word of a scene's text selected
+  const only = await aWordSelected(page, "Linked");
+  await context.route("https://example.com/**", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<title>Elsewhere</title>" }),
+  );
+
+  // when: a link is chosen in the toolbar, and an address without a scheme typed
+  await toolbar(page).getByRole("button", { name: "Link" }).click();
+  await expect(toolbar(page).getByLabel("Address of the link")).toBeFocused();
+  await page.keyboard.type("example.com");
+  await page.keyboard.press("Enter");
+
+  // then: the word links to the web address, and the text has the focus again
+  await expect(scene(page, only).locator("a")).toHaveText("She");
+  await expect(scene(page, only).locator("a")).toHaveAttribute("href", "https://example.com");
+  await expect(scene(page, only)).toBeFocused();
+  await expect(toolbar(page).getByRole("button", { name: "Link" })).toHaveAttribute("aria-pressed", "true");
+
+  // when: the link is clicked with Ctrl held
+  const opened = context.waitForEvent("page");
+  await scene(page, only).locator("a").click({ modifiers: ["ControlOrMeta"] });
+
+  // then: the address opens in a tab of its own
+  expect((await opened).url()).toBe("https://example.com/");
+
+  // when: the link is taken off from the toolbar
+  await scene(page, only).click();
+  await page.keyboard.press("Home");
+  for (let step = 0; step < "She".length; step++) {
+    await page.keyboard.press("Shift+ArrowRight");
+  }
+  await toolbar(page).getByRole("button", { name: "Link" }).click();
+  await toolbar(page).getByRole("button", { name: "Remove link" }).click();
+
+  // then: the word is plain text again
+  await expect(scene(page, only).locator("a")).toHaveCount(0);
+  await expect(scene(page, only)).toContainText("She never returned.");
+});
+
+test("an address that is no web or email address is refused as a link", async ({ page }) => {
+  // given: the first word of a scene's text selected, and the field for a link open
+  const only = await aWordSelected(page, "Refused");
+  await toolbar(page).getByRole("button", { name: "Link" }).click();
+
+  // when: a script is given as the address
+  await page.keyboard.type("javascript:alert(1)");
+  await page.keyboard.press("Enter");
+
+  // then: it is refused, saying why, and nothing links
+  await expect(toolbar(page).getByRole("alert")).toHaveText(
+    "Only web addresses and email addresses can be links.",
+  );
+  await expect(scene(page, only).locator("a")).toHaveCount(0);
+});
+
+test("Ctrl+K asks for a link, and an email address links to writing to it", async ({ page }) => {
+  // given: the first word of a scene's text selected
+  const only = await aWordSelected(page, "Mailed");
+
+  // when: Ctrl+K is pressed and an email address given
+  await page.keyboard.press("ControlOrMeta+K");
+  await expect(toolbar(page).getByLabel("Address of the link")).toBeFocused();
+  await page.keyboard.type("ada@example.com");
+  await page.keyboard.press("Enter");
+
+  // then: the word links to writing to that address
+  await expect(scene(page, only).locator("a")).toHaveAttribute("href", "mailto:ada@example.com");
+});
+
+test("what is pasted keeps its web links, and a link that is no web address stays plain text", async ({
+  page,
+}) => {
+  // given: a scene with the cursor at the end of its text
+  const only = await aWordSelected(page, "Pasted");
+  await page.keyboard.press("End");
+
+  // when: text with a web link and a script link is pasted
+  await scene(page, only).evaluate((prose) => {
+    const pasted = new DataTransfer();
+    pasted.setData(
+      "text/html",
+      ' <a href="https://example.com/good">good</a> and <a href="javascript:alert(1)">bad</a>',
+    );
+    pasted.setData("text/plain", " good and bad");
+    prose.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: pasted, bubbles: true, cancelable: true }),
+    );
+  });
+
+  // then: the web link is kept, and the script is plain text
+  await expect(scene(page, only)).toContainText("good and bad");
+  await expect(scene(page, only).locator("a")).toHaveCount(1);
+  await expect(scene(page, only).locator("a")).toHaveAttribute("href", "https://example.com/good");
+});
