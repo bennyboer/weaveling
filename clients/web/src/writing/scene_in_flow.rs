@@ -7,8 +7,10 @@ use wasm_bindgen::closure::Closure;
 use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
+use crate::speech;
 use crate::writing::choosing;
 use crate::writing::formatting;
+use crate::writing::images;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -53,6 +55,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(String)>,
             Closure<dyn Fn()>,
             Closure<dyn Fn()>,
+            Closure<dyn Fn(js_sys::Array, u32)>,
             Closure<dyn Fn(String) -> bool>,
         )>,
     );
@@ -171,6 +174,14 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move || state.formatting.link_asked(&scene)
             });
             editor.on_link_asked(&link_asked);
+            let images_given = Closure::<dyn Fn(js_sys::Array, u32)>::new({
+                let scene = scene.clone();
+
+                move |files: js_sys::Array, ticket: u32| {
+                    images::given_by_editor(scene.clone(), state, files, ticket)
+                }
+            });
+            editor.on_images_given(&images_given);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
@@ -189,6 +200,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 selection_shown,
                 to_toolbar,
                 link_asked,
+                images_given,
                 selecting,
             )));
         }
@@ -203,6 +215,23 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 state.editors.told(&scene, |editor| {
                     editor.set_quotation_marks(marks.opening(), marks.closing())
                 });
+            }
+        }
+    });
+
+    Effect::new({
+        let scene = scene.clone();
+
+        move || {
+            let labels = serde_json::json!({
+                "missing": speech::say("figure-missing"),
+                "caption": speech::say("figure-caption"),
+            })
+            .to_string();
+            if editors_made.get() > 0 {
+                state
+                    .editors
+                    .told(&scene, |editor| editor.set_labels(&labels));
             }
         }
     });

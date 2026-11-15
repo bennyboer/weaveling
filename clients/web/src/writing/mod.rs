@@ -11,6 +11,7 @@ mod focus;
 mod formatting;
 mod going_back;
 mod heading;
+mod images;
 mod inspecting;
 mod inspector;
 mod labels;

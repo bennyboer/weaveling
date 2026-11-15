@@ -85,6 +85,27 @@ extern "C" {
     #[wasm_bindgen(method, js_name = removeLink)]
     pub fn remove_link(this: &ProseEditor);
 
+    #[wasm_bindgen(method, js_name = onImagesGiven)]
+    pub fn on_images_given(this: &ProseEditor, given: &Closure<dyn Fn(js_sys::Array, u32)>);
+
+    #[wasm_bindgen(method, js_name = setLabels)]
+    pub fn set_labels(this: &ProseEditor, told: &str);
+
+    #[wasm_bindgen(method, js_name = askedForImage)]
+    pub fn asked_for_image(this: &ProseEditor) -> u32;
+
+    #[wasm_bindgen(method, js_name = insertFigure)]
+    pub fn insert_figure(this: &ProseEditor, asset: &str, ticket: u32);
+
+    #[wasm_bindgen(method, js_name = forgetWaiting)]
+    pub fn forget_waiting(this: &ProseEditor, ticket: u32);
+
+    #[wasm_bindgen(method, js_name = setFigureSize)]
+    pub fn set_figure_size(this: &ProseEditor, size: &str);
+
+    #[wasm_bindgen(method, js_name = removeFigure)]
+    pub fn remove_figure(this: &ProseEditor);
+
     #[wasm_bindgen(method, js_name = arriveWhenSynced)]
     pub fn arrive_when_synced(this: &ProseEditor, towards: &str);
 

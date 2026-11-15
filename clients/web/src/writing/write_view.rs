@@ -23,6 +23,7 @@ use crate::writing::focus;
 use crate::writing::formatting;
 use crate::writing::going_back;
 use crate::writing::heading;
+use crate::writing::images;
 use crate::writing::inspecting;
 use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
@@ -648,6 +649,7 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
                         menus::scene_margin(scene.clone(), state),
                         presence::shown(scene.clone(), state.presence),
                         formatting::toolbar(scene.clone(), state),
+                        images::picker(scene.clone(), state),
                         scene_in_flow::scene_in_flow(scene.clone(), state),
                     )),
                 section.clone().map(|section| {

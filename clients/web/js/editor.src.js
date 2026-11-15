@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import {
   EditorState,
+  NodeSelection,
   Plugin,
   Selection,
   TextSelection,
@@ -56,8 +57,160 @@ function linkTyped(typed) {
   return safeLink(AN_EMAIL.test(told) ? `mailto:${told}` : `https://${told}`);
 }
 
+const AN_ASSET = /^[A-Za-z0-9_]{1,64}$/;
+const SIZES = ["small", "medium", "full"];
+const SHOWN_WIDE = { small: 768, medium: 1536, full: 1536 };
+
+function sizeOf(told) {
+  return SIZES.includes(told) ? told : "full";
+}
+
+function assetOf(told) {
+  const asset = String(told ?? "");
+
+  return AN_ASSET.test(asset) ? asset : "";
+}
+
+const figure = {
+  attrs: { asset: { default: "" }, size: { default: "full" } },
+  content: "text*",
+  marks: "",
+  group: "block",
+  defining: true,
+  parseDOM: [
+    {
+      tag: "figure[data-asset]",
+      contentElement: "figcaption",
+      getAttrs: (dom) => {
+        const asset = assetOf(dom.dataset.asset);
+
+        return asset ? { asset, size: sizeOf(dom.dataset.size) } : false;
+      },
+    },
+  ],
+  toDOM: (node) => [
+    "figure",
+    {
+      class: `figure ${sizeOf(node.attrs.size)}`,
+      "data-asset": assetOf(node.attrs.asset),
+      "data-size": sizeOf(node.attrs.size),
+    },
+    ["figcaption", 0],
+  ],
+};
+
+const ROOM_FOR_ADDING = 3.5;
+
+function placeholderEnd(paragraph) {
+  if (!(paragraph instanceof HTMLElement)) {
+    return null;
+  }
+  const shown = getComputedStyle(paragraph, "::before");
+  if (shown.content === "none" || shown.content === "normal") {
+    return null;
+  }
+  const said = shown.content.replace(/^"|"$/g, "");
+  const measure = document.createElement("span");
+  measure.textContent = said;
+  for (const each of [
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "letterSpacing",
+    "wordSpacing",
+    "fontFeatureSettings",
+  ]) {
+    measure.style[each] = shown[each];
+  }
+  measure.style.position = "absolute";
+  measure.style.display = "block";
+  measure.style.textWrap = shown.textWrap;
+  measure.style.visibility = "hidden";
+  measure.style.left = "0";
+  measure.style.top = "0";
+  measure.style.width = `${paragraph.clientWidth}px`;
+  document.body.append(measure);
+  const text = document.createRange();
+  text.selectNodeContents(measure);
+  const lines = text.getClientRects();
+  const last = lines[lines.length - 1];
+  const start = measure.getBoundingClientRect();
+  measure.remove();
+  if (!last) {
+    return null;
+  }
+  const at = paragraph.getBoundingClientRect();
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const left = at.left + (last.right - start.left);
+  const top = at.top + (last.top - start.top);
+  const bottom = at.top + (last.bottom - start.top);
+  if (left + ROOM_FOR_ADDING * rem <= at.right) {
+    return { left, top, bottom };
+  }
+
+  const below = bottom + 0.5 * rem;
+
+  return { left: at.left - 0.75 * rem, top: below, bottom: below + 2.75 * rem };
+}
+
+class FigureView {
+  constructor(node, labels) {
+    this.node = node;
+    this.labels = labels;
+    this.dom = document.createElement("figure");
+    this.picture = document.createElement("img");
+    this.picture.alt = "";
+    this.picture.draggable = false;
+    this.picture.contentEditable = "false";
+    this.picture.addEventListener("error", () => {
+      this.dom.classList.add("missing");
+      this.dom.dataset.missing = labels().missing ?? "";
+    });
+    this.contentDOM = document.createElement("figcaption");
+    this.dom.append(this.picture, this.contentDOM);
+    this.show(node);
+  }
+
+  show(node) {
+    const asset = assetOf(node.attrs.asset);
+    const size = sizeOf(node.attrs.size);
+    this.dom.classList.add("figure");
+    for (const each of SIZES) {
+      this.dom.classList.toggle(each, each === size);
+    }
+    this.dom.dataset.asset = asset;
+    this.dom.dataset.size = size;
+    this.dom.classList.toggle("missing", !asset);
+    this.contentDOM.classList.toggle("empty", node.content.size === 0);
+    this.contentDOM.dataset.placeholder = this.labels().caption ?? "";
+    const src = asset
+      ? `/api/assets/${asset}/content?width=${SHOWN_WIDE[size]}`
+      : "";
+    if (this.picture.getAttribute("src") !== src) {
+      this.picture.setAttribute("src", src);
+    }
+  }
+
+  update(node) {
+    if (node.type !== this.node.type) {
+      return false;
+    }
+    this.node = node;
+    this.show(node);
+
+    return true;
+  }
+
+  ignoreMutation(mutation) {
+    return !this.contentDOM.contains(mutation.target);
+  }
+}
+
 const schema = new Schema({
-  nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
+  nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block")
+    .remove("image")
+    .addToEnd("figure", figure),
   marks: basic.spec.marks
     .update("link", {
       attrs: { href: {} },
@@ -77,7 +230,9 @@ const schema = new Schema({
 
         return [
           "a",
-          href ? { href, title: href, rel: "noopener noreferrer nofollow" } : {},
+          href
+            ? { href, title: href, rel: "noopener noreferrer nofollow" }
+            : {},
           0,
         ];
       },
@@ -137,6 +292,9 @@ function writtenText(doc) {
   const blocks = [];
 
   doc.descendants((node) => {
+    if (node.type.name === "figure") {
+      return false;
+    }
     if (!node.isTextblock) {
       return true;
     }
@@ -146,6 +304,36 @@ function writtenText(doc) {
   });
 
   return blocks.join("\n");
+}
+
+function captioning() {
+  return new Plugin({
+    props: {
+      decorations: (state) => {
+        const { selection } = state;
+        if (
+          selection instanceof NodeSelection &&
+          selection.node.type.name === "figure"
+        ) {
+          return DecorationSet.create(state.doc, [
+            Decoration.node(selection.from, selection.to, {
+              class: "captioning",
+            }),
+          ]);
+        }
+        const { $from } = selection;
+        if ($from.parent.type.name === "figure") {
+          return DecorationSet.create(state.doc, [
+            Decoration.node($from.before(), $from.after(), {
+              class: "captioning",
+            }),
+          ]);
+        }
+
+        return DecorationSet.empty;
+      },
+    },
+  });
 }
 
 function markingWhereWritten() {
@@ -176,7 +364,21 @@ function asTold(user) {
 }
 
 function textOf(doc) {
-  return doc.textBetween(0, doc.content.size, " ", " ");
+  const blocks = [];
+
+  doc.descendants((node) => {
+    if (node.type.name === "figure") {
+      return false;
+    }
+    if (!node.isTextblock) {
+      return true;
+    }
+    blocks.push(node.textBetween(0, node.content.size, " ", " "));
+
+    return false;
+  });
+
+  return blocks.join(" ");
 }
 
 export class ProseEditor {
@@ -201,6 +403,10 @@ export class ProseEditor {
     this.selectionShown = () => {};
     this.toToolbar = () => {};
     this.linkAsked = () => {};
+    this.imagesGiven = () => {};
+    this.labels = {};
+    this.waiting = new Map();
+    this.waited = 0;
     this.pressing = false;
     this.letGo = () => {
       if (this.pressing) {
@@ -225,6 +431,9 @@ export class ProseEditor {
           }
         }
         this.updateState(this.state.apply(tr));
+        if (tr.docChanged) {
+          editor.mapWaiting(tr.mapping);
+        }
 
         if (tr.docChanged) {
           editor.changed(textOf(this.state.doc));
@@ -235,6 +444,9 @@ export class ProseEditor {
         if (tr.docChanged || tr.selectionSet || tr.storedMarksSet) {
           editor.tellSelection();
         }
+      },
+      nodeViews: {
+        figure: (node) => new FigureView(node, () => editor.labels),
       },
       state: EditorState.create({
         schema,
@@ -258,7 +470,7 @@ export class ProseEditor {
                   return false;
                 },
                 blur: (_, event) => {
-                  if (!event.relatedTarget?.closest?.(".formatting")) {
+                  if (!event.relatedTarget?.closest?.(".formatting, .adding")) {
                     this.selectionShown("");
                   }
 
@@ -270,13 +482,35 @@ export class ProseEditor {
                   return this.focusedWhereTheBrowserPutIt(view);
                 },
               },
-              handleClick: (view, pos, event) => this.openedLink(view, pos, event),
+              handleClick: (view, pos, event) =>
+                this.openedLink(view, pos, event),
+              handleClickOn: (view, _, node, at, event) =>
+                this.chosenFigure(view, node, at, event),
+              handlePaste: (view, event) =>
+                this.givenImages(
+                  view,
+                  event.clipboardData?.files,
+                  view.state.selection.from,
+                ),
+              handleDrop: (view, event) => {
+                const dropped = view.posAtCoords({
+                  left: event.clientX,
+                  top: event.clientY,
+                });
+
+                return this.givenImages(
+                  view,
+                  event.dataTransfer?.files,
+                  dropped?.pos ?? view.state.selection.from,
+                );
+              },
               handleTextInput: (view, from, to, text) =>
                 this.typedMark(view, from, to, text),
               clipboardTextSerializer: (slice) => writtenText(slice.content),
             },
           }),
           markingWhereWritten(),
+          captioning(),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.sync.awareness, {
             cursorBuilder: (_, client) =>
@@ -299,7 +533,11 @@ export class ProseEditor {
               return true;
             },
             "Alt-F10": (state) => {
-              if (state.selection.empty) {
+              const { $from, empty } = state.selection;
+              const onEmptyLine =
+                $from.parent.type.name === "paragraph" &&
+                $from.parent.content.size === 0;
+              if (empty && !onEmptyLine) {
                 return false;
               }
               this.toToolbar();
@@ -308,7 +546,11 @@ export class ProseEditor {
             },
           }),
           keymap({
-            Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
+            Enter: (state, dispatch) =>
+              this.leftCaption(state, dispatch) ||
+              this.breakAtEnd(state, dispatch),
+            Backspace: (state, dispatch) =>
+              this.backIntoFigure(state, dispatch),
             ArrowUp: (state, _, view) =>
               this.leave(state, view, "before", "up"),
             ArrowLeft: (state, _, view) =>
@@ -418,6 +660,7 @@ export class ProseEditor {
       !this.breaking ||
       !selection.empty ||
       !last ||
+      $from.parent.type.name !== "paragraph" ||
       doc.childCount < 2 ||
       $from.parent.content.size > 0
     ) {
@@ -426,6 +669,39 @@ export class ProseEditor {
 
     dispatch(state.tr.delete($from.before(1), $from.after(1)));
     this.breaking();
+
+    return true;
+  }
+
+  leftCaption(state, dispatch) {
+    const { $from } = state.selection;
+    if ($from.parent.type.name !== "figure") {
+      return false;
+    }
+    const after = $from.after();
+    const tr = state.tr;
+    if (tr.doc.nodeAt(after)?.type.name !== "paragraph") {
+      tr.insert(after, schema.nodes.paragraph.create());
+    }
+    dispatch(
+      tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView(),
+    );
+
+    return true;
+  }
+
+  backIntoFigure(state, dispatch) {
+    const { $from, empty } = state.selection;
+    if (
+      !empty ||
+      $from.parent.type.name !== "figure" ||
+      $from.parentOffset > 0
+    ) {
+      return false;
+    }
+    dispatch(
+      state.tr.setSelection(NodeSelection.create(state.doc, $from.before())),
+    );
 
     return true;
   }
@@ -444,6 +720,111 @@ export class ProseEditor {
 
   onLinkAsked(linkAsked) {
     this.linkAsked = linkAsked;
+  }
+
+  onImagesGiven(imagesGiven) {
+    this.imagesGiven = imagesGiven;
+  }
+
+  setLabels(told) {
+    this.labels = JSON.parse(told);
+  }
+
+  waitFor(at) {
+    this.waited += 1;
+    this.waiting.set(this.waited, at);
+
+    return this.waited;
+  }
+
+  mapWaiting(mapping) {
+    for (const [ticket, at] of this.waiting) {
+      this.waiting.set(ticket, mapping.map(at));
+    }
+  }
+
+  givenImages(view, files, at) {
+    const images = Array.from(files ?? []).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (images.length === 0) {
+      return false;
+    }
+    this.imagesGiven(images, this.waitFor(at));
+
+    return true;
+  }
+
+  askedForImage() {
+    return this.waitFor(this.view.state.selection.from);
+  }
+
+  insertFigure(asset, ticket) {
+    const at = this.waiting.get(ticket);
+    if (at === undefined || !assetOf(asset)) {
+      return;
+    }
+    const { state } = this.view;
+    const placed = schema.nodes.figure.create({ asset, size: "full" });
+    const $at = state.doc.resolve(Math.min(at, state.doc.content.size));
+    const tr = state.tr;
+    if (
+      $at.parent.type.name === "paragraph" &&
+      $at.parent.content.size === 0 &&
+      $at.depth > 0
+    ) {
+      tr.replaceWith($at.before(), $at.after(), placed);
+    } else {
+      const after = $at.depth > 0 ? $at.after(1) : $at.pos;
+      tr.insert(after, placed);
+    }
+    this.view.dispatch(tr.scrollIntoView());
+  }
+
+  forgetWaiting(ticket) {
+    this.waiting.delete(ticket);
+  }
+
+  chosenFigure(view, node, at, event) {
+    if (node.type.name !== "figure" || event.target?.tagName !== "IMG") {
+      return false;
+    }
+    view.dispatch(
+      view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)),
+    );
+    view.focus();
+
+    return true;
+  }
+
+  setFigureSize(size) {
+    const { selection } = this.view.state;
+    if (
+      !(selection instanceof NodeSelection) ||
+      selection.node.type.name !== "figure"
+    ) {
+      return;
+    }
+    const tr = this.view.state.tr.setNodeMarkup(selection.from, undefined, {
+      ...selection.node.attrs,
+      size: sizeOf(size),
+    });
+    this.view.dispatch(
+      tr.setSelection(NodeSelection.create(tr.doc, selection.from)),
+    );
+    this.tellSelection();
+  }
+
+  removeFigure() {
+    const { selection } = this.view.state;
+    if (
+      !(selection instanceof NodeSelection) ||
+      selection.node.type.name !== "figure"
+    ) {
+      return;
+    }
+    this.view.dispatch(this.view.state.tr.deleteSelection());
+    this.view.focus();
   }
 
   linkAt(state) {
@@ -512,21 +893,68 @@ export class ProseEditor {
   }
 
   tellSelection() {
-    const inToolbar = document.activeElement?.closest?.(".formatting");
+    const inToolbar = document.activeElement?.closest?.(".formatting, .adding");
     if (this.pressing || !this.view || (!this.view.hasFocus() && !inToolbar)) {
       return;
     }
     const { state } = this.view;
     const { from, to, empty } = state.selection;
     const row = this.view.dom.closest(".scene-row");
-    if (empty || !(state.selection instanceof TextSelection) || !row) {
+    if (!row) {
       this.selectionShown("");
       return;
     }
     const around = row.getBoundingClientRect();
+    const chosen =
+      state.selection instanceof NodeSelection ? state.selection.node : null;
+    if (chosen?.type.name === "figure") {
+      const shown = this.view.nodeDOM(from)?.getBoundingClientRect();
+      if (shown) {
+        this.selectionShown(
+          JSON.stringify({
+            above: shown.top - around.top,
+            below: shown.bottom - around.top,
+            across: shown.left + shown.width / 2 - around.left,
+            bold: false,
+            italic: false,
+            link: null,
+            figure: sizeOf(chosen.attrs.size),
+          }),
+        );
+        return;
+      }
+    }
+    if (empty && state.selection instanceof TextSelection) {
+      const { $from } = state.selection;
+      if (
+        $from.parent.type.name === "paragraph" &&
+        $from.parent.content.size === 0
+      ) {
+        const line =
+          placeholderEnd(this.view.nodeDOM($from.before())) ??
+          this.view.coordsAtPos(from);
+        this.selectionShown(
+          JSON.stringify({
+            above: line.top - around.top,
+            below: line.bottom - around.top,
+            across: line.left - around.left,
+            bold: false,
+            italic: false,
+            link: null,
+            empty_line: true,
+          }),
+        );
+        return;
+      }
+    }
+    if (empty || !(state.selection instanceof TextSelection)) {
+      this.selectionShown("");
+      return;
+    }
     const start = this.view.coordsAtPos(from);
     const end = this.view.coordsAtPos(to);
-    const middle = start.top === end.top ? (start.left + end.left) / 2 : start.left;
+    const middle =
+      start.top === end.top ? (start.left + end.left) / 2 : start.left;
 
     this.selectionShown(
       JSON.stringify({
@@ -594,7 +1022,9 @@ export class ProseEditor {
     }
     holdingTheCaret?.letGoOfTheCaret();
     holdingTheCaret = this;
-    this.sync.awareness.setLocalState(this.account ? { account: this.account } : {});
+    this.sync.awareness.setLocalState(
+      this.account ? { account: this.account } : {},
+    );
   }
 
   letGoOfTheCaret() {
@@ -829,6 +1259,9 @@ export class ProseEditor {
     const shown = view?.root.getSelection();
 
     if (!view || !view.hasFocus() || !shown || shown.rangeCount === 0) {
+      return null;
+    }
+    if (view.state.selection instanceof NodeSelection) {
       return null;
     }
     if (

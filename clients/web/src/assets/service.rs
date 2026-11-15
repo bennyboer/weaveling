@@ -237,6 +237,16 @@ pub async fn upload_own(bytes: &[u8]) -> Result<String, ApiError> {
     Ok(uploaded.id)
 }
 
+/// Uploads an image into a project, and returns the new asset's id.
+/// Every member who may read the project may see it.
+pub async fn upload_into(project: &str, bytes: &[u8]) -> Result<String, ApiError> {
+    let into = format!("{ASSETS}?project={}", encoded(project));
+    let uploaded: AssetDTO =
+        http::parsed(http::sent_bytes(Request::post(&into), bytes).await?, ASSET).await?;
+
+    Ok(uploaded.id)
+}
+
 /// Whether the asset is used for nothing but the given account's picture.
 /// Only then may the account decide to delete it when it shows another picture.
 pub async fn used_only_as_picture_of(id: &str, account: &str) -> Result<bool, ApiError> {

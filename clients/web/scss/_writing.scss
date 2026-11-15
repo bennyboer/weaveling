@@ -753,3 +753,138 @@ body:has(.writing .scene-slot.carried) {
   text-underline-offset: 0.15em;
 }
 
+.writing .scene .ProseMirror figure.figure {
+  width: 100%;
+  margin: 1.5rem auto;
+  text-align: center;
+
+  &.small {
+    width: 40%;
+  }
+
+  &.medium {
+    width: 70%;
+  }
+
+  img {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 3rem;
+    border-radius: 0.5rem;
+    background: var(--line);
+    cursor: pointer;
+  }
+
+  figcaption {
+    min-height: 1lh;
+    margin-top: 0.5rem;
+    color: var(--muted);
+    font-size: 0.85em;
+    font-style: italic;
+  }
+
+  &.captioning figcaption.empty::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    inset-inline: 0;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  &.captioning figcaption.empty {
+    position: relative;
+  }
+
+  &.ProseMirror-selectednode img {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  &.missing img {
+    display: none;
+  }
+
+  &.missing::before {
+    content: attr(data-missing);
+    display: block;
+    padding: 2rem 1rem;
+    border: 1px dashed var(--line);
+    border-radius: 0.5rem;
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+
+  @media (max-width: 44rem) {
+    &.small {
+      width: 70%;
+    }
+
+    &.medium {
+      width: 100%;
+    }
+  }
+}
+
+.writing .formatting.figure-sizes {
+  button.sized {
+    width: auto;
+    padding: 0 0.6rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+}
+
+.writing .adding {
+  position: absolute;
+  top: calc((var(--above) + var(--below)) / 2);
+  left: calc(var(--across) + 0.75rem);
+  translate: 0 -50%;
+  z-index: 20;
+
+  .add {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--paper);
+    color: var(--muted);
+
+    &:hover,
+    &[aria-expanded="true"] {
+      color: var(--ink);
+      border-color: var(--muted);
+    }
+  }
+
+  .menu {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 10rem;
+    padding: 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--paper);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+
+    button {
+      border: none;
+      text-align: left;
+      padding: 0.45rem 0.6rem;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .add {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+  }
+}
+

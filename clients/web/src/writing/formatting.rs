@@ -9,6 +9,7 @@ use crate::icons::Icon;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::speech;
+use crate::writing::images;
 use crate::writing::write_view_state::WriteViewState;
 
 /// Where a selection is and how it is formatted, as the editor tells it.
@@ -22,6 +23,10 @@ pub struct Selected {
     bold: bool,
     italic: bool,
     link: Option<String>,
+    #[serde(default)]
+    figure: Option<String>,
+    #[serde(default)]
+    empty_line: bool,
 }
 
 /// Which scene has text selected, and how, so its row can show the formatting toolbar.
@@ -94,7 +99,9 @@ impl Formatting {
 /// Moves the keyboard into the toolbar of the scene, on its first button.
 pub fn reached(scene: &SceneId) {
     if let Some(first) = document()
-        .query_selector(&format!("[data-scene-row=\"{scene}\"] .formatting button"))
+        .query_selector(&format!(
+            "[data-scene-row=\"{scene}\"] :is(.formatting, .adding) button"
+        ))
         .ok()
         .flatten()
         .and_then(|found| found.dyn_into::<HtmlElement>().ok())
@@ -111,6 +118,16 @@ pub fn toolbar(scene: SceneId, state: WriteViewState) -> impl IntoView {
     move || {
         let selected = state.formatting.in_scene(&scene)?;
         let linking = state.formatting.linking.get();
+        let placed = format!(
+            "--above: {}px; --below: {}px; --across: {}px",
+            selected.above, selected.below, selected.across
+        );
+        if let Some(size) = selected.figure.clone() {
+            return Some(figure_buttons(scene.clone(), size, placed, state).into_any());
+        }
+        if selected.empty_line {
+            return Some(adding(scene.clone(), placed, state).into_any());
+        }
 
         Some(
             html::div()
@@ -125,9 +142,111 @@ pub fn toolbar(scene: SceneId, state: WriteViewState) -> impl IntoView {
                     link_field(scene.clone(), selected.link.clone(), state).into_any()
                 } else {
                     buttons(scene.clone(), &selected, state).into_any()
-                }),
+                })
+                .into_any(),
         )
     }
+}
+
+/// The toolbar shown over a chosen image: its size, small, medium or the full width, and removing it.
+fn figure_buttons(
+    scene: SceneId,
+    size: String,
+    placed: String,
+    state: WriteViewState,
+) -> impl IntoView + use<> {
+    let removing = scene.clone();
+    let sized = move |named: &'static str, label: &'static str| {
+        let scene = scene.clone();
+
+        html::button()
+            .r#type("button")
+            .class("sized")
+            .attr("aria-pressed", (size == named).to_string())
+            .on(ev::pointerdown, |event| event.prevent_default())
+            .on(ev::click, move |_| {
+                _ = state
+                    .editors
+                    .told(&scene, |editor| editor.set_figure_size(named))
+            })
+            .child(speech::said(label))
+    };
+
+    html::div()
+        .class("formatting figure-sizes")
+        .role("toolbar")
+        .attr("aria-label", move || speech::say("figure-toolbar"))
+        .style(placed)
+        .child((
+            sized("small", "figure-small"),
+            sized("medium", "figure-medium"),
+            sized("full", "figure-full"),
+            html::button()
+                .r#type("button")
+                .attr("aria-label", move || speech::say("figure-remove"))
+                .attr("title", move || speech::say("figure-remove"))
+                .on(ev::pointerdown, |event| event.prevent_default())
+                .on(ev::click, move |_| {
+                    _ = state.editors.told(&removing, ProseEditor::remove_figure)
+                })
+                .child(icons::mark(Icon::Trash)),
+        ))
+}
+
+/// The "+" at the start of an empty line, offering what can be put there: for now an image.
+/// It is left out of the Tab order, so Tab still leaves the scene; Alt+F10 reaches it, as it does the toolbar.
+/// Choosing an image opens the scene's field for files, and the images go where the line is.
+fn adding(scene: SceneId, placed: String, state: WriteViewState) -> impl IntoView + use<> {
+    let open = RwSignal::new(false);
+    let back = scene.clone();
+
+    html::div()
+        .class("adding")
+        .style(placed)
+        .on(ev::keydown, move |event| {
+            if event.key() == "Escape" {
+                event.prevent_default();
+                event.stop_propagation();
+                if open.get_untracked() {
+                    open.set(false);
+                } else {
+                    state.editors.told(&back, ProseEditor::focus);
+                }
+            }
+        })
+        .child((
+            html::button()
+                .r#type("button")
+                .class("add")
+                .attr("aria-label", move || speech::say("adding-insert"))
+                .attr("title", move || speech::say("adding-insert"))
+                .attr("aria-haspopup", "menu")
+                .attr("tabindex", "-1")
+                .attr("aria-expanded", move || open.get().to_string())
+                .on(ev::pointerdown, |event| event.prevent_default())
+                .on(ev::click, move |_| open.update(|open| *open = !*open))
+                .child(icons::mark(Icon::Plus)),
+            move || {
+                let scene = scene.clone();
+                open.get().then(|| {
+                    html::div().class("menu").role("menu").child(
+                        html::button()
+                            .r#type("button")
+                            .role("menuitem")
+                            .on(ev::pointerdown, |event| event.prevent_default())
+                            .on(ev::click, move |_| {
+                                open.set(false);
+                                if let Some(ticket) =
+                                    state.editors.told(&scene, ProseEditor::asked_for_image)
+                                {
+                                    images::pick(&scene, ticket);
+                                }
+                            })
+                            .child(speech::said("adding-image")),
+                    )
+                })
+            },
+        ))
 }
 
 fn buttons(scene: SceneId, selected: &Selected, state: WriteViewState) -> impl IntoView + use<> {
