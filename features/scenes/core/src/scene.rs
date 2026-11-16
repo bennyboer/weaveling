@@ -107,7 +107,8 @@ impl Scene {
     }
 
     /// Returns the ids of the assets the scene holds, sorted and each once: the images of its figures.
-    /// A figure that names no image is left out.
+    /// A figure that names no image, or something not shaped like an asset's id, is left out.
+    /// At most `MOST_ASSETS` are returned, the first ones in sorted order.
     pub fn assets(&self) -> BTreeSet<String> {
         projection::assets_in(&self.doc)
     }
@@ -149,7 +150,7 @@ mod tests {
     use yrs::{Any, Text, Transact, Xml, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
     use super::*;
-    use crate::projection::FRAGMENT;
+    use crate::projection::{FRAGMENT, MOST_ASSETS};
 
     fn a_project() -> ProjectLink {
         ProjectLink::from("project_1")
@@ -515,6 +516,65 @@ mod tests {
         assert_eq!(
             scene.assets().into_iter().collect::<Vec<_>>(),
             vec!["asset_loom".to_owned(), "asset_weft".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_scene_holds_only_what_has_the_shape_of_an_asset_s_id() {
+        // given: a figure naming a well-formed image
+        let scene = Scene::empty(an_id(), a_project());
+        a_figure(&scene, Some("asset_loom_2"), "");
+        // and: figures naming something else
+        a_figure(&scene, Some("project_loom"), "Not an asset");
+        a_figure(&scene, Some("asset_loom/../weft"), "Not an id");
+        a_figure(&scene, Some("asset_lööm"), "Not plain");
+        a_figure(
+            &scene,
+            Some(&format!("asset_{}", "a".repeat(59))),
+            "Too long",
+        );
+
+        // then: the scene holds the well-formed image alone
+        assert_eq!(
+            scene.assets().into_iter().collect::<Vec<_>>(),
+            vec!["asset_loom_2".to_owned()],
+            "what a scene reports is stored as uses, so a client cannot fill them with anything"
+        );
+    }
+
+    #[test]
+    fn a_scene_holds_an_id_as_long_as_an_asset_s_id_may_be() {
+        // given: a figure naming an id of the longest shape
+        let scene = Scene::empty(an_id(), a_project());
+        let longest = format!("asset_{}", "a".repeat(58));
+        a_figure(&scene, Some(&longest), "");
+
+        // then: the scene holds it
+        assert_eq!(
+            scene.assets().into_iter().collect::<Vec<_>>(),
+            vec![longest]
+        );
+    }
+
+    #[test]
+    fn a_scene_reports_no_more_than_the_most_assets_and_keeps_the_first_in_order() {
+        // given: a scene naming one image more than it may report
+        let scene = Scene::empty(an_id(), a_project());
+        for each in (0..=MOST_ASSETS).rev() {
+            a_figure(&scene, Some(&format!("asset_{each:04}")), "");
+        }
+
+        // when: its images are read
+        let assets = scene.assets();
+
+        // then: only the most it may report are held
+        assert_eq!(assets.len(), MOST_ASSETS);
+        // and: they are the first in sorted order
+        assert_eq!(assets.first().map(String::as_str), Some("asset_0000"));
+        assert_eq!(
+            assets.last(),
+            Some(&format!("asset_{:04}", MOST_ASSETS - 1)),
+            "the one past the most is the last in order, so it is the one left out"
         );
     }
 

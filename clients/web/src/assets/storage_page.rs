@@ -5,6 +5,7 @@ use leptos::{IntoView, component, ev, html};
 
 use crate::accounts::{CurrentSession, SignInState};
 use crate::act::{Act, Here};
+use crate::assets::paged::Paged;
 use crate::assets::service;
 use crate::assets::service::{Purpose, Upload, UploadsSorted, Usage, Use};
 use crate::assets::uses as assets_uses;
@@ -27,18 +28,14 @@ const THUMBNAIL: u32 = 192;
 const VIEWED: u32 = 1_536;
 
 /// What the storage page shows and is doing.
-/// `asked` counts the lists asked for, so an answer to an older one is ignored.
 #[derive(Clone, Copy)]
-struct Shelf {
+struct StoragePageState {
     sorted: RwSignal<UploadsSorted>,
-    uploads: RwSignal<Vec<Upload>>,
-    next: RwSignal<Option<String>>,
+    uploads: Paged<Upload>,
     usage: RwSignal<Option<Usage>>,
-    loading: RwSignal<bool>,
     refused: RwSignal<Option<ApiError>>,
     deleting: RwSignal<Option<Upload>>,
     viewing: RwSignal<Option<Viewed>>,
-    asked: StoredValue<u64>,
 }
 
 /// An upload shown bigger in a dialog: its id, the words that say whose it is,
@@ -51,18 +48,15 @@ struct Viewed {
     uses: Vec<Use>,
 }
 
-impl Shelf {
-    fn asked() -> Self {
+impl StoragePageState {
+    fn open() -> Self {
         let shelf = Self {
             sorted: RwSignal::new(UploadsSorted::Newest),
-            uploads: RwSignal::new(Vec::new()),
-            next: RwSignal::new(None),
+            uploads: Paged::new(),
             usage: RwSignal::new(None),
-            loading: RwSignal::new(false),
             refused: RwSignal::new(None),
             deleting: RwSignal::new(None),
             viewing: RwSignal::new(None),
-            asked: StoredValue::new(0),
         };
         shelf.load(None);
         shelf.measure();
@@ -73,28 +67,17 @@ impl Shelf {
     /// Loads a page of uploads.
     /// Without a cursor it replaces the list, with one it adds the next page to it.
     fn load(self, after: Option<String>) {
-        self.asked.update_value(|asked| *asked += 1);
-        let asking = self.asked.get_value();
         let sorted = self.sorted.get_untracked();
-        self.loading.set(true);
-
-        spawn_local(async move {
-            let told = service::uploads(sorted, None, after.as_deref()).await;
-            if self.asked.get_value() != asking {
-                return;
-            }
-            match told {
-                Ok(page) => {
-                    match after {
-                        Some(_) => self.uploads.update(|shown| shown.extend(page.uploads)),
-                        None => self.uploads.set(page.uploads),
-                    }
-                    self.next.set(page.next);
-                }
-                Err(failed) => self.refused.set(Some(failed)),
-            }
-            self.loading.set(false);
-        });
+        let refused = self.refused;
+        self.uploads.load(
+            after,
+            move |failed| refused.set(Some(failed)),
+            move |after| async move {
+                service::uploads(sorted, None, after.as_deref())
+                    .await
+                    .map(|page| (page.uploads, page.next))
+            },
+        );
     }
 
     fn measure(self) {
@@ -113,6 +96,7 @@ impl Shelf {
 
     fn gone(self, id: &str) {
         self.uploads
+            .listed
             .update(|shown| shown.retain(|upload| upload.id != id));
         self.measure();
     }
@@ -138,7 +122,7 @@ pub fn StoragePage() -> impl IntoView {
 }
 
 fn storage() -> impl IntoView {
-    let shelf = Shelf::asked();
+    let shelf = StoragePageState::open();
     let speech = expect_context::<Speech>();
 
     (
@@ -160,14 +144,15 @@ fn storage() -> impl IntoView {
             sorting(shelf),
             (
                 move || {
-                    let nothing = shelf.uploads.with(Vec::is_empty)
-                        && shelf.next.with(Option::is_none)
-                        && !shelf.loading.get();
-                    nothing.then(|| html::p().class("hint").child(speech::said("storage-none")))
+                    shelf
+                        .uploads
+                        .nothing()
+                        .then(|| html::p().class("hint").child(speech::said("storage-none")))
                 },
                 blocks::rows(move || {
                     shelf
                         .uploads
+                        .listed
                         .get()
                         .into_iter()
                         .map(|upload| listed(shelf, upload, speech))
@@ -175,10 +160,10 @@ fn storage() -> impl IntoView {
                 }),
             ),
             move || {
-                shelf.next.get().map(|next| {
+                shelf.uploads.next.get().map(|next| {
                     blocks::more(
                         "storage-more",
-                        move || shelf.loading.get(),
+                        move || shelf.uploads.loading.get(),
                         move |_| shelf.load(Some(next.clone())),
                     )
                 })
@@ -189,7 +174,7 @@ fn storage() -> impl IntoView {
     )
 }
 
-fn sorting(shelf: Shelf) -> impl IntoView {
+fn sorting(shelf: StoragePageState) -> impl IntoView {
     html::label().class("sorting").child((
         html::span()
             .class("visually-hidden")
@@ -231,7 +216,7 @@ pub(crate) fn used(usage: Usage, speech: Speech) -> impl IntoView {
     })
 }
 
-fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
+fn listed(shelf: StoragePageState, upload: Upload, speech: Speech) -> impl IntoView {
     let id = upload.id.clone();
     let whose = {
         let upload = upload.clone();
@@ -318,7 +303,7 @@ fn not_deletable_because(uses: &[Use]) -> &'static str {
 }
 
 /// A dialog that shows an upload bigger, as large as the window allows, and what uses it.
-fn viewing(shelf: Shelf, viewed: Viewed) -> impl IntoView {
+fn viewing(shelf: StoragePageState, viewed: Viewed) -> impl IntoView {
     let close = move || shelf.viewing.set(None);
     let whose = viewed.whose;
     let used_in = used_in(viewed.id.clone(), viewed.project, viewed.uses);
@@ -353,7 +338,7 @@ fn used_in(id: String, project: Option<String>, uses: Vec<Use>) -> impl IntoView
     })
 }
 
-fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
+fn deletion(shelf: StoragePageState, upload: Upload) -> impl IntoView {
     let close = move || {
         shelf.refused.set(None);
         shelf.deleting.set(None);

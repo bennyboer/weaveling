@@ -1,5 +1,5 @@
 import { chosenFigure } from "./figures.js";
-import { SHOWN_WIDE, assetOf, sizeOf } from "./schema.js";
+import { assetOf, contentOf, sizeOf } from "./schema.js";
 
 const FIGURE_HTML = /<figure[^>]*\bdata-asset=/i;
 
@@ -33,11 +33,14 @@ export function holdsAFigure(data) {
   return FIGURE_HTML.test(data?.getData("text/html") ?? "");
 }
 
+export function holdsText(data) {
+  return (data?.getData("text/plain") ?? "").trim() !== "";
+}
+
 async function pictureOf(asset, size) {
-  const fetched = await fetch(
-    `/api/assets/${asset}/content?width=${SHOWN_WIDE[size]}`,
-    { credentials: "same-origin" },
-  );
+  const fetched = await fetch(contentOf(asset, size), {
+    credentials: "same-origin",
+  });
   if (!fetched.ok) {
     throw new Error(`the picture could not be fetched: ${fetched.status}`);
   }

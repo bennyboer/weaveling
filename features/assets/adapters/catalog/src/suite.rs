@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Format, Held, Holders, Owner,
-    Person, ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Format, Held, HeldMark, Holders,
+    Owner, Person, ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::{AccountId, Version};
 use time::OffsetDateTime;
@@ -153,9 +153,17 @@ async fn found<W: Workbench>(
         .await
         .map_err(unreachable)
         .expect("beginning should succeed");
+    let after = after.map(HeldMark::from);
     let held = bench
         .store()
-        .held_by(&mut transaction, holders, sorted, after, matching, at_most)
+        .held_by(
+            &mut transaction,
+            holders,
+            sorted,
+            after.as_ref(),
+            matching,
+            at_most,
+        )
         .await
         .expect("asking should succeed");
     transaction

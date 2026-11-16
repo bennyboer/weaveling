@@ -75,8 +75,7 @@ fn chooser(scene: SceneId, ticket: u32, state: WriteViewState) -> impl IntoView 
     let chosen = move |asset: String| {
         state.image_choice.closed();
         state.editors.told(&scene.get_value(), |editor| {
-            editor.insert_figure(&asset, ticket);
-            editor.forget_waiting(ticket);
+            editor.insert_chosen(&asset, ticket);
             editor.focus();
         });
     };

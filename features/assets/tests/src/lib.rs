@@ -7,8 +7,6 @@ mod assets_core;
 #[cfg(test)]
 mod assets_swept;
 #[cfg(test)]
-mod bench;
-#[cfg(test)]
 mod names_heard;
 #[cfg(test)]
 mod own_assets_seen;
@@ -24,3 +22,5 @@ mod scene_images_used;
 mod storage_overview;
 #[cfg(test)]
 mod stray_contents;
+#[cfg(test)]
+mod wiring;

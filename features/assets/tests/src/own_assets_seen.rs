@@ -10,13 +10,13 @@ use projects_contract::TRASHED;
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
-use crate::bench::{self, Bench, THE_LOOM, THE_WEFT};
+use crate::wiring::{self, THE_LOOM, THE_WEFT, Wired};
 
 const A_PORTRAIT: &[u8] = b"the bytes of a portrait";
 
-fn heard_by(bench: &Bench) -> Inboxed<RememberRolesListener> {
+fn heard_by(wired: &Wired) -> Inboxed<RememberRolesListener> {
     Inboxed::new(
-        RememberRolesListener::new(bench.assets.clone()),
+        RememberRolesListener::new(wired.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(clock::FixedClock::new(
             clock::at(1_700_000_000),
@@ -77,10 +77,10 @@ async fn the_members_heard(listener: &Inboxed<RememberRolesListener>) {
     hear(listener, founded(THE_WEFT, "account_grace")).await;
 }
 
-async fn adas_portrait(bench: &Bench) -> String {
-    let (id, _) = bench
+async fn adas_portrait(wired: &Wired) -> String {
+    let (id, _) = wired
         .assets
-        .upload_as_own(A_PORTRAIT.to_vec(), &bench::ada())
+        .upload_as_own(A_PORTRAIT.to_vec(), &wiring::ada())
         .await
         .expect("an account uploads its own");
 
@@ -97,7 +97,7 @@ fn is_not_found(seen: &Result<Content, AssetsError>) -> bool {
 #[tokio::test]
 async fn the_listener_hears_who_joins_goes_and_changes_role_but_not_abandoning() {
     // given: the listener
-    let listener = heard_by(&bench::a_bench().await);
+    let listener = heard_by(&wiring::a_workbench().await);
 
     // expect: it hears every word on who is a member
     for routing in [FOUNDED, JOINED, ROLE_CHANGED, LEFT, REMOVED, DISBANDED] {
@@ -113,16 +113,19 @@ async fn the_listener_hears_who_joins_goes_and_changes_role_but_not_abandoning()
 #[tokio::test]
 async fn an_account_s_own_portrait_is_seen_by_whoever_shares_a_project_with_it_alone() {
     // given: Ada and Bo in the loom, Grace in the weft, as the members told the assets
-    let bench = bench::a_bench().await;
-    the_members_heard(&heard_by(&bench)).await;
+    let wired = wiring::a_workbench().await;
+    the_members_heard(&heard_by(&wired)).await;
     // and: a portrait of Ada's own
-    let portrait = adas_portrait(&bench).await;
+    let portrait = adas_portrait(&wired).await;
 
     // when: Ada, Bo and Grace look at it, and the local agent
-    let by_ada = bench.assets.content(&portrait, None, &bench::ada()).await;
-    let by_bo = bench.assets.content(&portrait, None, &bench::bo()).await;
-    let by_grace = bench.assets.content(&portrait, None, &bench::grace()).await;
-    let by_nobody = bench.assets.content(&portrait, None, &Agent::Local).await;
+    let by_ada = wired.assets.content(&portrait, None, &wiring::ada()).await;
+    let by_bo = wired.assets.content(&portrait, None, &wiring::bo()).await;
+    let by_grace = wired
+        .assets
+        .content(&portrait, None, &wiring::grace())
+        .await;
+    let by_nobody = wired.assets.content(&portrait, None, &Agent::Local).await;
 
     // then: Ada and Bo see it, and to Grace and nobody it is not there
     assert!(by_ada.is_ok(), "{by_ada:?}");
@@ -134,16 +137,16 @@ async fn an_account_s_own_portrait_is_seen_by_whoever_shares_a_project_with_it_a
 #[tokio::test]
 async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more() {
     // given: Ada and Bo in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench().await;
-    let listener = heard_by(&bench);
+    let wired = wiring::a_workbench().await;
+    let listener = heard_by(&wired);
     the_members_heard(&listener).await;
-    let portrait = adas_portrait(&bench).await;
+    let portrait = adas_portrait(&wired).await;
     // and: Grace joined the loom too
     hear(&listener, joined(THE_LOOM, 3, "account_grace")).await;
     assert!(
-        bench
+        wired
             .assets
-            .content(&portrait, None, &bench::grace())
+            .content(&portrait, None, &wiring::grace())
             .await
             .is_ok()
     );
@@ -153,12 +156,15 @@ async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more()
 
     // then: she sees it no more, and Bo still does
     assert!(is_not_found(
-        &bench.assets.content(&portrait, None, &bench::grace()).await
+        &wired
+            .assets
+            .content(&portrait, None, &wiring::grace())
+            .await
     ));
     assert!(
-        bench
+        wired
             .assets
-            .content(&portrait, None, &bench::bo())
+            .content(&portrait, None, &wiring::bo())
             .await
             .is_ok()
     );
@@ -176,12 +182,12 @@ async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more()
 
     // then: Bo sees it no more, and Ada her own still
     assert!(is_not_found(
-        &bench.assets.content(&portrait, None, &bench::bo()).await
+        &wired.assets.content(&portrait, None, &wiring::bo()).await
     ));
     assert!(
-        bench
+        wired
             .assets
-            .content(&portrait, None, &bench::ada())
+            .content(&portrait, None, &wiring::ada())
             .await
             .is_ok()
     );
@@ -190,10 +196,10 @@ async fn one_who_left_or_whose_project_was_disbanded_sees_the_portrait_no_more()
 #[tokio::test]
 async fn a_joining_heard_after_the_leaving_that_followed_it_shows_nothing() {
     // given: Ada in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench().await;
-    let listener = heard_by(&bench);
+    let wired = wiring::a_workbench().await;
+    let listener = heard_by(&wired);
     the_members_heard(&listener).await;
-    let portrait = adas_portrait(&bench).await;
+    let portrait = adas_portrait(&wired).await;
 
     // when: Grace's leaving of the loom is heard before her joining
     hear(&listener, left(THE_LOOM, 4, "account_grace")).await;
@@ -201,18 +207,21 @@ async fn a_joining_heard_after_the_leaving_that_followed_it_shows_nothing() {
 
     // then: she does not see the portrait
     assert!(is_not_found(
-        &bench.assets.content(&portrait, None, &bench::grace()).await
+        &wired
+            .assets
+            .content(&portrait, None, &wiring::grace())
+            .await
     ));
 }
 
 #[tokio::test]
 async fn a_project_in_the_trash_is_shared_by_nobody_until_restored() {
     // given: Ada and Bo in the loom, and a portrait of Ada's own
-    let bench = bench::a_bench().await;
-    the_members_heard(&heard_by(&bench)).await;
-    let portrait = adas_portrait(&bench).await;
+    let wired = wiring::a_workbench().await;
+    the_members_heard(&heard_by(&wired)).await;
+    let portrait = adas_portrait(&wired).await;
     let trash = Inboxed::new(
-        RememberTrashListener::new(bench.assets.clone()),
+        RememberTrashListener::new(wired.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(clock::FixedClock::new(
             clock::at(1_700_000_000),
@@ -235,6 +244,6 @@ async fn a_project_in_the_trash_is_shared_by_nobody_until_restored() {
 
     // then: Bo sees the portrait no more
     assert!(is_not_found(
-        &bench.assets.content(&portrait, None, &bench::bo()).await
+        &wired.assets.content(&portrait, None, &wiring::bo()).await
     ));
 }

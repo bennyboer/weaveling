@@ -194,7 +194,7 @@ fn figure_buttons(
 
 /// The "+" at the start of an empty line, offering what can be put there: for now an image.
 /// It is left out of the Tab order, so Tab still leaves the scene; Alt+F10 reaches it, as it does the toolbar.
-/// Choosing an image opens the scene's field for files, and the images go where the line is.
+/// Choosing an image opens the dialog for images, and the image chosen goes where the line is.
 fn adding(scene: SceneId, placed: String, state: WriteViewState) -> impl IntoView + use<> {
     let open = RwSignal::new(false);
     let back = scene.clone();

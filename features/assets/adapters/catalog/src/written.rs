@@ -1,6 +1,6 @@
 use assets_core::{
-    AssetType, CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, SceneLink,
-    Sorted, UploadsOf, UploadsSorted, Usage,
+    AssetType, CatalogError, Format, HeldMark, Holder, Holders, Owner, ProjectLink, Purpose,
+    SceneLink, Sorted, UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::AccountId;
 
@@ -169,7 +169,7 @@ pub(crate) fn holdings_asked(
     placeholder: fn(usize) -> String,
     holders: Holders,
     sorted: Sorted,
-    after: Option<&Held>,
+    after: Option<&HeldMark>,
     matching: bool,
 ) -> String {
     let mut next = 2;

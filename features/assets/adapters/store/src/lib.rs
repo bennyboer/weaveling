@@ -1,4 +1,4 @@
-use assets_core::{AssetEvent, Format, Owner, Picture, ProjectLink};
+use assets_core::{AssetEvent, Format, ImageInfo, Owner, ProjectLink};
 use eventsourcing::{AccountId, Codec};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -7,13 +7,15 @@ use time::OffsetDateTime;
 enum StoredAssetEvent {
     Uploaded {
         owner: StoredOwner,
-        picture: StoredPicture,
+        #[serde(rename = "picture")]
+        image: StoredImageInfo,
         total_size: u64,
     },
     Deleted,
     Snapshotted {
         owner: StoredOwner,
-        picture: StoredPicture,
+        #[serde(rename = "picture")]
+        image: StoredImageInfo,
         total_size: u64,
         #[serde(with = "time::serde::rfc3339")]
         uploaded_at: OffsetDateTime,
@@ -29,7 +31,7 @@ enum StoredOwner {
 }
 
 #[derive(Serialize, Deserialize)]
-struct StoredPicture {
+struct StoredImageInfo {
     format: StoredFormat,
     width: u32,
     height: u32,
@@ -64,23 +66,23 @@ impl From<&AssetEvent> for StoredAssetEvent {
         match event {
             AssetEvent::Uploaded {
                 owner,
-                picture,
+                image,
                 total_size,
             } => Self::Uploaded {
                 owner: StoredOwner::from(owner),
-                picture: StoredPicture::from(picture),
+                image: StoredImageInfo::from(image),
                 total_size: *total_size,
             },
             AssetEvent::Deleted => Self::Deleted,
             AssetEvent::Snapshotted {
                 owner,
-                picture,
+                image,
                 total_size,
                 uploaded_at,
                 deleted_at,
             } => Self::Snapshotted {
                 owner: StoredOwner::from(owner),
-                picture: StoredPicture::from(picture),
+                image: StoredImageInfo::from(image),
                 total_size: *total_size,
                 uploaded_at: *uploaded_at,
                 deleted_at: *deleted_at,
@@ -94,23 +96,23 @@ impl From<StoredAssetEvent> for AssetEvent {
         match stored {
             StoredAssetEvent::Uploaded {
                 owner,
-                picture,
+                image,
                 total_size,
             } => Self::Uploaded {
                 owner: Owner::from(owner),
-                picture: Picture::from(picture),
+                image: ImageInfo::from(image),
                 total_size,
             },
             StoredAssetEvent::Deleted => Self::Deleted,
             StoredAssetEvent::Snapshotted {
                 owner,
-                picture,
+                image,
                 total_size,
                 uploaded_at,
                 deleted_at,
             } => Self::Snapshotted {
                 owner: Owner::from(owner),
-                picture: Picture::from(picture),
+                image: ImageInfo::from(image),
                 total_size,
                 uploaded_at,
                 deleted_at,
@@ -137,20 +139,20 @@ impl From<StoredOwner> for Owner {
     }
 }
 
-impl From<&Picture> for StoredPicture {
-    fn from(picture: &Picture) -> Self {
+impl From<&ImageInfo> for StoredImageInfo {
+    fn from(image: &ImageInfo) -> Self {
         Self {
-            format: StoredFormat::from(picture.format),
-            width: picture.width,
-            height: picture.height,
-            original_size: picture.original_size,
-            variants: picture.variants.clone(),
+            format: StoredFormat::from(image.format),
+            width: image.width,
+            height: image.height,
+            original_size: image.original_size,
+            variants: image.variants.clone(),
         }
     }
 }
 
-impl From<StoredPicture> for Picture {
-    fn from(stored: StoredPicture) -> Self {
+impl From<StoredImageInfo> for ImageInfo {
+    fn from(stored: StoredImageInfo) -> Self {
         Self {
             format: Format::from(stored.format),
             width: stored.width,
@@ -193,8 +195,8 @@ mod tests {
         (codec.event)((codec.body)(&event))
     }
 
-    fn a_picture(format: Format) -> Picture {
-        Picture {
+    fn an_image(format: Format) -> ImageInfo {
+        ImageInfo {
             format,
             width: 1_280,
             height: 1_024,
@@ -209,18 +211,18 @@ mod tests {
         for event in [
             AssetEvent::Uploaded {
                 owner: Owner::Project(ProjectLink::from("project_loom")),
-                picture: a_picture(Format::Jpeg),
+                image: an_image(Format::Jpeg),
                 total_size: 400_000,
             },
             AssetEvent::Uploaded {
                 owner: Owner::Account(AccountId::from("account_ada")),
-                picture: a_picture(Format::Png),
+                image: an_image(Format::Png),
                 total_size: 1,
             },
             AssetEvent::Deleted,
             AssetEvent::Snapshotted {
                 owner: Owner::Project(ProjectLink::from("project_loom")),
-                picture: a_picture(Format::Gif),
+                image: an_image(Format::Gif),
                 total_size: 400_000,
                 uploaded_at: OffsetDateTime::from_unix_timestamp(1_700_000_000)
                     .expect("a plausible moment"),
@@ -228,7 +230,7 @@ mod tests {
             },
             AssetEvent::Snapshotted {
                 owner: Owner::Account(AccountId::from("account_ada")),
-                picture: a_picture(Format::Webp),
+                image: an_image(Format::Webp),
                 total_size: 9,
                 uploaded_at: OffsetDateTime::from_unix_timestamp(1_700_000_000)
                     .expect("a plausible moment"),
@@ -240,6 +242,25 @@ mod tests {
             // then: it reads back as it was written
             assert_eq!(round_trip(event.clone()), Some(event));
         }
+    }
+
+    #[test]
+    fn an_upload_is_stored_with_its_image_under_the_name_it_always_had() {
+        // given: an upload
+        let uploaded = AssetEvent::Uploaded {
+            owner: Owner::Project(ProjectLink::from("project_loom")),
+            image: an_image(Format::Png),
+            total_size: 400_000,
+        };
+
+        // when: it is written
+        let body = (codec().body)(&uploaded);
+
+        // then: its image is stored as its picture
+        assert_eq!(
+            body["Uploaded"]["picture"]["width"], 1_280,
+            "events already stored name it so, and must still read back"
+        );
     }
 
     #[test]

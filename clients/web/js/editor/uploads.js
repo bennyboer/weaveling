@@ -1,15 +1,14 @@
 import { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-function placeOf(doc, at) {
-  const $at = doc.resolve(Math.min(at, doc.content.size));
-  if ($at.depth === 0) {
-    return $at.pos;
-  }
-  const empty =
-    $at.parent.type.name === "paragraph" && $at.parent.content.size === 0;
+import { figureSpot } from "./figures.js";
 
-  return empty ? $at.before(1) : $at.after(1);
+function keyOf(ticket, nth) {
+  return `${ticket}:${nth}`;
+}
+
+function placeOf(doc, at) {
+  return figureSpot(doc, at).from;
 }
 
 export class Uploads {
@@ -41,6 +40,12 @@ export class Uploads {
 
   placeOf(ticket) {
     return this.waiting.get(ticket);
+  }
+
+  movedTo(ticket, at) {
+    if (this.waiting.has(ticket)) {
+      this.waiting.set(ticket, at);
+    }
   }
 
   mapped(mapping) {
@@ -77,8 +82,9 @@ export class Uploads {
   }
 
   started(ticket, nth, name, label) {
-    this.uploads.set(`${ticket}:${nth}`, {
+    this.uploads.set(keyOf(ticket, nth), {
       ticket,
+      nth,
       name,
       label,
       fraction: 0,
@@ -88,7 +94,7 @@ export class Uploads {
   }
 
   progressed(ticket, nth, fraction) {
-    const upload = this.uploads.get(`${ticket}:${nth}`);
+    const upload = this.uploads.get(keyOf(ticket, nth));
     if (!upload) {
       return;
     }
@@ -100,7 +106,7 @@ export class Uploads {
   }
 
   refused(ticket, nth, told) {
-    const upload = this.uploads.get(`${ticket}:${nth}`);
+    const upload = this.uploads.get(keyOf(ticket, nth));
     if (upload) {
       upload.refused = told;
       this.redraw();
@@ -108,7 +114,7 @@ export class Uploads {
   }
 
   done(ticket, nth) {
-    this.uploads.delete(`${ticket}:${nth}`);
+    this.uploads.delete(keyOf(ticket, nth));
     this.letGoOf(ticket);
     this.redraw();
   }
@@ -126,7 +132,7 @@ export class Uploads {
       const state =
         upload.refused === null ? Math.round(upload.fraction * 100) : "refused";
       shown.push(
-        Decoration.widget(placeOf(doc, at), () => this.drawn(key, upload), {
+        Decoration.widget(placeOf(doc, at), () => this.drawn(upload), {
           key: `upload-${key}-${state}`,
           side: 1,
           ignoreSelection: true,
@@ -138,7 +144,7 @@ export class Uploads {
     return DecorationSet.create(doc, shown);
   }
 
-  drawn(key, upload) {
+  drawn(upload) {
     const shown = document.createElement("div");
     shown.className = "uploading";
     shown.contentEditable = "false";
@@ -159,8 +165,7 @@ export class Uploads {
       dismiss.setAttribute("aria-label", this.labels().dismiss ?? "");
       dismiss.addEventListener("mousedown", (event) => event.preventDefault());
       dismiss.addEventListener("click", () => {
-        const [ticket, nth] = key.split(":").map(Number);
-        this.done(ticket, nth);
+        this.done(upload.ticket, upload.nth);
         this.refocus();
       });
       shown.append(name, told, dismiss);

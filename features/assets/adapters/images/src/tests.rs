@@ -132,21 +132,21 @@ fn a_photo_is_made_into_each_width_narrower_than_it_and_its_own_as_webp_close_to
     let prepared = WebpImages.prepared(&uploaded).expect("a photo is taken");
 
     // then: it is told a JPEG as wide and high as it is, as large as it was uploaded
-    assert_eq!(prepared.picture.format, Format::Jpeg);
+    assert_eq!(prepared.image.format, Format::Jpeg);
     assert_eq!(
-        (prepared.picture.width, prepared.picture.height),
+        (prepared.image.width, prepared.image.height),
         (2_000, 1_500)
     );
-    assert_eq!(prepared.picture.original_size, uploaded.len() as u64);
+    assert_eq!(prepared.image.original_size, uploaded.len() as u64);
     // and: made into each width narrower than it and its own, narrowest first
-    assert_eq!(prepared.picture.variants, [96, 192, 384, 768, 1_536, 2_000]);
+    assert_eq!(prepared.image.variants, [96, 192, 384, 768, 1_536, 2_000]);
     assert_eq!(
         prepared
             .variants
             .iter()
             .map(|(width, _)| *width)
             .collect::<Vec<_>>(),
-        prepared.picture.variants
+        prepared.image.variants
     );
     // and: each a WebP of that width, as high as the photo is for it, close to the photo
     for (width, variant) in &prepared.variants {
@@ -185,10 +185,7 @@ fn a_photo_its_camera_took_turned_is_set_upright() {
         .expect("a turned photo is taken");
 
     // then: it stands upright, two hundred by four hundred, and so do its variants
-    assert_eq!(
-        (prepared.picture.width, prepared.picture.height),
-        (200, 400)
-    );
+    assert_eq!((prepared.image.width, prepared.image.height), (200, 400));
     let (width, variant) = prepared.variants.last().expect("its own width is made");
     assert_eq!(*width, 200);
     assert_eq!(
@@ -216,7 +213,7 @@ fn transparency_is_kept_where_there_is_any() {
     let back = read_back(&prepared.variants.last().expect("its own width is made").1).to_rgba8();
     assert_eq!(back.get_pixel(20, 100)[3], 0);
     assert_eq!(back.get_pixel(280, 100)[3], 255);
-    assert_eq!(prepared.picture.format, Format::Png);
+    assert_eq!(prepared.image.format, Format::Png);
 }
 
 #[test]
@@ -233,8 +230,8 @@ fn a_gif_and_a_webp_are_taken_too() {
     // expect: each is prepared, told by its own format
     for (uploaded, format) in [(gif, Format::Gif), (webp, Format::Webp)] {
         let prepared = WebpImages.prepared(&uploaded).expect("it is taken");
-        assert_eq!(prepared.picture.format, format);
-        assert_eq!(prepared.picture.variants, [96, 192, 384, 500]);
+        assert_eq!(prepared.image.format, format);
+        assert_eq!(prepared.image.variants, [96, 192, 384, 500]);
     }
 }
 

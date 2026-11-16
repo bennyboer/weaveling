@@ -22,8 +22,8 @@ fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
     }
 }
 
-fn a_photo() -> Picture {
-    Picture {
+fn a_photo() -> ImageInfo {
+    ImageInfo {
         format: Format::Jpeg,
         width: 1_280,
         height: 1_024,
@@ -39,7 +39,7 @@ fn of_the_loom() -> Owner {
 fn an_upload(owner: Owner) -> AssetEvent {
     AssetEvent::Uploaded {
         owner,
-        picture: a_photo(),
+        image: a_photo(),
         total_size: 400_000,
     }
 }
@@ -50,12 +50,12 @@ fn uploaded_at(seconds: i64) -> Asset {
 }
 
 #[test]
-fn an_asset_is_uploaded_for_its_owner_with_its_picture_and_what_it_keeps() {
+fn an_asset_is_uploaded_for_its_owner_with_its_image_and_what_it_keeps() {
     // when: a photo is uploaded into a project
     let decided = Asset::begin(
         AssetCommand::Upload {
             owner: of_the_loom(),
-            picture: a_photo(),
+            image: a_photo(),
             total_size: 400_000,
         },
         &ada(),
@@ -63,10 +63,10 @@ fn an_asset_is_uploaded_for_its_owner_with_its_picture_and_what_it_keeps() {
 
     // then: it is uploaded as asked
     assert_eq!(decided, Ok(vec![an_upload(of_the_loom())]));
-    // and: the asset is the project's, with its picture and every byte it keeps, from that moment
+    // and: the asset is the project's, with its image and every byte it keeps, from that moment
     let asset = uploaded_at(1_000);
     assert_eq!(asset.owner(), &of_the_loom());
-    assert_eq!(asset.picture(), &a_photo());
+    assert_eq!(asset.image(), &a_photo());
     assert_eq!(asset.total_size(), 400_000);
     assert_eq!(asset.uploaded_at(), clock::at(1_000));
     assert!(!asset.is_deleted());
@@ -109,7 +109,7 @@ fn a_deleted_asset_is_deleted_once_and_takes_nothing_more() {
         asset.decide(
             AssetCommand::Upload {
                 owner: of_the_loom(),
-                picture: a_photo(),
+                image: a_photo(),
                 total_size: 1,
             },
             &ada()
@@ -130,7 +130,7 @@ fn an_asset_is_uploaded_once_and_nothing_is_deleted_before() {
         uploaded_at(1_000).decide(
             AssetCommand::Upload {
                 owner: of_the_loom(),
-                picture: a_photo(),
+                image: a_photo(),
                 total_size: 1,
             },
             &ada()

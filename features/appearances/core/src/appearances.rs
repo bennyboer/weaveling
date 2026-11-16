@@ -39,22 +39,35 @@ impl AppearancesCore {
         }
     }
 
+    /// Returns where an idea appears, to whoever may read the idea's project.
+    /// An idea whose project is not known yet appears nowhere.
     pub async fn places_of_idea(
         &self,
         idea: &str,
         agent: &Agent,
     ) -> Result<Vec<Place>, AppearancesError> {
-        self.places_of_subject(&an_idea(idea), agent).await
+        let idea = an_idea(idea);
+        if !self.may_read(&idea, agent).await?.unwrap_or(true) {
+            return Err(AppearancesError::NotThere);
+        }
+
+        Ok(self.catalog.places_of(&idea).await?)
     }
 
     /// Returns the scenes an asset appears in, to whoever may read the asset's project.
-    /// An asset whose project is not known appears nowhere.
+    /// An asset whose project is not known is not there, just as one whose project the agent may not read.
+    /// So the answer never tells which assets exist in projects the agent cannot read.
     pub async fn places_of_asset(
         &self,
         asset: &str,
         agent: &Agent,
     ) -> Result<Vec<Place>, AppearancesError> {
-        self.places_of_subject(&an_asset(asset), agent).await
+        let asset = an_asset(asset);
+        if !self.may_read(&asset, agent).await?.unwrap_or(false) {
+            return Err(AppearancesError::NotThere);
+        }
+
+        Ok(self.catalog.places_of(&asset).await?)
     }
 
     pub async fn may_follow_idea(
@@ -71,18 +84,6 @@ impl AppearancesCore {
         agent: &Agent,
     ) -> Result<bool, AppearancesError> {
         Ok(self.may_read(&an_idea(idea), agent).await?.unwrap_or(false))
-    }
-
-    async fn places_of_subject(
-        &self,
-        subject: &Subject,
-        agent: &Agent,
-    ) -> Result<Vec<Place>, AppearancesError> {
-        if !self.may_read(subject, agent).await?.unwrap_or(true) {
-            return Err(AppearancesError::NotThere);
-        }
-
-        Ok(self.catalog.places_of(subject).await?)
     }
 
     /// Stores which project an idea belongs to.

@@ -94,6 +94,12 @@ extern "C" {
     #[wasm_bindgen(method, js_name = replaceAsset)]
     pub fn replace_asset(this: &ProseEditor, old: &str, copy: &str);
 
+    #[wasm_bindgen(method, js_name = onFiguresCopied)]
+    pub fn on_figures_copied(this: &ProseEditor, copied: &Closure<dyn Fn(js_sys::Array)>);
+
+    #[wasm_bindgen(method, js_name = leaveOut)]
+    pub fn leave_out(this: &ProseEditor, asset: &str);
+
     #[wasm_bindgen(method, js_name = setLabels)]
     pub fn set_labels(this: &ProseEditor, told: &str);
 
@@ -102,6 +108,9 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = insertFigure)]
     pub fn insert_figure(this: &ProseEditor, asset: &str, ticket: u32);
+
+    #[wasm_bindgen(method, js_name = insertChosen)]
+    pub fn insert_chosen(this: &ProseEditor, asset: &str, ticket: u32);
 
     #[wasm_bindgen(method, js_name = forgetWaiting)]
     pub fn forget_waiting(this: &ProseEditor, ticket: u32);

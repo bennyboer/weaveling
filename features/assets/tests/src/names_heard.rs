@@ -11,7 +11,7 @@ use projects_contract::{RENAMED, STARTED};
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
-use crate::bench::{self, Bench, THE_LOOM};
+use crate::wiring::{self, THE_LOOM, Wired};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 const ADA: &str = "account_ada";
@@ -87,24 +87,24 @@ pub(crate) fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
     )
 }
 
-pub(crate) fn people(bench: &Bench) -> RememberPeopleListener {
+pub(crate) fn people(wired: &Wired) -> RememberPeopleListener {
     RememberPeopleListener::new(
-        bench.assets.clone(),
-        bench.outbox.clone(),
-        bench.clock.clone(),
+        wired.assets.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
     )
 }
 
-pub(crate) fn project_names(bench: &Bench) -> RememberProjectNamesListener {
+pub(crate) fn project_names(wired: &Wired) -> RememberProjectNamesListener {
     RememberProjectNamesListener::new(
-        bench.assets.clone(),
-        bench.outbox.clone(),
-        bench.clock.clone(),
+        wired.assets.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
     )
 }
 
-async fn people_heard(bench: &Bench, messages: Vec<Message>) {
-    let listener = inboxed(people(bench));
+async fn people_heard(wired: &Wired, messages: Vec<Message>) {
+    let listener = inboxed(people(wired));
     for message in messages {
         listener
             .handle(&message)
@@ -113,8 +113,8 @@ async fn people_heard(bench: &Bench, messages: Vec<Message>) {
     }
 }
 
-async fn project_names_heard(bench: &Bench, messages: Vec<Message>) {
-    let listener = inboxed(project_names(bench));
+async fn project_names_heard(wired: &Wired, messages: Vec<Message>) {
+    let listener = inboxed(project_names(wired));
     for message in messages {
         listener
             .handle(&message)
@@ -124,15 +124,15 @@ async fn project_names_heard(bench: &Bench, messages: Vec<Message>) {
 }
 
 /// Ada uploads a photo into the loom, so both she and the loom use some storage.
-async fn ada_holding_a_photo() -> Bench {
-    let bench = bench::a_bench().await;
-    bench
+async fn ada_holding_a_photo() -> Wired {
+    let wired = wiring::a_workbench().await;
+    wired
         .assets
-        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &bench::ada())
+        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &wiring::ada())
         .await
         .expect("an author uploads");
 
-    bench
+    wired
 }
 
 fn names(held: &[Held]) -> Vec<(Option<&str>, Option<&str>)> {
@@ -144,9 +144,9 @@ fn names(held: &[Held]) -> Vec<(Option<&str>, Option<&str>)> {
 #[tokio::test]
 async fn the_listeners_hear_every_word_on_names_and_deletions() {
     // given: the listeners
-    let bench = bench::a_bench().await;
-    let people = inboxed(people(&bench));
-    let projects = inboxed(project_names(&bench));
+    let wired = wiring::a_workbench().await;
+    let people = inboxed(people(&wired));
+    let projects = inboxed(project_names(&wired));
 
     // expect: each hears what names its holders and what deletes them
     for routing in [
@@ -170,30 +170,30 @@ async fn the_listeners_hear_every_word_on_names_and_deletions() {
 #[tokio::test]
 async fn an_account_that_signed_up_is_named_and_found_by_its_name_or_address() {
     // given: Ada holding a photo
-    let bench = ada_holding_a_photo().await;
+    let wired = ada_holding_a_photo().await;
 
     // when: her sign-up is heard
     people_heard(
-        &bench,
+        &wired,
         vec![ada_signed_up(1, "Ada Lovelace", "ada@example.com")],
     )
     .await;
 
     // then: her holding is named
     assert_eq!(
-        names(&bench.held(Holders::Accounts, None).await),
+        names(&wired.held(Holders::Accounts, None).await),
         vec![(Some("Ada Lovelace"), Some("ada@example.com"))]
     );
     // and: she is found by either, whatever its case
     for term in ["LOVELACE", "ada@exa"] {
         assert_eq!(
-            bench.held(Holders::Accounts, Some(term)).await.len(),
+            wired.held(Holders::Accounts, Some(term)).await.len(),
             1,
             "{term}"
         );
     }
     assert!(
-        bench
+        wired
             .held(Holders::Accounts, Some("grace"))
             .await
             .is_empty()
@@ -203,9 +203,9 @@ async fn an_account_that_signed_up_is_named_and_found_by_its_name_or_address() {
 #[tokio::test]
 async fn a_deleted_account_is_named_no_more_even_by_a_sign_up_heard_late() {
     // given: Ada holding a photo, her deletion heard before her sign-up
-    let bench = ada_holding_a_photo().await;
+    let wired = ada_holding_a_photo().await;
     people_heard(
-        &bench,
+        &wired,
         vec![
             ada_deleted(5),
             ada_signed_up(1, "Ada Lovelace", "ada@example.com"),
@@ -215,20 +215,20 @@ async fn a_deleted_account_is_named_no_more_even_by_a_sign_up_heard_late() {
 
     // then: her holding is named no more
     assert_eq!(
-        names(&bench.held(Holders::Accounts, None).await),
+        names(&wired.held(Holders::Accounts, None).await),
         vec![(None, None)]
     );
-    assert!(bench.held(Holders::Accounts, Some("ada")).await.is_empty());
+    assert!(wired.held(Holders::Accounts, Some("ada")).await.is_empty());
 }
 
 #[tokio::test]
 async fn a_project_is_named_by_its_newest_name_heard() {
     // given: the loom holding a photo
-    let bench = ada_holding_a_photo().await;
+    let wired = ada_holding_a_photo().await;
 
     // when: its renaming is heard before its start
     project_names_heard(
-        &bench,
+        &wired,
         vec![
             the_loom_named(RENAMED, 2, "The Great Loom"),
             the_loom_named(STARTED, 1, "Loom"),
@@ -238,24 +238,24 @@ async fn a_project_is_named_by_its_newest_name_heard() {
 
     // then: it is named by its newest name and found by it
     assert_eq!(
-        names(&bench.held(Holders::Projects, None).await),
+        names(&wired.held(Holders::Projects, None).await),
         vec![(Some("The Great Loom"), None)]
     );
-    assert_eq!(bench.held(Holders::Projects, Some("great")).await.len(), 1);
+    assert_eq!(wired.held(Holders::Projects, Some("great")).await.len(), 1);
 }
 
 #[tokio::test]
 async fn a_deleted_project_is_named_no_more() {
     // given: the loom holding a photo, named
-    let bench = ada_holding_a_photo().await;
-    project_names_heard(&bench, vec![the_loom_named(STARTED, 1, "Loom")]).await;
+    let wired = ada_holding_a_photo().await;
+    project_names_heard(&wired, vec![the_loom_named(STARTED, 1, "Loom")]).await;
 
     // when: its deletion is heard
-    project_names_heard(&bench, vec![the_loom_deleted(4)]).await;
+    project_names_heard(&wired, vec![the_loom_deleted(4)]).await;
 
     // then: it is named no more
     assert_eq!(
-        names(&bench.held(Holders::Projects, None).await),
+        names(&wired.held(Holders::Projects, None).await),
         vec![(None, None)]
     );
 }
@@ -263,12 +263,12 @@ async fn a_deleted_project_is_named_no_more() {
 #[tokio::test]
 async fn the_names_of_the_deleted_are_let_go_of_with_the_tombstones() {
     // given: Ada and the loom deleted
-    let bench = ada_holding_a_photo().await;
-    people_heard(&bench, vec![ada_deleted(5)]).await;
-    project_names_heard(&bench, vec![the_loom_deleted(4)]).await;
+    let wired = ada_holding_a_photo().await;
+    people_heard(&wired, vec![ada_deleted(5)]).await;
+    project_names_heard(&wired, vec![the_loom_deleted(4)]).await;
 
     // when: the tombstones laid before now are let go of
-    let forgotten = bench
+    let forgotten = wired
         .assets
         .forget_tombstones_laid_before(clock::at(1_700_000_001), 100)
         .await
@@ -278,7 +278,7 @@ async fn the_names_of_the_deleted_are_let_go_of_with_the_tombstones() {
     assert_eq!(forgotten, 3);
     // and: what was forgotten once is not forgotten again
     assert_eq!(
-        bench
+        wired
             .assets
             .forget_tombstones_laid_before(clock::at(1_700_000_001), 100)
             .await
@@ -290,11 +290,11 @@ async fn the_names_of_the_deleted_are_let_go_of_with_the_tombstones() {
 #[tokio::test]
 async fn what_tells_no_name_nor_deletion_is_refused() {
     // given: the listeners
-    let bench = bench::a_bench().await;
+    let wired = wiring::a_workbench().await;
 
     // expect: a word that tells neither fails
     assert!(
-        inboxed(people(&bench))
+        inboxed(people(&wired))
             .handle(&told(
                 SIGNED_UP,
                 "account",
@@ -307,7 +307,7 @@ async fn what_tells_no_name_nor_deletion_is_refused() {
         "a message the listener cannot act on belongs in dead letters"
     );
     assert!(
-        inboxed(project_names(&bench))
+        inboxed(project_names(&wired))
             .handle(&told(
                 STARTED,
                 "project",

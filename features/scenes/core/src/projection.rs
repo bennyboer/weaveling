@@ -14,6 +14,14 @@ const FIGURE: &str = "figure";
 
 const ASSET: &str = "asset";
 
+/// The most assets one scene reports.
+/// A scene naming more keeps only the first ones, in sorted order.
+pub(crate) const MOST_ASSETS: usize = 500;
+
+const ASSET_ID_START: &str = "asset_";
+
+const LONGEST_ASSET_ID: usize = 64;
+
 fn unmarked<T: ReadTxn>(text: &XmlTextRef, txn: &T) -> String {
     text.diff(txn, YChange::identity)
         .into_iter()
@@ -73,7 +81,7 @@ fn assets_among<T: ReadTxn>(
         match node {
             XmlOut::Element(element) if is_figure(&element) => {
                 if let Some(Out::Any(Any::String(asset))) = element.get_attribute(txn, ASSET)
-                    && !asset.is_empty()
+                    && is_asset_id(&asset)
                 {
                     out.insert(asset.to_string());
                 }
@@ -91,7 +99,17 @@ pub(crate) fn assets_in(doc: &Doc) -> BTreeSet<String> {
     let mut assets = BTreeSet::new();
     assets_among(fragment.children(&txn), &txn, &mut assets);
 
-    assets
+    assets.into_iter().take(MOST_ASSETS).collect()
+}
+
+/// Whether a figure's attribute has the shape of an asset's id.
+/// Anything else is no asset, whatever a client wrote there.
+fn is_asset_id(named: &str) -> bool {
+    named.starts_with(ASSET_ID_START)
+        && named.len() <= LONGEST_ASSET_ID
+        && named
+            .bytes()
+            .all(|each| each.is_ascii_alphanumeric() || each == b'_')
 }
 
 const QUOTE: &str = "quote";

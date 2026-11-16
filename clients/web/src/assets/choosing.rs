@@ -1,14 +1,16 @@
 use assets_contract::refused;
 use fluent_bundle::FluentArgs;
-use leptos::html::Input;
+use leptos::html::{Button, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 use time::OffsetDateTime;
 use wasm_bindgen::JsCast;
-use web_sys::{AbortController, AbortSignal, File, HtmlInputElement};
+use web_sys::{AbortController, AbortSignal, File, HtmlElement, HtmlInputElement};
 
 use crate::accounts::{CurrentSession, SignInState};
+use crate::act::{Act, Here};
+use crate::assets::paged::Paged;
 use crate::assets::service;
 use crate::assets::service::{AssetType, UploadsSorted, Use};
 use crate::assets::uses;
@@ -88,6 +90,222 @@ impl Drop for Halting {
     }
 }
 
+/// What the dialog for choosing an image shows and is doing:
+/// whose assets it offers, the offered assets a page at a time, the files being uploaded,
+/// the asset being copied in or deleted, which tile asks about deleting, and an asset that is still in use.
+#[derive(Clone, Copy)]
+struct ChoiceDialogState {
+    project: StoredValue<String>,
+    of_type: AssetType,
+    whose: RwSignal<Whose>,
+    offered: Paged<Offered>,
+    failed: RwSignal<Option<ApiError>>,
+    sending: RwSignal<Vec<Sending>>,
+    counted: StoredValue<u32>,
+    copying: Act<Offered>,
+    copy_refused: RwSignal<Option<(String, ApiError)>>,
+    asking: RwSignal<Option<String>>,
+    deleting: Act<Offered>,
+    in_use: RwSignal<Option<InUse>>,
+    removal_failed: RwSignal<Option<ApiError>>,
+    halting: StoredValue<Halting, LocalStorage>,
+}
+
+impl ChoiceDialogState {
+    /// Opens the dialog's state for a project, and reads the first page of what it offers.
+    /// `chosen` is told the id of the project's asset that was chosen, a copy made here if it was kept elsewhere.
+    fn open(
+        project: String,
+        of_type: AssetType,
+        chosen: impl Fn(String) + Copy + Send + Sync + 'static,
+    ) -> Self {
+        let halting = StoredValue::new_local(Halting(AbortController::new().ok()));
+        let copy_refused = RwSignal::new(None);
+        let project = StoredValue::new(project);
+        let copying = Act::new(move |offered: Offered, here: Here| async move {
+            let Some(halted) = halting.try_with_value(Halting::signal).flatten() else {
+                return;
+            };
+            let copied = service::copy_into(&offered.id, &project.get_value(), Some(&halted)).await;
+            if halted.aborted() || !here.still() {
+                return;
+            }
+            match copied {
+                Ok(copy) => chosen(copy),
+                Err(failure) => copy_refused.set(Some((offered.id, failure))),
+            }
+        });
+        let offered = Paged::new();
+        let in_use = RwSignal::new(None);
+        let removal_failed = RwSignal::new(None);
+        let deleting = Act::new(move |asset: Offered, here: Here| async move {
+            let at = offered.listed.with_untracked(|listed: &Vec<Offered>| {
+                listed.iter().position(|other| other.id == asset.id)
+            });
+            let deleted = service::delete(&asset.id).await;
+            if !here.still() {
+                return;
+            }
+            match deleted {
+                Ok(()) => {
+                    offered
+                        .listed
+                        .update(|listed| listed.retain(|other| other.id != asset.id));
+                    focus_tile_at(at.unwrap_or(0));
+                }
+                Err(ApiError::Rejected(refusal))
+                    if refusal.kind.as_deref() == Some(refused::IN_USE) =>
+                {
+                    match service::asset(&asset.id).await {
+                        Ok(told) => in_use.set(Some(InUse {
+                            id: asset.id,
+                            project: asset.project,
+                            uses: told.uses,
+                        })),
+                        Err(failure) => removal_failed.set(Some(failure)),
+                    }
+                }
+                Err(failure) => removal_failed.set(Some(failure)),
+            }
+        });
+        let state = Self {
+            project,
+            of_type,
+            whose: RwSignal::new(Whose::Project),
+            offered,
+            failed: RwSignal::new(None),
+            sending: RwSignal::new(Vec::new()),
+            counted: StoredValue::new(0),
+            copying,
+            copy_refused,
+            asking: RwSignal::new(None),
+            deleting,
+            in_use,
+            removal_failed,
+            halting,
+        };
+        Effect::new(move || {
+            state.whose.track();
+            state.failed.set(None);
+            state.load(None);
+        });
+
+        state
+    }
+
+    /// Loads a page of what the dialog offers.
+    /// Without a cursor it replaces what is shown, so switching whose assets are offered shows the new ones at once.
+    fn load(self, after: Option<String>) {
+        let whose = self.whose.get_untracked();
+        let of_type = self.of_type;
+        let project = self.project.get_value();
+        let offered = self.offered;
+        let failed = self.failed;
+        let fresh = after.is_none();
+        self.offered.load(
+            after,
+            move |failure| {
+                if fresh {
+                    offered.listed.set(Vec::new());
+                    offered.next.set(None);
+                }
+                failed.set(Some(failure));
+            },
+            move |after| async move { page_of(whose, of_type, &project, after.as_deref()).await },
+        );
+    }
+
+    /// Uploads files into the project, each shown first in the grid with how far it got.
+    /// An uploaded file is offered like any other asset of the project; a refused one says why until dismissed.
+    fn take(self, files: Vec<File>) {
+        let tiles: Vec<Sending> = files
+            .iter()
+            .map(|file| {
+                self.counted.update_value(|counted| *counted += 1);
+                Sending {
+                    key: self.counted.get_value(),
+                    name: StoredValue::new(file.name()),
+                    done: RwSignal::new(0.0),
+                    refused: RwSignal::new(None),
+                }
+            })
+            .collect();
+        self.sending
+            .update(|sending| _ = sending.splice(0..0, tiles.iter().copied()));
+        let Some(halted) = self.halting.with_value(Halting::signal) else {
+            return;
+        };
+        let project = self.project.get_value();
+        let progressing = tiles.clone();
+        spawn_local(async move {
+            service::upload_each_into(
+                &project,
+                files,
+                Some(halted),
+                move |nth, fraction| {
+                    progressing[nth].done.try_set(fraction);
+                },
+                |nth, told| match told {
+                    Ok(id) => {
+                        self.sending
+                            .update(|sending| sending.retain(|other| other.key != tiles[nth].key));
+                        self.offered.listed.update(|offered| {
+                            offered.insert(
+                                0,
+                                Offered {
+                                    id,
+                                    uploaded_at: OffsetDateTime::now_utc(),
+                                    kept: Kept::Here,
+                                    project: Some(project.clone()),
+                                },
+                            );
+                        });
+                    }
+                    Err(failure) => {
+                        tiles[nth].refused.try_set(Some(failure));
+                    }
+                },
+            )
+            .await;
+        });
+    }
+
+    fn dismiss(self, key: u32) {
+        self.sending
+            .update(|sending| sending.retain(|other| other.key != key));
+    }
+
+    fn delete(self, asset: Offered) {
+        self.asking.set(None);
+        self.in_use.set(None);
+        self.removal_failed.set(None);
+        self.deleting.start(asset);
+    }
+}
+
+/// Moves the focus to the tile now at a place in the grid, or the last one, or to uploading a new image.
+fn focus_tile_at(at: usize) {
+    _ = request_animation_frame(move || {
+        let tiles = document()
+            .query_selector_all(".dialog.image-choice .image-offered")
+            .ok();
+        let tile = tiles.and_then(|tiles| match tiles.length() {
+            0 => None,
+            many => tiles.get((at as u32).min(many - 1)),
+        });
+        let focused = tile.or_else(|| {
+            document()
+                .query_selector(".dialog.image-choice .upload-new")
+                .ok()
+                .flatten()
+                .map(Into::into)
+        });
+        if let Some(focused) = focused.and_then(|focused| focused.dyn_into::<HtmlElement>().ok()) {
+            let _ = focused.focus();
+        }
+    });
+}
+
 /// The dialog for choosing an asset of a project, or uploading new ones into it.
 /// It offers the project's assets of the given type, or with an account the account's own uploads too,
 /// the newest first. Uploads show in the grid with how far they got, and once uploaded can be chosen.
@@ -109,204 +327,24 @@ pub fn dialog(
         expect_context::<CurrentSession>().state(),
         SignInState::SignedIn(_)
     );
-    let project = StoredValue::new(project);
-    let whose = RwSignal::new(Whose::Project);
-    let offered = RwSignal::new(Vec::<Offered>::new());
-    let next = RwSignal::new(None::<String>);
-    let loading = RwSignal::new(true);
-    let failed = RwSignal::new(None::<ApiError>);
-    let sending = RwSignal::new(Vec::<Sending>::new());
-    let copying = RwSignal::new(None::<String>);
-    let copy_refused = RwSignal::new(None::<(String, ApiError)>);
-    let asking = RwSignal::new(None::<String>);
-    let deleting = RwSignal::new(None::<String>);
-    let in_use = RwSignal::new(None::<InUse>);
-    let removal_failed = RwSignal::new(None::<ApiError>);
     let roles = expect_context::<Roles>();
-    let counted = StoredValue::new(0u32);
-    let halting = StoredValue::new_local(Halting(AbortController::new().ok()));
+    let here = project.clone();
+    let state = ChoiceDialogState::open(project, of_type, chosen);
     let picking = NodeRef::<Input>::new();
 
-    let load = move |after: Option<String>| {
-        let asked = whose.get_untracked();
-        let fresh = after.is_none();
-        loading.set(true);
-        spawn_local(async move {
-            let page = page_of(asked, of_type, &project.get_value(), after.as_deref()).await;
-            if whose.try_get_untracked() != Some(asked) {
-                return;
-            }
-            loading.set(false);
-            match page {
-                Ok((more, then)) if fresh => {
-                    offered.set(more);
-                    next.set(then);
-                }
-                Ok((more, then)) => {
-                    offered.update(|offered| offered.extend(more));
-                    next.set(then);
-                }
-                Err(failure) => {
-                    if fresh {
-                        offered.set(Vec::new());
-                        next.set(None);
-                    }
-                    failed.set(Some(failure));
-                }
-            }
-        });
-    };
-    Effect::new(move || {
-        whose.track();
-        failed.set(None);
-        load(None);
-    });
-
-    let take = move |files: Vec<File>| {
-        let batch: Vec<(Sending, File)> = files
-            .into_iter()
-            .map(|file| {
-                counted.update_value(|counted| *counted += 1);
-                let shown = Sending {
-                    key: counted.get_value(),
-                    name: StoredValue::new(file.name()),
-                    done: RwSignal::new(0.0),
-                    refused: RwSignal::new(None),
-                };
-
-                (shown, file)
-            })
-            .collect();
-        sending.update(|sending| {
-            sending.splice(0..0, batch.iter().map(|(shown, _)| *shown));
-        });
-        spawn_local(async move {
-            let most = service::most_each_upload().await.ok().flatten();
-            let mut queued = Vec::new();
-            for (shown, file) in batch {
-                match most {
-                    Some(most) if file.size() > most as f64 => {
-                        shown.refused.try_set(Some(service::too_large(most)));
-                    }
-                    _ => queued.push((shown, file)),
-                }
-            }
-            for (shown, file) in queued {
-                let Some(halted) = halting.try_with_value(Halting::signal).flatten() else {
-                    return;
-                };
-                let done = shown.done;
-                let told = service::upload_into(
-                    &project.get_value(),
-                    &file,
-                    move |fraction| {
-                        done.try_set(fraction);
-                    },
-                    Some(&halted),
-                )
-                .await;
-                if halted.aborted() {
-                    return;
-                }
-                match told {
-                    Ok(id) => {
-                        sending.update(|sending| sending.retain(|other| other.key != shown.key));
-                        offered.update(|offered| {
-                            offered.insert(
-                                0,
-                                Offered {
-                                    id,
-                                    uploaded_at: OffsetDateTime::now_utc(),
-                                    kept: Kept::Here,
-                                    project: Some(project.get_value()),
-                                },
-                            );
-                        });
-                    }
-                    Err(failure) => {
-                        shown.refused.try_set(Some(failure));
-                    }
-                }
-            }
-        });
-    };
-    let dismiss =
-        move |key: u32| sending.update(|sending| sending.retain(|other| other.key != key));
-    let choose = move |offered: Offered| {
-        if offered.kept == Kept::Here {
-            chosen(offered.id);
-            return;
+    let choose = move |offered: Offered| match offered.kept {
+        Kept::Here => chosen(offered.id),
+        Kept::Own | Kept::Elsewhere(_) => {
+            state.copy_refused.set(None);
+            state.copying.start(offered);
         }
-        if copying.with_untracked(Option::is_some) {
-            return;
-        }
-        copy_refused.set(None);
-        copying.set(Some(offered.id.clone()));
-        let into = project.get_value();
-        spawn_local(async move {
-            let Some(halted) = halting.try_with_value(Halting::signal).flatten() else {
-                return;
-            };
-            let copied = service::copy_into(&offered.id, &into, Some(&halted)).await;
-            if halted.aborted() {
-                return;
-            }
-            copying.try_set(None);
-            match copied {
-                Ok(copy) => chosen(copy),
-                Err(failure) => {
-                    copy_refused.try_set(Some((offered.id, failure)));
-                }
-            }
-        });
-    };
-    let delete = move |asset: Offered| {
-        asking.set(None);
-        in_use.set(None);
-        removal_failed.set(None);
-        deleting.set(Some(asset.id.clone()));
-        spawn_local(async move {
-            let deleted = service::delete(&asset.id).await;
-            deleting.try_set(None);
-            match deleted {
-                Ok(()) => {
-                    offered.try_update(|offered| offered.retain(|other| other.id != asset.id));
-                }
-                Err(ApiError::Rejected(refusal))
-                    if refusal.kind.as_deref() == Some(refused::IN_USE) =>
-                {
-                    match service::uses_of(&asset.id).await {
-                        Ok(used) => {
-                            in_use.try_set(Some(InUse {
-                                id: asset.id,
-                                project: asset.project,
-                                uses: used,
-                            }));
-                        }
-                        Err(failure) => {
-                            removal_failed.try_set(Some(failure));
-                        }
-                    }
-                }
-                Err(failure) => {
-                    removal_failed.try_set(Some(failure));
-                }
-            }
-        });
     };
     let deletable = move |asset: &Offered| match &asset.project {
         Some(project) => roles.may_write(project),
         None => asset.kept == Kept::Own,
     };
-    let shown = Shown {
-        copying,
-        copy_refused,
-        asking,
-        deleting,
-    };
-    let here = project.get_value();
     let follow = Callback::new(move |scene: SceneId| {
-        if let Some(asset) = in_use.get_untracked() {
+        if let Some(asset) = state.in_use.get_untracked() {
             followed(scene, asset.id);
         }
     });
@@ -316,11 +354,11 @@ pub fn dialog(
         "image-choice",
         closed,
         (
-            signed_in.then(|| filter(whose, speech)),
-            move || failed.get().map(problem::problem),
-            move || removal_failed.get().map(problem::problem),
+            signed_in.then(|| filter(state.whose, speech)),
+            move || state.failed.get().map(problem::problem),
+            move || state.removal_failed.get().map(problem::problem),
             move || {
-                in_use.get().map(|asset| {
+                state.in_use.get().map(|asset| {
                     let followed =
                         (asset.project.as_deref() == Some(here.as_str())).then_some(follow);
                     html::div().class("in-use").role("alert").child((
@@ -333,7 +371,7 @@ pub fn dialog(
                             .r#type("button")
                             .class("dismiss")
                             .attr("aria-label", move || speech.say("problem-dismiss"))
-                            .on(ev::click, move |_| in_use.set(None))
+                            .on(ev::click, move |_| state.in_use.set(None))
                             .child("×"),
                     ))
                 })
@@ -362,7 +400,7 @@ pub fn dialog(
                         })
                         .unwrap_or_default();
                     input.set_value("");
-                    take(files);
+                    state.take(files);
                 }),
             html::ul().class("image-grid").child((
                 html::li().child(
@@ -380,24 +418,23 @@ pub fn dialog(
                         )),
                 ),
                 For(ForProps::builder()
-                    .each(move || sending.get())
+                    .each(move || state.sending.get())
                     .key(|shown: &Sending| shown.key)
-                    .children(move |shown| sending_tile(shown, speech, dismiss))
+                    .children(move |shown| sending_tile(shown, state, speech))
                     .build()),
                 For(ForProps::builder()
-                    .each(move || offered.get())
+                    .each(move || state.offered.listed.get())
                     .key(|image: &Offered| (image.id.clone(), image.kept.clone()))
                     .children(move |image| {
                         let may_delete = deletable(&image);
-                        tile(image, may_delete, shown, speech, choose, delete)
+                        tile(image, may_delete, state, speech, choose)
                     })
                     .build()),
             )),
             move || {
-                let nothing = !loading.get()
-                    && failed.get().is_none()
-                    && offered.with(Vec::is_empty)
-                    && sending.with(Vec::is_empty);
+                let nothing = state.offered.nothing()
+                    && state.failed.with(Option::is_none)
+                    && state.sending.with(Vec::is_empty);
                 nothing.then(|| {
                     html::p()
                         .class("hint")
@@ -405,11 +442,11 @@ pub fn dialog(
                 })
             },
             move || {
-                next.get().is_some().then(|| {
+                state.offered.next.get().is_some().then(|| {
                     blocks::more(
                         "image-choice-more",
-                        move || loading.get(),
-                        move |_| load(next.get_untracked()),
+                        move || state.offered.loading.get(),
+                        move |_| state.load(state.offered.next.get_untracked()),
                     )
                 })
             },
@@ -442,11 +479,7 @@ fn filter(whose: RwSignal<Whose>, speech: Speech) -> impl IntoView {
         ))
 }
 
-fn sending_tile(
-    shown: Sending,
-    speech: Speech,
-    dismiss: impl Fn(u32) + Copy + Send + Sync + 'static,
-) -> impl IntoView {
+fn sending_tile(shown: Sending, state: ChoiceDialogState, speech: Speech) -> impl IntoView {
     let name = shown.name.get_value();
     let uploading = {
         let mut args = FluentArgs::new();
@@ -475,12 +508,13 @@ fn sending_tile(
                     Some(failure) => (
                         html::span()
                             .class("sending-refused")
+                            .role("alert")
                             .child(problem::worded(&failure, speech)),
                         html::button()
                             .r#type("button")
                             .class("dismiss")
                             .attr("aria-label", move || speech.say("problem-dismiss"))
-                            .on(ev::click, move |_| dismiss(shown.key))
+                            .on(ev::click, move |_| state.dismiss(shown.key))
                             .child("×"),
                     )
                         .into_any(),
@@ -489,63 +523,54 @@ fn sending_tile(
     )
 }
 
-/// Which offered asset is being copied into the project, which could not be and why,
-/// which one the dialog asks about deleting, and which one is being deleted.
-#[derive(Clone, Copy)]
-struct Shown {
-    copying: RwSignal<Option<String>>,
-    copy_refused: RwSignal<Option<(String, ApiError)>>,
-    asking: RwSignal<Option<String>>,
-    deleting: RwSignal<Option<String>>,
-}
-
 fn tile(
     image: Offered,
     may_delete: bool,
-    shown: Shown,
+    state: ChoiceDialogState,
     speech: Speech,
     choose: impl Fn(Offered) + Copy + Send + Sync + 'static,
-    delete: impl Fn(Offered) + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
     let label = described(&image, speech);
     let source = service::content(&image.id, OFFERED_WIDE);
     let id = StoredValue::new(image.id.clone());
-    let copying = move || {
-        shown
-            .copying
-            .with(|copying| copying.as_deref() == Some(&id.get_value()))
-    };
     let asked = move || {
-        shown
+        state
             .asking
             .with(|asking| asking.as_deref() == Some(&id.get_value()))
     };
-    let deleting = move || {
-        shown
-            .deleting
-            .with(|deleting| deleting.as_deref() == Some(&id.get_value()))
-    };
     let deleted = image.clone();
+    let busy = image.clone();
+    let offered: NodeRef<Button> = NodeRef::new();
 
     html::li().class("offered").child((
         html::button()
+            .node_ref(offered)
             .r#type("button")
             .class("image-offered")
             .attr("aria-label", label.clone())
             .attr("title", label)
-            .attr("aria-busy", move || (copying() || deleting()).to_string())
+            .attr("aria-busy", move || {
+                state
+                    .copying
+                    .busy_on(&busy)
+                    .or_else(|| state.deleting.busy_on(&busy))
+                    .unwrap_or("false")
+            })
             .on(ev::click, move |_| choose(image.clone()))
             .child((
                 html::img().src(source).alt("").attr("loading", "lazy"),
-                move || {
-                    copying().then(|| {
-                        html::span()
-                            .class("tile-note")
-                            .child(move || speech.say("image-copying"))
-                    })
+                {
+                    let copying = deleted.clone();
+                    move || {
+                        state.copying.busy_on(&copying).map(|_| {
+                            html::span()
+                                .class("tile-note")
+                                .child(move || speech.say("image-copying"))
+                        })
+                    }
                 },
                 move || {
-                    shown
+                    state
                         .copy_refused
                         .get()
                         .filter(|(refused, _)| *refused == id.get_value())
@@ -562,12 +587,18 @@ fn tile(
                 .r#type("button")
                 .class("tile-remove")
                 .attr("aria-label", move || speech.say("image-choice-delete"))
-                .on(ev::click, move |_| shown.asking.set(Some(id.get_value())))
+                .on(ev::click, move |_| state.asking.set(Some(id.get_value())))
                 .child("×")
         }),
         move || {
             asked().then(|| {
                 let deleted = deleted.clone();
+                let confirm: NodeRef<Button> = NodeRef::new();
+                Effect::new(move || {
+                    if let Some(confirm) = confirm.get() {
+                        let _ = confirm.focus();
+                    }
+                });
                 html::div()
                     .class("tile-asking")
                     .role("group")
@@ -577,13 +608,19 @@ fn tile(
                     .child((
                         html::span().child(move || speech.say("image-choice-delete-asking")),
                         html::button()
+                            .node_ref(confirm)
                             .r#type("button")
                             .class("danger")
-                            .on(ev::click, move |_| delete(deleted.clone()))
+                            .on(ev::click, move |_| state.delete(deleted.clone()))
                             .child(move || speech.say("image-choice-delete-confirm")),
                         html::button()
                             .r#type("button")
-                            .on(ev::click, move |_| shown.asking.set(None))
+                            .on(ev::click, move |_| {
+                                state.asking.set(None);
+                                if let Some(offered) = offered.get_untracked() {
+                                    let _ = offered.focus();
+                                }
+                            })
                             .child(move || speech.say("image-choice-delete-keep")),
                     ))
             })

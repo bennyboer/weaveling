@@ -3,13 +3,14 @@ use std::rc::Rc;
 
 use accounts_contract::refused::NOT_SIGNED_IN;
 use gloo_net::http::{RequestBuilder, Response};
+use js_sys::{Promise, Uint8Array};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AbortSignal, ProgressEvent, XmlHttpRequest};
+use web_sys::{AbortSignal, Headers, ProgressEvent, ResponseInit, XmlHttpRequest};
 
 const PROBLEM: &str = "application/problem+json";
 const IF_MATCH: &str = "If-Match";
@@ -82,7 +83,7 @@ pub(crate) async fn sent_bytes(
     bytes: &[u8],
 ) -> Result<Response, ApiError> {
     request
-        .body(js_sys::Uint8Array::from(bytes))
+        .body(Uint8Array::from(bytes))
         .map_err(|_| ApiError::Unexpected)?
         .send()
         .await
@@ -91,7 +92,6 @@ pub(crate) async fn sent_bytes(
 
 /// Posts bytes and tells how much of them has been sent, as a fraction from 0 to 1, while they go.
 /// The answer comes back as a response like any other, so it is checked and parsed the same way.
-/// Posts the bytes, telling how far the body has been sent.
 /// Given a signal, the request is aborted once the signal is, and fails as if the server could not be reached.
 pub(crate) async fn posted_watched(
     url: &str,
@@ -115,7 +115,7 @@ pub(crate) async fn posted_watched(
         .upload()
         .map_err(|_| ApiError::Unexpected)?
         .set_onprogress(Some(progress.as_ref().unchecked_ref()));
-    let ended = js_sys::Promise::new(&mut |resolve, reject| {
+    let ended = Promise::new(&mut |resolve, reject| {
         request.set_onload(Some(&resolve));
         request.set_onerror(Some(&reject));
         request.set_onabort(Some(&reject));
@@ -145,13 +145,13 @@ pub(crate) async fn posted_watched(
 
 fn answer_of(request: &XmlHttpRequest) -> Result<Response, ApiError> {
     let status = request.status().map_err(|_| ApiError::Unexpected)?;
-    let headers = web_sys::Headers::new().map_err(|_| ApiError::Unexpected)?;
+    let headers = Headers::new().map_err(|_| ApiError::Unexpected)?;
     if let Ok(Some(kind)) = request.get_response_header("content-type") {
         headers
             .set("content-type", &kind)
             .map_err(|_| ApiError::Unexpected)?;
     }
-    let init = web_sys::ResponseInit::new();
+    let init = ResponseInit::new();
     init.set_status(status);
     init.set_headers(&headers);
     let body = match status {

@@ -1,7 +1,7 @@
 import { NodeSelection, Plugin, TextSelection } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-import { SHOWN_WIDE, SIZES, assetOf, schema, sizeOf } from "./schema.js";
+import { SIZES, assetOf, contentOf, schema, sizeOf } from "./schema.js";
 
 export class FigureView {
   constructor(node, labels) {
@@ -33,9 +33,7 @@ export class FigureView {
     this.dom.classList.toggle("missing", !asset);
     this.contentDOM.classList.toggle("empty", node.content.size === 0);
     this.contentDOM.dataset.placeholder = this.labels().caption ?? "";
-    const src = asset
-      ? `/api/assets/${asset}/content?width=${SHOWN_WIDE[size]}`
-      : "";
+    const src = asset ? contentOf(asset, size) : "";
     if (this.picture.getAttribute("src") !== src) {
       this.picture.setAttribute("src", src);
     }
@@ -66,6 +64,21 @@ export function assetsIn(fragment) {
   });
 
   return [...found];
+}
+
+export function leftOut(state, asset) {
+  const tr = state.tr;
+  const found = [];
+  state.doc.descendants((node, at) => {
+    if (node.type.name === "figure" && node.attrs.asset === asset) {
+      found.push([at, at + node.nodeSize]);
+    }
+  });
+  for (const [from, to] of found.reverse()) {
+    tr.delete(from, to);
+  }
+
+  return tr;
 }
 
 export function reassigned(state, old, copy) {
@@ -127,22 +140,27 @@ export function clickedFigure(view, node, at, event) {
   return true;
 }
 
+export function figureSpot(doc, at) {
+  const $at = doc.resolve(Math.min(at, doc.content.size));
+  if ($at.depth === 0) {
+    return { from: $at.pos, to: $at.pos };
+  }
+  const empty =
+    $at.depth === 1 &&
+    $at.parent.type.name === "paragraph" &&
+    $at.parent.content.size === 0;
+
+  return empty
+    ? { from: $at.before(1), to: $at.after(1) }
+    : { from: $at.after(1), to: $at.after(1) };
+}
+
 export function placed(state, asset, at) {
   const figure = schema.nodes.figure.create({ asset, size: "full" });
-  const $at = state.doc.resolve(Math.min(at, state.doc.content.size));
-  const tr = state.tr;
-  if (
-    $at.parent.type.name === "paragraph" &&
-    $at.parent.content.size === 0 &&
-    $at.depth > 0
-  ) {
-    tr.replaceWith($at.before(), $at.after(), figure);
-  } else {
-    const after = $at.depth > 0 ? $at.after(1) : $at.pos;
-    tr.insert(after, figure);
-  }
+  const { from, to } = figureSpot(state.doc, at);
+  const tr = state.tr.replaceWith(from, to, figure).scrollIntoView();
 
-  return tr.scrollIntoView();
+  return { tr, after: from + figure.nodeSize };
 }
 
 export function sizing(size) {

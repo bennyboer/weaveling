@@ -45,13 +45,17 @@ impl KeptHandler for RememberPicturesListener {
                     &account,
                     version,
                     &picture,
-                    previous.as_deref(),
-                    drop_previous,
+                    previous.as_deref().filter(|_| drop_previous),
                 )
                 .await?),
             AccountEventDTO::PictureRemoved { picture, drop } => Ok(self
                 .assets
-                .picture_removed(Some(transaction), &account, version, &picture, drop)
+                .picture_removed(
+                    Some(transaction),
+                    &account,
+                    version,
+                    drop.then_some(picture.as_str()),
+                )
                 .await?),
             _ => Err("this tells no change of an account's picture".into()),
         }

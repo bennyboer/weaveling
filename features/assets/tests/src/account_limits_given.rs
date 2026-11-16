@@ -14,7 +14,7 @@ use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
-use crate::bench::{self, Bench};
+use crate::wiring::{self, Wired};
 
 const A_PORTRAIT: &[u8] = b"the bytes of a portrait";
 const BO: &str = "account_bo";
@@ -31,9 +31,9 @@ fn told(routing: &str, account: &str, version: u64, name: &str) -> Message {
     )
 }
 
-async fn heard(bench: &Bench, message: Message) {
+async fn heard(wired: &Wired, message: Message) {
     Inboxed::new(
-        RememberOperatorsListener::new(bench.assets.clone()),
+        RememberOperatorsListener::new(wired.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(clock::at(
             1_700_000_000,
@@ -46,25 +46,25 @@ async fn heard(bench: &Bench, message: Message) {
 
 /// Every account has a limit of one megabyte.
 /// Ada runs the instance, as reported by the accounts feature.
-async fn ada_running_the_instance() -> Bench {
-    let bench = bench::a_bench_limited(Limits {
+async fn ada_running_the_instance() -> Wired {
+    let wired = wiring::a_workbench_limited(Limits {
         each_account: Some(1 << 20),
         ..Limits::default()
     })
     .await;
     heard(
-        &bench,
+        &wired,
         told(BECAME_OPERATOR, "account_ada", 3, "BECAME_OPERATOR"),
     )
     .await;
 
-    bench
+    wired
 }
 
-async fn bos_portrait(bench: &Bench) -> Result<(), AssetsError> {
-    bench
+async fn bos_portrait(wired: &Wired) -> Result<(), AssetsError> {
+    wired
         .assets
-        .upload_as_own(A_PORTRAIT.to_vec(), &bench::bo())
+        .upload_as_own(A_PORTRAIT.to_vec(), &wiring::bo())
         .await
         .map(|_| ())
 }
@@ -72,9 +72,9 @@ async fn bos_portrait(bench: &Bench) -> Result<(), AssetsError> {
 #[tokio::test]
 async fn the_listener_hears_who_becomes_an_operator_stops_or_is_deleted() {
     // given: the listener
-    let bench = bench::a_bench().await;
+    let wired = wiring::a_workbench().await;
     let listener = Inboxed::new(
-        RememberOperatorsListener::new(bench.assets.clone()),
+        RememberOperatorsListener::new(wired.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(clock::at(
             1_000,
@@ -93,17 +93,17 @@ async fn the_listener_hears_who_becomes_an_operator_stops_or_is_deleted() {
 #[tokio::test]
 async fn an_operator_gives_an_account_a_limit_of_its_own_which_it_is_held_to() {
     // given: Ada running the instance
-    let bench = ada_running_the_instance().await;
+    let wired = ada_running_the_instance().await;
 
     // when: she gives Bo a limit of one byte
-    bench
+    wired
         .assets
-        .give_account_limit(BO, 1, &bench::ada())
+        .give_account_limit(BO, 1, &wiring::ada())
         .await
         .expect("an operator gives limits");
 
     // then: his portrait is refused, told his own limit
-    let refused = bos_portrait(&bench).await;
+    let refused = bos_portrait(&wired).await;
     assert!(
         matches!(
             refused,
@@ -116,13 +116,13 @@ async fn an_operator_gives_an_account_a_limit_of_its_own_which_it_is_held_to() {
         "{refused:?}"
     );
     // when: she takes it back
-    bench
+    wired
         .assets
-        .take_back_account_limit(BO, &bench::ada())
+        .take_back_account_limit(BO, &wiring::ada())
         .await
         .expect("an operator takes limits back");
     // then: his portrait is taken under every account's limit
-    bos_portrait(&bench)
+    bos_portrait(&wired)
         .await
         .expect("every account's megabyte takes a portrait");
 }
@@ -130,14 +130,17 @@ async fn an_operator_gives_an_account_a_limit_of_its_own_which_it_is_held_to() {
 #[tokio::test]
 async fn whoever_runs_nothing_neither_gives_nor_takes_back_a_limit() {
     // given: Ada running the instance, and Bo not
-    let bench = ada_running_the_instance().await;
+    let wired = ada_running_the_instance().await;
 
     // when: Bo gives himself a gigabyte, and takes back his limit
-    let given = bench
+    let given = wired
         .assets
-        .give_account_limit(BO, 1 << 30, &bench::bo())
+        .give_account_limit(BO, 1 << 30, &wiring::bo())
         .await;
-    let taken_back = bench.assets.take_back_account_limit(BO, &bench::bo()).await;
+    let taken_back = wired
+        .assets
+        .take_back_account_limit(BO, &wiring::bo())
+        .await;
 
     // then: both are refused, as he runs nothing
     assert!(
@@ -157,13 +160,13 @@ async fn an_operator_who_stopped_or_whose_account_was_deleted_gives_no_more_limi
         (DELETED, "DELETED"),
     ] {
         // given: Ada running the instance
-        let bench = ada_running_the_instance().await;
+        let wired = ada_running_the_instance().await;
 
         // when: she stops, or her account is deleted
-        heard(&bench, told(routing, "account_ada", 5, name)).await;
+        heard(&wired, told(routing, "account_ada", 5, name)).await;
 
         // then: she gives no limit
-        let given = bench.assets.give_account_limit(BO, 1, &bench::ada()).await;
+        let given = wired.assets.give_account_limit(BO, 1, &wiring::ada()).await;
         assert!(
             matches!(given, Err(AssetsError::NotAnOperator)),
             "{routing}: {given:?}"
@@ -174,9 +177,9 @@ async fn an_operator_who_stopped_or_whose_account_was_deleted_gives_no_more_limi
 #[tokio::test]
 async fn a_becoming_heard_after_the_stopping_that_followed_it_lets_nobody_give_limits() {
     // given: Ada's stopping as an operator heard before her becoming one
-    let bench = bench::a_bench().await;
+    let wired = wiring::a_workbench().await;
     heard(
-        &bench,
+        &wired,
         told(
             STOPPED_BEING_OPERATOR,
             "account_ada",
@@ -186,13 +189,13 @@ async fn a_becoming_heard_after_the_stopping_that_followed_it_lets_nobody_give_l
     )
     .await;
     heard(
-        &bench,
+        &wired,
         told(BECAME_OPERATOR, "account_ada", 3, "BECAME_OPERATOR"),
     )
     .await;
 
     // when: she gives Bo a limit
-    let given = bench.assets.give_account_limit(BO, 1, &bench::ada()).await;
+    let given = wired.assets.give_account_limit(BO, 1, &wiring::ada()).await;
 
     // then: it is refused, the older word changing nothing
     assert!(
@@ -204,16 +207,16 @@ async fn a_becoming_heard_after_the_stopping_that_followed_it_lets_nobody_give_l
 #[tokio::test]
 async fn a_limit_past_what_can_be_counted_is_refused() {
     // given: Ada running the instance
-    let bench = ada_running_the_instance().await;
+    let wired = ada_running_the_instance().await;
 
     // when: she gives Bo the most that can be counted, and one byte more
-    let most = bench
+    let most = wired
         .assets
-        .give_account_limit(BO, MOST_COUNTED, &bench::ada())
+        .give_account_limit(BO, MOST_COUNTED, &wiring::ada())
         .await;
-    let past = bench
+    let past = wired
         .assets
-        .give_account_limit(BO, MOST_COUNTED + 1, &bench::ada())
+        .give_account_limit(BO, MOST_COUNTED + 1, &wiring::ada())
         .await;
 
     // then: the one is given, and the other refused
@@ -227,11 +230,11 @@ async fn a_limit_past_what_can_be_counted_is_refused() {
 #[tokio::test]
 async fn the_operator_gives_and_takes_back_an_account_s_limit() {
     // given: Ada running the instance, and the routes for her and for Bo
-    let bench = ada_running_the_instance().await;
+    let wired = ada_running_the_instance().await;
     let serving = |acting: Agent| {
-        TestServer::new(assets_rest::router(bench.assets.clone()).layer(Extension(acting)))
+        TestServer::new(assets_rest::router(wired.assets.clone()).layer(Extension(acting)))
     };
-    let (hers, his) = (serving(bench::ada()), serving(bench::bo()));
+    let (hers, his) = (serving(wiring::ada()), serving(wiring::bo()));
     let at = format!("/assets/accounts/{BO}/limit");
 
     // when: Bo gives himself a gigabyte, Ada gives him one byte, and then more than can be counted

@@ -23,10 +23,14 @@ export function linkTyped(typed) {
 
 const AN_ASSET = /^[A-Za-z0-9_]{1,64}$/;
 export const SIZES = ["small", "medium", "full"];
-export const SHOWN_WIDE = { small: 768, medium: 1536, full: 1536 };
+const SHOWN_WIDE = { small: 768, medium: 1536, full: 1536 };
 
 export function sizeOf(told) {
   return SIZES.includes(told) ? told : "full";
+}
+
+export function contentOf(asset, size) {
+  return `/api/assets/${asset}/content?width=${SHOWN_WIDE[sizeOf(size)]}`;
 }
 
 export function assetOf(told) {

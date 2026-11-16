@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::asset::Picture;
+use crate::asset::ImageInfo;
 
 /// The widths an image is made into.
 /// An image gets those narrower than itself, plus its own width if it is narrower than the widest.
@@ -23,7 +23,7 @@ pub enum ImageRefused {
 /// The variants are listed by width, narrowest first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepared {
-    pub picture: Picture,
+    pub image: ImageInfo,
     pub variants: Vec<(u32, Vec<u8>)>,
 }
 
@@ -36,7 +36,7 @@ pub trait Images: Send + Sync {
 impl Prepared {
     /// Returns all bytes stored for the image: the original and its variants.
     pub fn total_size(&self) -> u64 {
-        self.picture.original_size
+        self.image.original_size
             + self
                 .variants
                 .iter()
@@ -85,7 +85,7 @@ mod tests {
     fn what_is_kept_is_the_original_and_every_variant() {
         // given: an image of ten bytes made into two variants
         let prepared = Prepared {
-            picture: Picture {
+            image: ImageInfo {
                 format: Format::Png,
                 width: 500,
                 height: 400,

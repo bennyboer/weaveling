@@ -5,7 +5,7 @@ use assets_contract::{
     asset_type, bound, purpose, refused, sort,
 };
 use assets_core::{
-    Asset, AssetError, AssetType, AssetUse, AssetsCore, AssetsError, Bound, Held, Holder,
+    Asset, AssetError, AssetType, AssetUse, AssetsCore, AssetsError, Bound, HeldMark, Holder,
     ImageRefused, Limit, Listed, Owner, Purpose, Sorted, UploadMark, UploadsSorted,
 };
 use axum::body::Bytes;
@@ -61,7 +61,7 @@ struct Paging {
 }
 
 impl Paging {
-    fn read(&self) -> Result<(Sorted, Option<Held>), Problem> {
+    fn read(&self) -> Result<(Sorted, Option<HeldMark>), Problem> {
         let sorted = match self.sort.as_deref() {
             None | Some(sort::MOST_USED) => Sorted::MostUsed,
             Some(sort::ID) => Sorted::ById,
@@ -72,28 +72,7 @@ impl Paging {
                 ));
             }
         };
-        let after = self
-            .after
-            .as_deref()
-            .map(|cursor| {
-                cursor
-                    .split_once('.')
-                    .and_then(|(total, id)| {
-                        Some(Held {
-                            id: id.to_owned(),
-                            total: total.parse().ok()?,
-                            name: None,
-                            email: None,
-                        })
-                    })
-                    .filter(|held| !held.id.is_empty())
-                    .ok_or_else(|| {
-                        Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
-                    })
-            })
-            .transpose()?;
-
-        Ok((sorted, after))
+        Ok((sorted, cursor_of(self.after.as_deref(), held_mark_read)?))
     }
 }
 
@@ -117,17 +96,11 @@ impl UploadsPaging {
                 ));
             }
         };
-        let after = self
-            .after
-            .as_deref()
-            .map(|cursor| {
-                mark_read(cursor).ok_or_else(|| {
-                    Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
-                })
-            })
-            .transpose()?;
-
-        Ok((sorted, type_read(self.of_type.as_deref())?, after))
+        Ok((
+            sorted,
+            type_read(self.of_type.as_deref())?,
+            cursor_of(self.after.as_deref(), mark_read)?,
+        ))
     }
 }
 
@@ -141,6 +114,33 @@ fn type_read(asked: Option<&str>) -> Result<Option<AssetType>, Problem> {
             format!("no type {unknown}; take image"),
         )),
     }
+}
+
+/// Reads a page's cursor with the given reader.
+/// No cursor asks for the first page. A cursor the reader cannot read is refused.
+fn cursor_of<Mark>(
+    after: Option<&str>,
+    read: fn(&str) -> Option<Mark>,
+) -> Result<Option<Mark>, Problem> {
+    after
+        .map(|cursor| {
+            read(cursor).ok_or_else(|| {
+                Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
+            })
+        })
+        .transpose()
+}
+
+/// Reads, from a page's cursor, the account or project that a page of the storage overview continues after.
+/// The cursor holds its total and its id.
+fn held_mark_read(cursor: &str) -> Option<HeldMark> {
+    let (total, id) = cursor.split_once('.')?;
+
+    Some(HeldMark {
+        id: id.to_owned(),
+        total: total.parse().ok()?,
+    })
+    .filter(|mark| !mark.id.is_empty())
 }
 
 /// Reads, from a page's cursor, the upload that the page continues after.
@@ -172,7 +172,7 @@ fn next_of<T>(listed: &Listed<T>) -> Option<String> {
     listed
         .next
         .as_ref()
-        .map(|held| format!("{}.{}", held.total, held.id))
+        .map(|mark| format!("{}.{}", mark.total, mark.id))
 }
 
 #[derive(Deserialize)]
@@ -248,15 +248,7 @@ async fn assets_in(
     Query(paging): Query<AssetsPaging>,
 ) -> Result<Json<ProjectAssetsDTO>, Problem> {
     let of_type = type_read(paging.of_type.as_deref())?;
-    let after = paging
-        .after
-        .as_deref()
-        .map(|cursor| {
-            mark_read(cursor).ok_or_else(|| {
-                Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
-            })
-        })
-        .transpose()?;
+    let after = cursor_of(paging.after.as_deref(), mark_read)?;
     let listed = assets
         .assets_in(&project, of_type, after.as_ref(), A_PAGE, &acting)
         .await
@@ -504,7 +496,7 @@ fn to_response(
     uses: &[AssetUse],
 ) -> Response {
     let asset = &standing.state;
-    let picture = asset.picture();
+    let image = asset.image();
 
     (
         status,
@@ -513,11 +505,11 @@ fn to_response(
             id: id.to_owned(),
             version: standing.version.count(),
             owner: owner_told(asset.owner()),
-            content_type: picture.format.content_type().to_owned(),
-            width: picture.width,
-            height: picture.height,
-            widths: picture.variants.clone(),
-            original_size: picture.original_size,
+            content_type: image.format.content_type().to_owned(),
+            width: image.width,
+            height: image.height,
+            widths: image.variants.clone(),
+            original_size: image.original_size,
             total_size: asset.total_size(),
             uses: uses.iter().map(use_told).collect(),
         }),

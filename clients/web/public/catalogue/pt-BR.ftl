@@ -838,7 +838,7 @@ image-choice-none = Ainda não há imagens.
 image-choice-more = Mostrar mais
 image-choice-cancel = Cancelar
 image-choice-delete = Excluir esta imagem
-image-choice-delete-asking = Excluir esta imagem?
+image-choice-delete-asking = Excluir esta imagem de vez?
 image-choice-delete-confirm = Excluir
 image-choice-delete-keep = Manter
 image-choice-in-use = Esta imagem ainda é usada em:
@@ -886,19 +886,20 @@ size-terabytes = { $amount }{ "\u00A0" }TB
 refused-asset-id-invalid = Esse não é um identificador de imagem válido.
 refused-asset-not-an-image = Este arquivo não é uma imagem que o Weaveling possa usar. Envie uma imagem JPEG, PNG, GIF ou WebP.
 refused-asset-image-unreadable = Não foi possível ler esta imagem. Talvez ela esteja danificada.
-refused-asset-image-too-large = Esta imagem tem pixels demais. Ela pode ter no máximo 50 megapixels.
+refused-asset-image-too-large = Esta imagem é grande demais. Ela pode ter no máximo 50 megapixels, e nenhum lado com mais de 16.384 pixels.
 refused-asset-limit-reached =
     { $bound ->
         [upload] Uma imagem pode ter no máximo { $most }.
-        [instance] Esta instância do Weaveling não tem mais espaço para esta imagem. Ela ocupa { $used } de { $most }.
-        [account] Você não tem mais espaço para esta imagem. Você ocupa { $used } de { $most }.
-        [project] Este projeto não tem mais espaço para esta imagem. Ele ocupa { $used } de { $most }.
+        [instance] Esta instância do Weaveling não tem mais espaço para esta imagem. Ela ocupa { $used } de { $most }. Peça mais espaço a quem a gerencia.
+        [account] Você não tem mais espaço para esta imagem. Você ocupa { $used } de { $most }. Exclua o que não precisa mais em Armazenamento, na sua conta.
+        [project] Este projeto não tem mais espaço para esta imagem. Ele ocupa { $used } de { $most }. Exclua as imagens que ele não usa mais, ou peça mais espaço a quem gerencia esta instância do Weaveling.
        *[other] Não há mais espaço para esta imagem.
     }
 refused-asset-no-account = Só uma conta conectada pode ter imagens próprias.
 refused-asset-limit-uncountable = Esse limite é grande demais.
 refused-asset-sort-unknown = A lista não pode ser ordenada assim.
 refused-asset-type-unknown = Arquivos desse tipo não podem ser listados.
+refused-image-from-elsewhere = Uma imagem de outro lugar foi deixada de fora. Só são levadas as imagens que você copiou dos seus próprios projetos.
 refused-asset-cursor-invalid = A lista não pode continuar a partir daí. Carregue-a de novo.
 
 storage-heading = Armazenamento

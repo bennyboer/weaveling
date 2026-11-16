@@ -58,6 +58,23 @@ pub struct Held {
     pub email: Option<String>,
 }
 
+/// The cursor for the next page of the storage overview: the last listed entry's total and id.
+/// It holds both, so it works for either order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldMark {
+    pub id: String,
+    pub total: u64,
+}
+
+impl From<&Held> for HeldMark {
+    fn from(held: &Held) -> Self {
+        Self {
+            id: held.id.clone(),
+            total: held.total,
+        }
+    }
+}
+
 /// The order of an account's uploads: the largest first, or the newest first.
 /// Uploads with the same size or time are ordered by id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,7 +167,7 @@ pub trait AssetCatalog: Send + Sync {
         transaction: &mut Transaction,
         holders: Holders,
         sorted: Sorted,
-        after: Option<&Held>,
+        after: Option<&HeldMark>,
         matching: Option<&str>,
         at_most: u64,
     ) -> Result<Vec<Held>, CatalogError>;

@@ -1,3 +1,4 @@
+use js_sys::Array;
 use leptos::IntoView;
 use leptos::html;
 use leptos::html::Div;
@@ -9,7 +10,6 @@ use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::speech;
 use crate::speech::Speech;
-use crate::writing::beginnings::CarriedImage;
 use crate::writing::choosing;
 use crate::writing::formatting;
 use crate::writing::images;
@@ -59,8 +59,9 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn()>,
             Closure<dyn Fn()>,
             (
-                Closure<dyn Fn(js_sys::Array, u32)>,
-                Closure<dyn Fn(js_sys::Array)>,
+                Closure<dyn Fn(Array, u32)>,
+                Closure<dyn Fn(Array)>,
+                Closure<dyn Fn(Array)>,
             ),
             Closure<dyn Fn(String) -> bool>,
         )>,
@@ -180,41 +181,26 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move || state.formatting.link_asked(&scene)
             });
             editor.on_link_asked(&link_asked);
-            let images_given = Closure::<dyn Fn(js_sys::Array, u32)>::new({
+            let images_given = Closure::<dyn Fn(Array, u32)>::new({
                 let scene = scene.clone();
-                let speech = expect_context::<Speech>();
 
-                move |files: js_sys::Array, ticket: u32| {
-                    images::given_by_editor(scene.clone(), state, speech, files, ticket)
+                move |files: Array, ticket: u32| {
+                    images::given_by_editor(scene.clone(), state, speaking, files, ticket)
                 }
             });
             editor.on_images_given(&images_given);
-            let figures_pasted = Closure::<dyn Fn(js_sys::Array)>::new({
+            let figures_pasted = Closure::<dyn Fn(Array)>::new({
                 let scene = scene.clone();
 
-                move |pasted: js_sys::Array| images::figures_pasted(scene.clone(), state, pasted)
+                move |pasted: Array| images::figures_pasted(scene.clone(), state, pasted)
             });
             editor.on_figures_pasted(&figures_pasted);
+            let figures_copied = Closure::<dyn Fn(Array)>::new(move |copied: Array| {
+                images::figures_copied(state, copied)
+            });
+            editor.on_figures_copied(&figures_copied);
             if let Some(carried) = state.beginnings.carried(&scene) {
-                if let Some(words) = carried.words.filter(|words| !words.is_empty()) {
-                    editor.seed(&words);
-                }
-                let with_images = !carried.images.is_empty();
-                for image in carried.images {
-                    let ticket = editor.asked_for_image();
-                    match image {
-                        CarriedImage::Files(files) => {
-                            images::given(scene.clone(), state, speaking, files, ticket);
-                        }
-                        CarriedImage::Asset(asset) => {
-                            editor.insert_figure(&asset, ticket);
-                            editor.forget_waiting(ticket);
-                        }
-                    }
-                }
-                if with_images {
-                    editor.focus();
-                }
+                images::carried_in(&editor, scene.clone(), state, speaking, carried);
             }
 
             state.walk.editor_ready(&scene, &editor);
@@ -231,7 +217,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 selection_shown,
                 to_toolbar,
                 link_asked,
-                (images_given, figures_pasted),
+                (images_given, figures_pasted, figures_copied),
                 selecting,
             )));
         }

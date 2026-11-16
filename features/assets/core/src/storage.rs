@@ -1,7 +1,7 @@
 use eventsourcing::AccountId;
 
 use crate::asset::ProjectLink;
-use crate::catalog::{Held, Upload};
+use crate::catalog::{HeldMark, Upload};
 use crate::uses::AssetUse;
 
 /// How much storage the whole instance uses, and its limit, if it has one.
@@ -59,7 +59,7 @@ pub struct OwnUpload {
 /// One page of a list, and the cursor for the next page.
 /// The cursor is only set when the page is full, so a shorter page is the last one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Listed<T, Mark = Held> {
+pub struct Listed<T, Mark = HeldMark> {
     pub listed: Vec<T>,
     pub next: Option<Mark>,
 }

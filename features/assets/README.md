@@ -2,9 +2,9 @@
 
 This feature keeps the files in Weaveling that are not text. For now, these are only images. The first use is an account's picture. Later, ideas will hold images too.
 
-**An `Asset` is whose it is, and the picture.** An asset belongs either to a project or to an account. A project's asset can be read by everyone who may read the project. An account's asset can be seen by everyone who shares a project with that account. An asset is uploaded once, and it is deleted by an event.
+**An `Asset` is whose it is, and what is known of its image.** An asset belongs either to a project or to an account. A project's asset can be read by everyone who may read the project. An account's asset can be seen by everyone who shares a project with that account. An asset is uploaded once, and it is deleted by an event.
 
-Its `Picture` stores:
+Its `ImageInfo` stores:
 
 - the original's `Format`, which is recognised by its bytes (JPEG, PNG, GIF or WebP),
 - how wide and how high the original is,
@@ -23,7 +23,7 @@ Its `Picture` stores:
 - Variants are made in every width of 96, 192, 384, 768, 1,536 and 3,072 that is narrower than the image. The two narrow widths are for small pictures, such as an account's picture in the masthead (*added in slice 11c, 2026-11-14*); images uploaded before keep the variants they had. If the image is narrower than the widest of these, a variant in its own width is made too. A variant is never wider than the image. Each variant is made from the next wider one.
 - The variants are encoded as WebP by `gamut-webp` at quality 75. They keep transparency only if the image has any.
 
-The widths are stored in the `Picture`. `Prepared::total_size` counts the original and every variant. This work is slow. So the upload runs it on blocking threads beside the async runtime, and only for a few uploads at a time.
+The widths are stored in the `ImageInfo`. `Prepared::total_size` counts the original and every variant. This work is slow. So the upload runs it on blocking threads beside the async runtime, and only for a few uploads at a time.
 
 **The bytes are kept apart from the events.** They are stored behind the `Contents` port. Each stored piece is identified by its asset and by either `Original` or a variant's `Width`. There are three places to store them:
 
@@ -33,7 +33,7 @@ The widths are stored in the `Picture`. `Prepared::total_size` counts the origin
 
 In local mode, the pieces go into the data's own folder. On a server, they go into the database, unless the operator names a folder. A folder cannot take part in a transaction, so no write of pieces is part of a transaction. A piece is stored before the asset is recorded as uploaded. A piece is removed after the asset is recorded as deleted.
 
-**One way in: `AssetsCore`.**
+**One way in: `AssetsCore`.** It is one struct, but its methods live in files by job, under `core/src/assets/`: `uploading` (uploads and copies, and the limits they are checked against), `reading` (a project's assets, an asset and its content), `deleting` (deleting, sweeping an owner, and removing stray pieces), `operating` (an account's own limit and the storage overview, for operators), `own_uploads` (one's uploads and usage), `heard` (who may do what, names and tombstones, as other features told them) and `in_use` (what holds an asset in use).
 
 - `upload_into` stores an image in a project for anyone who may write in that project. It refuses someone who may only read the project (`NotAnAuthor`), and someone who may not even read it (`ProjectNotThere`).
 - `content` returns an image to anyone who may read it. It returns the narrowest variant that is at least as wide as asked. If there is no such variant, it returns the widest one. If no width is asked for, it returns the widest one. It never returns the original. A deleted asset, or one the caller may not see, is not found.
@@ -43,7 +43,7 @@ Only the account itself may change or delete its own asset. Who may see it is de
 
 **Limits are one notion.** A `Limit` is the most a `Bound` may hold, together with how much that bound holds now. A bound is an upload, the installation, an account or a project. `Limits` names the most for each bound. A bound is missing from it if it has no limit. An upload is refused by the first limit it would pass. The error is `LimitReached`, and it says which limit was passed, its maximum and how much that bound holds.
 
-The upload's own limit is checked before anything is made from the upload. So an upload that is too large is not even read. The other limits are checked in the transaction that records the asset as uploaded. They use what the catalog holds, and the installation's limit is checked first. What an account uploads counts against that account, wherever the upload goes. Without accounts, nobody is held to an account's limit.
+The upload's own limit is checked before anything is made from the upload. So an upload that is too large is not even read. The other limits are checked twice: once before any piece of the upload is stored, so an upload that cannot fit never takes up storage, not even for a moment, and again in the transaction that records the asset as uploaded, because another upload may have taken the room in between. They use what the catalog holds, and the installation's limit is checked first. What an account uploads counts against that account, wherever the upload goes. Without accounts, nobody is held to an account's limit.
 
 **The catalog is written in the transaction that tells an asset uploaded or deleted,** and not by a listener afterwards, as in other features. So what each bound holds is never out of date when an upload is checked against it. On PostgreSQL, two uploads may be checked against the same total at the same time. The serializable transactions keep them apart, and one of them is tried again.
 
@@ -71,7 +71,7 @@ They store the names in the catalog's `asset_people` and `asset_project_names`. 
 **The assets feature knows what uses each asset** (*slice 11b, 2026-11-14*).
 
 - `AssetUses` stores each use: its `Purpose` (`AccountPicture` or `SceneImage`) and the `Holder` using it (an account or a scene). A holder uses a set of assets for each purpose. `used_for` replaces the whole set at a version of the holder. It changes nothing unless the version is newer than the stored one, so an older report arriving late changes nothing. An empty set lays a tombstone, which the tombstone chore removes later. On PostgreSQL and SQLite, `asset_use_holders` keeps each holder's version and tombstone (`gone_at`) by `(purpose, holder_kind, holder)`, and `asset_uses` keeps one row for each asset it uses. The memory store keeps the same in a map. All three pass one conformance suite.
-- `RememberPicturesListener` receives `account.picture.changed` and `account.picture.removed`. Only an image of the account's own counts as its picture; any other id is not recorded. When the account asks for it (`drop_previous` or `drop`), the image is deleted, as the system, in the same transaction, if it is the account's own and nothing uses it any more. Its stored bytes are then removed by the daily chore for stray contents.
+- `RememberPicturesListener` receives `account.picture.changed` and `account.picture.removed`. Only an image of the account's own counts as its picture; any other id is not recorded. When the account asks for it (`drop_previous` or `drop`), the listener hands the core the image to drop, and the image is deleted, as the system, in the same transaction, if it is the account's own and nothing uses it any more. Its stored bytes are then removed by the daily chore for stray contents.
 - When an account is deleted, `RememberPeopleListener` also ends the use of its picture.
 - `RememberSceneImagesListener` receives `scene.assets.changed` and `scene.deleted` (*images in scenes, slice 3, 2026-11-15*). A scene tells the whole set of images it holds, at the version of its prose. The listener reads the scene's project from the message's context. It keeps only the images that belong to that project, as `SceneImage` uses of the scene. An image of another project, or an account's own image, is ignored. When a scene is deleted, its set is emptied at `LAST_VERSION`, the highest version every backend can store. So no late message can bring its uses back. The tombstone is laid at the message's time.
 - **An asset in use is not deleted**, whoever asks: `DELETE /assets/{id}` refuses with `409 asset-in-use`. In the list of one's uploads, such an upload is not deletable, and `uses` says what it is used for. The client shows "In use as your account picture." An image that a scene holds is refused the same way, until no scene holds it any more.
@@ -80,7 +80,7 @@ They store the names in the catalog's `asset_people` and `asset_project_names`. 
 
 **Stored pieces that belong to no asset are removed once a day.** They are left behind if the process stops between deleting an asset and removing its bytes, or in the middle of a failed upload. The chore `forget-stray-asset-contents` lists the stored assets through `Contents::stored`, asks the catalog which of them it still holds (`held_of`), and removes the pieces of the others. It only touches assets whose id was made over an hour ago. An asset's id records when it was made, and an upload stores its pieces right after making the id, so an upload in progress is never touched.
 
-**Pieces first, the event after.** An upload stores its original and its variants before the asset is recorded as uploaded. If the upload is refused or fails, it removes them again. Uploads are prepared on blocking threads beside the async runtime, at most `PREPARED_AT_ONCE` at a time.
+**Pieces first, the event after.** An upload stores its original and its variants before the asset is recorded as uploaded, once it is known to fit the limits. If the upload is refused or fails, it removes them again. Uploads are prepared on blocking threads beside the async runtime, at most `PREPARED_AT_ONCE` at a time.
 
 Events are stored by the [`eventsourcing`](../../libraries/eventsourcing) store, through the codec in `adapters/store`. `contract` holds the events other features may receive: `asset.uploaded` and `asset.deleted`. `adapters/messaging` publishes them through `message_for`. An upload message says:
 
@@ -117,9 +117,9 @@ It does not say which widths were made. Only the feature itself hands out the va
   - Both list fifty at a time.
   - `?search=` lists only those whose name or address contains the term, ignoring case. A term of only spaces counts as no search. With a term, the names are searched first. A `CROSS JOIN` makes SQLite keep that order.
   - `?sort=most-used` is the default: the ones holding the most come first, and equal ones are ordered by their ids. `?sort=id` is the other choice.
-  - The next page is asked with `?after=` set to the page's `next`. This is a cursor made of the last listed entry's total and id.
+  - The next page is asked with `?after=` set to the page's `next`. This is a cursor made of the last listed entry's total and id (`HeldMark`).
   - An unknown sort is `400 asset-sort-unknown`. A cursor that is not valid is `400 asset-cursor-invalid`. Someone who is not an operator gets `403 not-an-operator`.
   - They are read from the running totals, by `held_by` on the catalog. An index on `asset_usage (bound, total DESC, id)` keeps the ones holding the most quick to find. Someone who no longer holds anything is not listed. The owners are read from the assets' own `access`. Each owner comes with their name and email from `asset_people` (`people` on the catalog), or without them if the assets feature never heard them.
 - `GET /assets/usage` tells the signed-in account how much its uploads take up, wherever they went, and the most they may take up. That maximum is either its own limit or the limit for every account. The answer is `UsageDTO { used, most }`. Without accounts, this answers `403 asset-no-account`.
 
-A reached limit is `413 asset-limit-reached`. It names its `bound` (`upload`, `instance`, `account` or `project`), its `most`, and how much the bound holds, `used`. A refused image is `422`, with `asset-not-an-image`, `asset-image-unreadable` or `asset-image-too-large`. The client has no texts for these errors yet. They will be added to its catalogue together with the assets manager. The client serves no routes yet.
+A reached limit is `413 asset-limit-reached`. It names its `bound` (`upload`, `instance`, `account` or `project`), its `most`, and how much the bound holds, `used`. A refused image is `422`, with `asset-not-an-image`, `asset-image-unreadable` or `asset-image-too-large`. The client words each of these refusals in its own texts.

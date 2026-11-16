@@ -11,14 +11,14 @@ fn body(event: &AssetEvent) -> Option<AssetEventDTO> {
     Some(match event {
         AssetEvent::Uploaded {
             owner,
-            picture,
+            image,
             total_size,
         } => AssetEventDTO::Uploaded {
             owner: owner_told(owner),
-            content_type: picture.format.content_type().to_owned(),
-            width: picture.width,
-            height: picture.height,
-            original_size: picture.original_size,
+            content_type: image.format.content_type().to_owned(),
+            width: image.width,
+            height: image.height,
+            original_size: image.original_size,
             total_size: *total_size,
         },
         AssetEvent::Deleted => AssetEventDTO::Deleted,
@@ -36,7 +36,7 @@ fn owner_told(owner: &Owner) -> OwnerDTO {
 #[cfg(test)]
 mod tests {
     use assets_contract::{DELETED, EVERY_ASSET, UPLOADED};
-    use assets_core::{AssetId, Format, KIND, Picture, ProjectLink};
+    use assets_core::{AssetId, Format, ImageInfo, KIND, ProjectLink};
     use eventsourcing::{
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
@@ -48,8 +48,8 @@ mod tests {
         AssetId::generate(clock::at(1_000))
     }
 
-    fn a_picture() -> Picture {
-        Picture {
+    fn an_image() -> ImageInfo {
+        ImageInfo {
             format: Format::Png,
             width: 1200,
             height: 800,
@@ -76,7 +76,7 @@ mod tests {
     fn an_upload_into(owner: Owner) -> AssetEvent {
         AssetEvent::Uploaded {
             owner,
-            picture: a_picture(),
+            image: an_image(),
             total_size: 120_000,
         }
     }
@@ -143,7 +143,7 @@ mod tests {
         ))
         .expect("what we wrote must be readable");
 
-        // then: each says its owner, its picture and what it takes
+        // then: each says its owner, its image and what it takes
         assert_eq!(
             into_a_project.event.body,
             AssetEventDTO::Uploaded {
@@ -183,7 +183,7 @@ mod tests {
         // given: a snapshot of an asset
         let snapshot = AssetEvent::Snapshotted {
             owner: Owner::Project(ProjectLink::from("project_1")),
-            picture: a_picture(),
+            image: an_image(),
             total_size: 120_000,
             uploaded_at: clock::at(1_000),
             deleted_at: None,

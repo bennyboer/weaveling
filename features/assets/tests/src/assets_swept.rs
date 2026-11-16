@@ -1,36 +1,36 @@
 use assets_core::{AssetId, Contents, Owner, Piece, ProjectLink, SWEPT_AT_ONCE};
 use eventsourcing::AccountId;
 
-use crate::bench::{self, Bench, THE_LOOM};
+use crate::wiring::{self, THE_LOOM, Wired};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
-async fn into_the_loom(bench: &Bench) -> AssetId {
-    bench
+async fn into_the_loom(wired: &Wired) -> AssetId {
+    wired
         .assets
-        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &bench::ada())
+        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &wiring::ada())
         .await
         .expect("an author uploads")
         .0
 }
 
-async fn adas_own(bench: &Bench) -> AssetId {
-    bench
+async fn adas_own(wired: &Wired) -> AssetId {
+    wired
         .assets
-        .upload_as_own(A_PHOTO.to_vec(), &bench::ada())
+        .upload_as_own(A_PHOTO.to_vec(), &wiring::ada())
         .await
         .expect("an account uploads its own")
         .0
 }
 
 /// Whether the asset is gone: it cannot be fetched, and its original bytes are no longer stored.
-async fn gone(bench: &Bench, id: &AssetId) -> bool {
-    bench
+async fn gone(wired: &Wired, id: &AssetId) -> bool {
+    wired
         .assets
-        .content(&id.to_string(), None, &bench::ada())
+        .content(&id.to_string(), None, &wiring::ada())
         .await
         .is_err()
-        && bench
+        && wired
             .contents
             .read(id, Piece::Original)
             .await
@@ -49,70 +49,70 @@ fn ada() -> Owner {
 #[tokio::test]
 async fn a_project_swept_loses_every_asset_and_its_pieces_and_nothing_else() {
     // given: two photos in the loom and a portrait of Ada's own
-    let bench = bench::a_bench().await;
-    let photos = [into_the_loom(&bench).await, into_the_loom(&bench).await];
-    let portrait = adas_own(&bench).await;
+    let wired = wiring::a_workbench().await;
+    let photos = [into_the_loom(&wired).await, into_the_loom(&wired).await];
+    let portrait = adas_own(&wired).await;
 
     // when: the loom is swept
-    let swept = bench.assets.sweep(&the_loom()).await.expect("sweeping");
+    let swept = wired.assets.sweep(&the_loom()).await.expect("sweeping");
 
     // then: both photos are gone, pieces and all
     assert_eq!(swept, 2);
     for photo in &photos {
-        assert!(gone(&bench, photo).await);
+        assert!(gone(&wired, photo).await);
     }
     // and: the loom holds nothing any more, Ada her portrait alone
-    let usage = bench.usage().await;
+    let usage = wired.usage().await;
     assert_eq!(usage.project, 0);
     assert!(usage.account > 0);
     // and: her portrait is still there
-    assert!(!gone(&bench, &portrait).await);
+    assert!(!gone(&wired, &portrait).await);
 }
 
 #[tokio::test]
 async fn an_account_swept_loses_its_own_assets_but_not_what_it_uploaded_into_projects() {
     // given: a photo Ada put in the loom and a portrait of her own
-    let bench = bench::a_bench().await;
-    let photo = into_the_loom(&bench).await;
-    let portrait = adas_own(&bench).await;
+    let wired = wiring::a_workbench().await;
+    let photo = into_the_loom(&wired).await;
+    let portrait = adas_own(&wired).await;
 
     // when: Ada's own are swept
-    let swept = bench.assets.sweep(&ada()).await.expect("sweeping");
+    let swept = wired.assets.sweep(&ada()).await.expect("sweeping");
 
     // then: her portrait is gone
     assert_eq!(swept, 1);
-    assert!(gone(&bench, &portrait).await);
+    assert!(gone(&wired, &portrait).await);
     // and: the loom keeps her photo
-    assert!(!gone(&bench, &photo).await);
+    assert!(!gone(&wired, &photo).await);
 }
 
 #[tokio::test]
 async fn more_than_a_batch_is_swept_batch_after_batch() {
     // given: a batch of photos in the loom and one more
-    let bench = bench::a_bench().await;
+    let wired = wiring::a_workbench().await;
     let mut photos = Vec::new();
     for _ in 0..=SWEPT_AT_ONCE {
-        photos.push(into_the_loom(&bench).await);
+        photos.push(into_the_loom(&wired).await);
     }
 
     // when: the loom is swept
-    let swept = bench.assets.sweep(&the_loom()).await.expect("sweeping");
+    let swept = wired.assets.sweep(&the_loom()).await.expect("sweeping");
 
     // then: every one is gone
     assert_eq!(swept, SWEPT_AT_ONCE + 1);
     for photo in &photos {
-        assert!(gone(&bench, photo).await);
+        assert!(gone(&wired, photo).await);
     }
 }
 
 #[tokio::test]
 async fn sweeping_what_holds_nothing_changes_nothing() {
     // given: a photo in the loom, swept once
-    let bench = bench::a_bench().await;
-    into_the_loom(&bench).await;
-    bench.assets.sweep(&the_loom()).await.expect("sweeping");
+    let wired = wiring::a_workbench().await;
+    into_the_loom(&wired).await;
+    wired.assets.sweep(&the_loom()).await.expect("sweeping");
 
     // expect: sweeping it again, or an owner that never held anything, sweeps nothing
-    assert_eq!(bench.assets.sweep(&the_loom()).await.expect("sweeping"), 0);
-    assert_eq!(bench.assets.sweep(&ada()).await.expect("sweeping"), 0);
+    assert_eq!(wired.assets.sweep(&the_loom()).await.expect("sweeping"), 0);
+    assert_eq!(wired.assets.sweep(&ada()).await.expect("sweeping"), 0);
 }

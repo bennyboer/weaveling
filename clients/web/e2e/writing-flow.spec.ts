@@ -598,6 +598,25 @@ test("typing into an empty section begins a scene there", async ({ page }) => {
   );
 });
 
+test("clicking into the empty line of a section puts the caret at its start", async ({ page }) => {
+  // given: an empty section open in the writing view
+  await aBookInTheWritingView(page, "CaretAtStart", { "Part One": 0 });
+
+  // when: its line is clicked after the placeholder
+  const box = (await beginning(page).boundingBox())!;
+  await beginning(page).click({ position: { x: box.width - 10, y: box.height / 2 } });
+
+  // then: the caret is at the start of the line, not after the marker it holds
+  await expect(beginning(page)).toBeFocused();
+  expect(
+    await beginning(page).evaluate((line) => {
+      const selection = window.getSelection()!;
+
+      return selection.anchorNode === line && selection.anchorOffset === 0;
+    }),
+  ).toBe(true);
+});
+
 test("words typed while the scene is being made are kept", async ({ page }) => {
   // given: an empty section whose first scene is slow to be made
   await aNewProject(page, "Patient");

@@ -120,6 +120,7 @@ Where there are accounts, the core asks `KeptAccess`. Without accounts, it allow
 **Route:** `GET /api/appearances?idea={id}` or `?asset={id}` → `[{ "type": "scene" | "section", "id" }]`, in one stable order.
 It asks about one idea or one asset; neither or both is refused as `unreadable`.
 An asset is answered to whoever may read its project, like an idea.
+An asset whose project is not known is `404`, just like one whose project the agent may not read, so the answer never tells which assets exist.
 
 **One way in: `AppearancesCore`.**
 The REST route, the live route and its filter, the listeners and the chores all go through one struct.

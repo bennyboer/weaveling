@@ -647,23 +647,30 @@ test("an image of the project is deleted from its tile, after asking", async ({ 
   const remove = tile.getByRole("button", { name: "Delete this image" });
   await expect(remove).toBeVisible();
 
-  // when: it is pressed, and the image kept after all
+  // when: it is pressed
   await remove.click();
-  const asking = tile.getByRole("group", { name: "Delete this image?" });
+
+  // then: the tile asks, the focus on deleting
+  const asking = tile.getByRole("group", { name: "Delete this image for good?" });
+  await expect(asking.getByRole("button", { name: "Delete" })).toBeFocused();
+
+  // when: the image is kept after all
   await asking.getByRole("button", { name: "Keep" }).click();
 
-  // then: the question is gone, and the image still offered
+  // then: the question is gone, the image still offered, the focus back on it
   await expect(asking).toHaveCount(0);
   await expect(tile).toHaveCount(1);
+  await expect(tile.locator(".image-offered")).toBeFocused();
 
   // when: it is asked again, and the deleting confirmed
   await tile.hover();
   await remove.click();
   await asking.getByRole("button", { name: "Delete" }).click();
 
-  // then: the tile is gone, the dialog still open, and the project holds no image
+  // then: the tile is gone, the dialog still open, the focus on uploading a new one, and the project holds no image
   await expect(tile).toHaveCount(0);
   await expect(choosing(page)).toBeVisible();
+  await expect(choosing(page).getByRole("button", { name: "Upload new…" })).toBeFocused();
   await expect
     .poll(async () => (await (await page.request.get(`${API}/assets/projects/${project}`)).json()).assets.length)
     .toBe(0);
@@ -691,7 +698,7 @@ test("an image in use is not deleted, and the dialog names where, leading there"
   const tile = choosing(page).locator(".offered").filter({ has: page.locator(`img[src*="${image}"]`) });
   await tile.hover();
   await tile.getByRole("button", { name: "Delete this image" }).click();
-  await tile.getByRole("group", { name: "Delete this image?" }).getByRole("button", { name: "Delete" }).click();
+  await tile.getByRole("group", { name: "Delete this image for good?" }).getByRole("button", { name: "Delete" }).click();
 
   // then: the dialog says where it is still used, and to remove it there first
   const told = choosing(page).getByRole("alert").filter({ hasText: "This image is still used in:" });
@@ -870,4 +877,90 @@ test("an image copied in one project and pasted into another is copied into that
       ),
     )
     .toContain(copy);
+});
+
+test("a figure of another project's image, pasted without having been copied here, is left out", async ({
+  page,
+}) => {
+  // given: an image held by another project, its id known
+  await aNewProject(page, "Planted");
+  const image = await anImageIn(page, projectOf(page)!);
+  // and: a scene to write in, in a project of its own
+  const only = await aSceneToWriteIn(page, "PlantedInto");
+  const project = projectOf(page)!;
+  const copies: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/copies")) {
+      copies.push(request.url());
+    }
+  });
+
+  // when: a page holding a figure of that image is pasted, as if copied from elsewhere
+  await pasted(scene(page, only), {
+    html: `<figure data-asset="${image}"><figcaption>Planted</figcaption></figure>`,
+  });
+
+  // then: the figure is left out, and the author is told why
+  await expect(page.getByText("An image from elsewhere was left out.")).toBeVisible();
+  await expect(scene(page, only).locator("figure.figure")).toHaveCount(0);
+  // and: nothing was copied into this project
+  expect(copies).toHaveLength(0);
+  expect((await (await page.request.get(`${API}/assets/projects/${project}`)).json()).assets).toHaveLength(0);
+});
+
+test("several images pasted after a line of text go in in the order given", async ({ page }) => {
+  // given: a scene with a line of text, the caret at its end, and every upload answered noted in order
+  const only = await aSceneToWriteIn(page, "InOrder");
+  await page.keyboard.type("Before the maps.");
+  const uploaded: string[] = [];
+  page.on("response", async (response) => {
+    if (response.request().method() === "POST" && /\/api\/assets\?project=/.test(response.url())) {
+      uploaded.push((await response.json()).id);
+    }
+  });
+
+  // when: two images are pasted at once
+  await scene(page, only).evaluate((editor, image) => {
+    const clipboard = new DataTransfer();
+    for (const name of ["first.png", "second.png"]) {
+      clipboard.items.add(new File([Uint8Array.from(image)], name, { type: "image/png" }));
+    }
+    editor.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }),
+    );
+  }, [...A_PIXEL]);
+
+  // then: both follow the line, the first uploaded first
+  const figures = scene(page, only).locator("figure.figure");
+  await expect(figures).toHaveCount(2);
+  await expect.poll(() => uploaded.length).toBe(2);
+  await expect(figures.nth(0)).toHaveAttribute("data-asset", uploaded[0]);
+  await expect(figures.nth(1)).toHaveAttribute("data-asset", uploaded[1]);
+  await expect(scene(page, only).locator(":scope > *").first()).toHaveText("Before the maps.");
+});
+
+test("text pasted with a picture of itself, as from a word processor, goes in as text", async ({ page }) => {
+  // given: a scene to write in, every upload counted
+  const only = await aSceneToWriteIn(page, "FromAWordProcessor");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/api/assets")) {
+      sent.push(request.url());
+    }
+  });
+
+  // when: text is pasted together with a picture of it
+  await scene(page, only).evaluate((editor, image) => {
+    const clipboard = new DataTransfer();
+    clipboard.items.add(new File([Uint8Array.from(image)], "image.png", { type: "image/png" }));
+    clipboard.setData("text/plain", "A line from elsewhere.");
+    editor.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }),
+    );
+  }, [...A_PIXEL]);
+
+  // then: the text goes in, and no picture is uploaded
+  await expect(scene(page, only)).toContainText("A line from elsewhere.");
+  await expect(scene(page, only).locator("figure.figure, .uploading")).toHaveCount(0);
+  expect(sent).toHaveLength(0);
 });

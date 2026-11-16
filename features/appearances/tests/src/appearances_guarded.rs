@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject};
+use appearances_core::{
+    AppearancesCore, AssetLink, IdeaLink, Place, ProjectLink, SceneLink, Subject,
+};
 use appearances_rest::TellingAppearances;
 use async_trait::async_trait;
 use axum::Extension;
@@ -262,6 +264,38 @@ async fn an_idea_of_a_project_one_may_not_read_is_not_there() {
     assert_eq!(
         following(&guarded.server, "idea_kept").await.ended().await,
         "not-there"
+    );
+}
+
+#[tokio::test]
+async fn an_asset_of_an_unknown_project_is_as_absent_as_one_of_a_project_one_may_not_read() {
+    // given: an asset of a project one may read, one of a project one may not read, and one of no project known
+    let guarded = guarded().await;
+    for (asset, project) in [("asset_ada", READABLE), ("asset_kept", UNREADABLE)] {
+        guarded
+            .kept
+            .remember_project_committed(
+                &Subject::Asset(AssetLink::from(asset)),
+                &ProjectLink::from(project),
+            )
+            .await
+            .expect("remembering should succeed");
+    }
+
+    // when: where each appears is asked
+    let readable = guarded.server.get("/appearances?asset=asset_ada").await;
+    let kept = guarded.server.get("/appearances?asset=asset_kept").await;
+    let unknown = guarded.server.get("/appearances?asset=asset_nobody").await;
+
+    // then: the readable one is answered
+    readable.assert_status_ok();
+    // and: the other two are not there alike
+    kept.assert_status(StatusCode::NOT_FOUND);
+    unknown.assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(
+        unknown.text(),
+        kept.text(),
+        "an answer that differs would tell which assets exist in projects one may not read"
     );
 }
 

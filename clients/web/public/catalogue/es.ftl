@@ -838,7 +838,7 @@ image-choice-none = Aún no hay imágenes.
 image-choice-more = Mostrar más
 image-choice-cancel = Cancelar
 image-choice-delete = Eliminar esta imagen
-image-choice-delete-asking = ¿Eliminar esta imagen?
+image-choice-delete-asking = ¿Eliminar esta imagen para siempre?
 image-choice-delete-confirm = Eliminar
 image-choice-delete-keep = Conservar
 image-choice-in-use = Esta imagen aún se usa en:
@@ -886,19 +886,20 @@ size-terabytes = { $amount }{ "\u00A0" }TB
 refused-asset-id-invalid = Ese no es un identificador de imagen válido.
 refused-asset-not-an-image = Este archivo no es una imagen que Weaveling pueda usar. Sube una imagen JPEG, PNG, GIF o WebP.
 refused-asset-image-unreadable = No se pudo leer esta imagen. Puede que esté dañada.
-refused-asset-image-too-large = Esta imagen tiene demasiados píxeles. Puede tener como máximo 50 megapíxeles.
+refused-asset-image-too-large = Esta imagen es demasiado grande. Puede tener como máximo 50 megapíxeles, y ningún lado de más de 16.384 píxeles.
 refused-asset-limit-reached =
     { $bound ->
         [upload] Una imagen puede ocupar como máximo { $most }.
-        [instance] Esta instancia de Weaveling no tiene espacio para esta imagen. Ocupa { $used } de { $most }.
-        [account] No te queda espacio para esta imagen. Usas { $used } de { $most }.
-        [project] Este proyecto no tiene espacio para esta imagen. Usa { $used } de { $most }.
+        [instance] Esta instancia de Weaveling no tiene espacio para esta imagen. Ocupa { $used } de { $most }. Pide más espacio a quien la gestiona.
+        [account] No te queda espacio para esta imagen. Usas { $used } de { $most }. Elimina lo que ya no necesites en Almacenamiento, en tu cuenta.
+        [project] Este proyecto no tiene espacio para esta imagen. Usa { $used } de { $most }. Elimina las imágenes que ya no usa, o pide más espacio a quien gestiona esta instancia de Weaveling.
        *[other] No queda espacio para esta imagen.
     }
 refused-asset-no-account = Solo una cuenta con sesión iniciada puede tener imágenes propias.
 refused-asset-limit-uncountable = Ese límite es demasiado grande.
 refused-asset-sort-unknown = La lista no se puede ordenar así.
 refused-asset-type-unknown = Los archivos de ese tipo no se pueden listar.
+refused-image-from-elsewhere = Se ha omitido una imagen de otro lugar. Solo se llevan las imágenes que copiaste de tus propios proyectos.
 refused-asset-cursor-invalid = La lista no puede continuar desde ahí. Vuelve a cargarla.
 
 storage-heading = Almacenamiento

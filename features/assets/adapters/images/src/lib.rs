@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use assets_core::{Format, ImageRefused, Images, Picture, Prepared, widths_for};
+use assets_core::{Format, ImageInfo, ImageRefused, Images, Prepared, widths_for};
 use gamut_core::{Dimensions, EncodeImage, ImageRef, Rgb8, Rgba8};
 use gamut_webp::WebpEncoder;
 use image::imageops::FilterType;
@@ -44,7 +44,7 @@ impl Images for WebpImages {
         variants.reverse();
 
         Ok(Prepared {
-            picture: Picture {
+            image: ImageInfo {
                 format,
                 width,
                 height,

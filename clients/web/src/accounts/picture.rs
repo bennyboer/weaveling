@@ -132,9 +132,9 @@ pub fn profile_card(session: CurrentSession, account: SignedInAccount) -> impl I
             let Some(picture) = shown.get_untracked() else {
                 return;
             };
-            if assets::used_only_as_picture_of(&picture, &me)
+            if assets::asset(&picture)
                 .await
-                .unwrap_or(false)
+                .is_ok_and(|asset| asset.only_as_picture_of(&me))
             {
                 asking.set(Asking::Removing);
             } else {
@@ -260,9 +260,9 @@ async fn uploaded(
         .map_err(|_| Failed::Unreadable)?;
     let picture = assets::upload_own(&bytes).await.map_err(Failed::Refused)?;
     let ask = match previous {
-        Some(previous) => assets::used_only_as_picture_of(&previous, me)
+        Some(previous) => assets::asset(&previous)
             .await
-            .unwrap_or(false),
+            .is_ok_and(|asset| asset.only_as_picture_of(me)),
         None => false,
     };
 

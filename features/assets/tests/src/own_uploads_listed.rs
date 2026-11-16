@@ -7,35 +7,35 @@ use axum_test::TestServer;
 use eventsourcing::{AccountId, Agent, Version};
 use serde_json::Value;
 
-use crate::bench::{self, Bench, THE_LOOM};
+use crate::wiring::{self, THE_LOOM, Wired};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
 /// Ada uploads a photo into the loom and a portrait of her own; the loom has a name.
-async fn ada_having_uploaded() -> (Bench, AssetId, AssetId) {
-    let bench = bench::a_bench().await;
-    let (into_the_loom, _) = bench
+async fn ada_having_uploaded() -> (Wired, AssetId, AssetId) {
+    let wired = wiring::a_workbench().await;
+    let (into_the_loom, _) = wired
         .assets
-        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &bench::ada())
+        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &wiring::ada())
         .await
         .expect("an author uploads");
-    let (her_own, _) = bench
+    let (her_own, _) = wired
         .assets
-        .upload_as_own(A_PHOTO.to_vec(), &bench::ada())
+        .upload_as_own(A_PHOTO.to_vec(), &wiring::ada())
         .await
         .expect("an account uploads its own");
-    bench
+    wired
         .assets
         .remember_project_name(None, &ProjectLink::from(THE_LOOM), Version::of(1), "Loom")
         .await
         .expect("remembering should succeed");
 
-    (bench, into_the_loom, her_own)
+    (wired, into_the_loom, her_own)
 }
 
 /// Demotes Ada to a reader of the loom.
-async fn ada_only_reads_the_loom(bench: &Bench) {
-    bench
+async fn ada_only_reads_the_loom(wired: &Wired) {
+    wired
         .assets
         .remember_role(
             None,
@@ -48,24 +48,24 @@ async fn ada_only_reads_the_loom(bench: &Bench) {
         .expect("remembering should succeed");
 }
 
-fn serving(bench: &Bench, acting: Agent) -> TestServer {
-    TestServer::new(assets_rest::router(bench.assets.clone()).layer(Extension(acting)))
+fn serving(wired: &Wired, acting: Agent) -> TestServer {
+    TestServer::new(assets_rest::router(wired.assets.clone()).layer(Extension(acting)))
 }
 
 #[tokio::test]
 async fn an_account_is_told_everything_it_uploaded_and_that_it_may_delete_it() {
     // given: Ada with a photo in the loom and a portrait of her own, Bo with nothing
-    let (bench, into_the_loom, her_own) = ada_having_uploaded().await;
+    let (wired, into_the_loom, her_own) = ada_having_uploaded().await;
 
     // when: each lists their uploads
-    let hers = bench
+    let hers = wired
         .assets
-        .uploads_of(UploadsSorted::Newest, None, None, 10, &bench::ada())
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &wiring::ada())
         .await
         .expect("an account is told its uploads");
-    let his = bench
+    let his = wired
         .assets
-        .uploads_of(UploadsSorted::Newest, None, None, 10, &bench::bo())
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &wiring::bo())
         .await
         .expect("an account is told its uploads");
 
@@ -84,13 +84,13 @@ async fn an_account_is_told_everything_it_uploaded_and_that_it_may_delete_it() {
 #[tokio::test]
 async fn an_upload_into_a_project_one_may_no_longer_write_in_may_not_be_deleted() {
     // given: Ada's uploads, Ada reading the loom and no more
-    let (bench, into_the_loom, her_own) = ada_having_uploaded().await;
-    ada_only_reads_the_loom(&bench).await;
+    let (wired, into_the_loom, her_own) = ada_having_uploaded().await;
+    ada_only_reads_the_loom(&wired).await;
 
     // when: she lists them
-    let hers = bench
+    let hers = wired
         .assets
-        .uploads_of(UploadsSorted::Largest, None, None, 10, &bench::ada())
+        .uploads_of(UploadsSorted::Largest, None, None, 10, &wiring::ada())
         .await
         .expect("an account is told its uploads");
 
@@ -104,9 +104,9 @@ async fn an_upload_into_a_project_one_may_no_longer_write_in_may_not_be_deleted(
     assert_eq!(deletable(into_the_loom), Some(false));
     assert_eq!(deletable(her_own), Some(true));
     // and: deleting it is refused as told
-    let refused = bench
+    let refused = wired
         .assets
-        .delete(&into_the_loom.to_string(), &bench::ada())
+        .delete(&into_the_loom.to_string(), &wiring::ada())
         .await;
     assert!(
         matches!(refused, Err(AssetsError::NotAnAuthor)),
@@ -117,22 +117,22 @@ async fn an_upload_into_a_project_one_may_no_longer_write_in_may_not_be_deleted(
 #[tokio::test]
 async fn a_full_page_of_uploads_goes_on_from_its_last() {
     // given: Ada's two uploads
-    let (bench, ..) = ada_having_uploaded().await;
+    let (wired, ..) = ada_having_uploaded().await;
 
     // when: she lists them a page of one at a time
-    let first = bench
+    let first = wired
         .assets
-        .uploads_of(UploadsSorted::Largest, None, None, 1, &bench::ada())
+        .uploads_of(UploadsSorted::Largest, None, None, 1, &wiring::ada())
         .await
         .expect("an account is told its uploads");
-    let then = bench
+    let then = wired
         .assets
         .uploads_of(
             UploadsSorted::Largest,
             None,
             first.next.as_ref(),
             1,
-            &bench::ada(),
+            &wiring::ada(),
         )
         .await
         .expect("an account is told its uploads");
@@ -140,14 +140,14 @@ async fn a_full_page_of_uploads_goes_on_from_its_last() {
     // then: each page holds another, and the second goes on to nothing more
     assert_eq!((first.listed.len(), then.listed.len()), (1, 1));
     assert_ne!(first.listed[0].upload.id, then.listed[0].upload.id);
-    let last = bench
+    let last = wired
         .assets
         .uploads_of(
             UploadsSorted::Largest,
             None,
             then.next.as_ref(),
             1,
-            &bench::ada(),
+            &wiring::ada(),
         )
         .await
         .expect("an account is told its uploads");
@@ -157,10 +157,10 @@ async fn a_full_page_of_uploads_goes_on_from_its_last() {
 #[tokio::test]
 async fn without_accounts_nobody_has_uploads_of_their_own() {
     // given: the instance without accounts
-    let bench = bench::a_bench_without_accounts(Default::default()).await;
+    let wired = wiring::a_workbench_without_accounts(Default::default()).await;
 
     // when: the one working asks for their uploads
-    let refused = bench
+    let refused = wired
         .assets
         .uploads_of(UploadsSorted::Newest, None, None, 10, &Agent::Local)
         .await;
@@ -175,9 +175,9 @@ async fn without_accounts_nobody_has_uploads_of_their_own() {
 #[tokio::test]
 async fn the_route_lists_an_account_s_uploads_and_goes_on_from_its_cursor() {
     // given: Ada's uploads, Ada reading the loom and no more, the route for her
-    let (bench, into_the_loom, _) = ada_having_uploaded().await;
-    ada_only_reads_the_loom(&bench).await;
-    let hers = serving(&bench, bench::ada());
+    let (wired, into_the_loom, _) = ada_having_uploaded().await;
+    ada_only_reads_the_loom(&wired).await;
+    let hers = serving(&wired, wiring::ada());
 
     // when: she lists them, the largest first
     let listed: UploadsDTO = hers.get("/assets?sort=largest").await.json();
@@ -215,9 +215,9 @@ async fn the_route_lists_an_account_s_uploads_and_goes_on_from_its_cursor() {
 #[tokio::test]
 async fn the_route_refuses_an_unknown_sort_a_cursor_that_is_none_and_nobody_signed_in() {
     // given: Ada's uploads, the routes for her and for the instance without accounts
-    let (bench, ..) = ada_having_uploaded().await;
-    let hers = serving(&bench, bench::ada());
-    let nobodys = serving(&bench, Agent::Local);
+    let (wired, ..) = ada_having_uploaded().await;
+    let hers = serving(&wired, wiring::ada());
+    let nobodys = serving(&wired, Agent::Local);
 
     // expect: an unknown sort refused
     let unknown = hers.get("/assets?sort=oldest").await;

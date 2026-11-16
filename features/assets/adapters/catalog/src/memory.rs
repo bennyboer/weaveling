@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Held, Holders, Owner, Person,
-    ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Held, HeldMark, Holders, Owner,
+    Person, ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -146,7 +146,7 @@ impl AssetCatalog for InMemoryAssetCatalog {
         _transaction: &mut Transaction,
         holders: Holders,
         sorted: Sorted,
-        after: Option<&Held>,
+        after: Option<&HeldMark>,
         matching: Option<&str>,
         at_most: u64,
     ) -> Result<Vec<Held>, CatalogError> {

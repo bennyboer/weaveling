@@ -50,9 +50,9 @@ pub enum AssetType {
     Image,
 }
 
-/// An image as it was uploaded: its format, its size, and the widths its variants were made in.
+/// What is known of an image as it was uploaded: its format, its size, and the widths its variants were made in.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Picture {
+pub struct ImageInfo {
     pub format: Format,
     pub width: u32,
     pub height: u32,
@@ -64,7 +64,7 @@ pub struct Picture {
 pub enum AssetCommand {
     Upload {
         owner: Owner,
-        picture: Picture,
+        image: ImageInfo,
         total_size: u64,
     },
     Delete,
@@ -74,13 +74,13 @@ pub enum AssetCommand {
 pub enum AssetEvent {
     Uploaded {
         owner: Owner,
-        picture: Picture,
+        image: ImageInfo,
         total_size: u64,
     },
     Deleted,
     Snapshotted {
         owner: Owner,
-        picture: Picture,
+        image: ImageInfo,
         total_size: u64,
         uploaded_at: OffsetDateTime,
         deleted_at: Option<OffsetDateTime>,
@@ -88,12 +88,12 @@ pub enum AssetEvent {
 }
 
 /// A file that Weaveling stores and that is not text. For now it is always an image.
-/// It holds its owner, the picture, and all bytes stored for it, the original and its variants.
+/// It holds its owner, the image, and all bytes stored for it, the original and its variants.
 /// These bytes count against the installation's limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asset {
     owner: Owner,
-    picture: Picture,
+    image: ImageInfo,
     total_size: u64,
     uploaded_at: OffsetDateTime,
     deleted_at: Option<OffsetDateTime>,
@@ -151,8 +151,8 @@ impl Asset {
         &self.owner
     }
 
-    pub fn picture(&self) -> &Picture {
-        &self.picture
+    pub fn image(&self) -> &ImageInfo {
+        &self.image
     }
 
     pub fn total_size(&self) -> u64 {
@@ -210,11 +210,11 @@ impl Aggregate for Asset {
         match command {
             AssetCommand::Upload {
                 owner,
-                picture,
+                image,
                 total_size,
             } => Ok(vec![AssetEvent::Uploaded {
                 owner,
-                picture,
+                image,
                 total_size,
             }]),
             AssetCommand::Delete => Err(AssetError::NotUploadedYet),
@@ -225,24 +225,24 @@ impl Aggregate for Asset {
         match event {
             AssetEvent::Uploaded {
                 owner,
-                picture,
+                image,
                 total_size,
             } => Some(Self {
                 owner: owner.clone(),
-                picture: picture.clone(),
+                image: image.clone(),
                 total_size: *total_size,
                 uploaded_at: metadata.occurred_at,
                 deleted_at: None,
             }),
             AssetEvent::Snapshotted {
                 owner,
-                picture,
+                image,
                 total_size,
                 uploaded_at,
                 deleted_at,
             } => Some(Self {
                 owner: owner.clone(),
-                picture: picture.clone(),
+                image: image.clone(),
                 total_size: *total_size,
                 uploaded_at: *uploaded_at,
                 deleted_at: *deleted_at,
@@ -266,13 +266,13 @@ impl Aggregate for Asset {
             AssetEvent::Deleted => self.deleted_at = Some(metadata.occurred_at),
             AssetEvent::Snapshotted {
                 owner,
-                picture,
+                image,
                 total_size,
                 uploaded_at,
                 deleted_at,
             } => {
                 self.owner = owner.clone();
-                self.picture = picture.clone();
+                self.image = image.clone();
                 self.total_size = *total_size;
                 self.uploaded_at = *uploaded_at;
                 self.deleted_at = *deleted_at;
@@ -283,7 +283,7 @@ impl Aggregate for Asset {
     fn snapshot(&self) -> AssetEvent {
         AssetEvent::Snapshotted {
             owner: self.owner.clone(),
-            picture: self.picture.clone(),
+            image: self.image.clone(),
             total_size: self.total_size,
             uploaded_at: self.uploaded_at,
             deleted_at: self.deleted_at,

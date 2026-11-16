@@ -838,7 +838,7 @@ image-choice-none = No images yet.
 image-choice-more = Show more
 image-choice-cancel = Cancel
 image-choice-delete = Delete this image
-image-choice-delete-asking = Delete this image?
+image-choice-delete-asking = Delete this image for good?
 image-choice-delete-confirm = Delete
 image-choice-delete-keep = Keep
 image-choice-in-use = This image is still used in:
@@ -886,19 +886,20 @@ size-terabytes = { $amount }{ "\u00A0" }TB
 refused-asset-id-invalid = That is not a valid image ID.
 refused-asset-not-an-image = This file is not an image Weaveling can use. Upload a JPEG, PNG, GIF or WebP image.
 refused-asset-image-unreadable = This image could not be read. It may be damaged.
-refused-asset-image-too-large = This image has too many pixels. It can have at most 50 megapixels.
+refused-asset-image-too-large = This image is too large. It can have at most 50 megapixels, and no side longer than 16,384 pixels.
 refused-asset-limit-reached =
     { $bound ->
         [upload] An image can be at most { $most } large.
-        [instance] This Weaveling instance has no room left for this image. It holds { $used } of { $most }.
-        [account] You have no room left for this image. You use { $used } of { $most }.
-        [project] This project has no room left for this image. It uses { $used } of { $most }.
+        [instance] This Weaveling instance has no room left for this image. It holds { $used } of { $most }. Ask whoever manages it for more room.
+        [account] You have no room left for this image. You use { $used } of { $most }. Delete what you no longer need under Storage in your account.
+        [project] This project has no room left for this image. It uses { $used } of { $most }. Delete images it no longer uses, or ask whoever manages this Weaveling instance for more room.
        *[other] There is no room left for this image.
     }
 refused-asset-no-account = Only a signed-in account can keep images of its own.
 refused-asset-limit-uncountable = That limit is too large.
 refused-asset-sort-unknown = The list cannot be sorted that way.
 refused-asset-type-unknown = Assets of that type cannot be listed.
+refused-image-from-elsewhere = An image from elsewhere was left out. Only images you copied out of your own projects are taken along.
 refused-asset-cursor-invalid = The list cannot go on from there. Load it again.
 
 storage-heading = Storage

@@ -120,12 +120,12 @@ impl<S: SceneStore> Committing<'_, S> {
     pub async fn announce_assets(
         &self,
         id: SceneId,
-        images: &BTreeSet<String>,
+        assets: &BTreeSet<String>,
         as_of: u64,
     ) -> Result<(), StoreError> {
         let mut transaction = self.begun().await?;
         self.store
-            .announce_assets(&mut transaction, id, images, as_of)
+            .announce_assets(&mut transaction, id, assets, as_of)
             .await?;
         transaction.finish().await.map_err(unreachable)
     }

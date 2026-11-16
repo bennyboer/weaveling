@@ -147,7 +147,11 @@ fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl Int
                     event.prevent_default();
                 }
             })
-            .on(ev::pointerup, move |_| attended.set(true))
+            .on(ev::focus, move |_| caret_at_the_start(host))
+            .on(ev::pointerup, move |_| {
+                caret_at_the_start(host);
+                attended.set(true);
+            })
             .on(ev::keyup, move |_| attended.set(true))
             .on(ev::blur, {
                 let pending = pending.clone();
@@ -226,6 +230,20 @@ fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl Int
             })
         },
     ))
+}
+
+/// Puts the caret at the start of an empty line.
+/// The line holds an invisible marker, and a click or focus may put the caret after it,
+/// which shows it at the far end of the line, past the placeholder.
+fn caret_at_the_start(host: NodeRef<Div>) {
+    let Some(line) = host.get_untracked() else {
+        return;
+    };
+    if line.text_content().unwrap_or_default().is_empty()
+        && let Ok(Some(selection)) = window().get_selection()
+    {
+        let _ = selection.collapse_with_offset(Some(&line), 0);
+    }
 }
 
 /// Where the "+" stands: after the placeholder, centred on the line, or under it where the line has no room.

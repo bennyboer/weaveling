@@ -838,7 +838,7 @@ image-choice-none = Noch keine Bilder.
 image-choice-more = Mehr anzeigen
 image-choice-cancel = Abbrechen
 image-choice-delete = Dieses Bild löschen
-image-choice-delete-asking = Dieses Bild löschen?
+image-choice-delete-asking = Dieses Bild endgültig löschen?
 image-choice-delete-confirm = Löschen
 image-choice-delete-keep = Behalten
 image-choice-in-use = Dieses Bild wird noch verwendet in:
@@ -886,19 +886,20 @@ size-terabytes = { $amount }{ "\u00A0" }TB
 refused-asset-id-invalid = Das ist keine gültige Bild-ID.
 refused-asset-not-an-image = Diese Datei ist kein Bild, das Weaveling verwenden kann. Lade ein JPEG-, PNG-, GIF- oder WebP-Bild hoch.
 refused-asset-image-unreadable = Dieses Bild ließ sich nicht lesen. Vielleicht ist es beschädigt.
-refused-asset-image-too-large = Dieses Bild hat zu viele Pixel. Es darf höchstens 50 Megapixel haben.
+refused-asset-image-too-large = Dieses Bild ist zu groß. Es darf höchstens 50 Megapixel haben und keine Seite länger als 16.384 Pixel.
 refused-asset-limit-reached =
     { $bound ->
         [upload] Ein Bild darf höchstens { $most } groß sein.
-        [instance] Diese Weaveling-Instanz hat keinen Platz mehr für dieses Bild. Sie belegt { $used } von { $most }.
-        [account] Du hast keinen Platz mehr für dieses Bild. Du belegst { $used } von { $most }.
-        [project] Dieses Projekt hat keinen Platz mehr für dieses Bild. Es belegt { $used } von { $most }.
+        [instance] Diese Weaveling-Instanz hat keinen Platz mehr für dieses Bild. Sie belegt { $used } von { $most }. Frag, wer sie verwaltet, nach mehr Platz.
+        [account] Du hast keinen Platz mehr für dieses Bild. Du belegst { $used } von { $most }. Lösche, was du nicht mehr brauchst, unter Speicher in deinem Konto.
+        [project] Dieses Projekt hat keinen Platz mehr für dieses Bild. Es belegt { $used } von { $most }. Lösche Bilder, die es nicht mehr verwendet, oder frag, wer diese Weaveling-Instanz verwaltet, nach mehr Platz.
        *[other] Für dieses Bild ist kein Platz mehr.
     }
 refused-asset-no-account = Nur ein angemeldetes Konto kann eigene Bilder haben.
 refused-asset-limit-uncountable = Diese Grenze ist zu groß.
 refused-asset-sort-unknown = So lässt sich die Liste nicht sortieren.
 refused-asset-type-unknown = Medien dieser Art lassen sich nicht auflisten.
+refused-image-from-elsewhere = Ein Bild von anderswo wurde weggelassen. Nur Bilder, die du aus deinen eigenen Projekten kopiert hast, werden mitgenommen.
 refused-asset-cursor-invalid = Die Liste lässt sich dort nicht fortsetzen. Lade sie neu.
 
 storage-heading = Speicher

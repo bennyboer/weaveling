@@ -6,7 +6,7 @@ import { keymap } from "prosemirror-keymap";
 import { redo, undo, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 
 import { SceneSync } from "../sync.js";
-import { copiedPicture, holdsAFigure } from "./copying.js";
+import { copiedPicture, holdsAFigure, holdsText } from "./copying.js";
 import {
   FigureView,
   assetsIn,
@@ -14,6 +14,7 @@ import {
   captioning,
   clickedFigure,
   leftCaption,
+  leftOut,
   placed,
   reassigned,
   removing,
@@ -71,6 +72,7 @@ export class ProseEditor {
     this.toToolbar = () => {};
     this.linkAsked = () => {};
     this.figuresPasted = () => {};
+    this.figuresCopied = () => {};
     this.pressing = false;
     this.letGo = () => {
       if (this.pressing) {
@@ -145,14 +147,15 @@ export class ProseEditor {
 
               return focusedWhereTheBrowserPutIt(view);
             },
-            copy: (view) => copiedPicture(view),
-            cut: (view) => copiedPicture(view),
+            copy: (view) => this.copied(view),
+            cut: (view) => this.copied(view),
           },
           handleClick: (view, pos, event) => openedLink(view, pos, event),
           handleClickOn: (view, _, node, at, event) =>
             clickedFigure(view, node, at, event),
           handlePaste: (view, event) =>
             !holdsAFigure(event.clipboardData) &&
+            !holdsText(event.clipboardData) &&
             this.uploads.given(
               event.clipboardData?.files,
               view.state.selection.from,
@@ -323,6 +326,26 @@ export class ProseEditor {
     this.command(unlinking);
   }
 
+  copied(view) {
+    const copied = assetsIn(view.state.selection.content().content);
+    if (copied.length > 0) {
+      this.figuresCopied(copied);
+    }
+
+    return copiedPicture(view);
+  }
+
+  onFiguresCopied(figuresCopied) {
+    this.figuresCopied = figuresCopied;
+  }
+
+  leaveOut(asset) {
+    const tr = leftOut(this.view.state, asset);
+    if (tr.docChanged) {
+      this.view.dispatch(tr);
+    }
+  }
+
   onFiguresPasted(figuresPasted) {
     this.figuresPasted = figuresPasted;
   }
@@ -351,7 +374,14 @@ export class ProseEditor {
     if (at === undefined || !assetOf(asset)) {
       return;
     }
-    this.view.dispatch(placed(this.view.state, asset, at));
+    const { tr, after } = placed(this.view.state, asset, at);
+    this.view.dispatch(tr);
+    this.uploads.movedTo(ticket, after);
+  }
+
+  insertChosen(asset, ticket) {
+    this.insertFigure(asset, ticket);
+    this.forgetWaiting(ticket);
   }
 
   forgetWaiting(ticket) {

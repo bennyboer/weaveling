@@ -15,13 +15,13 @@ mod uses;
 
 pub use account_limits::AccountLimits;
 pub use asset::{
-    Asset, AssetCommand, AssetError, AssetEvent, AssetType, Format, KIND, Owner, Picture,
+    Asset, AssetCommand, AssetError, AssetEvent, AssetType, Format, ImageInfo, KIND, Owner,
     ProjectLink,
 };
 pub use assets::{AssetsCore, Content, OwnUsage, SWEPT_AT_ONCE};
 pub use catalog::{
-    AssetCatalog, AssetSummary, CatalogError, Held, Holders, Person, Sorted, Upload, UploadMark,
-    UploadsOf, UploadsSorted,
+    AssetCatalog, AssetSummary, CatalogError, Held, HeldMark, Holders, Person, Sorted, Upload,
+    UploadMark, UploadsOf, UploadsSorted,
 };
 pub use contents::{Contents, ContentsError, Piece};
 pub use error::AssetsError;

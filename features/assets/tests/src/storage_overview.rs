@@ -6,7 +6,7 @@ use axum_test::TestServer;
 use eventsourcing::{AccountId, Agent, Version};
 use serde_json::Value;
 
-use crate::bench::{self, Bench, THE_LOOM};
+use crate::wiring::{self, THE_LOOM, Wired};
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 
@@ -14,37 +14,37 @@ const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
 /// Ada is the operator and has her own limit of 2 MB.
 /// She uploaded two photos into the loom, and Bo uploaded a portrait of his own.
 /// Ada, Bo and the loom have names.
-async fn an_instance_holding_some() -> (Bench, u64) {
-    let bench = bench::a_bench_limited(Limits {
+async fn an_instance_holding_some() -> (Wired, u64) {
+    let wired = wiring::a_workbench_limited(Limits {
         instance: Some(1 << 30),
         each_account: Some(1 << 20),
         each_project: Some(10 << 20),
         ..Limits::default()
     })
     .await;
-    bench.ada_runs_the_instance().await;
-    bench.adas_own_limit(Some(2 << 20)).await;
+    wired.ada_runs_the_instance().await;
+    wired.adas_own_limit(Some(2 << 20)).await;
     let mut one = 0;
     for _ in 0..2 {
-        one = bench
+        one = wired
             .assets
-            .upload_into(THE_LOOM, A_PHOTO.to_vec(), &bench::ada())
+            .upload_into(THE_LOOM, A_PHOTO.to_vec(), &wiring::ada())
             .await
             .expect("an author uploads")
             .1
             .state
             .total_size();
     }
-    bench
+    wired
         .assets
-        .upload_as_own(A_PHOTO.to_vec(), &bench::bo())
+        .upload_as_own(A_PHOTO.to_vec(), &wiring::bo())
         .await
         .expect("an account uploads its own");
     for (account, name, email) in [
         ("account_ada", "Ada Lovelace", "ada@example.com"),
         ("account_bo", "Bo Jansen", "bo@example.com"),
     ] {
-        bench
+        wired
             .assets
             .remember_person(
                 None,
@@ -58,28 +58,28 @@ async fn an_instance_holding_some() -> (Bench, u64) {
             .await
             .expect("remembering should succeed");
     }
-    bench
+    wired
         .assets
         .remember_project_name(None, &ProjectLink::from(THE_LOOM), Version::of(1), "Loom")
         .await
         .expect("remembering should succeed");
 
-    (bench, one)
+    (wired, one)
 }
 
-fn serving(bench: &Bench, acting: Agent) -> TestServer {
-    TestServer::new(assets_rest::router(bench.assets.clone()).layer(Extension(acting)))
+fn serving(wired: &Wired, acting: Agent) -> TestServer {
+    TestServer::new(assets_rest::router(wired.assets.clone()).layer(Extension(acting)))
 }
 
 #[tokio::test]
 async fn the_operator_is_told_what_the_instance_holds_and_the_most_it_may() {
     // given: an instance holding three photos, Ada running it
-    let (bench, one) = an_instance_holding_some().await;
+    let (wired, one) = an_instance_holding_some().await;
 
     // when: she asks what the instance holds
-    let storage = bench
+    let storage = wired
         .assets
-        .instance_storage(&bench::ada())
+        .instance_storage(&wiring::ada())
         .await
         .expect("an operator is told");
 
@@ -91,22 +91,22 @@ async fn the_operator_is_told_what_the_instance_holds_and_the_most_it_may() {
 #[tokio::test]
 async fn the_operator_is_told_each_account_s_holding_the_most_first_and_its_limit() {
     // given: an instance holding three photos, Ada running it
-    let (bench, one) = an_instance_holding_some().await;
+    let (wired, one) = an_instance_holding_some().await;
 
     // when: she lists the accounts the most first, one at a time
-    let first = bench
+    let first = wired
         .assets
-        .accounts_storage(Sorted::MostUsed, None, None, 1, &bench::ada())
+        .accounts_storage(Sorted::MostUsed, None, None, 1, &wiring::ada())
         .await
         .expect("an operator is told");
-    let then = bench
+    let then = wired
         .assets
         .accounts_storage(
             Sorted::MostUsed,
             first.next.as_ref(),
             None,
             1,
-            &bench::ada(),
+            &wiring::ada(),
         )
         .await
         .expect("an operator is told");
@@ -133,12 +133,12 @@ async fn the_operator_is_told_each_account_s_holding_the_most_first_and_its_limi
 #[tokio::test]
 async fn the_operator_is_told_each_project_s_name_holding_and_owners() {
     // given: an instance holding three photos, two in the loom Ada owns and Bo reads
-    let (bench, one) = an_instance_holding_some().await;
+    let (wired, one) = an_instance_holding_some().await;
 
     // when: she lists the projects
-    let listed = bench
+    let listed = wired
         .assets
-        .projects_storage(Sorted::ById, None, None, 10, &bench::ada())
+        .projects_storage(Sorted::ById, None, None, 10, &wiring::ada())
         .await
         .expect("an operator is told");
 
@@ -163,13 +163,13 @@ async fn the_operator_is_told_each_project_s_name_holding_and_owners() {
 #[tokio::test]
 async fn the_operator_finds_an_account_or_a_project_by_a_term() {
     // given: an instance holding three photos, Ada running it
-    let (bench, _) = an_instance_holding_some().await;
+    let (wired, _) = an_instance_holding_some().await;
     let accounts_found = |term: &'static str| {
-        let bench = &bench;
+        let wired = &wired;
         async move {
-            bench
+            wired
                 .assets
-                .accounts_storage(Sorted::MostUsed, None, Some(term), 10, &bench::ada())
+                .accounts_storage(Sorted::MostUsed, None, Some(term), 10, &wiring::ada())
                 .await
                 .expect("an operator is told")
                 .listed
@@ -189,9 +189,9 @@ async fn the_operator_finds_an_account_or_a_project_by_a_term() {
     // and: a project by its name, and none by a name it does not hold
     for (term, found) in [("loo", 1), ("weft", 0)] {
         assert_eq!(
-            bench
+            wired
                 .assets
-                .projects_storage(Sorted::MostUsed, None, Some(term), 10, &bench::ada())
+                .projects_storage(Sorted::MostUsed, None, Some(term), 10, &wiring::ada())
                 .await
                 .expect("an operator is told")
                 .listed
@@ -205,16 +205,16 @@ async fn the_operator_finds_an_account_or_a_project_by_a_term() {
 #[tokio::test]
 async fn whoever_runs_nothing_is_told_nothing_of_what_is_stored() {
     // given: an instance holding three photos, Bo not running it
-    let (bench, _) = an_instance_holding_some().await;
-    let bo = bench::bo();
+    let (wired, _) = an_instance_holding_some().await;
+    let bo = wiring::bo();
 
     // when: he asks what the instance, the accounts and the projects hold
-    let instance = bench.assets.instance_storage(&bo).await;
-    let accounts = bench
+    let instance = wired.assets.instance_storage(&bo).await;
+    let accounts = wired
         .assets
         .accounts_storage(Sorted::MostUsed, None, None, 10, &bo)
         .await;
-    let projects = bench
+    let projects = wired
         .assets
         .projects_storage(Sorted::MostUsed, None, None, 10, &bo)
         .await;
@@ -237,20 +237,20 @@ async fn whoever_runs_nothing_is_told_nothing_of_what_is_stored() {
 #[tokio::test]
 async fn without_accounts_the_one_working_is_told_what_is_stored_and_no_account_s_limit() {
     // given: the instance without accounts, a photo in the loom
-    let bench = bench::a_bench_without_accounts(Limits::default()).await;
-    bench
+    let wired = wiring::a_workbench_without_accounts(Limits::default()).await;
+    wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &Agent::Local)
         .await
         .expect("everyone uploads where there are no accounts");
 
     // when: the one working asks what the instance and the projects hold
-    let instance = bench
+    let instance = wired
         .assets
         .instance_storage(&Agent::Local)
         .await
         .expect("the one working runs the instance");
-    let projects = bench
+    let projects = wired
         .assets
         .projects_storage(Sorted::MostUsed, None, None, 10, &Agent::Local)
         .await
@@ -265,8 +265,11 @@ async fn without_accounts_the_one_working_is_told_what_is_stored_and_no_account_
 #[tokio::test]
 async fn the_routes_list_a_page_and_go_on_from_its_cursor() {
     // given: an instance holding three photos, the routes for Ada and for Bo
-    let (bench, one) = an_instance_holding_some().await;
-    let (hers, his) = (serving(&bench, bench::ada()), serving(&bench, bench::bo()));
+    let (wired, one) = an_instance_holding_some().await;
+    let (hers, his) = (
+        serving(&wired, wiring::ada()),
+        serving(&wired, wiring::bo()),
+    );
 
     // when: Ada asks what the instance, the accounts and the projects hold
     let instance: InstanceStorageDTO = hers.get("/assets/storage").await.json();
@@ -334,12 +337,12 @@ async fn the_routes_list_a_page_and_go_on_from_its_cursor() {
 #[tokio::test]
 async fn a_full_page_tells_where_the_next_goes_on_from() {
     // given: an instance holding three photos, Ada running it
-    let (bench, one) = an_instance_holding_some().await;
+    let (wired, one) = an_instance_holding_some().await;
 
     // when: she lists the accounts a page of two at a time
-    let full = bench
+    let full = wired
         .assets
-        .accounts_storage(Sorted::MostUsed, None, None, 2, &bench::ada())
+        .accounts_storage(Sorted::MostUsed, None, None, 2, &wiring::ada())
         .await
         .expect("an operator is told");
 

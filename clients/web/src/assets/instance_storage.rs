@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::ops::Deref;
 use std::time::Duration;
 
 use fluent_bundle::FluentArgs;
@@ -7,6 +8,7 @@ use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
 use crate::act::{Act, Here};
+use crate::assets::paged::Paged;
 use crate::assets::service;
 use crate::assets::service::{AccountStorage, ProjectStorage, Usage};
 use crate::assets::storage_page;
@@ -79,31 +81,33 @@ fn limit_shown(most: u64) -> (String, LimitUnit) {
 }
 
 /// A list the operator can search and page through.
-/// `asked` counts the lists asked for, so an answer to an older one is ignored.
-struct Paged<T: Send + Sync + 'static> {
+/// It reads as the list itself, and adds the term searched for.
+struct Searched<T: Send + Sync + 'static> {
     search: RwSignal<String>,
-    listed: RwSignal<Vec<T>>,
-    next: RwSignal<Option<String>>,
-    loading: RwSignal<bool>,
-    asked: StoredValue<u64>,
+    list: Paged<T>,
 }
 
-impl<T: Send + Sync + 'static> Clone for Paged<T> {
+impl<T: Send + Sync + 'static> Clone for Searched<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Send + Sync + 'static> Copy for Paged<T> {}
+impl<T: Send + Sync + 'static> Copy for Searched<T> {}
 
-impl<T: Clone + Send + Sync + 'static> Paged<T> {
+impl<T: Send + Sync + 'static> Deref for Searched<T> {
+    type Target = Paged<T>;
+
+    fn deref(&self) -> &Paged<T> {
+        &self.list
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> Searched<T> {
     fn new() -> Self {
         Self {
             search: RwSignal::new(String::new()),
-            listed: RwSignal::new(Vec::new()),
-            next: RwSignal::new(None),
-            loading: RwSignal::new(false),
-            asked: StoredValue::new(0),
+            list: Paged::new(),
         }
     }
 
@@ -117,35 +121,12 @@ impl<T: Clone + Send + Sync + 'static> Paged<T> {
     ) where
         Fu: Future<Output = Result<(Vec<T>, Option<String>), ApiError>> + 'static,
     {
-        self.asked.update_value(|asked| *asked += 1);
-        let asking = self.asked.get_value();
         let search = self.search.get_untracked();
-        let adding = after.is_some();
-        self.loading.set(true);
-
-        spawn_local(async move {
-            let told = fetch(search, after).await;
-            if self.asked.get_value() != asking {
-                return;
-            }
-            match told {
-                Ok((page, next)) => {
-                    if adding {
-                        self.listed.update(|shown| shown.extend(page));
-                    } else {
-                        self.listed.set(page);
-                    }
-                    self.next.set(next);
-                }
-                Err(failed) => refused.set(Some(failed)),
-            }
-            self.loading.set(false);
-        });
-    }
-
-    /// Whether there is nothing to show: no entries, no further page, and nothing loading.
-    fn nothing(self) -> bool {
-        self.listed.with(Vec::is_empty) && self.next.with(Option::is_none) && !self.loading.get()
+        self.list.load(
+            after,
+            move |failed| refused.set(Some(failed)),
+            move |after| fetch(search, after),
+        );
     }
 
     fn searching(self) -> bool {
@@ -155,20 +136,20 @@ impl<T: Clone + Send + Sync + 'static> Paged<T> {
 
 /// What the storage overview shows and is doing.
 #[derive(Clone, Copy)]
-struct Overview {
+struct InstanceStorageState {
     instance: RwSignal<Option<Usage>>,
-    accounts: Paged<AccountStorage>,
-    projects: Paged<ProjectStorage>,
+    accounts: Searched<AccountStorage>,
+    projects: Searched<ProjectStorage>,
     refused: RwSignal<Option<ApiError>>,
     limiting: RwSignal<Option<AccountStorage>>,
 }
 
-impl Overview {
-    fn asked() -> Self {
+impl InstanceStorageState {
+    fn open() -> Self {
         let overview = Self {
             instance: RwSignal::new(None),
-            accounts: Paged::new(),
-            projects: Paged::new(),
+            accounts: Searched::new(),
+            projects: Searched::new(),
             refused: RwSignal::new(None),
             limiting: RwSignal::new(None),
         };
@@ -207,7 +188,7 @@ impl Overview {
 /// Its label is only read out; the hint inside the field shows what to type.
 /// The list is asked for only once typing has paused for `SEARCH_AFTER`, not at every key.
 fn finding<T: Clone + Send + Sync + 'static>(
-    paged: Paged<T>,
+    paged: Searched<T>,
     label: &'static str,
     hint: &'static str,
     load: impl Fn() + Copy + 'static,
@@ -248,7 +229,7 @@ fn finding<T: Clone + Send + Sync + 'static>(
 
 /// What is said when a list is empty: that nothing matches the search, or that there is nothing at all.
 fn empty<T: Clone + Send + Sync + 'static>(
-    paged: Paged<T>,
+    paged: Searched<T>,
     no_match: &'static str,
     none: &'static str,
 ) -> impl IntoView {
@@ -267,7 +248,7 @@ fn empty<T: Clone + Send + Sync + 'static>(
 
 /// The button that loads the next page of a list, if there is one.
 fn more<T: Clone + Send + Sync + 'static>(
-    paged: Paged<T>,
+    paged: Searched<T>,
     load: impl Fn(String) + Clone + Send + Sync + 'static,
 ) -> impl IntoView {
     move || {
@@ -284,7 +265,7 @@ fn more<T: Clone + Send + Sync + 'static>(
 
 /// The operator's overview of the storage: what the instance uses, and each account and project that uses any.
 pub fn storage_overview() -> impl IntoView {
-    let overview = Overview::asked();
+    let overview = InstanceStorageState::open();
     let speech = expect_context::<Speech>();
 
     (
@@ -449,7 +430,11 @@ fn named(account: &AccountStorage) -> String {
         .unwrap_or_else(|| account.account.clone())
 }
 
-fn listed(overview: Overview, account: AccountStorage, speech: Speech) -> impl IntoView {
+fn listed(
+    overview: InstanceStorageState,
+    account: AccountStorage,
+    speech: Speech,
+) -> impl IntoView {
     let usage = Usage {
         used: account.used,
         most: account.most,
@@ -490,7 +475,7 @@ enum Limiting {
     TakeBack,
 }
 
-fn limit_dialog(overview: Overview, account: AccountStorage) -> impl IntoView {
+fn limit_dialog(overview: InstanceStorageState, account: AccountStorage) -> impl IntoView {
     let (shown, unit) = limit_shown(account.most.unwrap_or(GIGABYTE));
     let amount = RwSignal::new(shown.replace('.', &speech::say("decimal-point")));
     let unit = RwSignal::new(unit);

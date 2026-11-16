@@ -163,18 +163,34 @@ fn projects_listing(search: &str, after: Option<&str>) -> String {
 }
 
 fn storage_listing(listing: &str, search: &str, after: Option<&str>) -> String {
-    let asked: Vec<String> = [
-        Some(format!("sort={}", sort::MOST_USED)),
-        after.map(|after| format!("after={after}")),
-        Some(search.trim())
-            .filter(|term| !term.is_empty())
-            .map(|term| format!("search={}", encoded(term))),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    addressed(
+        listing,
+        &[
+            ("sort", Some(sort::MOST_USED.to_owned())),
+            ("after", after.map(str::to_owned)),
+            (
+                "search",
+                Some(search.trim().to_owned()).filter(|term| !term.is_empty()),
+            ),
+        ],
+    )
+}
 
-    format!("{listing}?{}", asked.join("&"))
+/// Builds an address from a path and what it asks, leaving out what is not asked and encoding every value.
+fn addressed(path: &str, asked: &[(&str, Option<String>)]) -> String {
+    let asked: Vec<String> = asked
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .as_deref()
+                .map(|value| format!("{name}={}", encoded(value)))
+        })
+        .collect();
+
+    match asked.is_empty() {
+        true => path.to_owned(),
+        false => format!("{path}?{}", asked.join("&")),
+    }
 }
 
 /// Percent-encodes a term for an address, keeping only letters, digits and `-_.~` as they are.
@@ -208,16 +224,14 @@ impl AssetType {
 }
 
 fn listing(sorted: UploadsSorted, of_type: Option<AssetType>, after: Option<&str>) -> String {
-    let asked: Vec<String> = [
-        Some(format!("sort={}", sorted.named())),
-        of_type.map(|of_type| format!("type={}", of_type.named())),
-        after.map(|after| format!("after={after}")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-
-    format!("{ASSETS}?{}", asked.join("&"))
+    addressed(
+        ASSETS,
+        &[
+            ("sort", Some(sorted.named().to_owned())),
+            ("type", of_type.map(|of_type| of_type.named().to_owned())),
+            ("after", after.map(str::to_owned)),
+        ],
+    )
 }
 
 /// Returns the address of an image's variant at least as wide as asked.
@@ -314,8 +328,46 @@ pub async fn upload_into(
     Ok(uploaded.id)
 }
 
+/// Uploads image files into a project, one after the other, telling how each goes by its place in `files`.
+/// A file larger than an upload may be is refused at once, before anything is sent; the others are uploaded in turn.
+/// `progressed` is told how far a file got, `finished` the new asset's id or why the file was refused.
+/// Given a signal, the uploads stop once it is aborted, and nothing more is told.
+pub async fn upload_each_into(
+    project: &str,
+    files: Vec<File>,
+    halted: Option<AbortSignal>,
+    progressed: impl Fn(usize, f64) + Clone + 'static,
+    finished: impl Fn(usize, Result<String, ApiError>),
+) {
+    let most = most_each_upload().await.ok().flatten();
+    let mut queued = Vec::new();
+    for (nth, file) in files.into_iter().enumerate() {
+        match most {
+            Some(most) if file.size() > most as f64 => finished(nth, Err(too_large(most))),
+            _ => queued.push((nth, file)),
+        }
+    }
+    for (nth, file) in queued {
+        if halted.as_ref().is_some_and(AbortSignal::aborted) {
+            return;
+        }
+        let progressed = progressed.clone();
+        let told = upload_into(
+            project,
+            &file,
+            move |fraction| progressed(nth, fraction),
+            halted.as_ref(),
+        )
+        .await;
+        if halted.as_ref().is_some_and(AbortSignal::aborted) {
+            return;
+        }
+        finished(nth, told);
+    }
+}
+
 /// The same refusal the server gives for an upload past its limit, told before anything is sent.
-pub fn too_large(most: u64) -> ApiError {
+fn too_large(most: u64) -> ApiError {
     ApiError::Rejected(Refusal {
         kind: Some(refused::LIMIT_REACHED.to_owned()),
         detail: String::new(),
@@ -348,19 +400,13 @@ pub struct AssetPage {
 }
 
 fn assets_listing(project: &str, of_type: Option<AssetType>, after: Option<&str>) -> String {
-    let assets = format!("{ASSETS}/projects/{}", encoded(project));
-    let asked: Vec<String> = [
-        of_type.map(|of_type| format!("type={}", of_type.named())),
-        after.map(|after| format!("after={}", encoded(after))),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-
-    match asked.is_empty() {
-        true => assets,
-        false => format!("{assets}?{}", asked.join("&")),
-    }
+    addressed(
+        &format!("{ASSETS}/projects/{}", encoded(project)),
+        &[
+            ("type", of_type.map(|of_type| of_type.named().to_owned())),
+            ("after", after.map(str::to_owned)),
+        ],
+    )
 }
 
 /// Lists a project's assets, the newest first, a page at a time.
@@ -419,49 +465,44 @@ pub async fn most_each_upload() -> Result<Option<u64>, ApiError> {
     Ok(limits.each_upload)
 }
 
-/// Whether the asset is used for nothing but the given account's picture.
-/// Only then may the account decide to delete it when it shows another picture.
-/// The project that holds an asset, or nothing for an account's own, as told to whoever may see it.
-pub async fn project_of(id: &str) -> Result<Option<String>, ApiError> {
+/// What the client is told of one asset: the project that holds it, if one does, and what uses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetInfo {
+    pub project: Option<String>,
+    pub uses: Vec<Use>,
+}
+
+impl AssetInfo {
+    /// Whether the asset is used for nothing but the given account's picture.
+    /// Only then may the account decide to delete it when it shows another picture.
+    pub fn only_as_picture_of(&self, account: &str) -> bool {
+        matches!(
+            self.uses.as_slice(),
+            [used] if used.purpose == Purpose::AccountPicture
+                && used.by == Holder::Account(account.to_owned())
+        )
+    }
+}
+
+/// Tells what is known of one asset to whoever may see it.
+pub async fn asset(id: &str) -> Result<AssetInfo, ApiError> {
     let told: AssetDTO = http::parsed(
         http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
         ASSET,
     )
     .await?;
 
-    Ok(match told.owner {
-        OwnerDTO::Project(project) => Some(project),
-        OwnerDTO::Account(_) => None,
-    })
+    Ok(info_of(told))
 }
 
-/// What uses an asset, as told to whoever may see it.
-pub async fn uses_of(id: &str) -> Result<Vec<Use>, ApiError> {
-    let told: AssetDTO = http::parsed(
-        http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
-        ASSET,
-    )
-    .await?;
-
-    Ok(told.uses.into_iter().map(use_read).collect())
-}
-
-pub async fn used_only_as_picture_of(id: &str, account: &str) -> Result<bool, ApiError> {
-    let told: AssetDTO = http::parsed(
-        http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
-        ASSET,
-    )
-    .await?;
-
-    Ok(only_as_picture_of(&told, account))
-}
-
-fn only_as_picture_of(told: &AssetDTO, account: &str) -> bool {
-    matches!(
-        told.uses.as_slice(),
-        [used] if used.purpose == purpose::ACCOUNT_PICTURE
-            && used.by == HolderDTO::Account(account.to_owned())
-    )
+fn info_of(told: AssetDTO) -> AssetInfo {
+    AssetInfo {
+        project: match told.owner {
+            OwnerDTO::Project(project) => Some(project),
+            OwnerDTO::Account(_) => None,
+        },
+        uses: told.uses.into_iter().map(use_read).collect(),
+    }
 }
 
 pub async fn delete(id: &str) -> Result<(), ApiError> {
@@ -749,26 +790,20 @@ mod tests {
         };
 
         // expect: Ada's picture alone is hers to decide about
-        assert!(only_as_picture_of(
-            &told(vec![picture_of("account_ada")]),
-            "account_ada"
-        ));
+        assert!(info_of(told(vec![picture_of("account_ada")])).only_as_picture_of("account_ada"));
         // and: not when it is someone else's, used for more, or used for nothing
-        assert!(!only_as_picture_of(
-            &told(vec![picture_of("account_bo")]),
-            "account_ada"
-        ));
-        assert!(!only_as_picture_of(
-            &told(vec![
+        assert!(!info_of(told(vec![picture_of("account_bo")])).only_as_picture_of("account_ada"));
+        assert!(
+            !info_of(told(vec![
                 picture_of("account_ada"),
                 AssetUseDTO {
                     purpose: "idea-cover".to_owned(),
                     by: HolderDTO::Account("account_ada".to_owned()),
                 },
-            ]),
-            "account_ada"
-        ));
-        assert!(!only_as_picture_of(&told(vec![]), "account_ada"));
+            ]))
+            .only_as_picture_of("account_ada")
+        );
+        assert!(!info_of(told(vec![])).only_as_picture_of("account_ada"));
     }
 
     #[test]

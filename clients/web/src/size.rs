@@ -155,7 +155,7 @@ mod tests {
                 "refused-asset-limit-reached",
                 Some(&args)
             ),
-            "You have no room left for this image. You use 1.5\u{a0}MB of 2\u{a0}MB."
+            "You have no room left for this image. You use 1.5\u{a0}MB of 2\u{a0}MB. Delete what you no longer need under Storage in your account."
         );
     }
 }

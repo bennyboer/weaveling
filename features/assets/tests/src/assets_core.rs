@@ -3,8 +3,9 @@ use assets_core::{
 };
 use eventsourcing::{AccountId, Agent, ServiceError};
 
-use crate::bench::{
-    THE_LOOM, a_bench, a_bench_limited, a_bench_refusing, a_bench_without_accounts, ada, bo, grace,
+use crate::wiring::{
+    THE_LOOM, a_workbench, a_workbench_limited, a_workbench_refusing, a_workbench_without_accounts,
+    ada, bo, grace,
 };
 
 const A_PHOTO: &[u8] = b"the bytes of a photo, as uploaded";
@@ -19,10 +20,10 @@ fn is_not_found<T: std::fmt::Debug>(result: &Result<T, AssetsError>) -> bool {
 #[tokio::test]
 async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_what_they_take() {
     // given: Ada, an owner of the loom
-    let bench = a_bench().await;
+    let wired = a_workbench().await;
 
     // when: she uploads a photo into it
-    let (id, standing) = bench
+    let (id, standing) = wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
         .await
@@ -31,9 +32,9 @@ async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_wha
     // then: it is the loom's, the photo as it was prepared
     let asset = standing.state;
     assert_eq!(asset.owner(), &Owner::Project(ProjectLink::from(THE_LOOM)));
-    assert_eq!(asset.picture().format, Format::Jpeg);
-    assert_eq!(asset.picture().original_size, A_PHOTO.len() as u64);
-    assert_eq!(asset.picture().variants, [384, 768, 1_280]);
+    assert_eq!(asset.image().format, Format::Jpeg);
+    assert_eq!(asset.image().original_size, A_PHOTO.len() as u64);
+    assert_eq!(asset.image().variants, [384, 768, 1_280]);
     // and: what it takes is the original and every variant
     let variants: u64 = [384, 768, 1_280]
         .map(|width| format!("the {width} wide variant").len() as u64)
@@ -41,11 +42,11 @@ async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_wha
         .sum();
     assert_eq!(asset.total_size(), A_PHOTO.len() as u64 + variants);
     // and: the original and three variants are kept
-    assert_eq!(bench.contents.pieces(), 4);
+    assert_eq!(wired.contents.pieces(), 4);
     // and: the installation, Ada and the loom hold it
     let total = asset.total_size();
     assert_eq!(
-        bench.usage().await,
+        wired.usage().await,
         Usage {
             instance: total,
             account: total,
@@ -53,7 +54,7 @@ async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_wha
         }
     );
     // and: it was asked of the images once
-    assert_eq!(bench.images.asked(), 1);
+    assert_eq!(wired.images.asked(), 1);
     assert!(!id.to_string().is_empty());
 }
 
@@ -61,8 +62,8 @@ async fn an_author_uploads_a_photo_into_a_project_kept_with_its_variants_and_wha
 async fn whoever_reads_the_project_sees_the_narrowest_variant_as_wide_as_asked_and_never_the_original()
  {
     // given: a photo of 1,280 pixels in the loom, made into 384, 768 and 1,280
-    let bench = a_bench().await;
-    let (id, _) = bench
+    let wired = a_workbench().await;
+    let (id, _) = wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
         .await
@@ -78,7 +79,7 @@ async fn whoever_reads_the_project_sees_the_narrowest_variant_as_wide_as_asked_a
         (Some(5_000), 1_280),
         (None, 1_280),
     ] {
-        let content = bench
+        let content = wired
             .assets
             .content(&id, asked, &bo())
             .await
@@ -96,8 +97,8 @@ async fn whoever_reads_the_project_sees_the_narrowest_variant_as_wide_as_asked_a
 async fn whoever_may_not_read_the_project_finds_no_asset_nor_project_and_a_reader_changes_nothing()
 {
     // given: a photo in the loom
-    let bench = a_bench().await;
-    let (id, _) = bench
+    let wired = a_workbench().await;
+    let (id, _) = wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
         .await
@@ -106,11 +107,11 @@ async fn whoever_may_not_read_the_project_finds_no_asset_nor_project_and_a_reade
 
     // expect: Grace, no member, finds no such asset, nor project to upload into
     assert!(is_not_found(
-        &bench.assets.content(&id, None, &grace()).await
+        &wired.assets.content(&id, None, &grace()).await
     ));
-    assert!(is_not_found(&bench.assets.delete(&id, &grace()).await));
+    assert!(is_not_found(&wired.assets.delete(&id, &grace()).await));
     assert!(matches!(
-        bench
+        wired
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &grace())
             .await,
@@ -118,31 +119,31 @@ async fn whoever_may_not_read_the_project_finds_no_asset_nor_project_and_a_reade
     ));
     // and: Bo, a reader, neither uploads nor deletes
     assert!(matches!(
-        bench
+        wired
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &bo())
             .await,
         Err(AssetsError::NotAnAuthor)
     ));
     assert!(matches!(
-        bench.assets.delete(&id, &bo()).await,
+        wired.assets.delete(&id, &bo()).await,
         Err(AssetsError::NotAnAuthor)
     ));
     // and: nothing was asked of the images for those refused
-    assert_eq!(bench.images.asked(), 1);
+    assert_eq!(wired.images.asked(), 1);
 }
 
 #[tokio::test]
 async fn an_upload_past_its_own_limit_is_refused_before_anything_is_made_of_it() {
     // given: uploads of ten bytes at most
-    let bench = a_bench_limited(Limits {
+    let wired = a_workbench_limited(Limits {
         each_upload: Some(10),
         ..Limits::default()
     })
     .await;
 
     // when: eleven bytes are uploaded
-    let refused = bench
+    let refused = wired
         .assets
         .upload_into(THE_LOOM, vec![0; 11], &ada())
         .await;
@@ -161,11 +162,11 @@ async fn an_upload_past_its_own_limit_is_refused_before_anything_is_made_of_it()
     );
     // and: nothing was made of it, nor kept
     assert_eq!(
-        bench.images.asked(),
+        wired.images.asked(),
         0,
         "an upload too large is not read at all"
     );
-    assert_eq!(bench.contents.pieces(), 0);
+    assert_eq!(wired.contents.pieces(), 0);
 }
 
 #[tokio::test]
@@ -173,8 +174,8 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
  {
     // given: what one photo takes
     let one = {
-        let bench = a_bench().await;
-        bench
+        let wired = a_workbench().await;
+        wired
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
             .await
@@ -208,15 +209,16 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
         ),
     ] {
         // given: room for one photo and a half under one limit, one photo uploaded
-        let bench = a_bench_limited(limits).await;
-        bench
+        let wired = a_workbench_limited(limits).await;
+        wired
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
             .await
             .expect("the first fits");
+        let kept_before = wired.contents.times_kept();
 
         // when: a second is uploaded
-        let refused = bench
+        let refused = wired
             .assets
             .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
             .await;
@@ -231,22 +233,75 @@ async fn an_upload_past_the_accounts_or_the_projects_or_the_installations_limit_
             "{bound:?}: {refused:?}"
         );
         // and: nothing of it is kept, the first alone held
-        assert_eq!(bench.contents.pieces(), 4, "{bound:?}");
-        assert_eq!(bench.usage().await.instance, one, "{bound:?}");
+        assert_eq!(wired.contents.pieces(), 4, "{bound:?}");
+        assert_eq!(wired.usage().await.instance, one, "{bound:?}");
+        // and: no piece of it was ever stored, not even for a moment
+        assert_eq!(
+            wired.contents.times_kept(),
+            kept_before,
+            "{bound:?}: pieces stored before the limits are checked would let a full account fill the disk, refusal after refusal"
+        );
     }
+}
+
+#[tokio::test]
+async fn a_copy_past_a_limit_is_refused_before_any_piece_of_it_is_stored() {
+    // given: room for one photo and a half in the installation, one photo uploaded
+    let one = {
+        let wired = a_workbench().await;
+        wired
+            .assets
+            .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
+            .await
+            .expect("an author uploads")
+            .1
+            .state
+            .total_size()
+    };
+    let wired = a_workbench_limited(Limits {
+        instance: Some(one * 3 / 2),
+        ..Limits::default()
+    })
+    .await;
+    let (id, _) = wired
+        .assets
+        .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
+        .await
+        .expect("the first fits");
+    let kept_before = wired.contents.times_kept();
+
+    // when: it is copied
+    let refused = wired
+        .assets
+        .copy_into(&id.to_string(), THE_LOOM, &ada())
+        .await;
+
+    // then: the copy is refused by the installation's limit
+    assert!(
+        matches!(
+            refused,
+            Err(AssetsError::LimitReached(Limit {
+                bound: Bound::Instance,
+                ..
+            }))
+        ),
+        "{refused:?}"
+    );
+    // and: no piece of it was ever stored
+    assert_eq!(wired.contents.times_kept(), kept_before);
 }
 
 #[tokio::test]
 async fn without_accounts_nobody_is_held_to_an_accounts_limit() {
     // given: an account's limit of one byte, and nobody signed in, as in local mode
-    let bench = a_bench_without_accounts(Limits {
+    let wired = a_workbench_without_accounts(Limits {
         each_account: Some(1),
         ..Limits::default()
     })
     .await;
 
     // expect: an upload is taken
-    bench
+    wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &Agent::Local)
         .await
@@ -256,10 +311,10 @@ async fn without_accounts_nobody_is_held_to_an_accounts_limit() {
 #[tokio::test]
 async fn an_upload_that_is_no_image_is_refused_as_such_and_kept_nowhere() {
     // given: images that take nothing
-    let bench = a_bench_refusing(ImageRefused::NotAnImage).await;
+    let wired = a_workbench_refusing(ImageRefused::NotAnImage).await;
 
     // when: something is uploaded
-    let refused = bench
+    let refused = wired
         .assets
         .upload_into(THE_LOOM, b"<svg/>".to_vec(), &ada())
         .await;
@@ -270,15 +325,15 @@ async fn an_upload_that_is_no_image_is_refused_as_such_and_kept_nowhere() {
         "{refused:?}"
     );
     // and: nothing is kept nor counted
-    assert_eq!(bench.contents.pieces(), 0);
-    assert_eq!(bench.usage().await, Usage::default());
+    assert_eq!(wired.contents.pieces(), 0);
+    assert_eq!(wired.usage().await, Usage::default());
 }
 
 #[tokio::test]
 async fn a_deleted_asset_is_seen_no_more_its_pieces_gone_and_counted_nowhere() {
     // given: a photo in the loom
-    let bench = a_bench().await;
-    let (id, _) = bench
+    let wired = a_workbench().await;
+    let (id, _) = wired
         .assets
         .upload_into(THE_LOOM, A_PHOTO.to_vec(), &ada())
         .await
@@ -286,19 +341,19 @@ async fn a_deleted_asset_is_seen_no_more_its_pieces_gone_and_counted_nowhere() {
     let id = id.to_string();
 
     // when: Ada deletes it
-    bench
+    wired
         .assets
         .delete(&id, &ada())
         .await
         .expect("an author deletes");
 
     // then: nobody sees it
-    assert!(is_not_found(&bench.assets.content(&id, None, &ada()).await));
+    assert!(is_not_found(&wired.assets.content(&id, None, &ada()).await));
     // and: none of its pieces is kept, nor is it counted
-    assert_eq!(bench.contents.pieces(), 0);
-    assert_eq!(bench.usage().await, Usage::default());
+    assert_eq!(wired.contents.pieces(), 0);
+    assert_eq!(wired.usage().await, Usage::default());
     // and: deleting it again is harmless
-    bench
+    wired
         .assets
         .delete(&id, &ada())
         .await
@@ -308,17 +363,17 @@ async fn a_deleted_asset_is_seen_no_more_its_pieces_gone_and_counted_nowhere() {
 #[tokio::test]
 async fn an_id_of_no_asset_is_not_found() {
     // given: no asset
-    let bench = a_bench().await;
+    let wired = a_workbench().await;
 
     // expect: an id never given and one that is no id are both not there
     assert!(is_not_found(
-        &bench
+        &wired
             .assets
             .content("asset_0123456789ABCDEFGHIJKL", None, &ada())
             .await
     ));
     assert!(matches!(
-        bench.assets.content("not an id", None, &ada()).await,
+        wired.assets.content("not an id", None, &ada()).await,
         Err(AssetsError::InvalidId(_))
     ));
 }
@@ -326,14 +381,14 @@ async fn an_id_of_no_asset_is_not_found() {
 #[tokio::test]
 async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project() {
     // given: Ada and a limit on each account
-    let bench = a_bench_limited(Limits {
+    let wired = a_workbench_limited(Limits {
         each_account: Some(1_000),
         ..Limits::default()
     })
     .await;
 
     // when: she uploads a photo of her own
-    let (id, standing) = bench
+    let (id, standing) = wired
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &ada())
         .await
@@ -348,7 +403,7 @@ async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project
     // and: the installation and Ada hold it, no project
     let total = asset.total_size();
     assert_eq!(
-        bench.usage().await,
+        wired.usage().await,
         Usage {
             instance: total,
             account: total,
@@ -357,7 +412,7 @@ async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project
     );
     // and: she sees it
     assert!(
-        bench
+        wired
             .assets
             .content(&id.to_string(), None, &ada())
             .await
@@ -368,8 +423,8 @@ async fn an_account_uploads_a_photo_of_its_own_counted_against_it_and_no_project
 #[tokio::test]
 async fn an_account_s_own_photo_is_changed_by_it_alone() {
     // given: a photo of Ada's own
-    let bench = a_bench().await;
-    let (id, _) = bench
+    let wired = a_workbench().await;
+    let (id, _) = wired
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &ada())
         .await
@@ -377,8 +432,8 @@ async fn an_account_s_own_photo_is_changed_by_it_alone() {
     let id = id.to_string();
 
     // when: Bo deletes it, and then Ada
-    let by_bo = bench.assets.delete(&id, &bo()).await;
-    let by_ada = bench.assets.delete(&id, &ada()).await;
+    let by_bo = wired.assets.delete(&id, &bo()).await;
+    let by_ada = wired.assets.delete(&id, &ada()).await;
 
     // then: Bo finds nothing to delete, and Ada deletes it
     assert!(is_not_found(&by_bo), "{by_bo:?}");
@@ -388,10 +443,10 @@ async fn an_account_s_own_photo_is_changed_by_it_alone() {
 #[tokio::test]
 async fn nobody_keeps_photos_of_their_own_without_accounts() {
     // given: the instance without accounts
-    let bench = a_bench().await;
+    let wired = a_workbench().await;
 
     // when: a photo is uploaded as one's own
-    let refused = bench
+    let refused = wired
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &Agent::Local)
         .await;
@@ -401,16 +456,16 @@ async fn nobody_keeps_photos_of_their_own_without_accounts() {
         matches!(refused, Err(AssetsError::NoAccount)),
         "{refused:?}"
     );
-    assert_eq!(bench.images.asked(), 0);
-    assert_eq!(bench.contents.pieces(), 0);
+    assert_eq!(wired.images.asked(), 0);
+    assert_eq!(wired.contents.pieces(), 0);
 }
 
 #[tokio::test]
 async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_account_s() {
     // given: what one photo takes, and every account held to one photo and a half
     let one = {
-        let bench = a_bench().await;
-        bench
+        let wired = a_workbench().await;
+        wired
             .assets
             .upload_as_own(A_PHOTO.to_vec(), &ada())
             .await
@@ -419,24 +474,24 @@ async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_acc
             .state
             .total_size()
     };
-    let bench = a_bench_limited(Limits {
+    let wired = a_workbench_limited(Limits {
         each_account: Some(one * 3 / 2),
         ..Limits::default()
     })
     .await;
     // and: Ada given room for three photos of her own
-    bench.adas_own_limit(Some(one * 3)).await;
+    wired.adas_own_limit(Some(one * 3)).await;
 
     // when: she uploads three photos
     for _ in 0..3 {
-        bench
+        wired
             .assets
             .upload_as_own(A_PHOTO.to_vec(), &ada())
             .await
             .expect("her own limit takes three");
     }
     // and: a fourth
-    let refused = bench.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
+    let refused = wired.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
 
     // then: the fourth is refused, told her own limit
     assert!(
@@ -448,12 +503,12 @@ async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_acc
         "{refused:?}"
     );
     // and: Bo is held to every account's limit still
-    bench
+    wired
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &bo())
         .await
         .expect("his first fits");
-    let his = bench.assets.upload_as_own(A_PHOTO.to_vec(), &bo()).await;
+    let his = wired.assets.upload_as_own(A_PHOTO.to_vec(), &bo()).await;
     assert!(
         matches!(
             his,
@@ -467,16 +522,16 @@ async fn an_account_given_a_limit_of_its_own_is_held_to_it_in_place_of_every_acc
 #[tokio::test]
 async fn an_account_whose_own_limit_was_taken_back_is_held_to_every_account_s_again() {
     // given: every account held to one byte, and Ada given a gigabyte, then taken back
-    let bench = a_bench_limited(Limits {
+    let wired = a_workbench_limited(Limits {
         each_account: Some(1),
         ..Limits::default()
     })
     .await;
-    bench.adas_own_limit(Some(1 << 30)).await;
-    bench.adas_own_limit(None).await;
+    wired.adas_own_limit(Some(1 << 30)).await;
+    wired.adas_own_limit(None).await;
 
     // when: she uploads a photo
-    let refused = bench.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
+    let refused = wired.assets.upload_as_own(A_PHOTO.to_vec(), &ada()).await;
 
     // then: every account's limit holds her
     assert!(
@@ -495,11 +550,11 @@ async fn an_account_whose_own_limit_was_taken_back_is_held_to_every_account_s_ag
 #[tokio::test]
 async fn without_accounts_a_limit_given_an_account_holds_nobody() {
     // given: no account held to any limit, as in local mode, and Ada given one byte nonetheless
-    let bench = a_bench().await;
-    bench.adas_own_limit(Some(1)).await;
+    let wired = a_workbench().await;
+    wired.adas_own_limit(Some(1)).await;
 
     // expect: her upload is taken
-    bench
+    wired
         .assets
         .upload_as_own(A_PHOTO.to_vec(), &ada())
         .await
