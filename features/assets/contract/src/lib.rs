@@ -91,6 +91,23 @@ pub struct UploadsDTO {
     pub next: Option<String>,
 }
 
+/// One image a project holds, as the dialog for choosing an image lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ImageDTO {
+    pub id: String,
+    pub width: u32,
+    pub height: u32,
+    pub uploaded_at: String,
+}
+
+/// A page of a project's images, the newest first, and the cursor for the next page.
+/// The cursor is missing after the last page.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ImagesDTO {
+    pub images: Vec<ImageDTO>,
+    pub next: Option<String>,
+}
+
 /// How many bytes the signed-in account's uploads use, and their limit.
 /// The limit is missing if there is none.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

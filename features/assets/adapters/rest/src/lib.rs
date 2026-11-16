@@ -1,7 +1,8 @@
 use assets_contract::{
     AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, AssetUseDTO, HolderDTO,
-    InstanceStorageDTO, OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO,
-    UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, bound, format, purpose, refused, sort,
+    ImageDTO, ImagesDTO, InstanceStorageDTO, OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO,
+    ProjectsStorageDTO, UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, bound, format, purpose,
+    refused, sort,
 };
 use assets_core::{
     Asset, AssetError, AssetUse, AssetsCore, AssetsError, Bound, Format, Held, Holder,
@@ -38,6 +39,8 @@ pub fn router(assets: AssetsCore) -> Router {
         .route("/assets/storage/projects", routing::get(projects_storage))
         .route("/assets/{id}", routing::get(asset).delete(delete))
         .route("/assets/{id}/content", routing::get(content))
+        .route("/assets/{id}/copies", routing::post(copy))
+        .route("/assets/projects/{project}/images", routing::get(images_in))
         .route(
             "/assets/accounts/{account}/limit",
             routing::put(give_account_limit).delete(take_back_account_limit),
@@ -159,6 +162,16 @@ fn next_of<T>(listed: &Listed<T>) -> Option<String> {
 }
 
 #[derive(Deserialize)]
+struct CopiedInto {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct ImagesPaging {
+    after: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct AsWide {
     width: Option<u32>,
 }
@@ -191,6 +204,60 @@ async fn upload(
         &uploaded,
         &[],
     ))
+}
+
+async fn copy(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(id): Path<String>,
+    Query(into): Query<CopiedInto>,
+) -> Result<Response, Problem> {
+    let (copy, copied) = assets
+        .copy_into(&id, &into.project, &acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(to_response(
+        StatusCode::CREATED,
+        &copy.to_string(),
+        &copied,
+        &[],
+    ))
+}
+
+async fn images_in(
+    State(assets): State<AssetsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(project): Path<String>,
+    Query(paging): Query<ImagesPaging>,
+) -> Result<Json<ImagesDTO>, Problem> {
+    let after = paging
+        .after
+        .as_deref()
+        .map(|cursor| {
+            mark_read(cursor).ok_or_else(|| {
+                Problem::rejected(refused::CURSOR_INVALID, "no page goes on from there")
+            })
+        })
+        .transpose()?;
+    let listed = assets
+        .images_in(&project, after.as_ref(), A_PAGE, &acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(ImagesDTO {
+        next: listed.next.as_ref().map(mark_written),
+        images: listed
+            .listed
+            .into_iter()
+            .map(|image| ImageDTO {
+                id: image.id.to_string(),
+                width: image.width,
+                height: image.height,
+                uploaded_at: clock::text::serialize(image.uploaded_at),
+            })
+            .collect(),
+    }))
 }
 
 async fn content(

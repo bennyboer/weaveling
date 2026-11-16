@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
-    Sorted, Upload, UploadMark, UploadsSorted, Usage,
+    Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -16,7 +16,7 @@ use transacting::sqlite::connection;
 use crate::written::{
     ACCOUNT, INSTANCE, PROJECT, bounds_of, format_read, format_written, holdings_asked, owner_read,
     owner_written, pattern_of, person_searched, project_searched, size_written, unreachable,
-    uploads_asked, usage_of,
+    uploads_asked, usage_of, whose_written,
 };
 
 const REMEMBER: &str = "
@@ -347,17 +347,17 @@ impl AssetCatalog for SqliteAssetCatalog {
             .collect()
     }
 
-    async fn uploaded_by(
+    async fn uploads_of(
         &self,
         transaction: &mut Transaction,
-        account: &AccountId,
+        whose: &UploadsOf,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,
     ) -> Result<Vec<Upload>, CatalogError> {
-        let asked = uploads_asked(placeholder, sorted, after.is_some());
+        let asked = uploads_asked(placeholder, whose, sorted, after.is_some());
         let mut asking = sqlx::query(AssertSqlSafe(asked))
-            .bind(account.to_string())
+            .bind(whose_written(whose))
             .bind(i64::try_from(at_most).map_err(unreachable)?);
         if let Some(last) = after {
             asking = match sorted {

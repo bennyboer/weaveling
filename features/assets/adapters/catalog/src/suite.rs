@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Format, Held, Holders, Owner, Person,
-    ProjectLink, Sorted, Upload, UploadMark, UploadsSorted, Usage,
+    ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::{AccountId, Version};
 use time::OffsetDateTime;
@@ -653,7 +653,13 @@ async fn uploads<W: Workbench>(
         .expect("beginning should succeed");
     let uploads = bench
         .store()
-        .uploaded_by(&mut transaction, account, sorted, after, at_most)
+        .uploads_of(
+            &mut transaction,
+            &UploadsOf::Account(account.clone()),
+            sorted,
+            after,
+            at_most,
+        )
         .await
         .expect("asking should succeed");
     transaction
@@ -778,6 +784,73 @@ pub async fn a_project_s_name_forgotten_names_its_uploads_no_more<W: Workbench>(
             .await
             .iter()
             .all(|upload| upload.project_name.is_none())
+    );
+}
+
+async fn held_in<W: Workbench>(
+    bench: &W,
+    project: &ProjectLink,
+    after: Option<&UploadMark>,
+    at_most: u64,
+) -> Vec<Upload> {
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .map_err(unreachable)
+        .expect("beginning should succeed");
+    let uploads = bench
+        .store()
+        .uploads_of(
+            &mut transaction,
+            &UploadsOf::Project(project.clone()),
+            UploadsSorted::Newest,
+            after,
+            at_most,
+        )
+        .await
+        .expect("asking should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    uploads
+}
+
+pub async fn a_project_s_images_are_listed_the_newest_first_whoever_uploaded_them<W: Workbench>(
+    bench: &W,
+) {
+    // given: what Ada and Bo uploaded, and into the loom also Bo's and one by nobody signed in
+    let [loom, ..] = adas_uploads_kept(bench).await;
+    let (bos, nobodys) = (an_asset(6), an_asset(7));
+    for (id, uploader, uploaded) in [(bos, Some(bo()), 50), (nobodys, None, 60)] {
+        remembered(
+            bench,
+            &AssetSummary {
+                uploaded_at: at(1_700_000_000 + uploaded),
+                ..a_summary(id, Owner::Project(the_loom()), uploader, 80)
+            },
+        )
+        .await;
+    }
+
+    // expect: the loom's alone, the newest first, whoever uploaded them
+    assert_eq!(
+        ids(&held_in(bench, &the_loom(), None, 10).await),
+        [nobodys, bos, loom]
+    );
+    // and: a page goes on after the last one listed
+    let first = held_in(bench, &the_loom(), None, 1).await;
+    assert_eq!(
+        ids(&held_in(bench, &the_loom(), Some(&UploadMark::from(&first[0])), 10).await),
+        [bos, loom]
+    );
+    // and: a project holding nothing lists nothing
+    assert!(
+        held_in(bench, &ProjectLink::from("project_empty"), None, 10)
+            .await
+            .is_empty()
     );
 }
 
@@ -1188,6 +1261,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             uploads_are_listed_a_page_at_a_time_after_the_last_listed
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_s_images_are_listed_the_newest_first_whoever_uploaded_them
         );
         $crate::catalog_conformance_case!($workbench, an_upload_forgotten_is_listed_no_more);
         $crate::catalog_conformance_case!(

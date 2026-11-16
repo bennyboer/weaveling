@@ -1,6 +1,6 @@
 use assets_core::{
     CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, SceneLink, Sorted,
-    UploadsSorted, Usage,
+    UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::AccountId;
 
@@ -230,11 +230,27 @@ pub(crate) fn holdings_asked(
 /// The parameters are bound in this order: the account and the page size,
 /// then the cursor's size or time (depending on the order) and its id.
 /// The project's name is joined for uploads into projects.
+/// The value the uploads' query is asked for: the uploader's account or the project.
+pub(crate) fn whose_written(whose: &UploadsOf) -> String {
+    match whose {
+        UploadsOf::Account(account) => account.to_string(),
+        UploadsOf::Project(project) => project.to_string(),
+    }
+}
+
 pub(crate) fn uploads_asked(
     placeholder: fn(usize) -> String,
+    whose: &UploadsOf,
     sorted: UploadsSorted,
     after: bool,
 ) -> String {
+    let whose = match whose {
+        UploadsOf::Account(_) => format!("summary.uploader = {}", placeholder(1)),
+        UploadsOf::Project(_) => format!(
+            "summary.owner_kind = '{PROJECT}' AND summary.owner = {}",
+            placeholder(1)
+        ),
+    };
     let key = match sorted {
         UploadsSorted::Largest => "summary.total_size",
         UploadsSorted::Newest => "summary.uploaded_at",
@@ -247,8 +263,7 @@ pub(crate) fn uploads_asked(
          FROM asset_summaries summary \
          LEFT JOIN asset_project_names named \
          ON summary.owner_kind = '{PROJECT}' AND named.project = summary.owner \
-         WHERE summary.uploader = {}",
-        placeholder(1)
+         WHERE {whose}"
     );
     if after {
         let (mark, id) = (placeholder(3), placeholder(4));

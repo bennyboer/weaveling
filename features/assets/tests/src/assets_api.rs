@@ -1,4 +1,4 @@
-use assets_contract::{AssetDTO, OwnerDTO, UploadLimitsDTO, UsageDTO, refused};
+use assets_contract::{AssetDTO, ImagesDTO, OwnerDTO, UploadLimitsDTO, UsageDTO, refused};
 use assets_core::{ImageRefused, Limits};
 use axum::Extension;
 use axum::http::StatusCode;
@@ -7,7 +7,7 @@ use axum_test::{TestResponse, TestServer};
 use eventsourcing::Agent;
 use serde_json::Value;
 
-use crate::bench::{self, Bench, THE_LOOM};
+use crate::bench::{self, Bench, THE_LOOM, THE_WEFT};
 
 const UNKNOWN_ID: &str = "asset_031VkO0hnpeQZUiAB7nDma";
 
@@ -290,6 +290,90 @@ async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_mos
             used: 0,
             most: Some(1 << 20),
         }
+    );
+}
+
+#[tokio::test]
+async fn a_project_s_images_are_listed_the_newest_first_to_its_readers_alone() {
+    // given: two images Ada uploaded into the loom, one after the other
+    let bench = bench::a_bench().await;
+    let ada = serving(&bench, bench::ada());
+    let older: AssetDTO = uploaded(&ada, THE_LOOM).await.json();
+    bench.clock.set(clock::at(1_700_000_100));
+    let newer: AssetDTO = uploaded(&ada, THE_LOOM).await.json();
+
+    // when: Bo, a reader, and Grace, no member, ask for the loom's images
+    let images = format!("/assets/projects/{THE_LOOM}/images");
+    let read = serving(&bench, bench::bo()).get(&images).await;
+    let outside = serving(&bench, bench::grace()).get(&images).await;
+
+    // then: Bo is told both, the newest first, with their pictures, on one page
+    read.assert_status_ok();
+    let told: ImagesDTO = read.json();
+    assert_eq!(
+        told.images
+            .iter()
+            .map(|image| image.id.as_str())
+            .collect::<Vec<_>>(),
+        [newer.id.as_str(), older.id.as_str()]
+    );
+    assert_eq!(
+        (told.images[0].width, told.images[0].height),
+        (1_280, 1_024)
+    );
+    assert_eq!(told.next, None);
+    // and: to Grace there is no such project
+    refused_as(outside, StatusCode::NOT_FOUND, serving::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn an_image_copied_into_another_project_is_that_project_s_own() {
+    // given: an image of the loom, and Ada an owner of the weft too
+    let bench = bench::a_bench().await;
+    bench.ada_owns_the_weft().await;
+    let ada = serving(&bench, bench::ada());
+    let image: AssetDTO = uploaded(&ada, THE_LOOM).await.json();
+
+    // when: she copies it into the weft
+    let response = ada
+        .post(&format!("/assets/{}/copies?project={THE_WEFT}", image.id))
+        .await;
+
+    // then: a new image is made, the weft's own, with the same picture
+    response.assert_status(StatusCode::CREATED);
+    let copy: AssetDTO = response.json();
+    assert_ne!(copy.id, image.id);
+    assert_eq!(copy.owner, OwnerDTO::Project(THE_WEFT.to_owned()));
+    assert_eq!((copy.width, copy.height), (image.width, image.height));
+    assert_eq!(copy.original_size, image.original_size);
+    // and: the weft lists it
+    let listed: ImagesDTO = ada
+        .get(&format!("/assets/projects/{THE_WEFT}/images"))
+        .await
+        .json();
+    assert_eq!(listed.images.len(), 1);
+    assert_eq!(listed.images[0].id, copy.id);
+}
+
+#[tokio::test]
+async fn an_image_is_copied_only_by_who_may_see_it_into_where_they_may_write() {
+    // given: an image of the loom, Bo reading the loom, and Grace no member
+    let bench = bench::a_bench().await;
+    let image: AssetDTO = uploaded(&serving(&bench, bench::ada()), THE_LOOM)
+        .await
+        .json();
+    let copies = format!("/assets/{}/copies?project={THE_LOOM}", image.id);
+
+    // when: Bo copies it into the loom, and Grace too
+    let by_a_reader = serving(&bench, bench::bo()).post(&copies).await;
+    let by_someone_outside = serving(&bench, bench::grace()).post(&copies).await;
+
+    // then: Bo is told reading is all he may, and to Grace there is no such image
+    refused_as(by_a_reader, StatusCode::FORBIDDEN, refused::NOT_AN_AUTHOR);
+    refused_as(
+        by_someone_outside,
+        StatusCode::NOT_FOUND,
+        serving::NOT_FOUND,
     );
 }
 

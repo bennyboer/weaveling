@@ -13,7 +13,7 @@ CREATE TABLE asset_summaries (
 
 CREATE INDEX asset_summaries_by_uploader_largest ON asset_summaries (uploader, total_size DESC, id);
 CREATE INDEX asset_summaries_by_uploader_newest ON asset_summaries (uploader, uploaded_at DESC, id);
-CREATE INDEX asset_summaries_by_owner ON asset_summaries (owner_kind, owner);
+CREATE INDEX asset_summaries_by_owner_newest ON asset_summaries (owner_kind, owner, uploaded_at DESC, id);
 
 CREATE TABLE asset_usage (
     bound  TEXT COLLATE "C" NOT NULL,

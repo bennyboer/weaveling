@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use assets_core::{
     AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
-    Sorted, Upload, UploadMark, UploadsSorted, Usage,
+    Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -236,10 +236,10 @@ impl AssetCatalog for InMemoryAssetCatalog {
         Ok(owned)
     }
 
-    async fn uploaded_by(
+    async fn uploads_of(
         &self,
         _transaction: &mut Transaction,
-        account: &AccountId,
+        whose: &UploadsOf,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,
@@ -252,7 +252,10 @@ impl AssetCatalog for InMemoryAssetCatalog {
         let mut uploads: Vec<Upload> = kept
             .summaries
             .values()
-            .filter(|summary| summary.uploader.as_ref() == Some(account))
+            .filter(|summary| match whose {
+                UploadsOf::Account(account) => summary.uploader.as_ref() == Some(account),
+                UploadsOf::Project(project) => summary.owner == Owner::Project(project.clone()),
+            })
             .map(|summary| Upload {
                 id: summary.id,
                 owner: summary.owner.clone(),

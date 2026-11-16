@@ -81,6 +81,14 @@ pub struct Upload {
     pub uploaded_at: OffsetDateTime,
 }
 
+/// Whose uploads are listed: what an account uploaded, wherever it went,
+/// or what a project holds, whoever uploaded it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UploadsOf {
+    Account(AccountId),
+    Project(ProjectLink),
+}
+
 /// The cursor for the next page of uploads: the last listed upload's size, time and id.
 /// It holds both size and time, so it works for either order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,12 +171,13 @@ pub trait AssetCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<Vec<AssetId>, CatalogError>;
 
-    /// Lists what the account uploaded, both into projects and as its own images.
+    /// Lists what an account uploaded, both into projects and as its own images,
+    /// or what a project holds, whoever uploaded it.
     /// Starts after the given cursor and returns at most `at_most` uploads.
-    async fn uploaded_by(
+    async fn uploads_of(
         &self,
         transaction: &mut Transaction,
-        account: &AccountId,
+        whose: &UploadsOf,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,

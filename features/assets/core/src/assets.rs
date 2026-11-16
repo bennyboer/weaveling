@@ -15,7 +15,8 @@ use transacting::{Transaction, Transactions};
 use crate::account_limits::AccountLimits;
 use crate::asset::{Asset, AssetCommand, AssetEvent, KIND, Owner, ProjectLink};
 use crate::catalog::{
-    AssetCatalog, AssetSummary, Held, Holders, Person, Sorted, UploadMark, UploadsSorted,
+    AssetCatalog, AssetSummary, Held, Holders, Person, Sorted, Upload, UploadMark, UploadsOf,
+    UploadsSorted,
 };
 use crate::contents::{Contents, Piece};
 use crate::error::AssetsError;
@@ -170,6 +171,59 @@ impl AssetsCore {
         }
 
         Ok((id, self.events.latest(&AggregateId::from(&id)).await?))
+    }
+
+    /// Copies an image into a project, so the project holds it as its own.
+    /// The agent must be allowed to see the image and to write in the project.
+    /// The copy is made from the image's original as an upload would be, and counts against the same limits.
+    pub async fn copy_into(
+        &self,
+        id: &str,
+        project: &str,
+        agent: &Agent,
+    ) -> Result<(AssetId, Standing<Asset>), AssetsError> {
+        let id: AssetId = id.parse()?;
+        let asset = self.standing(&id).await?.state;
+        if asset.is_deleted() || !self.may_see(agent, asset.owner()).await? {
+            return Err(not_found(&id));
+        }
+        let project = ProjectLink::from(project);
+        self.authorized(agent, Act::Write, &project, || AssetsError::ProjectNotThere)
+            .await?;
+        let original = self
+            .contents
+            .read(&id, Piece::Original)
+            .await?
+            .ok_or(AssetsError::ContentsMissing)?;
+
+        self.uploaded(Owner::Project(project), original, agent)
+            .await
+    }
+
+    /// Lists the images a project holds, the newest first, one page at a time.
+    /// Whoever may read the project may list them, whoever uploaded them.
+    pub async fn images_in(
+        &self,
+        project: &str,
+        after: Option<&UploadMark>,
+        at_most: u64,
+        agent: &Agent,
+    ) -> Result<Listed<Upload, UploadMark>, AssetsError> {
+        let project = ProjectLink::from(project);
+        self.authorized(agent, Act::Read, &project, || AssetsError::ProjectNotThere)
+            .await?;
+        let whose = UploadsOf::Project(project);
+
+        let images = transacting::retrying!(&*self.transactions, |transaction| {
+            Ok::<_, AssetsError>(
+                self.catalog
+                    .uploads_of(transaction, &whose, UploadsSorted::Newest, after, at_most)
+                    .await?,
+            )
+        })?;
+        let last = images.last().map(UploadMark::from);
+
+        Ok(Listed::paged(images, last, at_most))
     }
 
     /// Returns a variant of an asset, if the agent may see the asset.
@@ -511,7 +565,13 @@ impl AssetsCore {
         let (uploads, uses) = transacting::retrying!(&*self.transactions, |transaction| {
             let uploads = self
                 .catalog
-                .uploaded_by(transaction, account, sorted, after, at_most)
+                .uploads_of(
+                    transaction,
+                    &UploadsOf::Account(account.clone()),
+                    sorted,
+                    after,
+                    at_most,
+                )
                 .await?;
             let ids: Vec<AssetId> = uploads.iter().map(|upload| upload.id).collect();
             let uses = self.uses.uses_of(transaction, &ids).await?;

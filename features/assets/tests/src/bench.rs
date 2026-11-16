@@ -170,6 +170,20 @@ impl Bench {
         self.published.heard()
     }
 
+    /// Makes Ada an owner of the weft too, as the members feature would report it.
+    pub async fn ada_owns_the_weft(&self) {
+        self.assets
+            .remember_role(
+                None,
+                THE_WEFT,
+                &AccountId::from("account_ada"),
+                Version::of(4),
+                Some(Role::Owner),
+            )
+            .await
+            .expect("remembering should succeed");
+    }
+
     /// Tells the assets feature that Ada runs the instance, as the accounts feature would.
     pub async fn ada_runs_the_instance(&self) {
         self.assets

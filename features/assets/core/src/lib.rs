@@ -20,7 +20,7 @@ pub use asset::{
 pub use assets::{AssetsCore, Content, OwnUsage, SWEPT_AT_ONCE};
 pub use catalog::{
     AssetCatalog, AssetSummary, CatalogError, Held, Holders, Person, Sorted, Upload, UploadMark,
-    UploadsSorted,
+    UploadsOf, UploadsSorted,
 };
 pub use contents::{Contents, ContentsError, Piece};
 pub use error::AssetsError;
