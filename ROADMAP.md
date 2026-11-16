@@ -1192,28 +1192,50 @@ In slices, in this order:
 
 **Feedback.** It may be about a passage (a selection of text), a whole scene, a whole section, or the whole book.
 
+**Reading copies, decided 2026-11-16 with the user.** Nobody reads the live text. What is read is a **reading copy**, `ReadingCopy` in a feature of its own, `readings`. An author makes it from the book, or from part of it, and it never changes after that. To share newer text, the author makes a new reading copy.
+- A reading copy is a model of its own, made to be read: sections with their titles, scenes, and in each scene its blocks (paragraphs, headings, figures), with text as runs carrying their marks. Yjs is read once, when the copy is made, and nothing after that touches it: not the reading view, not guests, not feedback, not the printed book.
+- The reading view draws the copy as markup of our own. There is no editor in it, so there is no JavaScript bundle on the page, and the printed book can lay the same markup out in pages later.
+- Feedback points into the copy: a passage as a block and a stretch of its text, or a whole scene, section or copy. A copy never changes, so this place never goes stale.
+- Each scene in a copy keeps the id of the scene it came from. So the writing view can show, on a scene, that there is feedback on a reading copy of it, and open that feedback. Where in the scene's current text a passage now sits is not kept. Keeping a `yrs` sticky index for each block would allow that later, without changing the model.
+- *Settled 2026-11-17:* a copy is made for each share, of what it shares: the whole book, a run of sections or a run of scenes. It has a name and the time it was made. A copy may have several links, for example one for each test reader invited by email.
+- **Two views of one copy.** *Settled 2026-11-17.* The **internal view** is for the project's members. A tray on the left lists every copy of the project, by name and time, and a member may read and comment on any of them. Before the first copy, it says there is nothing to read yet. The **external view** is for whoever comes by a link or an email: a guest, or an account that is not a member of the project. They see only the copy they were given and nothing else of the project. An account that is not a member is a guest who is known, so its feedback carries the account rather than a guest's name.
+- **The live book, in the internal view.** *Settled 2026-11-17.* A member who has no copy chosen reads the book as it is now, and sees the authors' changes as they land: a scene's new text, a new section, an image put in. It is drawn from the same model as a copy: the server turns the current outline and scenes into it without keeping it, and sends a scene again when it changes. So there is still no editor in the reading view.
+- **Commenting on the live book makes a copy.** *Settled 2026-11-17.* Feedback is only ever given on a copy. A member who selects a passage of the live book, or asks to comment on a scene, a section or the whole book, is told that this makes a reading copy frozen at this moment, where the comment will be kept. The copy is of the whole book, and the member is then moved into it, so their next comments land in the same copy. Readers may therefore make copies too. If a scene changed between what the member saw and the copy, the copy is still made, and the member is told so and selects the passage again in the copy. That should be rare, since a scene's changes are told only after a short pause. A copy of the whole book is about 0.5 to 1 MB at 50,000 words. Should many copies of a barely changed book add up, the store can keep each scene's blocks once, by a hash of their content, without changing the model.
+- **Every copy is listed in every member's tray**, whoever made it, with a name made up for it (*Hedy's copy, 17 Nov*) that can be changed.
+- **A copy is open for a while, and expires later.** *Settled 2026-11-17.* These are two separate times, each set when the copy is made, and each may be unlimited. While a copy is **open**, its readers may read it and give feedback. Once it closes, nobody can give feedback on it any more, and those who came by a link can no longer read it either. The project's members still find it in their tray, marked as closed, until it expires. When it **expires**, it is deleted for good, with all its feedback. A copy cannot stay open beyond its expiry. By default a copy is open for 30 days and expires after 90, and a copy made by commenting on the live book gets these defaults without being asked. Both times are shown wherever the copy is, and both may later be moved further into the future.
+- **Renaming, extending and deleting a copy.** *Settled 2026-11-17.* Whoever made a copy may rename it, extend its times or delete it, and an owner may do so for any copy.
+
 **The questions from the notes, and what is proposed:**
 - *Do members give feedback in the reading view too?* Yes. Otherwise readers, for whom the view is mostly made, could not say anything. Members and guests give the same kind of feedback; only who gave it differs, an account or a guest's name.
-- *Where do the authors see the feedback?* In the writing view, at the passage it is about: a mark in the margin, as a comment in a word processor, and a list for each scene in the inspector. Beside it, an overview for each shared link, to read everything one test reader said in one go. Each piece of feedback can be marked as done.
-- *Is shared text a frozen version, or does it follow the author's changes?* It can be either, chosen for each link, frozen unless chosen otherwise. Test readers usually read a draft, and feedback on text that has changed since is confusing. Following the changes suits readers who keep up with the work. Frozen means a snapshot of the scenes' documents when the link is made, which also keeps the passages that feedback is about stable. With text that follows, a passage may be changed or deleted, so feedback can lose its place and must be shown as such.
+- *Where do the authors see the feedback?* In the writing view, on the scene it is about, as a list for each scene in the inspector, each piece shown at its passage in the reading copy. *Changed 2026-11-16:* not as a mark in the margin of the current text, since a copy does not keep where its passages sit now. Beside it, an overview for each shared link, to read everything one test reader said in one go. Each piece of feedback can be marked as done.
+- *Is shared text a frozen version, or does it follow the author's changes?* ~~Either, chosen for each link.~~ *Settled 2026-11-16:* always frozen, as a reading copy (above). Nothing follows the author's changes, members included.
 - *Can the reading be set up?* Yes, a little, and by each reader for themselves, kept in their browser: the size of the type, a type with or without serifs, light, dark or sepia, and the two ways of reading. Nothing an author has to set.
 - *Is a guest's progress kept, and do they find their own feedback again?* Yes. A guest gets a cookie for the link, an identity without an account and with a name they give once. Coming back, they find where they were and what they said. In another browser that is lost, unless they gave an email address.
 - *Shared by link or by email?* By link first. A link can expire, be withdrawn, and ask for a password if the sharer wants. Later also by email, as a personal invitation for each test reader, so it is known who said what, and the identity survives another device. For members nothing differs, except that they are known at once.
 
 **To decide early, because the rest builds on it:**
-- **What a link points to:** the whole book, sections or scenes, stored as a stretch of the outline, frozen or followed.
-- **Feedback is a feature of its own**, `feedback`: event-sourced like the others, each piece with what it is about (a scene and a stretch of its text, or a whole scene, section or book), who gave it (an account or a guest), its text and whether it is done. Guests are let in by the link's token, members by their role.
+- **What a link points to:** one reading copy, made of what it shares.
+- **Feedback is a feature of its own**, `feedback`: event-sourced like the others, each piece with what it is about (a place in a reading copy: a block and a stretch of its text, or a whole scene, section or copy), who gave it (an account or a guest), its text and whether it is done. Guests are let in by the link's token, members by their role.
 - **Guests are no accounts.** A link opens a session of its own that may read, and comment on, exactly what is shared and nothing else. That needs its own care for security: the token kept only as its digest, tries held back, links that expire and can be withdrawn.
 - **The printed book with pages** is a project of its own (page breaks, typography, perhaps hyphenation), so it comes last.
 
 **In slices, in this order:**
-1. The reading view for members, looking like the writing view.
-2. Feedback in it from members, shown to the authors in the writing view.
-3. Links for guests: what is shared, frozen, a guest's session and their feedback.
+1. The internal reading view, looking like the writing view, first of the live book, then of copies. A new feature, so cut by layer, the live book first since it needs no store:
+   1. the `ReadingCopy` model with its tests;
+   2. turning the outline and the scenes' documents into it;
+   3. REST and wiring: every member reads the live book;
+   4. the client's reading view, drawing it;
+   5. the live book following the authors' changes;
+   6. the store port, the memory adapter and the suite;
+   7. the PostgreSQL and SQLite adapters;
+   8. making, renaming, deleting and expiring copies, over REST;
+   9. the tray of copies in the client.
+2. Feedback in it from members, shown to the authors in the writing view, on the scene it came from.
+3. Links to a copy and the external view: a guest's session, an account that is not a member, and their feedback.
 4. Setting up the reading, and where a reader left off.
 5. The printed book with pages.
 
-**Done when:** a reader member reads the book and comments on a passage, an author shares two sections with someone without an account who comments on them, and the authors find both comments at their passages in the writing view.
+**Done when:** a reader member reads the book and comments on a passage, an author shares two sections with someone without an account who comments on them, and the authors find both comments on their scenes in the writing view, each shown at its passage in the reading copy it was given on.
 
 ### Later — polish and what can wait
 
