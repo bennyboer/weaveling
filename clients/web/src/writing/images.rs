@@ -69,6 +69,32 @@ pub fn pick(scene: &SceneId, ticket: u32) {
     }
 }
 
+/// Copies an image kept elsewhere, the account's own or another project's, into the scene's project,
+/// and puts the copy where the ticket stands.
+/// While it is copied, the text shows it in its place, and a refusal stays there until dismissed.
+pub fn copied(scene: SceneId, state: WriteViewState, speech: Speech, image: String, ticket: u32) {
+    let project = state.structure.project().to_string();
+    let label = speech.say("image-copying");
+    state.editors.told(&scene, |editor| {
+        editor.upload_started(ticket, 0, &label, &label);
+        editor.focus();
+    });
+    spawn_local(async move {
+        match assets::copy_into(&image, &project).await {
+            Ok(copy) => {
+                state.editors.told(&scene, |editor| {
+                    editor.insert_figure(&copy, ticket);
+                    editor.upload_done(ticket, 0);
+                });
+            }
+            Err(failure) => refuse(&scene, state, speech, ticket, 0, &failure),
+        }
+        state
+            .editors
+            .told(&scene, |editor| editor.forget_waiting(ticket));
+    });
+}
+
 /// Takes the files the editor was given by pasting or dropping.
 pub fn given_by_editor(
     scene: SceneId,

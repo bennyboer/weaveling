@@ -1,8 +1,9 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
-import { aNewProject } from "./support/shell";
-import { openTheWritingView, scene, wordCount } from "./support/writing";
+import { API, aNewProject } from "./support/shell";
+import { withAccounts } from "./support/signed-in";
+import { openTheWritingView, projectOf, scene, wordCount } from "./support/writing";
 
 const A_PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -10,6 +11,25 @@ const A_PIXEL = Buffer.from(
 );
 
 const figureBar = (page: Page) => page.getByRole("toolbar", { name: "Image" });
+const choosing = (page: Page) => page.getByRole("dialog", { name: "Insert an image" });
+
+/// Opens the dialog for choosing an image from the "+" on the scene's empty line.
+async function theImageDialog(page: Page) {
+  await page.getByRole("button", { name: "Insert" }).click();
+  await page.getByRole("menuitem", { name: "Image…" }).click();
+  await expect(choosing(page)).toBeVisible();
+}
+
+/// Uploads an image straight into a project, as if it had been put into one of its scenes before.
+async function anImageIn(page: Page, project: string): Promise<string> {
+  const uploaded = await page.request.post(`${API}/assets?project=${project}`, {
+    data: A_PIXEL,
+    headers: { "content-type": "application/octet-stream" },
+  });
+  expect(uploaded.status(), await uploaded.text()).toBe(201);
+
+  return (await uploaded.json()).id;
+}
 
 /// Opens a new book with one scene in the writing view, and puts the cursor into the scene.
 async function aSceneToWriteIn(page: Page, named: string): Promise<string> {
@@ -83,10 +103,10 @@ test("an image chosen from the + on an empty line goes where the line was", asyn
   await page.keyboard.press("Enter");
   await page.keyboard.press("ArrowUp");
 
-  // when: the + is opened and Image… chosen, and a file picked
-  await page.getByRole("button", { name: "Insert" }).click();
+  // when: the + is opened, Image… chosen, and a new file uploaded
+  await theImageDialog(page);
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("menuitem", { name: "Image…" }).click();
+  await choosing(page).getByRole("button", { name: "Upload new…" }).click();
   await (await chooser).setFiles({ name: "chosen.png", mimeType: "image/png", buffer: A_PIXEL });
 
   // then: the image takes the place of the empty line
@@ -233,11 +253,11 @@ test("Backspace at the start of a caption chooses the image instead of tearing i
   await expect(figure.locator("figcaption")).toHaveText("A map");
 });
 
-/// Picks files for an image from the "+" on the scene's empty line.
+/// Picks files for an image from the "+" on the scene's empty line, uploading them anew.
 async function picked(page: Page, ...files: { name: string; buffer: Buffer }[]) {
-  await page.getByRole("button", { name: "Insert" }).click();
+  await theImageDialog(page);
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("menuitem", { name: "Image…" }).click();
+  await choosing(page).getByRole("button", { name: "Upload new…" }).click();
   await (await chooser).setFiles(files.map((file) => ({ ...file, mimeType: "image/png" })));
 }
 
@@ -317,4 +337,103 @@ test("an image the server refuses says why in its place, and the others still go
   const refused = scene(page, only).locator(".uploading.refused");
   await expect(refused).toContainText("notes.png");
   await expect(refused).toContainText("This file is not an image Weaveling can use.");
+});
+
+test("the project's images are offered the newest first, and one chosen goes in as it is", async ({
+  page,
+}) => {
+  // given: a scene to write in, and two images the project already holds
+  const only = await aSceneToWriteIn(page, "Offered");
+  const project = projectOf(page)!;
+  const older = await anImageIn(page, project);
+  const newer = await anImageIn(page, project);
+  const copied: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/copies")) {
+      copied.push(request.url());
+    }
+  });
+
+  // when: the dialog for an image is opened
+  await theImageDialog(page);
+
+  // then: uploading a new one comes first, then the project's images, the newest first
+  const tiles = choosing(page).locator(".image-grid button");
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles.nth(0)).toHaveAccessibleName("Upload new…");
+  await expect(tiles.nth(1).locator("img")).toHaveAttribute("src", new RegExp(newer));
+  await expect(tiles.nth(2).locator("img")).toHaveAttribute("src", new RegExp(older));
+  await expect(tiles.nth(1)).toHaveAccessibleName(/^Image uploaded on /);
+
+  // when: the older one is chosen
+  await tiles.nth(2).click();
+
+  // then: the dialog is gone, and the scene holds that very image, not a copy
+  await expect(choosing(page)).toHaveCount(0);
+  await expect(scene(page, only).locator("figure.figure")).toHaveAttribute("data-asset", older);
+  expect(copied).toHaveLength(0);
+});
+
+test("the dialog for an image is left with Cancel or Escape, and nothing goes in", async ({
+  page,
+}) => {
+  // given: a scene to write in
+  const only = await aSceneToWriteIn(page, "Cancelled");
+
+  // when: the dialog is opened and cancelled
+  await theImageDialog(page);
+  await expect(choosing(page).getByText("No images yet.")).toBeVisible();
+  await choosing(page).getByRole("button", { name: "Cancel" }).click();
+
+  // then: it is gone, and the text has the focus again
+  await expect(choosing(page)).toHaveCount(0);
+  await expect(scene(page, only)).toBeFocused();
+
+  // when: it is opened again and left with Escape
+  await theImageDialog(page);
+  await page.keyboard.press("Escape");
+
+  // then: it is gone, and the scene holds no image
+  await expect(choosing(page)).toHaveCount(0);
+  await expect(scene(page, only).locator("figure.figure")).toHaveCount(0);
+});
+
+test("without accounts there is no filter of one's own images", async ({ page }) => {
+  test.skip(withAccounts, "the filter is offered to a signed-in account");
+
+  // given: a scene to write in
+  await aSceneToWriteIn(page, "NoFilter");
+
+  // when: the dialog for an image is opened
+  await theImageDialog(page);
+
+  // then: only the project's images are offered, with no choice of whose
+  await expect(choosing(page).getByRole("group", { name: "Whose images" })).toHaveCount(0);
+});
+
+test("an image of one's own from another project is copied into this one when chosen", async ({
+  page,
+}) => {
+  test.skip(!withAccounts, "one's own images are only offered to a signed-in account");
+
+  // given: an image in another project of hers, and a scene to write in in a new one
+  const other = { name: await aNewProject(page, "Elsewhere"), id: projectOf(page)! };
+  const image = await anImageIn(page, other.id);
+  const only = await aSceneToWriteIn(page, "Copying");
+
+  // when: the dialog is opened, her own images shown, and that one chosen
+  await theImageDialog(page);
+  const whose = choosing(page).getByRole("group", { name: "Whose images" });
+  await expect(whose.getByRole("button", { name: "This project" })).toHaveAttribute("aria-pressed", "true");
+  await whose.getByRole("button", { name: "My images" }).click();
+  const tile = choosing(page).locator(".image-offered").filter({ has: page.locator(`img[src*="${image}"]`) });
+  await expect(tile).toHaveAccessibleName(new RegExp(`^Image in ${other.name}, uploaded on `));
+  await tile.click();
+
+  // then: the scene holds a copy of it, the project's own
+  const figure = scene(page, only).locator("figure.figure");
+  await expect(figure).toHaveAttribute("data-asset", /^asset_/);
+  const copy = await figure.getAttribute("data-asset");
+  expect(copy).not.toBe(image);
+  await expect(figure).not.toHaveClass(/missing/);
 });

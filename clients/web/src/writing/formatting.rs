@@ -9,7 +9,6 @@ use crate::icons::Icon;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::speech;
-use crate::writing::images;
 use crate::writing::write_view_state::WriteViewState;
 
 /// Where a selection is and how it is formatted, as the editor tells it.
@@ -239,7 +238,7 @@ fn adding(scene: SceneId, placed: String, state: WriteViewState) -> impl IntoVie
                                 if let Some(ticket) =
                                     state.editors.told(&scene, ProseEditor::asked_for_image)
                                 {
-                                    images::pick(&scene, ticket);
+                                    state.image_choice.ask(scene.clone(), ticket);
                                 }
                             })
                             .child(speech::said("adding-image")),

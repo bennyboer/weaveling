@@ -2,7 +2,7 @@ use assets_contract::{
     AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
     UploadDTO, UploadsDTO, UsageDTO, purpose, sort,
 };
-use assets_contract::{AssetDTO, HolderDTO, UploadLimitsDTO};
+use assets_contract::{AssetDTO, HolderDTO, ImagesDTO, UploadLimitsDTO};
 use gloo_net::http::Request;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -250,6 +250,61 @@ pub async fn upload_into(
         http::parsed(http::posted_watched(&into, bytes, watched).await?, ASSET).await?;
 
     Ok(uploaded.id)
+}
+
+/// One image a project holds, as the dialog for choosing an image offers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Image {
+    pub id: String,
+    pub uploaded_at: OffsetDateTime,
+}
+
+/// One page of a project's images, the newest first, and the cursor for the next page, if there is one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImagePage {
+    pub images: Vec<Image>,
+    pub next: Option<String>,
+}
+
+fn images_listing(project: &str, after: Option<&str>) -> String {
+    let images = format!("{ASSETS}/projects/{}/images", encoded(project));
+    match after {
+        Some(after) => format!("{images}?after={}", encoded(after)),
+        None => images,
+    }
+}
+
+/// Lists a project's images, the newest first, a page at a time.
+pub async fn images_in(project: &str, after: Option<&str>) -> Result<ImagePage, ApiError> {
+    let page: ImagesDTO = http::parsed(
+        http::sent(Request::get(&images_listing(project, after))).await?,
+        ASSET,
+    )
+    .await?;
+    let images = page
+        .images
+        .into_iter()
+        .map(|image| {
+            Ok(Image {
+                uploaded_at: OffsetDateTime::parse(&image.uploaded_at, &Rfc3339)
+                    .map_err(|_| ApiError::Unexpected)?,
+                id: image.id,
+            })
+        })
+        .collect::<Result<_, ApiError>>()?;
+
+    Ok(ImagePage {
+        images,
+        next: page.next,
+    })
+}
+
+/// Copies an image into a project, and returns the copy's id.
+pub async fn copy_into(image: &str, project: &str) -> Result<String, ApiError> {
+    let copies = format!("{ASSETS}/{image}/copies?project={}", encoded(project));
+    let copy: AssetDTO = http::parsed(http::sent(Request::post(&copies)).await?, ASSET).await?;
+
+    Ok(copy.id)
 }
 
 /// The most a single upload may be, in bytes, or nothing if there is no such limit.

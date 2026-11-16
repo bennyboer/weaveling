@@ -384,6 +384,7 @@ export class ProseEditor {
 
   focus() {
     this.view.focus();
+    this.tellSelection();
   }
 
   destroy() {

@@ -23,6 +23,7 @@ use crate::writing::focus;
 use crate::writing::formatting;
 use crate::writing::going_back;
 use crate::writing::heading;
+use crate::writing::image_choice;
 use crate::writing::images;
 use crate::writing::inspecting;
 use crate::writing::inspector::Inspected;
@@ -259,6 +260,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         going_back::going_back(state),
         inspecting::ideas_to_choose(state),
         settings_dialog::settings_dialog(state),
+        image_choice::dialog(state),
         typewriter::typewriter_scrolling(state),
         placing::placing(state, placed_from),
     )
