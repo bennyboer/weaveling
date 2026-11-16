@@ -1,7 +1,7 @@
 let editor = null;
 
 export async function editorLoaded() {
-  editor ??= await import("./editor.src.js");
+  editor ??= await import("./editor/editor.js");
 }
 
 export class SyncConnection {
