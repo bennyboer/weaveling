@@ -828,6 +828,7 @@ figure-full = Pleine largeur
 figure-remove = Supprimer l’image
 figure-missing = Image indisponible
 figure-caption = Légende
+image-uploading = Envoi de { $name }…
 adding-insert = Insérer
 adding-image = Image…
 members-role-owner = Propriétaire

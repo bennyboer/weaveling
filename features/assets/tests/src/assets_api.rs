@@ -1,4 +1,4 @@
-use assets_contract::{AssetDTO, OwnerDTO, UsageDTO, refused};
+use assets_contract::{AssetDTO, OwnerDTO, UploadLimitsDTO, UsageDTO, refused};
 use assets_core::{ImageRefused, Limits};
 use axum::Extension;
 use axum::http::StatusCode;
@@ -291,6 +291,40 @@ async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_mos
             most: Some(1 << 20),
         }
     );
+}
+
+#[tokio::test]
+async fn the_most_an_upload_may_be_is_told_to_anyone() {
+    // given: uploads of ten bytes at most
+    let bench = bench::a_bench_limited(Limits {
+        each_upload: Some(10),
+        ..Limits::default()
+    })
+    .await;
+
+    // when: the limits are asked without an account
+    let told: UploadLimitsDTO = serving(&bench, Agent::Local)
+        .get("/assets/limits")
+        .await
+        .json();
+
+    // then: the upload's limit is told
+    assert_eq!(told.each_upload, Some(10));
+}
+
+#[tokio::test]
+async fn no_limit_on_an_upload_is_told_as_none() {
+    // given: no limit on a single upload
+    let bench = bench::a_bench().await;
+
+    // when: the limits are asked
+    let told: UploadLimitsDTO = serving(&bench, bench::ada())
+        .get("/assets/limits")
+        .await
+        .json();
+
+    // then: there is none
+    assert_eq!(told.each_upload, None);
 }
 
 #[tokio::test]

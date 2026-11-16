@@ -232,3 +232,89 @@ test("Backspace at the start of a caption chooses the image instead of tearing i
   await expect(page.getByRole("toolbar", { name: "Image" })).toBeVisible();
   await expect(figure.locator("figcaption")).toHaveText("A map");
 });
+
+/// Picks files for an image from the "+" on the scene's empty line.
+async function picked(page: Page, ...files: { name: string; buffer: Buffer }[]) {
+  await page.getByRole("button", { name: "Insert" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "Image…" }).click();
+  await (await chooser).setFiles(files.map((file) => ({ ...file, mimeType: "image/png" })));
+}
+
+test("an image larger than an upload may be is refused in its place, without being sent", async ({
+  page,
+}) => {
+  // given: a scene to write in, every upload counted
+  const only = await aSceneToWriteIn(page, "TooLarge");
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/api/assets")) {
+      sent.push(request.url());
+    }
+  });
+
+  // when: a file of 21 MB is chosen
+  await picked(page, { name: "huge.png", buffer: Buffer.alloc(21 * 1024 * 1024, 7) });
+
+  // then: the text says in its place that it is too large, and nothing was sent
+  const refused = scene(page, only).locator(".uploading.refused");
+  await expect(refused).toContainText("huge.png");
+  await expect(refused).toContainText("An image can be at most 20\u00a0MB large.");
+  await expect(refused).not.toContainText("Uploading");
+  expect(sent).toHaveLength(0);
+
+  // when: the refusal is dismissed
+  await refused.getByRole("button", { name: "Dismiss" }).click();
+
+  // then: it is gone, and the scene holds no image
+  await expect(refused).toHaveCount(0);
+  await expect(scene(page, only).locator("figure.figure")).toHaveCount(0);
+});
+
+test("an image being uploaded shows in its place how far it got, then becomes the image", async ({
+  page,
+}) => {
+  // given: a scene to write in, and uploads held back until let go
+  const only = await aSceneToWriteIn(page, "Progress");
+  let letGo = () => {};
+  const held = new Promise<void>((resolve) => (letGo = resolve));
+  await page.route(/\/api\/assets\?project=/, async (route) => {
+    await held;
+    await route.continue();
+  });
+
+  // when: an image is chosen
+  await picked(page, { name: "slow.png", buffer: A_PIXEL });
+
+  // then: its place shows it uploading, with a progress bar
+  const uploading = scene(page, only).locator(".uploading");
+  await expect(uploading).toContainText("Uploading slow.png…");
+  await expect(uploading.getByRole("progressbar", { name: "Uploading slow.png…" })).toBeVisible();
+
+  // when: the upload goes through
+  letGo();
+
+  // then: the image takes its place
+  await expect(scene(page, only).locator("figure.figure img")).toHaveAttribute("src", /width=1536/);
+  await expect(uploading).toHaveCount(0);
+});
+
+test("an image the server refuses says why in its place, and the others still go in", async ({
+  page,
+}) => {
+  // given: a scene to write in
+  const only = await aSceneToWriteIn(page, "Refused");
+
+  // when: a file that is no image and an image are chosen together
+  await picked(
+    page,
+    { name: "notes.png", buffer: Buffer.from("not an image at all") },
+    { name: "fine.png", buffer: A_PIXEL },
+  );
+
+  // then: the image goes in, and the other file says it is no image
+  await expect(scene(page, only).locator("figure.figure")).toHaveCount(1);
+  const refused = scene(page, only).locator(".uploading.refused");
+  await expect(refused).toContainText("notes.png");
+  await expect(refused).toContainText("This file is not an image Weaveling can use.");
+});

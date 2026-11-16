@@ -100,6 +100,18 @@ extern "C" {
     #[wasm_bindgen(method, js_name = forgetWaiting)]
     pub fn forget_waiting(this: &ProseEditor, ticket: u32);
 
+    #[wasm_bindgen(method, js_name = uploadStarted)]
+    pub fn upload_started(this: &ProseEditor, ticket: u32, nth: u32, name: &str, label: &str);
+
+    #[wasm_bindgen(method, js_name = uploadProgress)]
+    pub fn upload_progress(this: &ProseEditor, ticket: u32, nth: u32, fraction: f64);
+
+    #[wasm_bindgen(method, js_name = uploadRefused)]
+    pub fn upload_refused(this: &ProseEditor, ticket: u32, nth: u32, told: &str);
+
+    #[wasm_bindgen(method, js_name = uploadDone)]
+    pub fn upload_done(this: &ProseEditor, ticket: u32, nth: u32);
+
     #[wasm_bindgen(method, js_name = setFigureSize)]
     pub fn set_figure_size(this: &ProseEditor, size: &str);
 

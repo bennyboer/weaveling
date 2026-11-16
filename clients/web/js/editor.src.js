@@ -306,6 +306,24 @@ function writtenText(doc) {
   return blocks.join("\n");
 }
 
+function uploadsShown(editor) {
+  return new Plugin({
+    props: {
+      decorations: (state) => editor.uploadsAt(state.doc),
+    },
+  });
+}
+
+function uploadPlace(doc, at) {
+  const $at = doc.resolve(Math.min(at, doc.content.size));
+  if ($at.depth === 0) {
+    return $at.pos;
+  }
+  const empty = $at.parent.type.name === "paragraph" && $at.parent.content.size === 0;
+
+  return empty ? $at.before(1) : $at.after(1);
+}
+
 function captioning() {
   return new Plugin({
     props: {
@@ -406,6 +424,8 @@ export class ProseEditor {
     this.imagesGiven = () => {};
     this.labels = {};
     this.waiting = new Map();
+    this.uploads = new Map();
+    this.ended = new Set();
     this.waited = 0;
     this.pressing = false;
     this.letGo = () => {
@@ -511,6 +531,7 @@ export class ProseEditor {
           }),
           markingWhereWritten(),
           captioning(),
+          uploadsShown(this),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.sync.awareness, {
             cursorBuilder: (_, client) =>
@@ -782,7 +803,120 @@ export class ProseEditor {
   }
 
   forgetWaiting(ticket) {
-    this.waiting.delete(ticket);
+    this.ended.add(ticket);
+    this.letGoOfTicket(ticket);
+  }
+
+  letGoOfTicket(ticket) {
+    const held = [...this.uploads.values()].some((upload) => upload.ticket === ticket);
+    if (!held && this.ended.has(ticket)) {
+      this.ended.delete(ticket);
+      this.waiting.delete(ticket);
+    }
+  }
+
+  uploadStarted(ticket, nth, name, label) {
+    this.uploads.set(`${ticket}:${nth}`, { ticket, name, label, fraction: 0, refused: null });
+    this.redrawUploads();
+  }
+
+  uploadProgress(ticket, nth, fraction) {
+    const upload = this.uploads.get(`${ticket}:${nth}`);
+    if (!upload) {
+      return;
+    }
+    const shown = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+    if (shown !== Math.round(upload.fraction * 100)) {
+      upload.fraction = shown / 100;
+      this.redrawUploads();
+    }
+  }
+
+  uploadRefused(ticket, nth, told) {
+    const upload = this.uploads.get(`${ticket}:${nth}`);
+    if (upload) {
+      upload.refused = told;
+      this.redrawUploads();
+    }
+  }
+
+  uploadDone(ticket, nth) {
+    this.uploads.delete(`${ticket}:${nth}`);
+    this.letGoOfTicket(ticket);
+    this.redrawUploads();
+  }
+
+  redrawUploads() {
+    if (this.view && !this.view.isDestroyed) {
+      this.view.dispatch(this.view.state.tr.setMeta("uploads", true));
+      this.tellSelection();
+    }
+  }
+
+  uploadsAt(doc) {
+    if (this.uploads.size === 0) {
+      return DecorationSet.empty;
+    }
+    const shown = [];
+    for (const [key, upload] of this.uploads) {
+      const at = this.waiting.get(upload.ticket);
+      if (at === undefined) {
+        continue;
+      }
+      const state = upload.refused === null ? Math.round(upload.fraction * 100) : "refused";
+      shown.push(
+        Decoration.widget(uploadPlace(doc, at), () => this.uploadShown(key, upload), {
+          key: `upload-${key}-${state}`,
+          side: 1,
+          ignoreSelection: true,
+          stopEvent: () => true,
+        }),
+      );
+    }
+
+    return DecorationSet.create(doc, shown);
+  }
+
+  uploadShown(key, upload) {
+    const shown = document.createElement("div");
+    shown.className = "uploading";
+    shown.contentEditable = "false";
+    const name = document.createElement("span");
+    name.className = "uploading-name";
+    name.textContent = upload.label;
+    if (upload.refused !== null) {
+      shown.classList.add("refused");
+      shown.setAttribute("role", "alert");
+      name.textContent = upload.name;
+      const told = document.createElement("span");
+      told.className = "uploading-refused";
+      told.textContent = upload.refused;
+      const dismiss = document.createElement("button");
+      dismiss.type = "button";
+      dismiss.className = "dismiss";
+      dismiss.textContent = "\u00d7";
+      dismiss.setAttribute("aria-label", this.labels.dismiss ?? "");
+      dismiss.addEventListener("mousedown", (event) => event.preventDefault());
+      dismiss.addEventListener("click", () => {
+        const [ticket, nth] = key.split(":").map(Number);
+        this.uploadDone(ticket, nth);
+        this.view.focus();
+      });
+      shown.append(name, told, dismiss);
+
+      return shown;
+    }
+    const bar = document.createElement("div");
+    bar.className = "uploading-bar";
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", upload.label);
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    bar.setAttribute("aria-valuenow", String(Math.round(upload.fraction * 100)));
+    bar.style.setProperty("--done", `${upload.fraction * 100}%`);
+    shown.append(name, bar);
+
+    return shown;
   }
 
   chosenFigure(view, node, at, event) {

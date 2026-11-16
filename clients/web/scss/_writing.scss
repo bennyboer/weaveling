@@ -826,6 +826,61 @@ body:has(.writing .scene-slot.carried) {
   }
 }
 
+.writing .scene .ProseMirror .uploading {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px dashed var(--line);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  user-select: none;
+
+  .uploading-name {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+  }
+
+  .uploading-bar {
+    grid-column: 1 / -1;
+    height: 0.4rem;
+    border-radius: 0.2rem;
+    background: linear-gradient(var(--accent), var(--accent)) no-repeat left / var(--done) 100%,
+      var(--line);
+    transition: background-size 0.2s;
+  }
+
+  &.refused {
+    border-style: solid;
+    border-color: var(--alarm);
+
+    .uploading-name {
+      grid-column: 1;
+    }
+
+    .uploading-refused {
+      grid-column: 1;
+      color: var(--alarm);
+    }
+
+    .dismiss {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      width: 2rem;
+      height: 2rem;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+    }
+  }
+}
+
 .writing .formatting.figure-sizes {
   button.sized {
     width: auto;

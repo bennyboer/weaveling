@@ -828,6 +828,7 @@ figure-full = Full width
 figure-remove = Remove image
 figure-missing = Image not available
 figure-caption = Caption
+image-uploading = Uploading { $name }…
 adding-insert = Insert
 adding-image = Image…
 members-role-owner = Owner

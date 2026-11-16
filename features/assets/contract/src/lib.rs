@@ -99,6 +99,13 @@ pub struct UsageDTO {
     pub most: Option<u64>,
 }
 
+/// The most a single upload may be, in bytes, so a client can refuse a file before sending it.
+/// It is missing if there is no such limit.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct UploadLimitsDTO {
+    pub each_upload: Option<u64>,
+}
+
 /// A storage limit an operator gives to a single account, in bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AccountLimitRequest {

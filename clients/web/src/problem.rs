@@ -32,7 +32,12 @@ pub fn problem_to_dismiss(
 fn told(failure: ApiError) -> impl Fn() -> String + Send + Sync + 'static {
     let speech = expect_context::<Speech>();
 
-    move || match &failure {
+    move || worded(&failure, speech)
+}
+
+/// Words a failure in the language spoken, for places that show it as plain text.
+pub fn worded(failure: &ApiError, speech: Speech) -> String {
+    match failure {
         ApiError::Rejected(refusal) => refused(refusal, speech),
         ApiError::NotFound(subject) => about("problem-not-found", subject, speech),
         ApiError::Outdated(subject) => about("problem-outdated", subject, speech),

@@ -6,6 +6,10 @@ use gloo_net::http::{RequestBuilder, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{ProgressEvent, XmlHttpRequest};
 
 const PROBLEM: &str = "application/problem+json";
 const IF_MATCH: &str = "If-Match";
@@ -83,6 +87,62 @@ pub(crate) async fn sent_bytes(
         .send()
         .await
         .map_err(|_| ApiError::Offline)
+}
+
+/// Posts bytes and tells how much of them has been sent, as a fraction from 0 to 1, while they go.
+/// The answer comes back as a response like any other, so it is checked and parsed the same way.
+pub(crate) async fn posted_watched(
+    url: &str,
+    bytes: &[u8],
+    watched: impl Fn(f64) + 'static,
+) -> Result<Response, ApiError> {
+    let request = XmlHttpRequest::new().map_err(|_| ApiError::Unexpected)?;
+    request
+        .open("POST", url)
+        .map_err(|_| ApiError::Unexpected)?;
+    let progress = Closure::<dyn Fn(ProgressEvent)>::new(move |event: ProgressEvent| {
+        if event.length_computable() && event.total() > 0.0 {
+            watched(event.loaded() / event.total());
+        }
+    });
+    request
+        .upload()
+        .map_err(|_| ApiError::Unexpected)?
+        .set_onprogress(Some(progress.as_ref().unchecked_ref()));
+    let ended = js_sys::Promise::new(&mut |resolve, reject| {
+        request.set_onload(Some(&resolve));
+        request.set_onerror(Some(&reject));
+        request.set_onabort(Some(&reject));
+    });
+    request
+        .send_with_opt_u8_array(Some(bytes))
+        .map_err(|_| ApiError::Offline)?;
+    let answered = JsFuture::from(ended).await;
+    drop(progress);
+    answered.map_err(|_| ApiError::Offline)?;
+
+    answer_of(&request)
+}
+
+fn answer_of(request: &XmlHttpRequest) -> Result<Response, ApiError> {
+    let status = request.status().map_err(|_| ApiError::Unexpected)?;
+    let headers = web_sys::Headers::new().map_err(|_| ApiError::Unexpected)?;
+    if let Ok(Some(kind)) = request.get_response_header("content-type") {
+        headers
+            .set("content-type", &kind)
+            .map_err(|_| ApiError::Unexpected)?;
+    }
+    let init = web_sys::ResponseInit::new();
+    init.set_status(status);
+    init.set_headers(&headers);
+    let body = match status {
+        204 | 205 | 304 => None,
+        _ => request.response_text().ok().flatten(),
+    };
+
+    web_sys::Response::new_with_opt_str_and_init(body.as_deref(), &init)
+        .map(Response::from)
+        .map_err(|_| ApiError::Unexpected)
 }
 
 pub(crate) async fn parsed<T: DeserializeOwned>(

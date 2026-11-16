@@ -8,6 +8,7 @@ use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::speech;
+use crate::speech::Speech;
 use crate::writing::choosing;
 use crate::writing::formatting;
 use crate::writing::images;
@@ -176,9 +177,10 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             editor.on_link_asked(&link_asked);
             let images_given = Closure::<dyn Fn(js_sys::Array, u32)>::new({
                 let scene = scene.clone();
+                let speech = expect_context::<Speech>();
 
                 move |files: js_sys::Array, ticket: u32| {
-                    images::given_by_editor(scene.clone(), state, files, ticket)
+                    images::given_by_editor(scene.clone(), state, speech, files, ticket)
                 }
             });
             editor.on_images_given(&images_given);
@@ -226,6 +228,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             let labels = serde_json::json!({
                 "missing": speech::say("figure-missing"),
                 "caption": speech::say("figure-caption"),
+                "dismiss": speech::say("problem-dismiss"),
             })
             .to_string();
             if editors_made.get() > 0 {

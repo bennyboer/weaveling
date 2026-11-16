@@ -828,6 +828,7 @@ figure-full = Ancho completo
 figure-remove = Quitar la imagen
 figure-missing = Imagen no disponible
 figure-caption = Pie de foto
+image-uploading = Subiendo { $name }…
 adding-insert = Insertar
 adding-image = Imagen…
 members-role-owner = Propietario/a

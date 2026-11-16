@@ -828,6 +828,7 @@ figure-full = Largura total
 figure-remove = Remover imagem
 figure-missing = Imagem indisponível
 figure-caption = Legenda
+image-uploading = Enviando { $name }…
 adding-insert = Inserir
 adding-image = Imagem…
 members-role-owner = Dono(a)

@@ -1,7 +1,7 @@
 use assets_contract::{
     AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, AssetUseDTO, HolderDTO,
     InstanceStorageDTO, OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO,
-    UploadDTO, UploadsDTO, UsageDTO, bound, format, purpose, refused, sort,
+    UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, bound, format, purpose, refused, sort,
 };
 use assets_core::{
     Asset, AssetError, AssetUse, AssetsCore, AssetsError, Bound, Format, Held, Holder,
@@ -32,6 +32,7 @@ pub fn router(assets: AssetsCore) -> Router {
     Router::new()
         .route("/assets", routing::post(upload).layer(taken).get(uploads))
         .route("/assets/usage", routing::get(usage))
+        .route("/assets/limits", routing::get(upload_limits))
         .route("/assets/storage", routing::get(instance_storage))
         .route("/assets/storage/accounts", routing::get(accounts_storage))
         .route("/assets/storage/projects", routing::get(projects_storage))
@@ -223,6 +224,12 @@ async fn usage(
         used: own.used,
         most: own.most,
     }))
+}
+
+async fn upload_limits(State(assets): State<AssetsCore>) -> Json<UploadLimitsDTO> {
+    Json(UploadLimitsDTO {
+        each_upload: assets.limits().on_the_upload().map(|limit| limit.most),
+    })
 }
 
 async fn give_account_limit(

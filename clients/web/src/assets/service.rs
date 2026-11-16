@@ -2,7 +2,7 @@ use assets_contract::{
     AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
     UploadDTO, UploadsDTO, UsageDTO, purpose, sort,
 };
-use assets_contract::{AssetDTO, HolderDTO};
+use assets_contract::{AssetDTO, HolderDTO, UploadLimitsDTO};
 use gloo_net::http::Request;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -12,6 +12,7 @@ use crate::http::ApiError;
 
 const ASSETS: &str = "/api/assets";
 const USAGE: &str = "/api/assets/usage";
+const LIMITS: &str = "/api/assets/limits";
 const INSTANCE: &str = "/api/assets/storage";
 const ACCOUNTS: &str = "/api/assets/storage/accounts";
 const PROJECTS: &str = "/api/assets/storage/projects";
@@ -239,12 +240,24 @@ pub async fn upload_own(bytes: &[u8]) -> Result<String, ApiError> {
 
 /// Uploads an image into a project, and returns the new asset's id.
 /// Every member who may read the project may see it.
-pub async fn upload_into(project: &str, bytes: &[u8]) -> Result<String, ApiError> {
+pub async fn upload_into(
+    project: &str,
+    bytes: &[u8],
+    watched: impl Fn(f64) + 'static,
+) -> Result<String, ApiError> {
     let into = format!("{ASSETS}?project={}", encoded(project));
     let uploaded: AssetDTO =
-        http::parsed(http::sent_bytes(Request::post(&into), bytes).await?, ASSET).await?;
+        http::parsed(http::posted_watched(&into, bytes, watched).await?, ASSET).await?;
 
     Ok(uploaded.id)
+}
+
+/// The most a single upload may be, in bytes, or nothing if there is no such limit.
+pub async fn most_each_upload() -> Result<Option<u64>, ApiError> {
+    let limits: UploadLimitsDTO =
+        http::parsed(http::sent(Request::get(LIMITS)).await?, "limits").await?;
+
+    Ok(limits.each_upload)
 }
 
 /// Whether the asset is used for nothing but the given account's picture.
