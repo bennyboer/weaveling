@@ -421,6 +421,20 @@ pub async fn most_each_upload() -> Result<Option<u64>, ApiError> {
 
 /// Whether the asset is used for nothing but the given account's picture.
 /// Only then may the account decide to delete it when it shows another picture.
+/// The project that holds an asset, or nothing for an account's own, as told to whoever may see it.
+pub async fn project_of(id: &str) -> Result<Option<String>, ApiError> {
+    let told: AssetDTO = http::parsed(
+        http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
+        ASSET,
+    )
+    .await?;
+
+    Ok(match told.owner {
+        OwnerDTO::Project(project) => Some(project),
+        OwnerDTO::Account(_) => None,
+    })
+}
+
 /// What uses an asset, as told to whoever may see it.
 pub async fn uses_of(id: &str) -> Result<Vec<Use>, ApiError> {
     let told: AssetDTO = http::parsed(

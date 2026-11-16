@@ -88,6 +88,12 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onImagesGiven)]
     pub fn on_images_given(this: &ProseEditor, given: &Closure<dyn Fn(js_sys::Array, u32)>);
 
+    #[wasm_bindgen(method, js_name = onFiguresPasted)]
+    pub fn on_figures_pasted(this: &ProseEditor, pasted: &Closure<dyn Fn(js_sys::Array)>);
+
+    #[wasm_bindgen(method, js_name = replaceAsset)]
+    pub fn replace_asset(this: &ProseEditor, old: &str, copy: &str);
+
     #[wasm_bindgen(method, js_name = setLabels)]
     pub fn set_labels(this: &ProseEditor, told: &str);
 

@@ -67,7 +67,7 @@ function dataUrlOf(blob) {
 
 function figureHtml(asset, size, caption, picture) {
   return (
-    `<figure data-asset="${asset}" data-size="${size}">` +
+    `<figure data-asset="${asset}" data-size="${size}" data-pm-slice="0 0 []">` +
     `<img src="${picture}" alt="${escaped(caption)}">` +
     `<figcaption>${escaped(caption)}</figcaption>` +
     `</figure>`

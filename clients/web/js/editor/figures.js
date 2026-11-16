@@ -56,6 +56,29 @@ export class FigureView {
   }
 }
 
+export function assetsIn(fragment) {
+  const found = new Set();
+  fragment.descendants((node) => {
+    const asset = node.type.name === "figure" && assetOf(node.attrs.asset);
+    if (asset) {
+      found.add(asset);
+    }
+  });
+
+  return [...found];
+}
+
+export function reassigned(state, old, copy) {
+  const tr = state.tr;
+  state.doc.descendants((node, at) => {
+    if (node.type.name === "figure" && node.attrs.asset === old) {
+      tr.setNodeMarkup(at, null, { ...node.attrs, asset: assetOf(copy) });
+    }
+  });
+
+  return tr;
+}
+
 export function chosenFigure(state) {
   const { selection } = state;
 

@@ -831,3 +831,43 @@ test("a chosen image is copied as a picture, and pasted back it is the same imag
   await expect(figure.nth(1)).toHaveAttribute("data-asset", image);
   expect(sent).toHaveLength(0);
 });
+
+test("an image copied in one project and pasted into another is copied into that project", async ({
+  page,
+  context,
+}) => {
+  // given: an image in a scene of one project, chosen and copied
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const from = await aSceneToWriteIn(page, "CopiedFrom");
+  await pasted(scene(page, from), { image: A_PIXEL });
+  const original = scene(page, from).locator("figure.figure");
+  await expect(original).toHaveAttribute("data-asset", /^asset_/);
+  const image = (await original.getAttribute("data-asset"))!;
+  await original.locator("img").click();
+  await expect(figureBar(page)).toBeVisible();
+  await page.keyboard.press("Control+c");
+  await expect
+    .poll(() => page.evaluate(async () => (await navigator.clipboard.read())[0]?.types ?? []))
+    .toContain("image/png");
+
+  // when: it is pasted into a scene of another project
+  const into = await aSceneToWriteIn(page, "PastedInto");
+  const project = projectOf(page)!;
+  await page.keyboard.press("Control+v");
+
+  // then: the scene holds a copy, the other project's own, shown as it should be
+  const figure = scene(page, into).locator("figure.figure");
+  await expect(figure).toHaveCount(1);
+  await expect(figure).not.toHaveAttribute("data-asset", image);
+  await expect(figure).toHaveAttribute("data-asset", /^asset_/);
+  await expect(figure).not.toHaveClass(/missing/);
+  const copy = (await figure.getAttribute("data-asset"))!;
+  // and: the project holds it
+  await expect
+    .poll(async () =>
+      ((await (await page.request.get(`${API}/assets/projects/${project}`)).json()).assets as { id: string }[]).map(
+        (asset) => asset.id,
+      ),
+    )
+    .toContain(copy);
+});

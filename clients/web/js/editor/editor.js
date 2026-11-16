@@ -9,11 +9,13 @@ import { SceneSync } from "../sync.js";
 import { copiedPicture, holdsAFigure } from "./copying.js";
 import {
   FigureView,
+  assetsIn,
   backIntoFigure,
   captioning,
   clickedFigure,
   leftCaption,
   placed,
+  reassigned,
   removing,
   sizing,
 } from "./figures.js";
@@ -68,6 +70,7 @@ export class ProseEditor {
     this.selectionShown = () => {};
     this.toToolbar = () => {};
     this.linkAsked = () => {};
+    this.figuresPasted = () => {};
     this.pressing = false;
     this.letGo = () => {
       if (this.pressing) {
@@ -167,6 +170,14 @@ export class ProseEditor {
               event.dataTransfer?.files,
               dropped?.pos ?? view.state.selection.from,
             );
+          },
+          transformPasted: (slice) => {
+            const pasted = assetsIn(slice.content);
+            if (pasted.length > 0) {
+              queueMicrotask(() => this.figuresPasted(pasted));
+            }
+
+            return slice;
           },
           handleTextInput: (view, from, to, text) =>
             this.quotationMarks.typed(view, from, to, text),
@@ -310,6 +321,17 @@ export class ProseEditor {
 
   removeLink() {
     this.command(unlinking);
+  }
+
+  onFiguresPasted(figuresPasted) {
+    this.figuresPasted = figuresPasted;
+  }
+
+  replaceAsset(old, copy) {
+    const tr = reassigned(this.view.state, old, copy);
+    if (tr.docChanged) {
+      this.view.dispatch(tr);
+    }
   }
 
   onImagesGiven(imagesGiven) {

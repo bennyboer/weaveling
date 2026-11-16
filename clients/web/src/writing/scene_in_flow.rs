@@ -58,7 +58,10 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(String)>,
             Closure<dyn Fn()>,
             Closure<dyn Fn()>,
-            Closure<dyn Fn(js_sys::Array, u32)>,
+            (
+                Closure<dyn Fn(js_sys::Array, u32)>,
+                Closure<dyn Fn(js_sys::Array)>,
+            ),
             Closure<dyn Fn(String) -> bool>,
         )>,
     );
@@ -186,6 +189,12 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 }
             });
             editor.on_images_given(&images_given);
+            let figures_pasted = Closure::<dyn Fn(js_sys::Array)>::new({
+                let scene = scene.clone();
+
+                move |pasted: js_sys::Array| images::figures_pasted(scene.clone(), state, pasted)
+            });
+            editor.on_figures_pasted(&figures_pasted);
             if let Some(carried) = state.beginnings.carried(&scene) {
                 if let Some(words) = carried.words.filter(|words| !words.is_empty()) {
                     editor.seed(&words);
@@ -222,7 +231,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 selection_shown,
                 to_toolbar,
                 link_asked,
-                images_given,
+                (images_given, figures_pasted),
                 selecting,
             )));
         }

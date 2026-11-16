@@ -11,6 +11,34 @@ use crate::scenes::model::SceneId;
 use crate::speech::Speech;
 use crate::writing::write_view_state::WriteViewState;
 
+/// Takes in the figures pasted or dropped into a scene.
+/// A figure of an asset the project holds stays as it is. One of an asset kept elsewhere, in another project
+/// or as an account's own, is copied into the project, and the figure shows the copy once it is made.
+/// An asset that cannot be copied, such as one the author may not see, is told as a problem.
+pub fn figures_pasted(scene: SceneId, state: WriteViewState, pasted: Array) {
+    let project = state.structure.project().to_string();
+    let pasted: Vec<String> = pasted
+        .iter()
+        .filter_map(|asset| asset.as_string())
+        .collect();
+    spawn_local(async move {
+        for asset in pasted {
+            if assets::project_of(&asset).await.ok().flatten().as_deref() == Some(project.as_str())
+            {
+                continue;
+            }
+            match assets::copy_into(&asset, &project, None).await {
+                Ok(copy) => {
+                    state
+                        .editors
+                        .told(&scene, |editor| editor.replace_asset(&asset, &copy));
+                }
+                Err(failure) => state.problems.report(failure),
+            }
+        }
+    });
+}
+
 /// Takes the files the editor was given by pasting or dropping.
 pub fn given_by_editor(
     scene: SceneId,
