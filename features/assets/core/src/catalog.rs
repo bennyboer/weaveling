@@ -7,7 +7,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
 
-use crate::asset::{Format, Owner, ProjectLink};
+use crate::asset::{AssetType, Format, Owner, ProjectLink};
 use crate::id::AssetId;
 use crate::limits::Usage;
 
@@ -173,11 +173,13 @@ pub trait AssetCatalog: Send + Sync {
 
     /// Lists what an account uploaded, both into projects and as its own images,
     /// or what a project holds, whoever uploaded it.
+    /// Given a type, it lists only the uploads of that type.
     /// Starts after the given cursor and returns at most `at_most` uploads.
     async fn uploads_of(
         &self,
         transaction: &mut Transaction,
         whose: &UploadsOf,
+        of_type: Option<AssetType>,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,

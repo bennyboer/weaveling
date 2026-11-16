@@ -95,6 +95,19 @@
     caret-color: var(--accent);
   }
 
+  .opening-line {
+    position: relative;
+  }
+
+  .opening-measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
   .opening:empty::before {
     content: attr(data-placeholder);
     color: var(--muted);
@@ -996,6 +1009,166 @@ body:has(.writing .scene-slot.carried) {
       }
     }
 
+    .image-offered {
+      position: relative;
+
+      &[aria-busy="true"] img {
+        opacity: 0.5;
+      }
+    }
+
+    .offered {
+      position: relative;
+
+      &:hover .tile-remove,
+      .tile-remove:focus-visible {
+        opacity: 1;
+      }
+    }
+
+    .tile-remove {
+      position: absolute;
+      top: 0.3rem;
+      right: 0.3rem;
+      width: 1.75rem;
+      height: 1.75rem;
+      aspect-ratio: auto;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 1rem;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      &:hover,
+      &:focus-visible {
+        border-color: var(--alarm);
+        color: var(--alarm);
+        outline: none;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
+      }
+
+      @media (hover: none) {
+        opacity: 1;
+      }
+    }
+
+    .tile-asking {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.5rem;
+      border: 1px solid var(--alarm);
+      border-radius: 0.5rem;
+      background: var(--paper);
+      font-size: 0.8rem;
+      text-align: center;
+
+      button {
+        width: 100%;
+        height: auto;
+        aspect-ratio: auto;
+        padding: 0.3rem;
+        background: none;
+        font-size: 0.8rem;
+      }
+
+      .danger {
+        border-color: var(--alarm);
+        color: var(--alarm);
+      }
+    }
+
+    .tile-note {
+      position: absolute;
+      inset: auto 0 0;
+      padding: 0.35rem 0.5rem;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 0.75rem;
+      text-align: left;
+
+      &.refused {
+        color: var(--alarm);
+      }
+    }
+
+    .image-sending {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.5rem;
+      position: relative;
+      aspect-ratio: 1;
+      box-sizing: border-box;
+      padding: 0.6rem;
+      border: 1px dashed var(--line);
+      border-radius: 0.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+
+      .sending-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sending-bar {
+        height: 0.4rem;
+        border-radius: 0.2rem;
+        background: linear-gradient(var(--accent), var(--accent)) no-repeat left / var(--done, 0%) 100%,
+          var(--line);
+        transition: background-size 0.2s;
+      }
+
+      &.refused {
+        border-style: solid;
+        border-color: var(--alarm);
+
+        .sending-name {
+          padding-right: 1.5rem;
+        }
+
+        .sending-refused {
+          overflow: auto;
+          color: var(--alarm);
+        }
+      }
+
+      .dismiss {
+        position: absolute;
+        top: 0.25rem;
+        right: 0.25rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        aspect-ratio: auto;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--muted);
+        font-size: 1.1rem;
+        outline: none;
+
+        &:hover,
+        &:focus-visible {
+          color: var(--ink);
+        }
+
+        &:focus-visible {
+          outline: 2px solid var(--ink);
+        }
+      }
+    }
+
     .upload-new {
       align-content: center;
       gap: 0.35rem;
@@ -1009,6 +1182,36 @@ body:has(.writing .scene-slot.carried) {
       width: 100%;
       height: 100%;
       object-fit: cover;
+    }
+  }
+
+  .in-use {
+    position: relative;
+    margin: 0 0 1rem;
+    padding: 0.75rem 2.5rem 0.75rem 1rem;
+    border: 1px solid var(--alarm);
+    border-radius: 0.5rem;
+
+    p {
+      margin: 0 0 0.4rem;
+    }
+
+    .uses {
+      margin: 0 0 0.4rem;
+      padding-left: 1.25rem;
+    }
+
+    .dismiss {
+      position: absolute;
+      top: 0.4rem;
+      right: 0.4rem;
+      width: 2rem;
+      height: 2rem;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 1.2rem;
     }
   }
 

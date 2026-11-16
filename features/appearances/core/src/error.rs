@@ -13,8 +13,8 @@ pub enum AppearancesError {
     Authorizer(#[from] AuthorizerError),
     #[error(transparent)]
     Access(#[from] AccessError),
-    #[error("there is no such idea")]
-    IdeaNotThere,
+    #[error("there is no such idea or asset")]
+    NotThere,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
 }

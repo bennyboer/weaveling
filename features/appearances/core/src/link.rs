@@ -31,6 +31,7 @@ macro_rules! link {
     };
 }
 
+link!(AssetLink);
 link!(IdeaLink);
 link!(ProjectLink);
 link!(SectionLink);

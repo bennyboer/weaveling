@@ -9,6 +9,7 @@ use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::speech;
 use crate::speech::Speech;
+use crate::writing::beginnings::CarriedImage;
 use crate::writing::choosing;
 use crate::writing::formatting;
 use crate::writing::images;
@@ -42,6 +43,7 @@ pub fn waiting_scene(scene: SceneId, state: WriteViewState) -> impl IntoView {
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let open_project = expect_context::<OpenProject>();
+    let speaking = expect_context::<Speech>();
     let marks = Memo::new(move |_| open_project.quotation_marks());
     let editors_made = RwSignal::new(0_u32);
     let kept = StoredValue::new_local(
@@ -184,8 +186,26 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 }
             });
             editor.on_images_given(&images_given);
-            if let Some(carried) = state.beginnings.words_to_carry(&scene) {
-                editor.seed(&carried);
+            if let Some(carried) = state.beginnings.carried(&scene) {
+                if let Some(words) = carried.words.filter(|words| !words.is_empty()) {
+                    editor.seed(&words);
+                }
+                let with_images = !carried.images.is_empty();
+                for image in carried.images {
+                    let ticket = editor.asked_for_image();
+                    match image {
+                        CarriedImage::Files(files) => {
+                            images::given(scene.clone(), state, speaking, files, ticket);
+                        }
+                        CarriedImage::Asset(asset) => {
+                            editor.insert_figure(&asset, ticket);
+                            editor.forget_waiting(ticket);
+                        }
+                    }
+                }
+                if with_images {
+                    editor.focus();
+                }
             }
 
             state.walk.editor_ready(&scene, &editor);

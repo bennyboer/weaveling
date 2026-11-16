@@ -1,14 +1,18 @@
 use assets_contract::{
     AccountLimitRequest, AccountsStorageDTO, InstanceStorageDTO, OwnerDTO, ProjectsStorageDTO,
-    UploadDTO, UploadsDTO, UsageDTO, purpose, sort,
+    UploadDTO, UploadsDTO, UsageDTO, asset_type, bound, purpose, refused, sort,
 };
-use assets_contract::{AssetDTO, HolderDTO, ImagesDTO, UploadLimitsDTO};
+use assets_contract::{AssetDTO, AssetUseDTO, HolderDTO, ProjectAssetsDTO, UploadLimitsDTO};
 use gloo_net::http::Request;
+use js_sys::Uint8Array;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{AbortSignal, File};
 
 use crate::http;
-use crate::http::ApiError;
+use crate::http::{ApiError, Particular, Refusal};
+use crate::scenes::model::SceneId;
 
 const ASSETS: &str = "/api/assets";
 const USAGE: &str = "/api/assets/usage";
@@ -47,6 +51,7 @@ impl UploadsSorted {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     AccountPicture,
+    SceneImage,
     Other,
 }
 
@@ -54,9 +59,24 @@ impl Purpose {
     fn of(named: &str) -> Self {
         match named {
             purpose::ACCOUNT_PICTURE => Self::AccountPicture,
+            purpose::SCENE_IMAGE => Self::SceneImage,
             _ => Self::Other,
         }
     }
+}
+
+/// What holds an upload in use: an account, as its picture, or a scene, in its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Holder {
+    Account(String),
+    Scene(SceneId),
+}
+
+/// One use of an upload: what it is used for, and what uses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Use {
+    pub purpose: Purpose,
+    pub by: Holder,
 }
 
 /// One of the signed-in account's uploads.
@@ -65,12 +85,13 @@ impl Purpose {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Upload {
     pub id: String,
+    pub content_type: String,
     pub project: Option<String>,
     pub project_name: Option<String>,
     pub total_size: u64,
     pub uploaded_at: OffsetDateTime,
     pub deletable: bool,
-    pub uses: Vec<Purpose>,
+    pub uses: Vec<Use>,
 }
 
 /// One page of uploads, and the cursor for the next page, if there is one.
@@ -172,11 +193,31 @@ fn limit_of(account: &str) -> String {
     format!("{ASSETS}/accounts/{account}/limit")
 }
 
-fn listing(sorted: UploadsSorted, after: Option<&str>) -> String {
-    match after {
-        Some(after) => format!("{ASSETS}?sort={}&after={after}", sorted.named()),
-        None => format!("{ASSETS}?sort={}", sorted.named()),
+/// What kind of asset a listing is asked for: the first part of a media type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetType {
+    Image,
+}
+
+impl AssetType {
+    fn named(self) -> &'static str {
+        match self {
+            Self::Image => asset_type::IMAGE,
+        }
     }
+}
+
+fn listing(sorted: UploadsSorted, of_type: Option<AssetType>, after: Option<&str>) -> String {
+    let asked: Vec<String> = [
+        Some(format!("sort={}", sorted.named())),
+        of_type.map(|of_type| format!("type={}", of_type.named())),
+        after.map(|after| format!("after={after}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    format!("{ASSETS}?{}", asked.join("&"))
 }
 
 /// Returns the address of an image's variant at least as wide as asked.
@@ -195,18 +236,31 @@ fn read(told: UploadDTO) -> Result<Upload, ApiError> {
         uploaded_at: OffsetDateTime::parse(&told.uploaded_at, &Rfc3339)
             .map_err(|_| ApiError::Unexpected)?,
         deletable: told.deletable,
-        uses: told
-            .uses
-            .iter()
-            .map(|used| Purpose::of(&used.purpose))
-            .collect(),
+        content_type: told.content_type,
+        uses: told.uses.into_iter().map(use_read).collect(),
         id: told.id,
     })
 }
 
-pub async fn uploads(sorted: UploadsSorted, after: Option<&str>) -> Result<UploadPage, ApiError> {
+fn use_read(used: AssetUseDTO) -> Use {
+    Use {
+        purpose: Purpose::of(&used.purpose),
+        by: match used.by {
+            HolderDTO::Account(account) => Holder::Account(account),
+            HolderDTO::Scene(scene) => Holder::Scene(SceneId::from(scene)),
+        },
+    }
+}
+
+/// Lists everything the signed-in account uploaded, a page at a time.
+/// Given a type, it lists only the uploads of that type.
+pub async fn uploads(
+    sorted: UploadsSorted,
+    of_type: Option<AssetType>,
+    after: Option<&str>,
+) -> Result<UploadPage, ApiError> {
     let page: UploadsDTO = http::parsed(
-        http::sent(Request::get(&listing(sorted, after))).await?,
+        http::sent(Request::get(&listing(sorted, of_type, after))).await?,
         ASSET,
     )
     .await?;
@@ -238,71 +292,121 @@ pub async fn upload_own(bytes: &[u8]) -> Result<String, ApiError> {
     Ok(uploaded.id)
 }
 
-/// Uploads an image into a project, and returns the new asset's id.
+/// Uploads an image file into a project, and returns the new asset's id.
 /// Every member who may read the project may see it.
+/// `watched` is told how far the upload got. Given a signal, the upload stops once the signal is aborted.
 pub async fn upload_into(
     project: &str,
-    bytes: &[u8],
+    file: &File,
     watched: impl Fn(f64) + 'static,
+    halted: Option<&AbortSignal>,
 ) -> Result<String, ApiError> {
+    let buffer = JsFuture::from(file.array_buffer())
+        .await
+        .map_err(|_| ApiError::Unexpected)?;
     let into = format!("{ASSETS}?project={}", encoded(project));
-    let uploaded: AssetDTO =
-        http::parsed(http::posted_watched(&into, bytes, watched).await?, ASSET).await?;
+    let uploaded: AssetDTO = http::parsed(
+        http::posted_watched(&into, &Uint8Array::new(&buffer).to_vec(), watched, halted).await?,
+        ASSET,
+    )
+    .await?;
 
     Ok(uploaded.id)
 }
 
-/// One image a project holds, as the dialog for choosing an image offers it.
+/// The same refusal the server gives for an upload past its limit, told before anything is sent.
+pub fn too_large(most: u64) -> ApiError {
+    ApiError::Rejected(Refusal {
+        kind: Some(refused::LIMIT_REACHED.to_owned()),
+        detail: String::new(),
+        particulars: vec![
+            (
+                "bound".to_owned(),
+                Particular::Text(bound::UPLOAD.to_owned()),
+            ),
+            (
+                "most".to_owned(),
+                Particular::Count(i64::try_from(most).unwrap_or(i64::MAX)),
+            ),
+        ],
+    })
+}
+
+/// One asset a project holds, with its media type, such as `image/png`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Image {
+pub struct Asset {
     pub id: String,
+    pub content_type: String,
     pub uploaded_at: OffsetDateTime,
 }
 
-/// One page of a project's images, the newest first, and the cursor for the next page, if there is one.
+/// One page of a project's assets, the newest first, and the cursor for the next page, if there is one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImagePage {
-    pub images: Vec<Image>,
+pub struct AssetPage {
+    pub assets: Vec<Asset>,
     pub next: Option<String>,
 }
 
-fn images_listing(project: &str, after: Option<&str>) -> String {
-    let images = format!("{ASSETS}/projects/{}/images", encoded(project));
-    match after {
-        Some(after) => format!("{images}?after={}", encoded(after)),
-        None => images,
+fn assets_listing(project: &str, of_type: Option<AssetType>, after: Option<&str>) -> String {
+    let assets = format!("{ASSETS}/projects/{}", encoded(project));
+    let asked: Vec<String> = [
+        of_type.map(|of_type| format!("type={}", of_type.named())),
+        after.map(|after| format!("after={}", encoded(after))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    match asked.is_empty() {
+        true => assets,
+        false => format!("{assets}?{}", asked.join("&")),
     }
 }
 
-/// Lists a project's images, the newest first, a page at a time.
-pub async fn images_in(project: &str, after: Option<&str>) -> Result<ImagePage, ApiError> {
-    let page: ImagesDTO = http::parsed(
-        http::sent(Request::get(&images_listing(project, after))).await?,
+/// Lists a project's assets, the newest first, a page at a time.
+/// Given a type, it lists only the assets of that type.
+pub async fn assets_in(
+    project: &str,
+    of_type: Option<AssetType>,
+    after: Option<&str>,
+) -> Result<AssetPage, ApiError> {
+    let page: ProjectAssetsDTO = http::parsed(
+        http::sent(Request::get(&assets_listing(project, of_type, after))).await?,
         ASSET,
     )
     .await?;
-    let images = page
-        .images
+    let assets = page
+        .assets
         .into_iter()
-        .map(|image| {
-            Ok(Image {
-                uploaded_at: OffsetDateTime::parse(&image.uploaded_at, &Rfc3339)
+        .map(|asset| {
+            Ok(Asset {
+                uploaded_at: OffsetDateTime::parse(&asset.uploaded_at, &Rfc3339)
                     .map_err(|_| ApiError::Unexpected)?,
-                id: image.id,
+                content_type: asset.content_type,
+                id: asset.id,
             })
         })
         .collect::<Result<_, ApiError>>()?;
 
-    Ok(ImagePage {
-        images,
+    Ok(AssetPage {
+        assets,
         next: page.next,
     })
 }
 
 /// Copies an image into a project, and returns the copy's id.
-pub async fn copy_into(image: &str, project: &str) -> Result<String, ApiError> {
+/// Given a signal, the copying stops once the signal is aborted.
+pub async fn copy_into(
+    image: &str,
+    project: &str,
+    halted: Option<&AbortSignal>,
+) -> Result<String, ApiError> {
     let copies = format!("{ASSETS}/{image}/copies?project={}", encoded(project));
-    let copy: AssetDTO = http::parsed(http::sent(Request::post(&copies)).await?, ASSET).await?;
+    let copy: AssetDTO = http::parsed(
+        http::sent(Request::post(&copies).abort_signal(halted)).await?,
+        ASSET,
+    )
+    .await?;
 
     Ok(copy.id)
 }
@@ -317,6 +421,17 @@ pub async fn most_each_upload() -> Result<Option<u64>, ApiError> {
 
 /// Whether the asset is used for nothing but the given account's picture.
 /// Only then may the account decide to delete it when it shows another picture.
+/// What uses an asset, as told to whoever may see it.
+pub async fn uses_of(id: &str) -> Result<Vec<Use>, ApiError> {
+    let told: AssetDTO = http::parsed(
+        http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
+        ASSET,
+    )
+    .await?;
+
+    Ok(told.uses.into_iter().map(use_read).collect())
+}
+
 pub async fn used_only_as_picture_of(id: &str, account: &str) -> Result<bool, ApiError> {
     let told: AssetDTO = http::parsed(
         http::sent(Request::get(&format!("{ASSETS}/{id}"))).await?,
@@ -440,7 +555,6 @@ pub async fn take_back_limit(account: &str) -> Result<(), ApiError> {
 
 #[cfg(test)]
 mod tests {
-    use assets_contract::AssetUseDTO;
 
     use super::*;
 
@@ -448,13 +562,36 @@ mod tests {
     fn uploads_are_asked_for_in_their_order_and_from_the_cursor() {
         // expect: the first page in the order asked
         assert_eq!(
-            listing(UploadsSorted::Newest, None),
+            listing(UploadsSorted::Newest, None, None),
             "/api/assets?sort=newest"
         );
         // and: the next page from its cursor
         assert_eq!(
-            listing(UploadsSorted::Largest, Some("120.5.asset_1")),
+            listing(UploadsSorted::Largest, None, Some("120.5.asset_1")),
             "/api/assets?sort=largest&after=120.5.asset_1"
+        );
+        // and: only images, when asked for
+        assert_eq!(
+            listing(
+                UploadsSorted::Newest,
+                Some(AssetType::Image),
+                Some("120.5.asset_1")
+            ),
+            "/api/assets?sort=newest&type=image&after=120.5.asset_1"
+        );
+    }
+
+    #[test]
+    fn a_project_s_assets_are_asked_for_by_their_type_and_from_the_cursor() {
+        // expect: every asset of a project, the first page
+        assert_eq!(
+            assets_listing("project_1", None, None),
+            "/api/assets/projects/project_1"
+        );
+        // and: only its images, from a cursor
+        assert_eq!(
+            assets_listing("project_1", Some(AssetType::Image), Some("120.5.asset_1")),
+            "/api/assets/projects/project_1?type=image&after=120.5.asset_1"
         );
     }
 
@@ -465,7 +602,7 @@ mod tests {
             id: "asset_1".to_owned(),
             owner,
             project_name: None,
-            format: "png".to_owned(),
+            content_type: "image/png".to_owned(),
             width: 64,
             height: 64,
             total_size: 2_048,
@@ -528,31 +665,52 @@ mod tests {
     }
 
     #[test]
-    fn an_upload_s_uses_are_read_and_a_purpose_unknown_here_is_kept_as_other() {
-        // given: an upload used as a picture and for something this client does not know
+    fn an_upload_s_uses_are_read_with_what_holds_them_and_a_purpose_unknown_here_is_kept_as_other()
+    {
+        // given: an upload used as a picture, in a scene, and for something this client does not know
         let told = UploadDTO {
             id: "asset_1".to_owned(),
             owner: OwnerDTO::Account("account_ada".to_owned()),
             project_name: None,
-            format: "png".to_owned(),
+            content_type: "image/png".to_owned(),
             width: 64,
             height: 64,
             total_size: 2_048,
             uploaded_at: "2026-11-13T10:00:00Z".to_owned(),
             deletable: false,
-            uses: ["account-picture", "idea-cover"]
-                .into_iter()
-                .map(|named| AssetUseDTO {
-                    purpose: named.to_owned(),
+            uses: vec![
+                AssetUseDTO {
+                    purpose: "account-picture".to_owned(),
                     by: HolderDTO::Account("account_ada".to_owned()),
-                })
-                .collect(),
+                },
+                AssetUseDTO {
+                    purpose: "scene-image".to_owned(),
+                    by: HolderDTO::Scene("scene_dawn".to_owned()),
+                },
+                AssetUseDTO {
+                    purpose: "idea-cover".to_owned(),
+                    by: HolderDTO::Account("account_ada".to_owned()),
+                },
+            ],
         };
 
-        // expect: both uses are read, the unknown one as another purpose
+        // expect: every use is read with what holds it, the unknown one as another purpose
         assert_eq!(
             read(told).expect("a readable upload").uses,
-            vec![Purpose::AccountPicture, Purpose::Other]
+            vec![
+                Use {
+                    purpose: Purpose::AccountPicture,
+                    by: Holder::Account("account_ada".to_owned()),
+                },
+                Use {
+                    purpose: Purpose::SceneImage,
+                    by: Holder::Scene(SceneId::from("scene_dawn".to_owned())),
+                },
+                Use {
+                    purpose: Purpose::Other,
+                    by: Holder::Account("account_ada".to_owned()),
+                },
+            ]
         );
     }
 
@@ -563,7 +721,7 @@ mod tests {
             id: "asset_1".to_owned(),
             version: 1,
             owner: OwnerDTO::Account("account_ada".to_owned()),
-            format: "jpeg".to_owned(),
+            content_type: "image/jpeg".to_owned(),
             width: 512,
             height: 512,
             widths: vec![96, 192, 384, 512],

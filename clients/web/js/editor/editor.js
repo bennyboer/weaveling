@@ -35,6 +35,7 @@ import {
   focusStart,
   focusedWhereTheBrowserPutIt,
   landed,
+  landedOnAsset,
 } from "./walking.js";
 
 export { SyncConnection } from "../sync.js";
@@ -368,6 +369,13 @@ export class ProseEditor {
 
   landAt(at) {
     this.sync.whenSynced(() => landed(this.view, at));
+  }
+
+  landOnAsset(asset) {
+    this.sync.whenSynced(() => {
+      landedOnAsset(this.view, asset);
+      this.tellSelection();
+    });
   }
 
   arriveWhenSynced(towards) {

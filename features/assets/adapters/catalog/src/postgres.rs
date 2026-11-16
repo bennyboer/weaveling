@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
-    Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Held, Holders, Owner, Person,
+    ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -345,11 +345,12 @@ impl AssetCatalog for PostgresAssetCatalog {
         &self,
         transaction: &mut Transaction,
         whose: &UploadsOf,
+        of_type: Option<AssetType>,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,
     ) -> Result<Vec<Upload>, CatalogError> {
-        let asked = uploads_asked(placeholder, whose, sorted, after.is_some());
+        let asked = uploads_asked(placeholder, whose, of_type, sorted, after.is_some());
         let mut asking = sqlx::query(AssertSqlSafe(asked))
             .bind(whose_written(whose))
             .bind(i64::try_from(at_most).map_err(unreachable)?);

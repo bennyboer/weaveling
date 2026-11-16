@@ -451,17 +451,17 @@ impl SceneStore for PostgresSceneStore {
         .await
     }
 
-    async fn announce_images(
+    async fn announce_assets(
         &self,
         transaction: &mut Transaction,
         id: SceneId,
-        images: &BTreeSet<String>,
+        assets: &BTreeSet<String>,
         as_of: u64,
     ) -> Result<(), StoreError> {
-        self.announce(transaction, id, |project| SceneChange::ImagesChanged {
+        self.announce(transaction, id, |project| SceneChange::AssetsChanged {
             scene: id,
             project,
-            images: images.clone(),
+            assets: assets.clone(),
             version: as_of,
         })
         .await

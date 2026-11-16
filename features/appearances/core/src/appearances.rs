@@ -11,7 +11,7 @@ use transacting::{Transaction, Transactions};
 use crate::appearance::{Place, Subject};
 use crate::catalog::AppearanceCatalog;
 use crate::error::AppearancesError;
-use crate::link::{IdeaLink, ProjectLink};
+use crate::link::{AssetLink, IdeaLink, ProjectLink};
 
 #[derive(Clone)]
 pub struct AppearancesCore {
@@ -39,24 +39,50 @@ impl AppearancesCore {
         }
     }
 
-    pub async fn places_of(
+    pub async fn places_of_idea(
         &self,
         idea: &str,
         agent: &Agent,
     ) -> Result<Vec<Place>, AppearancesError> {
-        if !self.may_follow(idea, agent).await? {
-            return Err(AppearancesError::IdeaNotThere);
+        self.places_of_subject(&an_idea(idea), agent).await
+    }
+
+    /// Returns the scenes an asset appears in, to whoever may read the asset's project.
+    /// An asset whose project is not known appears nowhere.
+    pub async fn places_of_asset(
+        &self,
+        asset: &str,
+        agent: &Agent,
+    ) -> Result<Vec<Place>, AppearancesError> {
+        self.places_of_subject(&an_asset(asset), agent).await
+    }
+
+    pub async fn may_follow_idea(
+        &self,
+        idea: &str,
+        agent: &Agent,
+    ) -> Result<bool, AppearancesError> {
+        Ok(self.may_read(&an_idea(idea), agent).await?.unwrap_or(true))
+    }
+
+    pub async fn may_hear_of_idea(
+        &self,
+        idea: &str,
+        agent: &Agent,
+    ) -> Result<bool, AppearancesError> {
+        Ok(self.may_read(&an_idea(idea), agent).await?.unwrap_or(false))
+    }
+
+    async fn places_of_subject(
+        &self,
+        subject: &Subject,
+        agent: &Agent,
+    ) -> Result<Vec<Place>, AppearancesError> {
+        if !self.may_read(subject, agent).await?.unwrap_or(true) {
+            return Err(AppearancesError::NotThere);
         }
 
-        Ok(self.catalog.places_of(&an_idea(idea)).await?)
-    }
-
-    pub async fn may_follow(&self, idea: &str, agent: &Agent) -> Result<bool, AppearancesError> {
-        Ok(self.may_read(idea, agent).await?.unwrap_or(true))
-    }
-
-    pub async fn may_hear(&self, idea: &str, agent: &Agent) -> Result<bool, AppearancesError> {
-        Ok(self.may_read(idea, agent).await?.unwrap_or(false))
+        Ok(self.catalog.places_of(subject).await?)
     }
 
     /// Stores which project an idea belongs to.
@@ -96,6 +122,53 @@ impl AppearancesCore {
             }
             self.catalog
                 .remember(transaction, &an_idea(idea), place, version)
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    /// Stores which project an asset belongs to, as the assets feature told it when the asset was uploaded.
+    /// An asset of an account's own has no project, and appears nowhere.
+    pub async fn asset_uploaded(
+        &self,
+        within: Option<&mut Transaction>,
+        asset: &str,
+        project: &str,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .remember_project(transaction, &an_asset(asset), &ProjectLink::from(project))
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    /// Stores the assets a scene holds in its text, as the scene told them at a version.
+    /// They replace the assets it told before.
+    /// The given project is the scene's project.
+    pub async fn assets_changed(
+        &self,
+        within: Option<&mut Transaction>,
+        place: &Place,
+        assets: &[String],
+        version: u64,
+        project: Option<&str>,
+    ) -> Result<(), AppearancesError> {
+        let assets: Vec<AssetLink> = assets
+            .iter()
+            .map(|asset| AssetLink::from(asset.as_str()))
+            .collect();
+
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            if let Some(project) = project {
+                self.catalog
+                    .remember_place_project(transaction, place, &ProjectLink::from(project))
+                    .await?;
+            }
+            self.catalog
+                .remember_assets(transaction, place, &assets, version)
                 .await?;
 
             Ok(())
@@ -163,6 +236,22 @@ impl AppearancesCore {
         })
     }
 
+    /// Forgets every scene a deleted asset appeared in, for good.
+    pub async fn asset_deleted(
+        &self,
+        within: Option<&mut Transaction>,
+        asset: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), AppearancesError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.catalog
+                .forget_subject(transaction, &an_asset(asset), at)
+                .await?;
+
+            Ok(())
+        })
+    }
+
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -182,8 +271,12 @@ impl AppearancesCore {
         })
     }
 
-    async fn may_read(&self, idea: &str, agent: &Agent) -> Result<Option<bool>, AppearancesError> {
-        let Some(project) = self.catalog.project_of(&an_idea(idea)).await? else {
+    async fn may_read(
+        &self,
+        subject: &Subject,
+        agent: &Agent,
+    ) -> Result<Option<bool>, AppearancesError> {
+        let Some(project) = self.catalog.project_of(subject).await? else {
             return Ok(None);
         };
 
@@ -263,4 +356,8 @@ impl HearsAccess for AppearancesCore {
 
 fn an_idea(id: &str) -> Subject {
     Subject::Idea(IdeaLink::from(id))
+}
+
+fn an_asset(id: &str) -> Subject {
+    Subject::Asset(AssetLink::from(id))
 }

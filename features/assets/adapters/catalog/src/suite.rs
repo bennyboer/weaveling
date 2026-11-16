@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, CatalogError, Format, Held, Holders, Owner, Person,
-    ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Format, Held, Holders, Owner,
+    Person, ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::{AccountId, Version};
 use time::OffsetDateTime;
@@ -656,6 +656,7 @@ async fn uploads<W: Workbench>(
         .uploads_of(
             &mut transaction,
             &UploadsOf::Account(account.clone()),
+            None,
             sorted,
             after,
             at_most,
@@ -790,6 +791,7 @@ pub async fn a_project_s_name_forgotten_names_its_uploads_no_more<W: Workbench>(
 async fn held_in<W: Workbench>(
     bench: &W,
     project: &ProjectLink,
+    of_type: Option<AssetType>,
     after: Option<&UploadMark>,
     at_most: u64,
 ) -> Vec<Upload> {
@@ -804,6 +806,7 @@ async fn held_in<W: Workbench>(
         .uploads_of(
             &mut transaction,
             &UploadsOf::Project(project.clone()),
+            of_type,
             UploadsSorted::Newest,
             after,
             at_most,
@@ -837,18 +840,37 @@ pub async fn a_project_s_images_are_listed_the_newest_first_whoever_uploaded_the
 
     // expect: the loom's alone, the newest first, whoever uploaded them
     assert_eq!(
-        ids(&held_in(bench, &the_loom(), None, 10).await),
+        ids(&held_in(bench, &the_loom(), None, None, 10).await),
         [nobodys, bos, loom]
     );
     // and: a page goes on after the last one listed
-    let first = held_in(bench, &the_loom(), None, 1).await;
+    let first = held_in(bench, &the_loom(), None, None, 1).await;
     assert_eq!(
-        ids(&held_in(bench, &the_loom(), Some(&UploadMark::from(&first[0])), 10).await),
+        ids(&held_in(
+            bench,
+            &the_loom(),
+            None,
+            Some(&UploadMark::from(&first[0])),
+            10
+        )
+        .await),
+        [bos, loom]
+    );
+    // and: asked for images alone, the same, as each of them is an image
+    assert_eq!(
+        ids(&held_in(
+            bench,
+            &the_loom(),
+            Some(AssetType::Image),
+            Some(&UploadMark::from(&first[0])),
+            10
+        )
+        .await),
         [bos, loom]
     );
     // and: a project holding nothing lists nothing
     assert!(
-        held_in(bench, &ProjectLink::from("project_empty"), None, 10)
+        held_in(bench, &ProjectLink::from("project_empty"), None, None, 10)
             .await
             .is_empty()
     );

@@ -1,7 +1,8 @@
 use std::ops::Deref;
 
 use appearances_core::{
-    AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, AssetLink, CatalogError, IdeaLink, Place, ProjectLink, SceneLink,
+    SectionLink, Subject,
 };
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
@@ -200,6 +201,39 @@ impl<C: AppearanceCatalog> Committing<'_, C> {
     }
 }
 
+impl<C: AppearanceCatalog> Committing<'_, C> {
+    /// Stores the assets a place holds at a version, the assets and the place all of `PROJECT`.
+    pub async fn remember_assets(
+        &self,
+        place: &Place,
+        assets: &[&str],
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let project = ProjectLink::from(PROJECT);
+        let assets: Vec<AssetLink> = assets.iter().map(|asset| AssetLink::from(*asset)).collect();
+
+        transacting::retrying!(self.transactions, |transaction| {
+            for asset in &assets {
+                self.catalog
+                    .remember_project(transaction, &Subject::Asset(asset.clone()), &project)
+                    .await
+                    .map_err(Tried::Refused)?;
+            }
+            self.catalog
+                .remember_place_project(transaction, place, &project)
+                .await
+                .map_err(Tried::Refused)?;
+            self.catalog
+                .remember_assets(transaction, place, &assets, version)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+}
+
 impl<C> Deref for Committing<'_, C> {
     type Target = C;
 
@@ -210,6 +244,20 @@ impl<C> Deref for Committing<'_, C> {
 
 fn an_idea(named: &str) -> Subject {
     Subject::Idea(IdeaLink::from(named))
+}
+
+fn an_asset(named: &str) -> Subject {
+    Subject::Asset(AssetLink::from(named))
+}
+
+async fn places_of_asset(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+    asset: &str,
+) -> Vec<Place> {
+    catalog
+        .places_of(&an_asset(asset))
+        .await
+        .expect("asking should succeed")
 }
 
 fn a_section(named: &str) -> Place {
@@ -233,7 +281,10 @@ async fn remembered(
     }
 }
 
-async fn places_of(catalog: &Committing<'_, impl AppearanceCatalog>, idea: &str) -> Vec<Place> {
+async fn places_of_idea(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+    idea: &str,
+) -> Vec<Place> {
     catalog
         .places_of(&an_idea(idea))
         .await
@@ -244,7 +295,7 @@ pub async fn an_idea_nobody_placed_appears_nowhere(
     catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     // expect: an idea never placed appears nowhere
-    assert!(places_of(catalog, "idea_1").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_1").await.is_empty());
 }
 
 pub async fn an_idea_appears_wherever_it_was_remembered(
@@ -260,7 +311,7 @@ pub async fn an_idea_appears_wherever_it_was_remembered(
 
     // then: it appears in both
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_scene("scene_1"), a_section("section_1")]
     );
 }
@@ -282,7 +333,7 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
 
     // then: its places come back scenes first, each by id
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![
             a_scene("scene_1"),
             a_section("section_1"),
@@ -306,7 +357,7 @@ pub async fn remembering_the_same_place_twice_is_one_appearance(
 
     // then: it appears there once
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_section("section_1")],
         "a redelivered attachment must not make an idea appear twice"
     );
@@ -330,7 +381,10 @@ pub async fn forgetting_one_place_leaves_the_others(
         .expect("forgetting should succeed");
 
     // then: it appears only in the scene
-    assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
+    assert_eq!(
+        places_of_idea(catalog, "idea_1").await,
+        vec![a_scene("scene_1")]
+    );
 }
 
 pub async fn forgetting_an_idea_leaves_every_other_idea(
@@ -347,10 +401,10 @@ pub async fn forgetting_an_idea_leaves_every_other_idea(
         .expect("forgetting should succeed");
 
     // then: it appears nowhere
-    assert!(places_of(catalog, "idea_gone").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_gone").await.is_empty());
     // and: the other stays in the section
     assert_eq!(
-        places_of(catalog, "idea_kept").await,
+        places_of_idea(catalog, "idea_kept").await,
         vec![a_section("section_1")],
         "one idea being discarded must never empty the section for the others"
     );
@@ -376,12 +430,12 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(
 
     // then: the first appears only in the other
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_section("section_kept")]
     );
     // and: the second appears nowhere
     assert!(
-        places_of(catalog, "idea_2").await.is_empty(),
+        places_of_idea(catalog, "idea_2").await.is_empty(),
         "a removed section takes every idea noted in it, not just the first one found"
     );
 }
@@ -436,7 +490,7 @@ pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
 
     // then: the idea appears only in the section
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_section("same_1")],
         "the type is part of a place's identity"
     );
@@ -493,7 +547,7 @@ pub async fn a_late_remembering_does_not_undo_a_later_forgetting(
 
     // then: it appears nowhere
     assert!(
-        places_of(catalog, "idea_1").await.is_empty(),
+        places_of_idea(catalog, "idea_1").await.is_empty(),
         "an attachment tried again after its detachment must not put the idea back"
     );
 }
@@ -511,7 +565,7 @@ pub async fn a_late_forgetting_does_not_undo_a_later_remembering(
 
     // then: it stays in the section
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_section("section_1")],
         "a detachment tried again after the idea was attached anew must not take it away"
     );
@@ -533,7 +587,7 @@ pub async fn nothing_comes_back_to_a_forgotten_place(
 
     // then: it appears nowhere
     assert!(
-        places_of(catalog, "idea_1").await.is_empty(),
+        places_of_idea(catalog, "idea_1").await.is_empty(),
         "a removed section is gone for good, whatever arrives about it later"
     );
 }
@@ -552,7 +606,7 @@ pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &Committing<'_, impl A
 
     // then: it appears nowhere
     assert!(
-        places_of(catalog, "idea_1").await.is_empty(),
+        places_of_idea(catalog, "idea_1").await.is_empty(),
         "a discarded idea is gone for good, and its versions come from other streams, so only \
          remembering that it went can keep it out"
     );
@@ -678,14 +732,14 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
     }
     // then: the long gone ones come back
     assert_eq!(
-        places_of(catalog, "idea_long_gone").await,
+        places_of_idea(catalog, "idea_long_gone").await,
         vec![a_scene("scene_1")],
         "a tombstone forgotten keeps nothing out"
     );
     // and: the ones just gone stay out
-    assert!(places_of(catalog, "idea_just_gone").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_just_gone").await.is_empty());
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_section("section_long_gone")]
     );
 }
@@ -828,17 +882,17 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
     )
     .await;
     // then: the oldest ones come back and the newest stays out
-    assert!(places_of(catalog, "idea_newest").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_newest").await.is_empty());
     assert_eq!(
-        places_of(catalog, "idea_oldest").await,
+        places_of_idea(catalog, "idea_oldest").await,
         vec![a_scene("scene_1")]
     );
     assert_eq!(
-        places_of(catalog, "idea_older").await,
+        places_of_idea(catalog, "idea_older").await,
         vec![a_scene("scene_1")]
     );
     assert_eq!(
-        places_of(catalog, "idea_here").await,
+        places_of_idea(catalog, "idea_here").await,
         vec![a_section("section_older"), a_section("section_oldest")]
     );
     // and: what is left is forgotten in the next batch
@@ -906,11 +960,11 @@ pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
 
     // then: the first idea stays where it was
     assert_eq!(
-        places_of(catalog, "idea_kept").await,
+        places_of_idea(catalog, "idea_kept").await,
         vec![a_scene("scene_1"), a_section("section_1")]
     );
     // and: the other is nowhere and of no project
-    assert!(places_of(catalog, "idea_new").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_new").await.is_empty());
     assert_eq!(
         catalog
             .project_of(&an_idea("idea_new"))
@@ -951,7 +1005,7 @@ pub async fn an_idea_appears_only_in_places_of_its_own_project(
 
     // then: it appears in the scene of its own project alone
     assert_eq!(
-        places_of(catalog, "idea_1").await,
+        places_of_idea(catalog, "idea_1").await,
         vec![a_scene("scene_own")],
         "a link from another project, made with an idea's id known from elsewhere, must not show \
          where the idea appears"
@@ -971,7 +1025,7 @@ pub async fn an_idea_of_no_project_known_appears_nowhere_until_its_project_is(
         .await
         .expect("remembering should succeed");
     // and: so it appears nowhere
-    assert!(places_of(catalog, "idea_1").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_1").await.is_empty());
 
     // when: its project is known, the scene's
     catalog
@@ -980,7 +1034,10 @@ pub async fn an_idea_of_no_project_known_appears_nowhere_until_its_project_is(
         .expect("remembering should succeed");
 
     // then: it appears there, whichever was heard first
-    assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
+    assert_eq!(
+        places_of_idea(catalog, "idea_1").await,
+        vec![a_scene("scene_1")]
+    );
 }
 
 pub async fn a_forgotten_place_keeps_no_project_not_even_one_heard_late(
@@ -1024,7 +1081,7 @@ pub async fn a_forgotten_place_keeps_no_project_not_even_one_heard_late(
 
     // then: it appears nowhere, the scene's project having gone with it
     assert!(
-        places_of(catalog, "idea_1").await.is_empty(),
+        places_of_idea(catalog, "idea_1").await.is_empty(),
         "a place's project is forgotten with the place, and one heard after it went is never kept"
     );
 }
@@ -1069,9 +1126,12 @@ pub async fn forgetting_a_project_forgets_every_place_of_it_for_good(
     // then: the idea that appeared in it is told, once
     assert_eq!(appeared, vec![an_idea("idea_1")]);
     // and: it appears nowhere
-    assert!(places_of(catalog, "idea_1").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_1").await.is_empty());
     // and: the idea of the other project stays where it was
-    assert_eq!(places_of(catalog, "idea_2").await, vec![a_scene("scene_2")]);
+    assert_eq!(
+        places_of_idea(catalog, "idea_2").await,
+        vec![a_scene("scene_2")]
+    );
     // when: a link to the section is heard late, its project with it
     catalog
         .remember(&an_idea("idea_1"), &a_section("section_1"), 9)
@@ -1079,7 +1139,7 @@ pub async fn forgetting_a_project_forgets_every_place_of_it_for_good(
         .expect("remembering late is no failure");
     // then: nothing comes back to it
     assert!(
-        places_of(catalog, "idea_1").await.is_empty(),
+        places_of_idea(catalog, "idea_1").await.is_empty(),
         "every place of a deleted project is gone for good, as a removed section is"
     );
 }
@@ -1106,7 +1166,139 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     remembered(catalog, "idea_gone", &[a_scene("scene_1")]).await;
 
     // then: it stays out
-    assert!(places_of(catalog, "idea_gone").await.is_empty());
+    assert!(places_of_idea(catalog, "idea_gone").await.is_empty());
+}
+
+pub async fn assets_told_replace_those_a_place_held(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: a scene told to hold two assets
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1", "asset_2"], 1)
+        .await
+        .expect("remembering should succeed");
+
+    // when: it is told to hold one of them and another
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_2", "asset_3"], 2)
+        .await
+        .expect("remembering should succeed");
+
+    // then: the asset no longer told appears nowhere
+    assert!(
+        places_of_asset(catalog, "asset_1").await.is_empty(),
+        "an asset taken out of a scene's text no longer appears there"
+    );
+    // and: the others appear in the scene
+    for asset in ["asset_2", "asset_3"] {
+        assert_eq!(
+            places_of_asset(catalog, asset).await,
+            vec![a_scene("scene_1")]
+        );
+    }
+}
+
+pub async fn assets_told_late_change_nothing(catalog: &Committing<'_, impl AppearanceCatalog>) {
+    // given: a scene told to hold one asset at a later version
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1"], 3)
+        .await
+        .expect("remembering should succeed");
+
+    // when: assets it held before arrive late, one of them never told since
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1", "asset_2"], 2)
+        .await
+        .expect("remembering should succeed");
+
+    // then: the asset told late appears nowhere
+    assert!(
+        places_of_asset(catalog, "asset_2").await.is_empty(),
+        "assets told late must not bring back an asset the scene no longer holds"
+    );
+    // and: the one told last stays
+    assert_eq!(
+        places_of_asset(catalog, "asset_1").await,
+        vec![a_scene("scene_1")]
+    );
+}
+
+pub async fn assets_told_to_a_forgotten_place_change_nothing(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: a scene told to hold an asset
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1"], 1)
+        .await
+        .expect("remembering should succeed");
+
+    // when: the scene is forgotten, and assets arrive for it at a later version
+    catalog
+        .forget_place(&a_scene("scene_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1", "asset_2"], 9)
+        .await
+        .expect("remembering should succeed");
+
+    // then: neither asset appears anywhere
+    for asset in ["asset_1", "asset_2"] {
+        assert!(
+            places_of_asset(catalog, asset).await.is_empty(),
+            "a deleted scene is gone for good, whatever arrives about it later"
+        );
+    }
+}
+
+pub async fn assets_told_leave_the_ideas_of_a_place(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    // given: an idea linked from a scene
+    remembered(catalog, "idea_1", &[a_scene("scene_1")]).await;
+
+    // when: the scene is told to hold an asset, and then none
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1"], 1)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_assets(&a_scene("scene_1"), &[], 2)
+        .await
+        .expect("remembering should succeed");
+
+    // then: the idea still appears there
+    assert_eq!(
+        places_of_idea(catalog, "idea_1").await,
+        vec![a_scene("scene_1")],
+        "the assets a scene holds say nothing about the ideas it links"
+    );
+    // and: the asset appears nowhere
+    assert!(places_of_asset(catalog, "asset_1").await.is_empty());
+}
+
+pub async fn a_deleted_asset_comes_back_nowhere(catalog: &Committing<'_, impl AppearanceCatalog>) {
+    // given: a scene told to hold an asset
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1"], 1)
+        .await
+        .expect("remembering should succeed");
+
+    // when: the asset is forgotten, and the scene told to hold it again
+    catalog
+        .forget_subject(&an_asset("asset_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .remember_assets(&a_scene("scene_1"), &["asset_1"], 2)
+        .await
+        .expect("remembering should succeed");
+
+    // then: it appears nowhere
+    assert!(
+        places_of_asset(catalog, "asset_1").await.is_empty(),
+        "a deleted asset is gone for good"
+    );
 }
 
 macro_rules! conformance_case {
@@ -1211,6 +1403,14 @@ macro_rules! conformance_tests {
             $workbench,
             tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_kind
         );
+        $crate::suite::conformance_case!($workbench, assets_told_replace_those_a_place_held);
+        $crate::suite::conformance_case!($workbench, assets_told_late_change_nothing);
+        $crate::suite::conformance_case!(
+            $workbench,
+            assets_told_to_a_forgotten_place_change_nothing
+        );
+        $crate::suite::conformance_case!($workbench, assets_told_leave_the_ideas_of_a_place);
+        $crate::suite::conformance_case!($workbench, a_deleted_asset_comes_back_nowhere);
     };
 }
 

@@ -20,6 +20,8 @@ js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
+    "AbortController",
+    "AbortSignal",
     "Blob",
     "CanvasRenderingContext2d",
     "Clipboard",
@@ -29,6 +31,7 @@ web-sys = { workspace = true, features = [
     "Document",
     "DomRect",
     "DomTokenList",
+    "DragEvent",
     "Element",
     "File",
     "FileList",

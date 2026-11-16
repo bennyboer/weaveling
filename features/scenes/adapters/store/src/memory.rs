@@ -230,11 +230,11 @@ impl SceneStore for InMemorySceneStore {
         Ok(())
     }
 
-    async fn announce_images(
+    async fn announce_assets(
         &self,
         transaction: &mut Transaction,
         id: SceneId,
-        images: &BTreeSet<String>,
+        assets: &BTreeSet<String>,
         as_of: u64,
     ) -> Result<(), StoreError> {
         self.undo_on_rollback(transaction)?;
@@ -245,10 +245,10 @@ impl SceneStore for InMemorySceneStore {
             .ok_or(StoreError::NotFound(id))?;
         self.enqueue_change(
             transaction,
-            SceneChange::ImagesChanged {
+            SceneChange::AssetsChanged {
                 scene: id,
                 project,
-                images: images.clone(),
+                assets: assets.clone(),
                 version: as_of,
             },
         );

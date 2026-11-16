@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject};
+use appearances_core::{AssetLink, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject};
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
@@ -88,4 +88,46 @@ async fn a_place_goes_on_the_wire_tagged_with_its_type() {
         serde_json::json!({ "type": "section", "id": "section_1" }),
         "the client tells a section from a scene by this tag alone"
     );
+}
+
+#[tokio::test]
+async fn an_asset_answers_with_the_scenes_it_appears_in() {
+    // given: an asset of a project, held by a scene of it
+    let catalog = Arc::new(InMemoryAppearanceCatalog::new());
+    let asset = Subject::Asset(AssetLink::from("asset_1"));
+    catalog
+        .remember_project_committed(&asset, &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_committed(&asset, &Place::Scene(SceneLink::from("scene_1")), 1)
+        .await
+        .expect("remembering should succeed");
+    let server = served(catalog);
+
+    // when: where it appears is asked
+    let response = server.get("/appearances?asset=asset_1").await;
+
+    // then: the scene is answered
+    response.assert_status_ok();
+    assert_eq!(
+        response.json::<Vec<PlaceDTO>>(),
+        vec![PlaceDTO::Scene {
+            id: "scene_1".to_owned()
+        }]
+    );
+}
+
+#[tokio::test]
+async fn where_something_appears_is_asked_of_one_idea_or_one_asset() {
+    // given: nothing placed anywhere
+    let server = served(Arc::new(InMemoryAppearanceCatalog::new()));
+
+    // when: neither is asked about, and both at once
+    let neither = server.get("/appearances").await;
+    let both = server.get("/appearances?idea=idea_1&asset=asset_1").await;
+
+    // then: both are refused as unreadable
+    neither.assert_status_bad_request();
+    both.assert_status_bad_request();
 }

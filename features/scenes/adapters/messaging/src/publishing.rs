@@ -2,8 +2,8 @@ use eventsourcing::AggregateContext;
 use messaging::{Message, RoutingKey};
 use projects_contract::context::PROJECT;
 use scenes_contract::{
-    CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IMAGES_CHANGED, IdeaLinkDTO, OPENING_CHANGED,
-    OpeningChangedDTO, RETITLED, SceneCreatedDTO, SceneDeletedDTO, SceneImagesChangedDTO,
+    ASSETS_CHANGED, CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, OPENING_CHANGED,
+    OpeningChangedDTO, RETITLED, SceneAssetsChangedDTO, SceneCreatedDTO, SceneDeletedDTO,
     SceneRetitledDTO, WORDS_COUNTED, WordsCountedDTO,
 };
 use scenes_core::SceneChange;
@@ -89,16 +89,16 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 words: *words as u64,
             }),
         ),
-        SceneChange::ImagesChanged {
+        SceneChange::AssetsChanged {
             scene,
-            images,
+            assets,
             version,
             ..
         } => (
-            IMAGES_CHANGED,
-            to_payload(&SceneImagesChangedDTO {
+            ASSETS_CHANGED,
+            to_payload(&SceneAssetsChangedDTO {
                 scene: scene.to_string(),
-                images: images.iter().cloned().collect(),
+                assets: assets.iter().cloned().collect(),
                 version: *version,
             }),
         ),
@@ -242,25 +242,25 @@ mod tests {
         // given: a scene
         let scene = a_scene();
 
-        // when: the images it holds are announced
+        // when: the assets it holds are announced
         let told = message_for(
-            &SceneChange::ImagesChanged {
+            &SceneChange::AssetsChanged {
                 scene,
                 project: ProjectLink::from("project_1"),
-                images: BTreeSet::from(["asset_weft".to_owned(), "asset_loom".to_owned()]),
+                assets: BTreeSet::from(["asset_weft".to_owned(), "asset_loom".to_owned()]),
                 version: 7,
             },
             clock::at(2_000),
         );
 
-        // then: it goes under the images' key
-        assert_eq!(told.routing.to_string(), IMAGES_CHANGED);
-        // and: reads back as the images of the scene, sorted, with their version
+        // then: it goes under the assets' key
+        assert_eq!(told.routing.to_string(), ASSETS_CHANGED);
+        // and: reads back as the assets of the scene, sorted, with their version
         assert_eq!(
-            serde_json::from_value::<SceneImagesChangedDTO>(told.payload).expect("reads back"),
-            SceneImagesChangedDTO {
+            serde_json::from_value::<SceneAssetsChangedDTO>(told.payload).expect("reads back"),
+            SceneAssetsChangedDTO {
                 scene: scene.to_string(),
-                images: vec!["asset_loom".to_owned(), "asset_weft".to_owned()],
+                assets: vec!["asset_loom".to_owned(), "asset_weft".to_owned()],
                 version: 7,
             },
             "the version tells a late, older set from a newer one"
@@ -409,10 +409,10 @@ mod tests {
                 project: project.clone(),
                 words: 42,
             },
-            SceneChange::ImagesChanged {
+            SceneChange::AssetsChanged {
                 scene,
                 project: project.clone(),
-                images: BTreeSet::from(["asset_loom".to_owned()]),
+                assets: BTreeSet::from(["asset_loom".to_owned()]),
                 version: 5,
             },
             SceneChange::Deleted {

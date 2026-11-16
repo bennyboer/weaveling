@@ -106,10 +106,10 @@ impl Scene {
         projection::plain_text(&self.doc)
     }
 
-    /// Returns the ids of the images the scene holds, sorted and each once.
+    /// Returns the ids of the assets the scene holds, sorted and each once: the images of its figures.
     /// A figure that names no image is left out.
-    pub fn images(&self) -> BTreeSet<String> {
-        projection::images_in(&self.doc)
+    pub fn assets(&self) -> BTreeSet<String> {
+        projection::assets_in(&self.doc)
     }
 
     pub fn words(&self) -> usize {
@@ -513,7 +513,7 @@ mod tests {
 
         // then: the scene holds the two images, sorted
         assert_eq!(
-            scene.images().into_iter().collect::<Vec<_>>(),
+            scene.assets().into_iter().collect::<Vec<_>>(),
             vec!["asset_loom".to_owned(), "asset_weft".to_owned()]
         );
     }
@@ -525,7 +525,7 @@ mod tests {
         write(&scene, 0, "The loom stood silent.");
 
         // then: it holds no images
-        assert!(scene.images().is_empty());
+        assert!(scene.assets().is_empty());
     }
 
     #[test]

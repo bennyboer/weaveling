@@ -13,7 +13,7 @@ type Upload = {
   id: string;
   owner: { kind: "project" | "account"; id: string };
   project_name: string | null;
-  format: string;
+  content_type: string;
   width: number;
   height: number;
   total_size: number;
@@ -40,7 +40,7 @@ const anUpload = (
   id,
   owner: into ? { kind: "project", id: into.project } : { kind: "account", id: "account_ada" },
   project_name: into?.name ?? null,
-  format: "png",
+  content_type: "image/png",
   width: 1280,
   height: 1024,
   total_size,
@@ -289,6 +289,65 @@ test("an upload in use as her picture says so and cannot be deleted", async ({ p
   // then: the portrait is marked as her picture, without a delete button
   await expect(uploads(page).nth(0)).toContainText("your account picture");
   await expect(uploads(page).nth(0).getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+  // when: she presses the mark
+  await uploads(page).nth(0).getByRole("button", { name: "your account picture" }).click();
+
+  // then: the portrait is shown, used as her account picture, a link to her account
+  const viewing = page.getByRole("dialog", { name: "Your own file" });
+  await expect(viewing.getByRole("heading", { name: "Used in" })).toBeVisible();
+  await expect(viewing.getByRole("link", { name: "Your account picture" })).toHaveAttribute(
+    "href",
+    "/account",
+  );
+});
+
+test("an upload in scenes names each, a link to it with the upload chosen", async ({ page }) => {
+  // given: Ada's map, used in a scene of the loom and in one she cannot read
+  await aShelf(page, [
+    {
+      ...THE_MAP,
+      deletable: false,
+      uses: [
+        { purpose: "scene-image", by: { kind: "scene", id: "scene_dawn" } },
+        { purpose: "scene-image", by: { kind: "scene", id: "scene_hidden" } },
+      ],
+    },
+  ]);
+  const asked: string[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/scenes",
+    (route) => {
+      asked.push(new URL(route.request().url()).search);
+
+      return route.fulfill({
+        json: {
+          scenes: [{ id: "scene_dawn", project: "project_loom", title: "Dawn", opening: "" }],
+          next: null,
+        },
+      });
+    },
+  );
+  await signedIn(page);
+  await page.goto("/account/storage");
+  await expect(uploads(page)).toHaveCount(1);
+  // and: so far, no scene was asked for
+  expect(asked).toEqual([]);
+
+  // when: she presses its mark
+  await uploads(page).nth(0).getByRole("button", { name: "in use" }).click();
+
+  // then: the scene she can read is named, a link that opens it with the map chosen
+  const viewing = page.getByRole("dialog", { name: "In The Loom" });
+  await expect(viewing.getByRole("link", { name: "Dawn" })).toHaveAttribute(
+    "href",
+    "/projects/project_loom/write?scene=scene_dawn&asset=asset_map",
+  );
+  // and: the other is named as one she cannot open, without a link
+  await expect(viewing.getByText("A scene you cannot open")).toBeVisible();
+  await expect(viewing.getByRole("link")).toHaveCount(1);
+  // and: the loom's scenes were asked for once
+  expect(asked).toEqual(["?project=project_loom"]);
 });
 
 for (const width of [1280, 320]) {

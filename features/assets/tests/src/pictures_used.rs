@@ -120,7 +120,7 @@ async fn a_picture_in_use_is_not_deleted_and_the_list_says_why() {
     // and: her uploads say it is in use and not deletable
     let listed = bench
         .assets
-        .uploads_of(UploadsSorted::Newest, None, 10, &bench::ada())
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &bench::ada())
         .await
         .expect("an account is told its uploads");
     assert!(!listed.listed[0].deletable);

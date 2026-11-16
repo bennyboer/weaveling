@@ -10,7 +10,7 @@ pub enum AssetEventDTO {
     #[serde(rename = "UPLOADED")]
     Uploaded {
         owner: OwnerDTO,
-        format: String,
+        content_type: String,
         width: u32,
         height: u32,
         original_size: u64,
@@ -34,7 +34,7 @@ pub struct AssetDTO {
     pub id: String,
     pub version: u64,
     pub owner: OwnerDTO,
-    pub format: String,
+    pub content_type: String,
     pub width: u32,
     pub height: u32,
     pub widths: Vec<u32>,
@@ -73,7 +73,7 @@ pub struct UploadDTO {
     pub id: String,
     pub owner: OwnerDTO,
     pub project_name: Option<String>,
-    pub format: String,
+    pub content_type: String,
     pub width: u32,
     pub height: u32,
     pub total_size: u64,
@@ -91,10 +91,12 @@ pub struct UploadsDTO {
     pub next: Option<String>,
 }
 
-/// One image a project holds, as the dialog for choosing an image lists it.
+/// One asset a project holds, as the dialog for choosing an image lists it.
+/// Its content type is its media type, such as `image/png`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ImageDTO {
+pub struct ProjectAssetDTO {
     pub id: String,
+    pub content_type: String,
     pub width: u32,
     pub height: u32,
     pub uploaded_at: String,
@@ -103,8 +105,8 @@ pub struct ImageDTO {
 /// A page of a project's images, the newest first, and the cursor for the next page.
 /// The cursor is missing after the last page.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ImagesDTO {
-    pub images: Vec<ImageDTO>,
+pub struct ProjectAssetsDTO {
+    pub assets: Vec<ProjectAssetDTO>,
     pub next: Option<String>,
 }
 
@@ -208,8 +210,9 @@ pub mod refused {
     pub const SORT_UNKNOWN: &str = "asset-sort-unknown";
     pub const CURSOR_INVALID: &str = "asset-cursor-invalid";
     pub const IN_USE: &str = "asset-in-use";
+    pub const TYPE_UNKNOWN: &str = "asset-type-unknown";
 
-    pub const EVERY: [&str; 12] = [
+    pub const EVERY: [&str; 13] = [
         ID_INVALID,
         NOT_AN_IMAGE,
         IMAGE_UNREADABLE,
@@ -222,6 +225,7 @@ pub mod refused {
         SORT_UNKNOWN,
         CURSOR_INVALID,
         IN_USE,
+        TYPE_UNKNOWN,
     ];
 }
 
@@ -234,9 +238,7 @@ pub mod bound {
     pub const PROJECT: &str = "project";
 }
 
-pub mod format {
-    pub const JPEG: &str = "jpeg";
-    pub const PNG: &str = "png";
-    pub const GIF: &str = "gif";
-    pub const WEBP: &str = "webp";
+/// The types a listing of assets may be asked for, as `?type=`: the first part of a media type.
+pub mod asset_type {
+    pub const IMAGE: &str = "image";
 }

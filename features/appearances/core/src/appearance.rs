@@ -1,8 +1,9 @@
-use crate::link::{IdeaLink, SceneLink, SectionLink};
+use crate::link::{AssetLink, IdeaLink, SceneLink, SectionLink};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Subject {
     Idea(IdeaLink),
+    Asset(AssetLink),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

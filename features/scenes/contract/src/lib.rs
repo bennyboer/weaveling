@@ -11,7 +11,7 @@ pub const WORDS_COUNTED: &str = "scene.words.counted";
 pub const CREATED: &str = "scene.created";
 pub const RETITLED: &str = "scene.retitled";
 pub const OPENING_CHANGED: &str = "scene.opening.changed";
-pub const IMAGES_CHANGED: &str = "scene.images.changed";
+pub const ASSETS_CHANGED: &str = "scene.assets.changed";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdeaLinkDTO {
@@ -53,12 +53,12 @@ pub struct WordsCountedDTO {
     pub words: u64,
 }
 
-/// The images a scene holds, by their asset ids, sorted and each once.
+/// The assets a scene holds, by their ids, sorted and each once. Today these are the images of its figures.
 /// `version` is the scene's prose version they were read at, so a late, older message can be told apart.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct SceneImagesChangedDTO {
+pub struct SceneAssetsChangedDTO {
     pub scene: String,
-    pub images: Vec<String>,
+    pub assets: Vec<String>,
     pub version: u64,
 }
 

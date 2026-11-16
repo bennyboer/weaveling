@@ -124,6 +124,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name = landAt)]
     pub fn land_at(this: &ProseEditor, at: u32);
 
+    #[wasm_bindgen(method, js_name = landOnAsset)]
+    pub fn land_on_asset(this: &ProseEditor, asset: &str);
+
     #[wasm_bindgen(method, js_name = onSaving)]
     pub fn on_saving(this: &ProseEditor, saving: &Closure<dyn Fn(bool)>);
 

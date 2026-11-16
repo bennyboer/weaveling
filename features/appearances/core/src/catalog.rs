@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::appearance::{Place, Subject};
-use crate::link::ProjectLink;
+use crate::link::{AssetLink, ProjectLink};
 
 #[derive(Debug, Error)]
 pub enum CatalogError {
@@ -29,6 +29,17 @@ pub trait AppearanceCatalog: Send + Sync {
         transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError>;
+
+    /// Replaces the assets a place holds with the assets told, at the version they were told at.
+    /// An asset the place held before and no longer holds is forgotten there.
+    /// Assets told at an older version than the last ones change nothing, so a late message cannot bring an asset back.
+    async fn remember_assets(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        assets: &[AssetLink],
         version: u64,
     ) -> Result<(), CatalogError>;
 

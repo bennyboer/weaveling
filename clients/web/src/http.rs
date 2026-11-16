@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{ProgressEvent, XmlHttpRequest};
+use web_sys::{AbortSignal, ProgressEvent, XmlHttpRequest};
 
 const PROBLEM: &str = "application/problem+json";
 const IF_MATCH: &str = "If-Match";
@@ -91,11 +91,17 @@ pub(crate) async fn sent_bytes(
 
 /// Posts bytes and tells how much of them has been sent, as a fraction from 0 to 1, while they go.
 /// The answer comes back as a response like any other, so it is checked and parsed the same way.
+/// Posts the bytes, telling how far the body has been sent.
+/// Given a signal, the request is aborted once the signal is, and fails as if the server could not be reached.
 pub(crate) async fn posted_watched(
     url: &str,
     bytes: &[u8],
     watched: impl Fn(f64) + 'static,
+    halted: Option<&AbortSignal>,
 ) -> Result<Response, ApiError> {
+    if halted.is_some_and(AbortSignal::aborted) {
+        return Err(ApiError::Offline);
+    }
     let request = XmlHttpRequest::new().map_err(|_| ApiError::Unexpected)?;
     request
         .open("POST", url)
@@ -117,8 +123,21 @@ pub(crate) async fn posted_watched(
     request
         .send_with_opt_u8_array(Some(bytes))
         .map_err(|_| ApiError::Offline)?;
+    let halting = halted.map(|halted| {
+        let aborted = request.clone();
+        let halting = Closure::<dyn Fn()>::new(move || {
+            let _ = aborted.abort();
+        });
+        halted.set_onabort(Some(halting.as_ref().unchecked_ref()));
+
+        (halted, halting)
+    });
     let answered = JsFuture::from(ended).await;
     drop(progress);
+    if let Some((halted, halting)) = halting {
+        halted.set_onabort(None);
+        drop(halting);
+    }
     answered.map_err(|_| ApiError::Offline)?;
 
     answer_of(&request)

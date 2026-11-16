@@ -60,12 +60,12 @@ async fn an_account_is_told_everything_it_uploaded_and_that_it_may_delete_it() {
     // when: each lists their uploads
     let hers = bench
         .assets
-        .uploads_of(UploadsSorted::Newest, None, 10, &bench::ada())
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &bench::ada())
         .await
         .expect("an account is told its uploads");
     let his = bench
         .assets
-        .uploads_of(UploadsSorted::Newest, None, 10, &bench::bo())
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &bench::bo())
         .await
         .expect("an account is told its uploads");
 
@@ -90,7 +90,7 @@ async fn an_upload_into_a_project_one_may_no_longer_write_in_may_not_be_deleted(
     // when: she lists them
     let hers = bench
         .assets
-        .uploads_of(UploadsSorted::Largest, None, 10, &bench::ada())
+        .uploads_of(UploadsSorted::Largest, None, None, 10, &bench::ada())
         .await
         .expect("an account is told its uploads");
 
@@ -122,13 +122,14 @@ async fn a_full_page_of_uploads_goes_on_from_its_last() {
     // when: she lists them a page of one at a time
     let first = bench
         .assets
-        .uploads_of(UploadsSorted::Largest, None, 1, &bench::ada())
+        .uploads_of(UploadsSorted::Largest, None, None, 1, &bench::ada())
         .await
         .expect("an account is told its uploads");
     let then = bench
         .assets
         .uploads_of(
             UploadsSorted::Largest,
+            None,
             first.next.as_ref(),
             1,
             &bench::ada(),
@@ -141,7 +142,13 @@ async fn a_full_page_of_uploads_goes_on_from_its_last() {
     assert_ne!(first.listed[0].upload.id, then.listed[0].upload.id);
     let last = bench
         .assets
-        .uploads_of(UploadsSorted::Largest, then.next.as_ref(), 1, &bench::ada())
+        .uploads_of(
+            UploadsSorted::Largest,
+            None,
+            then.next.as_ref(),
+            1,
+            &bench::ada(),
+        )
         .await
         .expect("an account is told its uploads");
     assert!(last.listed.is_empty());
@@ -155,7 +162,7 @@ async fn without_accounts_nobody_has_uploads_of_their_own() {
     // when: the one working asks for their uploads
     let refused = bench
         .assets
-        .uploads_of(UploadsSorted::Newest, None, 10, &Agent::Local)
+        .uploads_of(UploadsSorted::Newest, None, None, 10, &Agent::Local)
         .await;
 
     // then: it is refused
@@ -185,7 +192,7 @@ async fn the_route_lists_an_account_s_uploads_and_goes_on_from_its_cursor() {
         .expect("the loom's upload is listed");
     assert_eq!(loom.owner, OwnerDTO::Project(THE_LOOM.to_owned()));
     assert_eq!(loom.project_name.as_deref(), Some("Loom"));
-    assert_eq!(loom.format, "jpeg");
+    assert_eq!(loom.content_type, "image/jpeg");
     assert_eq!(loom.uploaded_at, "2023-11-14T22:13:20Z");
     assert!(!loom.deletable);
     // when: she goes on from the first

@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use assets_core::{
-    AssetCatalog, AssetId, AssetSummary, CatalogError, Held, Holders, Owner, Person, ProjectLink,
-    Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
+    AssetCatalog, AssetId, AssetSummary, AssetType, CatalogError, Held, Holders, Owner, Person,
+    ProjectLink, Sorted, Upload, UploadMark, UploadsOf, UploadsSorted, Usage,
 };
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
@@ -240,6 +240,7 @@ impl AssetCatalog for InMemoryAssetCatalog {
         &self,
         _transaction: &mut Transaction,
         whose: &UploadsOf,
+        of_type: Option<AssetType>,
         sorted: UploadsSorted,
         after: Option<&UploadMark>,
         at_most: u64,
@@ -256,6 +257,7 @@ impl AssetCatalog for InMemoryAssetCatalog {
                 UploadsOf::Account(account) => summary.uploader.as_ref() == Some(account),
                 UploadsOf::Project(project) => summary.owner == Owner::Project(project.clone()),
             })
+            .filter(|summary| of_type.is_none_or(|asked| summary.format.asset_type() == asked))
             .map(|summary| Upload {
                 id: summary.id,
                 owner: summary.owner.clone(),

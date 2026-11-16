@@ -1,11 +1,11 @@
 use assets_contract::{
     AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, AssetUseDTO, HolderDTO,
-    ImageDTO, ImagesDTO, InstanceStorageDTO, OwnerDTO, ProjectOwnerDTO, ProjectStorageDTO,
-    ProjectsStorageDTO, UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, bound, format, purpose,
-    refused, sort,
+    InstanceStorageDTO, OwnerDTO, ProjectAssetDTO, ProjectAssetsDTO, ProjectOwnerDTO,
+    ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO,
+    asset_type, bound, purpose, refused, sort,
 };
 use assets_core::{
-    Asset, AssetError, AssetUse, AssetsCore, AssetsError, Bound, Format, Held, Holder,
+    Asset, AssetError, AssetType, AssetUse, AssetsCore, AssetsError, Bound, Held, Holder,
     ImageRefused, Limit, Listed, Owner, Purpose, Sorted, UploadMark, UploadsSorted,
 };
 use axum::body::Bytes;
@@ -40,7 +40,7 @@ pub fn router(assets: AssetsCore) -> Router {
         .route("/assets/{id}", routing::get(asset).delete(delete))
         .route("/assets/{id}/content", routing::get(content))
         .route("/assets/{id}/copies", routing::post(copy))
-        .route("/assets/projects/{project}/images", routing::get(images_in))
+        .route("/assets/projects/{project}", routing::get(assets_in))
         .route(
             "/assets/accounts/{account}/limit",
             routing::put(give_account_limit).delete(take_back_account_limit),
@@ -101,10 +101,12 @@ impl Paging {
 struct UploadsPaging {
     sort: Option<String>,
     after: Option<String>,
+    #[serde(rename = "type")]
+    of_type: Option<String>,
 }
 
 impl UploadsPaging {
-    fn read(&self) -> Result<(UploadsSorted, Option<UploadMark>), Problem> {
+    fn read(&self) -> Result<(UploadsSorted, Option<AssetType>, Option<UploadMark>), Problem> {
         let sorted = match self.sort.as_deref() {
             None | Some(sort::NEWEST) => UploadsSorted::Newest,
             Some(sort::LARGEST) => UploadsSorted::Largest,
@@ -125,7 +127,19 @@ impl UploadsPaging {
             })
             .transpose()?;
 
-        Ok((sorted, after))
+        Ok((sorted, type_read(self.of_type.as_deref())?, after))
+    }
+}
+
+/// Reads the type a listing is asked for. None asks for every type, an unknown one is refused.
+fn type_read(asked: Option<&str>) -> Result<Option<AssetType>, Problem> {
+    match asked {
+        None => Ok(None),
+        Some(asset_type::IMAGE) => Ok(Some(AssetType::Image)),
+        Some(unknown) => Err(Problem::rejected(
+            refused::TYPE_UNKNOWN,
+            format!("no type {unknown}; take image"),
+        )),
     }
 }
 
@@ -167,8 +181,10 @@ struct CopiedInto {
 }
 
 #[derive(Deserialize)]
-struct ImagesPaging {
+struct AssetsPaging {
     after: Option<String>,
+    #[serde(rename = "type")]
+    of_type: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -225,12 +241,13 @@ async fn copy(
     ))
 }
 
-async fn images_in(
+async fn assets_in(
     State(assets): State<AssetsCore>,
     Extension(acting): Extension<Agent>,
     Path(project): Path<String>,
-    Query(paging): Query<ImagesPaging>,
-) -> Result<Json<ImagesDTO>, Problem> {
+    Query(paging): Query<AssetsPaging>,
+) -> Result<Json<ProjectAssetsDTO>, Problem> {
+    let of_type = type_read(paging.of_type.as_deref())?;
     let after = paging
         .after
         .as_deref()
@@ -241,20 +258,21 @@ async fn images_in(
         })
         .transpose()?;
     let listed = assets
-        .images_in(&project, after.as_ref(), A_PAGE, &acting)
+        .assets_in(&project, of_type, after.as_ref(), A_PAGE, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(ImagesDTO {
+    Ok(Json(ProjectAssetsDTO {
         next: listed.next.as_ref().map(mark_written),
-        images: listed
+        assets: listed
             .listed
             .into_iter()
-            .map(|image| ImageDTO {
-                id: image.id.to_string(),
-                width: image.width,
-                height: image.height,
-                uploaded_at: clock::text::serialize(image.uploaded_at),
+            .map(|asset| ProjectAssetDTO {
+                id: asset.id.to_string(),
+                content_type: asset.format.content_type().to_owned(),
+                width: asset.width,
+                height: asset.height,
+                uploaded_at: clock::text::serialize(asset.uploaded_at),
             })
             .collect(),
     }))
@@ -418,9 +436,9 @@ async fn uploads(
     Extension(acting): Extension<Agent>,
     Query(paging): Query<UploadsPaging>,
 ) -> Result<Json<UploadsDTO>, Problem> {
-    let (sorted, after) = paging.read()?;
+    let (sorted, of_type, after) = paging.read()?;
     let listed = assets
-        .uploads_of(sorted, after.as_ref(), A_PAGE, &acting)
+        .uploads_of(sorted, of_type, after.as_ref(), A_PAGE, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -433,7 +451,7 @@ async fn uploads(
                 id: own.upload.id.to_string(),
                 owner: owner_told(&own.upload.owner),
                 project_name: own.upload.project_name,
-                format: format_told(own.upload.format).to_owned(),
+                content_type: own.upload.format.content_type().to_owned(),
                 width: own.upload.width,
                 height: own.upload.height,
                 total_size: own.upload.total_size,
@@ -495,7 +513,7 @@ fn to_response(
             id: id.to_owned(),
             version: standing.version.count(),
             owner: owner_told(asset.owner()),
-            format: format_told(picture.format).to_owned(),
+            content_type: picture.format.content_type().to_owned(),
             width: picture.width,
             height: picture.height,
             widths: picture.variants.clone(),
@@ -511,15 +529,6 @@ fn owner_told(owner: &Owner) -> OwnerDTO {
     match owner {
         Owner::Project(project) => OwnerDTO::Project(project.to_string()),
         Owner::Account(account) => OwnerDTO::Account(account.to_string()),
-    }
-}
-
-fn format_told(told: Format) -> &'static str {
-    match told {
-        Format::Jpeg => format::JPEG,
-        Format::Png => format::PNG,
-        Format::Gif => format::GIF,
-        Format::Webp => format::WEBP,
     }
 }
 

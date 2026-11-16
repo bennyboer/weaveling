@@ -8,7 +8,7 @@ use eventsourcing::Agent;
 use messaging::FakePublisher;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
-use scenes_contract::{IMAGES_CHANGED, SceneImagesChangedDTO};
+use scenes_contract::{ASSETS_CHANGED, SceneAssetsChangedDTO};
 use scenes_core::{FRAGMENT, SceneId, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message, Presence};
@@ -130,7 +130,7 @@ impl Wired {
         tokio::time::sleep(Duration::from_secs(3)).await;
     }
 
-    async fn images_told(&self, id: SceneId) -> Vec<SceneImagesChangedDTO> {
+    async fn assets_told(&self, id: SceneId) -> Vec<SceneAssetsChangedDTO> {
         self.outbox
             .deliver(100)
             .await
@@ -139,10 +139,10 @@ impl Wired {
         self.published
             .heard()
             .into_iter()
-            .filter(|message| message.routing.to_string() == IMAGES_CHANGED)
+            .filter(|message| message.routing.to_string() == ASSETS_CHANGED)
             .map(|message| {
                 message
-                    .payload_as::<SceneImagesChangedDTO>()
+                    .payload_as::<SceneAssetsChangedDTO>()
                     .expect("the images read back as the contract says")
             })
             .filter(|told| told.scene == id.to_string())
@@ -172,12 +172,12 @@ async fn an_image_added_to_a_scene_is_told_with_the_prose_version_it_was_counted
     bench.writing(&present, writer.a_figure("asset_loom")).await;
 
     // then: the image is told, with the version of the prose it was read from
-    let told = bench.images_told(id).await;
+    let told = bench.assets_told(id).await;
     assert_eq!(
         told.last(),
-        Some(&SceneImagesChangedDTO {
+        Some(&SceneAssetsChangedDTO {
             scene: id.to_string(),
-            images: vec!["asset_loom".to_owned()],
+            assets: vec!["asset_loom".to_owned()],
             version: bench.prose_version(id).await,
         })
     );
@@ -191,7 +191,7 @@ async fn a_recount_holding_the_same_images_tells_nothing_more() {
     let present = bench.live.join(id).await.expect("should join");
     let writer = Writer::new();
     bench.writing(&present, writer.a_figure("asset_loom")).await;
-    let before = bench.images_told(id).await;
+    let before = bench.assets_told(id).await;
 
     // when: prose is added, and the scene is counted again
     bench
@@ -200,7 +200,7 @@ async fn a_recount_holding_the_same_images_tells_nothing_more() {
 
     // then: the images are not told again
     assert_eq!(
-        bench.images_told(id).await,
+        bench.assets_told(id).await,
         before,
         "the scene still holds the same image, so there is nothing new to tell"
     );
@@ -221,12 +221,12 @@ async fn a_scene_whose_figure_is_removed_is_told_to_hold_no_images() {
     bench.writing(&present, writer.without_figures()).await;
 
     // then: the scene is told to hold no images
-    let told = bench.images_told(id).await;
+    let told = bench.assets_told(id).await;
     assert_eq!(
         told.last(),
-        Some(&SceneImagesChangedDTO {
+        Some(&SceneAssetsChangedDTO {
             scene: id.to_string(),
-            images: vec![],
+            assets: vec![],
             version: bench.prose_version(id).await,
         })
     );
@@ -255,10 +255,10 @@ async fn a_scene_counted_for_the_first_time_tells_that_it_holds_no_images() {
 
     // then: its empty set of images is told
     assert_eq!(
-        bench.images_told(id).await,
-        vec![SceneImagesChangedDTO {
+        bench.assets_told(id).await,
+        vec![SceneAssetsChangedDTO {
             scene: id.to_string(),
-            images: vec![],
+            assets: vec![],
             version: bench.prose_version(id).await,
         }],
         "nothing told yet counts as different, so a scene that lost its images while nobody counted is set right"

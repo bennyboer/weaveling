@@ -124,18 +124,18 @@ impl SceneService {
             .await?)
     }
 
-    pub async fn announce_images(
+    pub async fn announce_assets(
         &self,
         transaction: &mut Transaction,
         id: &str,
-        images: &BTreeSet<String>,
+        assets: &BTreeSet<String>,
         as_of: u64,
     ) -> Result<(), ScenesError> {
         let id: SceneId = id.parse()?;
 
         Ok(self
             .store
-            .announce_images(transaction, id, images, as_of)
+            .announce_assets(transaction, id, assets, as_of)
             .await?)
     }
 

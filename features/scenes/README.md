@@ -150,10 +150,11 @@ It has the attributes `asset` (the asset's id) and `size` (`small`, `medium` or 
 Its caption is the text inside it.
 A figure adds nothing to the scene's text: its caption has no words and is never the opening.
 The paragraphs before and after it stay apart.
-`Scene::images` returns the asset ids of all figures, sorted and each once.
+`Scene::assets` returns the asset ids of all figures, sorted and each once.
 A figure without an asset id is left out.
-When a live scene is counted, it compares its images with the last set it told.
-If they differ, `announce_what_it_holds` tells them as `scene.images.changed` (`SceneImagesChangedDTO`), in the same transaction as the words.
+When a live scene is counted, it compares its assets with the last set it told.
+They are named assets, not images, in what is told, so whatever else a scene may hold later fits the same message.
+If they differ, `announce_what_it_holds` tells them as `scene.assets.changed` (`SceneAssetsChangedDTO`), in the same transaction as the words.
 The message carries the scene, the sorted ids, and the prose version the count was taken at.
 Its context names the project, as for the other scene messages.
 A scene that was not told yet counts as changed.

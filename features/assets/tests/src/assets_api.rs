@@ -1,4 +1,6 @@
-use assets_contract::{AssetDTO, ImagesDTO, OwnerDTO, UploadLimitsDTO, UsageDTO, refused};
+use assets_contract::{
+    AssetDTO, OwnerDTO, ProjectAssetsDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, refused,
+};
 use assets_core::{ImageRefused, Limits};
 use axum::Extension;
 use axum::http::StatusCode;
@@ -46,7 +48,7 @@ async fn an_upload_into_a_project_is_answered_with_what_was_made_of_it() {
     let asset: AssetDTO = response.json();
     assert!(asset.id.starts_with("asset_"), "{}", asset.id);
     assert_eq!(asset.owner, OwnerDTO::Project(THE_LOOM.to_owned()));
-    assert_eq!(asset.format, "jpeg");
+    assert_eq!(asset.content_type, "image/jpeg");
     assert_eq!((asset.width, asset.height), (1_280, 1_024));
     assert_eq!(asset.widths, vec![384, 768, 1_280]);
     assert_eq!(asset.original_size, 20);
@@ -294,7 +296,7 @@ async fn an_account_is_told_what_its_uploads_take_wherever_they_went_and_the_mos
 }
 
 #[tokio::test]
-async fn a_project_s_images_are_listed_the_newest_first_to_its_readers_alone() {
+async fn a_project_s_assets_are_listed_the_newest_first_to_its_readers_alone() {
     // given: two images Ada uploaded into the loom, one after the other
     let bench = bench::a_bench().await;
     let ada = serving(&bench, bench::ada());
@@ -302,23 +304,24 @@ async fn a_project_s_images_are_listed_the_newest_first_to_its_readers_alone() {
     bench.clock.set(clock::at(1_700_000_100));
     let newer: AssetDTO = uploaded(&ada, THE_LOOM).await.json();
 
-    // when: Bo, a reader, and Grace, no member, ask for the loom's images
-    let images = format!("/assets/projects/{THE_LOOM}/images");
-    let read = serving(&bench, bench::bo()).get(&images).await;
-    let outside = serving(&bench, bench::grace()).get(&images).await;
+    // when: Bo, a reader, and Grace, no member, ask for the loom's assets
+    let assets = format!("/assets/projects/{THE_LOOM}");
+    let read = serving(&bench, bench::bo()).get(&assets).await;
+    let outside = serving(&bench, bench::grace()).get(&assets).await;
 
-    // then: Bo is told both, the newest first, with their pictures, on one page
+    // then: Bo is told both, the newest first, with their media type and picture, on one page
     read.assert_status_ok();
-    let told: ImagesDTO = read.json();
+    let told: ProjectAssetsDTO = read.json();
     assert_eq!(
-        told.images
+        told.assets
             .iter()
-            .map(|image| image.id.as_str())
+            .map(|asset| asset.id.as_str())
             .collect::<Vec<_>>(),
         [newer.id.as_str(), older.id.as_str()]
     );
+    assert_eq!(told.assets[0].content_type, "image/jpeg");
     assert_eq!(
-        (told.images[0].width, told.images[0].height),
+        (told.assets[0].width, told.assets[0].height),
         (1_280, 1_024)
     );
     assert_eq!(told.next, None);
@@ -347,12 +350,12 @@ async fn an_image_copied_into_another_project_is_that_project_s_own() {
     assert_eq!((copy.width, copy.height), (image.width, image.height));
     assert_eq!(copy.original_size, image.original_size);
     // and: the weft lists it
-    let listed: ImagesDTO = ada
-        .get(&format!("/assets/projects/{THE_WEFT}/images"))
+    let listed: ProjectAssetsDTO = ada
+        .get(&format!("/assets/projects/{THE_WEFT}"))
         .await
         .json();
-    assert_eq!(listed.images.len(), 1);
-    assert_eq!(listed.images[0].id, copy.id);
+    assert_eq!(listed.assets.len(), 1);
+    assert_eq!(listed.assets[0].id, copy.id);
 }
 
 #[tokio::test]
@@ -421,4 +424,33 @@ async fn without_an_account_there_is_no_usage_of_one_s_own() {
 
     // then: it is refused, as nobody keeps assets of their own
     refused_as(response, StatusCode::FORBIDDEN, refused::NO_ACCOUNT);
+}
+
+#[tokio::test]
+async fn assets_are_listed_by_their_type_and_an_unknown_type_is_refused() {
+    // given: an image Ada uploaded into the loom
+    let bench = bench::a_bench().await;
+    let ada = serving(&bench, bench::ada());
+    let image: AssetDTO = uploaded(&ada, THE_LOOM).await.json();
+
+    // when: the loom's images and her own images are asked for
+    let of_the_loom: ProjectAssetsDTO = ada
+        .get(&format!("/assets/projects/{THE_LOOM}?type=image"))
+        .await
+        .json();
+    let her_own: UploadsDTO = ada.get("/assets?type=image").await.json();
+
+    // then: both list the image
+    assert_eq!(of_the_loom.assets[0].id, image.id);
+    assert_eq!(her_own.uploads[0].id, image.id);
+
+    // when: a type nothing is of is asked for, of either list
+    let of_the_loom = ada
+        .get(&format!("/assets/projects/{THE_LOOM}?type=sculpture"))
+        .await;
+    let her_own = ada.get("/assets?type=sculpture").await;
+
+    // then: both are refused, the type named unknown
+    refused_as(of_the_loom, StatusCode::BAD_REQUEST, refused::TYPE_UNKNOWN);
+    refused_as(her_own, StatusCode::BAD_REQUEST, refused::TYPE_UNKNOWN);
 }

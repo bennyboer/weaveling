@@ -24,7 +24,6 @@ use crate::writing::formatting;
 use crate::writing::going_back;
 use crate::writing::heading;
 use crate::writing::image_choice;
-use crate::writing::images;
 use crate::writing::inspecting;
 use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
@@ -45,7 +44,12 @@ use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
-pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> impl IntoView {
+pub fn WriteView(
+    project: String,
+    following: Option<SceneId>,
+    asset: Option<String>,
+    side: Side,
+) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project), side);
     let open_project = expect_context::<OpenProject>();
     open_project.open(&route::project_id(&project));
@@ -79,9 +83,13 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
 
         match elsewhere {
             Some(scene) => navigate(
-                &match side {
-                    Side::Book => route::loose_scene_at(&project, &scene),
-                    Side::Loose => route::writing_at(&project, &scene),
+                &match (side, &asset) {
+                    (Side::Book, None) => route::loose_scene_at(&project, &scene),
+                    (Side::Loose, None) => route::writing_at(&project, &scene),
+                    (Side::Book, Some(asset)) => {
+                        route::loose_scene_at_asset(&project, &scene, asset)
+                    }
+                    (Side::Loose, Some(asset)) => route::writing_at_asset(&project, &scene, asset),
                 },
                 NavigateOptions {
                     replace: true,
@@ -98,7 +106,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                     };
                     let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&here));
                 }
-                untrack(|| state.left_off.land(following.clone()));
+                untrack(|| state.left_off.land(following.clone(), asset.clone()));
             }
         }
 
@@ -651,7 +659,6 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
                         menus::scene_margin(scene.clone(), state),
                         presence::shown(scene.clone(), state.presence),
                         formatting::toolbar(scene.clone(), state),
-                        images::picker(scene.clone(), state),
                         scene_in_flow::scene_in_flow(scene.clone(), state),
                     )),
                 section.clone().map(|section| {

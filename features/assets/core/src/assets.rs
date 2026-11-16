@@ -13,7 +13,7 @@ use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::account_limits::AccountLimits;
-use crate::asset::{Asset, AssetCommand, AssetEvent, KIND, Owner, ProjectLink};
+use crate::asset::{Asset, AssetCommand, AssetEvent, AssetType, KIND, Owner, ProjectLink};
 use crate::catalog::{
     AssetCatalog, AssetSummary, Held, Holders, Person, Sorted, Upload, UploadMark, UploadsOf,
     UploadsSorted,
@@ -200,11 +200,13 @@ impl AssetsCore {
             .await
     }
 
-    /// Lists the images a project holds, the newest first, one page at a time.
+    /// Lists the assets a project holds, the newest first, one page at a time.
+    /// Given a type, it lists only the assets of that type.
     /// Whoever may read the project may list them, whoever uploaded them.
-    pub async fn images_in(
+    pub async fn assets_in(
         &self,
         project: &str,
+        of_type: Option<AssetType>,
         after: Option<&UploadMark>,
         at_most: u64,
         agent: &Agent,
@@ -214,16 +216,23 @@ impl AssetsCore {
             .await?;
         let whose = UploadsOf::Project(project);
 
-        let images = transacting::retrying!(&*self.transactions, |transaction| {
+        let assets = transacting::retrying!(&*self.transactions, |transaction| {
             Ok::<_, AssetsError>(
                 self.catalog
-                    .uploads_of(transaction, &whose, UploadsSorted::Newest, after, at_most)
+                    .uploads_of(
+                        transaction,
+                        &whose,
+                        of_type,
+                        UploadsSorted::Newest,
+                        after,
+                        at_most,
+                    )
                     .await?,
             )
         })?;
-        let last = images.last().map(UploadMark::from);
+        let last = assets.last().map(UploadMark::from);
 
-        Ok(Listed::paged(images, last, at_most))
+        Ok(Listed::paged(assets, last, at_most))
     }
 
     /// Returns a variant of an asset, if the agent may see the asset.
@@ -550,10 +559,12 @@ impl AssetsCore {
     /// Lists everything the signed-in account uploaded, one page at a time.
     /// This includes uploads into projects and the account's own images.
     /// Each entry says whether the account may delete it.
+    /// Given a type, it lists only the uploads of that type.
     /// Fails with `NoAccount` when nobody is signed in, which is always the case without accounts.
     pub async fn uploads_of(
         &self,
         sorted: UploadsSorted,
+        of_type: Option<AssetType>,
         after: Option<&UploadMark>,
         at_most: u64,
         agent: &Agent,
@@ -568,6 +579,7 @@ impl AssetsCore {
                 .uploads_of(
                     transaction,
                     &UploadsOf::Account(account.clone()),
+                    of_type,
                     sorted,
                     after,
                     at_most,
@@ -761,7 +773,7 @@ impl AssetsCore {
     ///
     /// Only the images of the scene's own project are kept as its uses. Any other id is not recorded,
     /// so a scene cannot keep an image of another project, or an account's own image, from being deleted.
-    pub async fn scene_images_changed(
+    pub async fn scene_assets_changed(
         &self,
         within: Option<&mut Transaction>,
         scene: &SceneLink,

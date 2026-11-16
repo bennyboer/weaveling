@@ -64,7 +64,7 @@ fn is_figure(element: &XmlElementRef) -> bool {
     element.tag().as_ref() == FIGURE
 }
 
-fn images_among<T: ReadTxn>(
+fn assets_among<T: ReadTxn>(
     nodes: impl Iterator<Item = XmlOut>,
     txn: &T,
     out: &mut BTreeSet<String>,
@@ -78,20 +78,20 @@ fn images_among<T: ReadTxn>(
                     out.insert(asset.to_string());
                 }
             }
-            XmlOut::Element(element) => images_among(element.children(txn), txn, out),
-            XmlOut::Fragment(fragment) => images_among(fragment.children(txn), txn, out),
+            XmlOut::Element(element) => assets_among(element.children(txn), txn, out),
+            XmlOut::Fragment(fragment) => assets_among(fragment.children(txn), txn, out),
             XmlOut::Text(_) => {}
         }
     }
 }
 
-pub(crate) fn images_in(doc: &Doc) -> BTreeSet<String> {
+pub(crate) fn assets_in(doc: &Doc) -> BTreeSet<String> {
     let fragment = doc.get_or_insert_xml_fragment(FRAGMENT);
     let txn = doc.transact();
-    let mut images = BTreeSet::new();
-    images_among(fragment.children(&txn), &txn, &mut images);
+    let mut assets = BTreeSet::new();
+    assets_among(fragment.children(&txn), &txn, &mut assets);
 
-    images
+    assets
 }
 
 const QUOTE: &str = "quote";

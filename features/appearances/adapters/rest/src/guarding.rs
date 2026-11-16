@@ -18,6 +18,6 @@ impl Sieve for ReadableBy {
             return Ok(false);
         };
 
-        Ok(self.appearances.may_hear(idea, &self.agent).await?)
+        Ok(self.appearances.may_hear_of_idea(idea, &self.agent).await?)
     }
 }

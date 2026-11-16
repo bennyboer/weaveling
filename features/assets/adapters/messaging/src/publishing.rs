@@ -1,5 +1,5 @@
-use assets_contract::{AssetEventDTO, OwnerDTO, format};
-use assets_core::{AssetEvent, Format, Owner};
+use assets_contract::{AssetEventDTO, OwnerDTO};
+use assets_core::{AssetEvent, Owner};
 use eventsourcing::Recorded;
 use messaging::Message;
 
@@ -15,7 +15,7 @@ fn body(event: &AssetEvent) -> Option<AssetEventDTO> {
             total_size,
         } => AssetEventDTO::Uploaded {
             owner: owner_told(owner),
-            format: format_told(picture.format).to_owned(),
+            content_type: picture.format.content_type().to_owned(),
             width: picture.width,
             height: picture.height,
             original_size: picture.original_size,
@@ -33,19 +33,10 @@ fn owner_told(owner: &Owner) -> OwnerDTO {
     }
 }
 
-fn format_told(told: Format) -> &'static str {
-    match told {
-        Format::Jpeg => format::JPEG,
-        Format::Png => format::PNG,
-        Format::Gif => format::GIF,
-        Format::Webp => format::WEBP,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use assets_contract::{DELETED, EVERY_ASSET, UPLOADED};
-    use assets_core::{AssetId, KIND, Picture, ProjectLink};
+    use assets_core::{AssetId, Format, KIND, Picture, ProjectLink};
     use eventsourcing::{
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
@@ -157,7 +148,7 @@ mod tests {
             into_a_project.event.body,
             AssetEventDTO::Uploaded {
                 owner: OwnerDTO::Project("project_1".to_owned()),
-                format: "png".to_owned(),
+                content_type: "image/png".to_owned(),
                 width: 1200,
                 height: 800,
                 original_size: 300_000,
@@ -168,15 +159,6 @@ mod tests {
             an_accounts_own.event.body,
             AssetEventDTO::Uploaded { owner: OwnerDTO::Account(account), .. } if account == "account_ada"
         ));
-    }
-
-    #[test]
-    fn every_format_is_told_by_the_name_the_contract_declares() {
-        // expect: each format by the contract's name for it
-        assert_eq!(format_told(Format::Jpeg), "jpeg");
-        assert_eq!(format_told(Format::Png), "png");
-        assert_eq!(format_told(Format::Gif), "gif");
-        assert_eq!(format_told(Format::Webp), "webp");
     }
 
     #[test]

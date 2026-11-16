@@ -1,5 +1,6 @@
 use appearances_core::{
-    AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, AssetLink, CatalogError, IdeaLink, Place, ProjectLink, SceneLink,
+    SectionLink, Subject,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -10,6 +11,7 @@ use transacting::Transaction;
 use transacting::postgres::connection;
 
 const IDEA: &str = "idea";
+const ASSET: &str = "asset";
 
 const SCENE: &str = "scene";
 const SECTION: &str = "section";
@@ -126,6 +128,30 @@ const FORGET_PLACE_PROJECTS_OF_PROJECT: &str = "DELETE FROM place_projects WHERE
 const FORGET_PLACE_PROJECT: &str =
     "DELETE FROM place_projects WHERE place_type = $1 AND place_id = $2";
 
+const TELL_ASSETS: &str = "
+    INSERT INTO assets_told (place_type, place_id, version)
+    SELECT $1, $2, $3
+    WHERE NOT EXISTS (
+        SELECT 1 FROM place_tombstones WHERE place_type = $1 AND place_id = $2
+    )
+    ON CONFLICT (place_type, place_id) DO UPDATE
+    SET version = excluded.version
+    WHERE assets_told.version <= excluded.version
+";
+
+const ASSETS_HELD: &str = "
+    SELECT subject_id FROM appearances
+    WHERE subject_type = $1 AND place_type = $2 AND place_id = $3 AND present
+";
+
+const FORGET_ASSETS_TOLD: &str = "DELETE FROM assets_told WHERE place_type = $1 AND place_id = $2";
+
+const FORGET_ASSETS_TOLD_OF_PROJECT: &str = "
+    DELETE FROM assets_told WHERE (place_type, place_id) IN (
+        SELECT place_type, place_id FROM place_projects WHERE project = $1
+    )
+";
+
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
 }
@@ -167,6 +193,7 @@ impl PostgresAppearanceCatalog {
 fn subject_type_and_id(subject: &Subject) -> (&'static str, &str) {
     match subject {
         Subject::Idea(idea) => (IDEA, idea.as_str()),
+        Subject::Asset(asset) => (ASSET, asset.as_str()),
     }
 }
 
@@ -185,6 +212,7 @@ fn appeared_from(row: &PgRow) -> Result<Option<Subject>, CatalogError> {
     match subject_type.as_str() {
         _ if !present => Ok(None),
         IDEA => Ok(Some(Subject::Idea(IdeaLink::from(subject_id)))),
+        ASSET => Ok(Some(Subject::Asset(AssetLink::from(subject_id)))),
         unknown => Err(CatalogError::Backend(
             format!("an appearance of a type of subject nothing writes: {unknown}").into(),
         )),
@@ -228,6 +256,50 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         version: u64,
     ) -> Result<(), CatalogError> {
         self.mark(transaction, subject, place, version, false).await
+    }
+
+    async fn remember_assets(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        assets: &[AssetLink],
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let (place_type, place_id) = place_type_and_id(place);
+
+        let newest = sqlx::query(TELL_ASSETS)
+            .bind(place_type)
+            .bind(place_id)
+            .bind(i64::try_from(version).expect("a version fits a signed 64-bit column"))
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?
+            .rows_affected()
+            > 0;
+        if !newest {
+            return Ok(());
+        }
+        let held: Vec<String> = sqlx::query_scalar(ASSETS_HELD)
+            .bind(ASSET)
+            .bind(place_type)
+            .bind(place_id)
+            .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        let told: Vec<Subject> = assets.iter().cloned().map(Subject::Asset).collect();
+
+        for gone in held
+            .into_iter()
+            .map(|held| Subject::Asset(AssetLink::from(held)))
+            .filter(|held| !told.contains(held))
+        {
+            self.mark(transaction, &gone, place, version, false).await?;
+        }
+        for asset in &told {
+            self.mark(transaction, asset, place, version, true).await?;
+        }
+
+        Ok(())
     }
 
     async fn forget_subject(
@@ -274,6 +346,12 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
             .bind(place_type)
             .bind(place_id)
             .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_ASSETS_TOLD)
+            .bind(place_type)
+            .bind(place_id)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET_PLACE_PROJECT)
@@ -378,6 +456,11 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         let forgotten = sqlx::query(FORGET_APPEARANCES_OF_PROJECT)
             .bind(project.as_str())
             .fetch_all(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_ASSETS_TOLD_OF_PROJECT)
+            .bind(project.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET_PLACE_PROJECTS_OF_PROJECT)

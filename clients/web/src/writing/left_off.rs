@@ -77,13 +77,24 @@ impl LeftOff {
         self.walk.land_in(scene, at);
     }
 
+    fn land_on_asset(self, scene: SceneId, asset: String) {
+        self.viewport.hold_for_landing(scene.clone());
+        self.walk.land_on_asset(scene, asset);
+    }
+
     pub fn remember(self, scene: &SceneId, at: u32) {
         kept::keep(&self.key(), &format!("{scene} {at}"));
     }
 
-    pub fn land(self, following: Option<SceneId>) {
+    /// Lands where the view was asked to open: on the figure holding an asset of the followed scene, in that scene,
+    /// or else where the author left off.
+    pub fn land(self, following: Option<SceneId>, asset: Option<String>) {
         let recalled = self.recalled();
 
+        if let (Some(scene), Some(asset)) = (following.clone(), asset) {
+            self.land_on_asset(scene, asset);
+            return;
+        }
         if let Some(scene) = following {
             let at = recalled
                 .filter(|(left_in, _)| left_in == &scene)

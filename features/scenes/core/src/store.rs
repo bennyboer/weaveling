@@ -65,12 +65,12 @@ pub trait SceneStore: Send + Sync {
         opening: &str,
     ) -> Result<(), StoreError>;
 
-    /// Tells which images the scene holds, as counted at the given prose version.
-    async fn announce_images(
+    /// Tells which assets the scene holds, as counted at the given prose version.
+    async fn announce_assets(
         &self,
         transaction: &mut Transaction,
         id: SceneId,
-        images: &BTreeSet<String>,
+        assets: &BTreeSet<String>,
         as_of: u64,
     ) -> Result<(), StoreError>;
 

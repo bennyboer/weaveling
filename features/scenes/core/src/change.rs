@@ -40,10 +40,10 @@ pub enum SceneChange {
         project: ProjectLink,
         words: usize,
     },
-    ImagesChanged {
+    AssetsChanged {
         scene: SceneId,
         project: ProjectLink,
-        images: BTreeSet<String>,
+        assets: BTreeSet<String>,
         version: u64,
     },
 }
@@ -58,7 +58,7 @@ impl SceneChange {
             | Self::Retitled { scene, .. }
             | Self::OpeningChanged { scene, .. }
             | Self::WordsCounted { scene, .. }
-            | Self::ImagesChanged { scene, .. } => *scene,
+            | Self::AssetsChanged { scene, .. } => *scene,
         }
     }
 
@@ -71,7 +71,7 @@ impl SceneChange {
             | Self::Retitled { project, .. }
             | Self::OpeningChanged { project, .. }
             | Self::WordsCounted { project, .. }
-            | Self::ImagesChanged { project, .. } => project,
+            | Self::AssetsChanged { project, .. } => project,
         }
     }
 }

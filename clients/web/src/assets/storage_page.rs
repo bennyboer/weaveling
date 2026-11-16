@@ -6,7 +6,8 @@ use leptos::{IntoView, component, ev, html};
 use crate::accounts::{CurrentSession, SignInState};
 use crate::act::{Act, Here};
 use crate::assets::service;
-use crate::assets::service::{Purpose, Upload, UploadsSorted, Usage};
+use crate::assets::service::{Purpose, Upload, UploadsSorted, Usage, Use};
+use crate::assets::uses as assets_uses;
 use crate::blocks;
 use crate::dialog;
 use crate::http::ApiError;
@@ -40,11 +41,14 @@ struct Shelf {
     asked: StoredValue<u64>,
 }
 
-/// An upload shown bigger in a dialog: its id, and the words that say whose it is.
+/// An upload shown bigger in a dialog: its id, the words that say whose it is,
+/// the project it is in, if any, and what uses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Viewed {
     id: String,
     whose: String,
+    project: Option<String>,
+    uses: Vec<Use>,
 }
 
 impl Shelf {
@@ -75,7 +79,7 @@ impl Shelf {
         self.loading.set(true);
 
         spawn_local(async move {
-            let told = service::uploads(sorted, after.as_deref()).await;
+            let told = service::uploads(sorted, None, after.as_deref()).await;
             if self.asked.get_value() != asking {
                 return;
             }
@@ -250,19 +254,22 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
     let deletable = upload.deletable;
     let asked = upload.clone();
     let telling = whose.clone();
-    let shown = id.clone();
+    let viewed = move || Viewed {
+        id: upload.id.clone(),
+        whose: telling(),
+        project: upload.project.clone(),
+        uses: upload.uses.clone(),
+    };
+    let marked = viewed.clone();
+    let mark = not_deletable_because(&asked.uses);
+    let in_use = !asked.uses.is_empty();
 
     blocks::row(
         html::button()
             .r#type("button")
             .class("thumbnail-button")
             .attr("aria-label", move || speech.say("storage-view"))
-            .on(ev::click, move |_| {
-                shelf.viewing.set(Some(Viewed {
-                    id: shown.clone(),
-                    whose: telling(),
-                }))
-            })
+            .on(ev::click, move |_| shelf.viewing.set(Some(viewed())))
             .child(
                 html::img()
                     .class("thumbnail")
@@ -272,7 +279,16 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
             ),
         whose,
         detail,
-        (!deletable).then(|| blocks::mark(speech::said(not_deletable_because(&upload.uses)))),
+        (!deletable).then(|| match in_use {
+            true => html::button()
+                .r#type("button")
+                .class("mark")
+                .attr("aria-haspopup", "dialog")
+                .on(ev::click, move |_| shelf.viewing.set(Some(marked())))
+                .child(speech::said(mark))
+                .into_any(),
+            false => blocks::mark(speech::said(mark)).into_any(),
+        }),
         deletable.then(|| {
             html::button()
                 .r#type("button")
@@ -288,8 +304,11 @@ fn listed(shelf: Shelf, upload: Upload, speech: Speech) -> impl IntoView {
 
 /// The mark that says why an upload cannot be deleted.
 /// An upload in use says what it is used for. Otherwise it is in a project the account may only read.
-fn not_deletable_because(uses: &[Purpose]) -> &'static str {
-    if uses.contains(&Purpose::AccountPicture) {
+fn not_deletable_because(uses: &[Use]) -> &'static str {
+    if uses
+        .iter()
+        .any(|used| used.purpose == Purpose::AccountPicture)
+    {
         "storage-mark-picture"
     } else if !uses.is_empty() {
         "storage-mark-in-use"
@@ -298,10 +317,11 @@ fn not_deletable_because(uses: &[Purpose]) -> &'static str {
     }
 }
 
-/// A dialog that shows an upload bigger, as large as the window allows.
+/// A dialog that shows an upload bigger, as large as the window allows, and what uses it.
 fn viewing(shelf: Shelf, viewed: Viewed) -> impl IntoView {
     let close = move || shelf.viewing.set(None);
     let whose = viewed.whose;
+    let used_in = used_in(viewed.id.clone(), viewed.project, viewed.uses);
 
     dialog::modal(
         Signal::derive(move || whose.clone()),
@@ -312,6 +332,7 @@ fn viewing(shelf: Shelf, viewed: Viewed) -> impl IntoView {
                 .class("viewed")
                 .src(service::content(&viewed.id, VIEWED))
                 .alt(""),
+            used_in,
             html::div().class("dialog-actions").child(
                 html::button()
                     .r#type("button")
@@ -320,6 +341,16 @@ fn viewing(shelf: Shelf, viewed: Viewed) -> impl IntoView {
             ),
         ),
     )
+}
+
+/// Lists what uses an upload, under a heading, each a link to where it is used.
+fn used_in(id: String, project: Option<String>, uses: Vec<Use>) -> impl IntoView {
+    (!uses.is_empty()).then(|| {
+        html::section().class("used-in").child((
+            html::h3().child(speech::said("storage-used-in")),
+            assets_uses::listed(id, project, uses, None),
+        ))
+    })
 }
 
 fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
@@ -363,18 +394,27 @@ fn deletion(shelf: Shelf, upload: Upload) -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
+    use crate::assets::service::Holder;
+
     use super::*;
+
+    fn used_for(purpose: Purpose) -> Use {
+        Use {
+            purpose,
+            by: Holder::Account("account_ada".to_owned()),
+        }
+    }
 
     #[test]
     fn an_upload_that_cannot_be_deleted_says_why() {
         // expect: a picture says it is one
         assert_eq!(
-            not_deletable_because(&[Purpose::Other, Purpose::AccountPicture]),
+            not_deletable_because(&[used_for(Purpose::Other), used_for(Purpose::AccountPicture)]),
             "storage-mark-picture"
         );
         // and: a use this client does not know says only that it is in use
         assert_eq!(
-            not_deletable_because(&[Purpose::Other]),
+            not_deletable_because(&[used_for(Purpose::Other)]),
             "storage-mark-in-use"
         );
         // and: an upload used for nothing is in a project the account may only read

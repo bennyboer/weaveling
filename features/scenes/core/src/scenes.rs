@@ -236,7 +236,7 @@ impl ScenesCore {
     }
 
     /// Tells what a scene holds, as one count found it at the prose version `as_of`:
-    /// its words, its opening if it changed, and the images it holds if they changed.
+    /// its words, its opening if it changed, and the assets it holds if they changed.
     /// All of it lands in one transaction, together with clearing the scene's mark as uncounted.
     /// So either everything is told and the scene counts as counted, or nothing is, and the next count tries again.
     pub async fn announce_what_it_holds(
@@ -244,7 +244,7 @@ impl ScenesCore {
         id: &str,
         words: usize,
         opening: Option<&str>,
-        images: Option<&BTreeSet<String>>,
+        assets: Option<&BTreeSet<String>>,
         as_of: u64,
     ) -> Result<(), ScenesError> {
         transacting::retrying!(&*self.transactions, |transaction| {
@@ -256,9 +256,9 @@ impl ScenesCore {
                     .announce_opening(transaction, id, opening)
                     .await?;
             }
-            if let Some(images) = images {
+            if let Some(assets) = assets {
                 self.service
-                    .announce_images(transaction, id, images, as_of)
+                    .announce_assets(transaction, id, assets, as_of)
                     .await?;
             }
 

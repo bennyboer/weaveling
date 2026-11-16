@@ -43,6 +43,13 @@ pub enum Format {
     Webp,
 }
 
+/// What kind of asset something is, as the first part of its media type says: `image` of `image/png`.
+/// A listing may be asked for one type alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssetType {
+    Image,
+}
+
 /// An image as it was uploaded: its format, its size, and the widths its variants were made in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Picture {
@@ -121,6 +128,14 @@ impl Display for ProjectLink {
 }
 
 impl Format {
+    pub const EVERY: [Format; 4] = [Format::Jpeg, Format::Png, Format::Gif, Format::Webp];
+
+    pub fn asset_type(self) -> AssetType {
+        match self {
+            Self::Jpeg | Self::Png | Self::Gif | Self::Webp => AssetType::Image,
+        }
+    }
+
     pub fn content_type(self) -> &'static str {
         match self {
             Self::Jpeg => "image/jpeg",

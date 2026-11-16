@@ -4,9 +4,9 @@ use access::{InMemoryAccess, KeptAccess};
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{AppearanceCatalog, AppearancesCore};
 use appearances_messaging::{
-    ForgetDeletedProjectListener, ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener,
-    ProjectSceneAppearancesListener, RememberIdeaProjectListener, RememberRolesListener,
-    RememberTrashListener,
+    AssetAppearancesListener, ForgetDeletedProjectListener, ForgetDiscardedIdeaListener,
+    ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
+    RememberIdeaProjectListener, RememberRolesListener, RememberTrashListener,
 };
 use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
@@ -55,6 +55,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(ForgetDiscardedIdeaListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(RememberIdeaProjectListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(ForgetDeletedProjectListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(AssetAppearancesListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(RememberTrashListener::new(appearances.clone()))),
         ])

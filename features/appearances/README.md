@@ -1,12 +1,12 @@
 # appearances
 
-The answer to *where does this appear?* — for an idea today: in which sections of the outline, and in which scenes.
+The answer to *where does this appear?* — for an idea: in which sections of the outline, and in which scenes; for an asset: in which scenes.
 
 **It is a read model, and owns nothing.** No view writes here. Each view says what it holds — the outline notes an idea in a section, a scene links one — and announces it; this feature listens and keeps the answer in one place. It is a projection, so it is rebuildable from those announcements and nothing else, and a new view joins by announcing rather than by anyone asking it. That is the point of keeping it out of [`ideas`](../ideas): an idea must not change when a view is added. See [*"Where does this idea appear" is a read model*](../../ARCHITECTURE.md#ideas-and-scenes-are-two-pools--decided).
 
 **Only places in the book count.** A section and a scene say where an idea is *used*. The board is where ideas are *thought about*, and with one board per project, *this idea is on the board* says almost nothing — so boards are deliberately not places here. They can join later as one more `Place` variant, without a migration, if several boards ever make *find it on board X* worth answering.
 
-**A `Subject` appears at a `Place`.** Today the only subject is an idea. Characters, moments on the timeline, even a scene asking *which sections hold me* have the same shape, so the storage says `subject_type` / `subject_id` and `place_type` / `place_id` and never the word *idea*. The domain stays typed, though: `Subject` and `Place` are enums, and adding a variant means adding its listeners too — with the compiler pointing at every place that has to decide what the new kind may appear in. That is the guard against [a reference-to-anything turning to soup](../../ARCHITECTURE.md#ideas-and-scenes-are-two-pools--decided): which pairs exist is said in code, not left open in a table.
+**A `Subject` appears at a `Place`.** The subjects are ideas and assets. Characters, moments on the timeline, even a scene asking *which sections hold me* have the same shape, so the storage says `subject_type` / `subject_id` and `place_type` / `place_id` and never the word *idea*. The domain stays typed, though: `Subject` and `Place` are enums, and adding a variant means adding its listeners too — with the compiler pointing at every place that has to decide what the new kind may appear in. That is the guard against [a reference-to-anything turning to soup](../../ARCHITECTURE.md#ideas-and-scenes-are-two-pools--decided): which pairs exist is said in code, not left open in a table.
 
 **A place names, it does not copy.** `Section(id)` and `Scene(id)` — ids only. A section's title and a scene's title are looked up by whoever shows them, the same [frontend join](../../ARCHITECTURE.md#the-board-renders-through-a-frontend-join) the board uses for card titles; storing them here would mean chasing every rename. And the type is part of a place's identity: a section and a scene whose ids happen to match are two places.
 
@@ -81,10 +81,23 @@ The topic `appearances` on the one socket, `/api/live`, with an `idea`, asks whe
 So someone who followed an idea before its project was known receives nothing about it, unless they may read it.
 Deleting a project could become a single delete by project here. That waits until it is needed.
 
+**An asset appears in the scenes whose text holds it.**
+A scene tells the whole set of assets it holds, today the images of its figures, at the version of its text, as `scene.assets.changed`.
+The set replaces the one told before: an asset no longer in it is forgotten there, at that version.
+`assets_told` keeps the version of the last set told for each scene.
+A set older than that changes nothing, so a set tried again late cannot bring back an asset the scene no longer holds.
+That would not be enough with the version of each appearance alone, since a late set may name an asset the scene never told since.
+The assets and the ideas of one scene are kept apart: a set of assets forgets no idea.
+An asset's project is learnt from `asset.uploaded`, as an idea's is from `CAPTURED`.
+An asset of an account's own has no project, and so appears nowhere.
+A deleted asset is gone for good, as a discarded idea is.
+Where an asset appears is not followed live yet: nothing shows it changing.
+
 **Who it hears.**
 
 - `index-outline-appearances` receives `ATTACHED` / `DETACHED` of ideas, and `SECTION_REMOVED`. A scene attached to a section is the book itself, not an appearance.
-- `index-scene-appearances` receives `scene.idea.linked`, `scene.idea.unlinked` and `scene.deleted`.
+- `index-scene-appearances` receives `scene.idea.linked`, `scene.idea.unlinked`, `scene.assets.changed` and `scene.deleted`.
+- `follow-assets-for-appearances` receives `asset.uploaded` and `asset.deleted`.
 - `forget-appearances-of-discarded-idea` receives the idea's `DISCARDED`.
 - `remember-project-of-idea` receives the idea's `CAPTURED`.
 
@@ -104,10 +117,12 @@ Both run through the inbox.
 The chore `forget-old-appearance-tombstones` forgets their tombstones, beside the feature's own.
 Where there are accounts, the core asks `KeptAccess`. Without accounts, it allows everyone.
 
-**Route:** `GET /api/appearances?idea={id}` → `[{ "type": "scene" | "section", "id" }]`, in one stable order.
+**Route:** `GET /api/appearances?idea={id}` or `?asset={id}` → `[{ "type": "scene" | "section", "id" }]`, in one stable order.
+It asks about one idea or one asset; neither or both is refused as `unreadable`.
+An asset is answered to whoever may read its project, like an idea.
 
 **One way in: `AppearancesCore`.**
-The REST route, the live route and its filter, the three listeners and the chore all go through one struct.
+The REST route, the live route and its filter, the listeners and the chores all go through one struct.
 It asks the `Authorizer` about the idea's project: where an idea appears is told only to those who may read its project.
 An idea whose project is not known yet may be followed, and returns nothing.
 But a change about it is told to nobody until its project is known.
@@ -124,4 +139,4 @@ So what it reports is what was committed, never a write that was rolled back.
 Nothing is retried, because no write here aims at a version.
 The catalog's own guards handle messages that arrive out of order.
 
-**Crates:** `core` (`AppearancesCore`, `Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.
+**Crates:** `core` (`AppearancesCore`, `Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the listeners) · `adapters/rest` · `wiring` · `tests`.

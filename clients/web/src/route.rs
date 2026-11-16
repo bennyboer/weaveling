@@ -56,6 +56,16 @@ pub fn writing_at(project: &str, scene: &SceneId) -> String {
     format!("/projects/{project}/write?scene={scene}")
 }
 
+/// The writing view at a scene, with the figure holding one of its assets chosen.
+pub fn writing_at_asset(project: &str, scene: &SceneId, asset: &str) -> String {
+    format!("/projects/{project}/write?scene={scene}&asset={asset}")
+}
+
+/// The loose scenes at one of them, with the figure holding one of its assets chosen.
+pub fn loose_scene_at_asset(project: &str, scene: &SceneId, asset: &str) -> String {
+    format!("/projects/{project}/write/loose?scene={scene}&asset={asset}")
+}
+
 pub fn members(project: &str) -> String {
     format!("/projects/{project}/members")
 }

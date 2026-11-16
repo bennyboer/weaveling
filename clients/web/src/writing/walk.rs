@@ -25,13 +25,29 @@ pub enum Stop {
     Opening(SectionId),
 }
 
+/// Where in a scene the caret lands: at a place in its text, or on the figure holding one of its assets, chosen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Spot {
+    At(u32),
+    Asset(String),
+}
+
+impl Spot {
+    fn landed(&self, editor: &ProseEditor) {
+        match self {
+            Self::At(at) => editor.land_at(*at),
+            Self::Asset(asset) => editor.land_on_asset(asset),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Walk {
     structure: Structure,
     editors: Editors,
     lines: StoredValue<HashMap<Stop, HtmlElement>, LocalStorage>,
     awaited: StoredValue<Option<Stop>>,
-    landing: StoredValue<Option<(SceneId, u32)>>,
+    landing: StoredValue<Option<(SceneId, Spot)>>,
     arriving: StoredValue<Option<(SceneId, Towards)>>,
     viewport: Viewport,
     side: Side,
@@ -65,12 +81,12 @@ impl Walk {
             .try_update_value(|landing| {
                 landing
                     .take_if(|(awaited, _)| awaited == scene)
-                    .map(|(_, at)| at)
+                    .map(|(_, spot)| spot)
             })
             .flatten();
 
-        if let Some(at) = landing {
-            editor.land_at(at);
+        if let Some(spot) = landing {
+            spot.landed(editor);
         }
         let arriving = self
             .arriving
@@ -89,12 +105,21 @@ impl Walk {
     }
 
     pub fn land_in(self, scene: SceneId, at: u32) {
+        self.land(scene, Spot::At(at));
+    }
+
+    /// Lands on the figure holding one of a scene's assets, chosen, once the scene's editor is there.
+    pub fn land_on_asset(self, scene: SceneId, asset: String) {
+        self.land(scene, Spot::Asset(asset));
+    }
+
+    fn land(self, scene: SceneId, spot: Spot) {
         if self
             .editors
-            .told(&scene, |editor| editor.land_at(at))
+            .told(&scene, |editor| spot.landed(editor))
             .is_none()
         {
-            self.landing.set_value(Some((scene, at)));
+            self.landing.set_value(Some((scene, spot)));
         }
     }
 

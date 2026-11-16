@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use appearances_core::{AppearanceCatalog, CatalogError, Place, ProjectLink, Subject};
+use appearances_core::{AppearanceCatalog, AssetLink, CatalogError, Place, ProjectLink, Subject};
 use async_trait::async_trait;
 use time::OffsetDateTime;
 use transacting::{Failure, Transaction};
@@ -19,6 +19,7 @@ struct Appearances {
     place_tombstones: BTreeMap<Place, OffsetDateTime>,
     projects: BTreeMap<Subject, ProjectLink>,
     place_projects: BTreeMap<Place, ProjectLink>,
+    assets_told: BTreeMap<Place, u64>,
 }
 
 #[derive(Debug, Default)]
@@ -144,6 +145,61 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         Ok(())
     }
 
+    async fn remember_assets(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        assets: &[AssetLink],
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let held: Vec<Subject> = {
+            let mut appearances = self.write();
+            if appearances.place_tombstones.contains_key(place)
+                || appearances
+                    .assets_told
+                    .get(place)
+                    .is_some_and(|told| *told > version)
+            {
+                return Ok(());
+            }
+            appearances.assets_told.insert(place.clone(), version);
+
+            appearances
+                .seen
+                .iter()
+                .filter(|((subject, at), seen)| {
+                    at == place && seen.present && matches!(subject, Subject::Asset(_))
+                })
+                .map(|((subject, _), _)| subject.clone())
+                .collect()
+        };
+        let told: Vec<Subject> = assets.iter().cloned().map(Subject::Asset).collect();
+
+        for gone in held.iter().filter(|subject| !told.contains(subject)) {
+            self.mark(
+                gone,
+                place,
+                Seen {
+                    version,
+                    present: false,
+                },
+            );
+        }
+        for asset in &told {
+            self.mark(
+                asset,
+                place,
+                Seen {
+                    version,
+                    present: true,
+                },
+            );
+        }
+
+        Ok(())
+    }
+
     async fn forget_subject(
         &self,
         transaction: &mut Transaction,
@@ -177,6 +233,7 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
             .entry(place.clone())
             .or_insert(at);
         appearances.place_projects.remove(place);
+        appearances.assets_told.remove(place);
         appearances.seen.retain(|(subject, held), seen| {
             if held != place {
                 return true;
@@ -275,6 +332,7 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
                 .entry(place.clone())
                 .or_insert(at);
             appearances.place_projects.remove(place);
+            appearances.assets_told.remove(place);
         }
         appearances.seen.retain(|(subject, held), seen| {
             if !places.contains(held) {

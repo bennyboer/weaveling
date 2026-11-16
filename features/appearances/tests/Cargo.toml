@@ -29,6 +29,7 @@ appearances-rest = { version = "0.1.0", path = "../adapters/rest", package = "we
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
+assets-contract = { version = "0.1.0", path = "../../assets/contract", package = "weaveling-assets-contract" }
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 outline-contract = { version = "0.1.0", path = "../../outline/contract", package = "weaveling-outline-contract" }

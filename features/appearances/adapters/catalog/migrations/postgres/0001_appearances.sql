@@ -48,3 +48,11 @@ CREATE TABLE place_projects (
 );
 
 CREATE INDEX place_projects_by_project ON place_projects (project);
+
+CREATE TABLE assets_told (
+    place_type  TEXT COLLATE "C" NOT NULL,
+    place_id    TEXT COLLATE "C" NOT NULL,
+    version     BIGINT           NOT NULL,
+
+    PRIMARY KEY (place_type, place_id)
+);

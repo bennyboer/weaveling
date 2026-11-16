@@ -117,7 +117,7 @@ impl<S: SceneStore> Committing<'_, S> {
         transaction.finish().await.map_err(unreachable)
     }
 
-    pub async fn announce_images(
+    pub async fn announce_assets(
         &self,
         id: SceneId,
         images: &BTreeSet<String>,
@@ -125,7 +125,7 @@ impl<S: SceneStore> Committing<'_, S> {
     ) -> Result<(), StoreError> {
         let mut transaction = self.begun().await?;
         self.store
-            .announce_images(&mut transaction, id, images, as_of)
+            .announce_assets(&mut transaction, id, images, as_of)
             .await?;
         transaction.finish().await.map_err(unreachable)
     }
@@ -231,17 +231,17 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             "scene.words.counted",
             json!({ "scene": scene.to_string(), "project": project.to_string(), "words": words }),
         ),
-        SceneChange::ImagesChanged {
+        SceneChange::AssetsChanged {
             scene,
             project,
-            images,
+            assets,
             version,
         } => (
-            "scene.images.changed",
+            "scene.assets.changed",
             json!({
                 "scene": scene.to_string(),
                 "project": project.to_string(),
-                "images": images,
+                "assets": assets,
                 "version": version
             }),
         ),
@@ -1563,7 +1563,7 @@ pub async fn announcing_the_images_enqueues_them_with_the_scene_s_project_and_ve
 
     // when: the images it holds are announced
     store
-        .announce_images(
+        .announce_assets(
             id,
             &BTreeSet::from(["asset_loom".to_owned(), "asset_weft".to_owned()]),
             3,
@@ -1575,11 +1575,11 @@ pub async fn announcing_the_images_enqueues_them_with_the_scene_s_project_and_ve
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
-            "scene.images.changed".to_owned(),
+            "scene.assets.changed".to_owned(),
             json!({
                 "scene": id.to_string(),
                 "project": a_project().to_string(),
-                "images": ["asset_loom", "asset_weft"],
+                "assets": ["asset_loom", "asset_weft"],
                 "version": 3
             })
         )]
@@ -1594,7 +1594,7 @@ pub async fn announcing_the_images_of_a_missing_scene_is_not_found(
 
     // when: its images are announced
     let error = store
-        .announce_images(missing, &BTreeSet::new(), 1)
+        .announce_assets(missing, &BTreeSet::new(), 1)
         .await
         .expect_err("announcing should not find the scene");
 

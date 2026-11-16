@@ -6,7 +6,7 @@ use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::{AccountId, Version};
 use messaging::{Listener, Message, RoutingKey};
-use scenes_contract::{DELETED, IMAGES_CHANGED};
+use scenes_contract::{ASSETS_CHANGED, DELETED};
 use serde_json::json;
 
 use crate::bench::{self, Bench, THE_LOOM, THE_WEFT};
@@ -17,10 +17,10 @@ const DAWN: &str = "scene_dawn";
 
 fn images_of_dawn(project: &str, images: &[&AssetId], version: u64) -> Message {
     Message::opening(
-        RoutingKey::parse(IMAGES_CHANGED).expect("a declared key"),
+        RoutingKey::parse(ASSETS_CHANGED).expect("a declared key"),
         json!({
             "scene": DAWN,
-            "images": images.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "assets": images.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "version": version,
             "context": { "project": project },
         }),
@@ -76,7 +76,7 @@ async fn the_listener_hears_the_images_of_a_scene_and_its_deletion() {
     let listener = inboxed(RememberSceneImagesListener::new(bench.assets.clone()));
 
     // expect: it hears both
-    for routing in [IMAGES_CHANGED, DELETED] {
+    for routing in [ASSETS_CHANGED, DELETED] {
         assert!(
             listener.hears(&RoutingKey::parse(routing).expect("a declared key")),
             "{routing}"

@@ -1,6 +1,6 @@
 use assets_core::{
-    CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, SceneLink, Sorted,
-    UploadsOf, UploadsSorted, Usage,
+    AssetType, CatalogError, Format, Held, Holder, Holders, Owner, ProjectLink, Purpose, SceneLink,
+    Sorted, UploadsOf, UploadsSorted, Usage,
 };
 use eventsourcing::AccountId;
 
@@ -241,6 +241,7 @@ pub(crate) fn whose_written(whose: &UploadsOf) -> String {
 pub(crate) fn uploads_asked(
     placeholder: fn(usize) -> String,
     whose: &UploadsOf,
+    of_type: Option<AssetType>,
     sorted: UploadsSorted,
     after: bool,
 ) -> String {
@@ -265,6 +266,14 @@ pub(crate) fn uploads_asked(
          ON summary.owner_kind = '{PROJECT}' AND named.project = summary.owner \
          WHERE {whose}"
     );
+    if let Some(of_type) = of_type {
+        let formats: Vec<String> = Format::EVERY
+            .into_iter()
+            .filter(|format| format.asset_type() == of_type)
+            .map(|format| format!("'{}'", format_written(format)))
+            .collect();
+        asked.push_str(&format!(" AND summary.format IN ({})", formats.join(", ")));
+    }
     if after {
         let (mark, id) = (placeholder(3), placeholder(4));
         asked.push_str(&format!(

@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
 use appearances_core::{
-    AppearanceCatalog, AppearancesCore, AppearancesError, CatalogError, Place, ProjectLink, Subject,
+    AppearanceCatalog, AppearancesCore, AppearancesError, AssetLink, CatalogError, Place,
+    ProjectLink, Subject,
 };
 use async_trait::async_trait;
 use axum::extract::{Query, State};
@@ -53,7 +54,7 @@ impl Topic for AppearancesTopic {
             return Err(Refused::NotThere);
         };
 
-        match self.appearances.may_follow(idea, agent).await {
+        match self.appearances.may_follow_idea(idea, agent).await {
             Ok(true) => Ok(Subscribed::hearing(
                 self.broadcaster.hear(AppearanceChanges(idea.clone())),
             )
@@ -88,7 +89,9 @@ impl TellingAppearances {
 
         transaction.after_commit(async move {
             for subject in subjects {
-                let Subject::Idea(idea) = &subject;
+                let Subject::Idea(idea) = &subject else {
+                    continue;
+                };
                 teller
                     .tell_latest(
                         AppearanceChanges(idea.as_str().to_owned()),
@@ -138,6 +141,18 @@ impl AppearanceCatalog for TellingAppearances {
         self.tell_after(transaction, vec![subject.clone()]);
 
         Ok(())
+    }
+
+    async fn remember_assets(
+        &self,
+        transaction: &mut Transaction,
+        place: &Place,
+        assets: &[AssetLink],
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        self.kept
+            .remember_assets(transaction, place, assets, version)
+            .await
     }
 
     async fn forget_subject(
@@ -224,24 +239,32 @@ impl AppearanceCatalog for TellingAppearances {
     }
 }
 
+/// What is asked about: an idea or an asset, never both.
 #[derive(Deserialize)]
-struct OfIdea {
-    idea: String,
+struct Asked {
+    idea: Option<String>,
+    asset: Option<String>,
 }
 
 async fn places_of(
     State(appearances): State<AppearancesCore>,
     Extension(agent): Extension<Agent>,
-    Query(asked): Query<OfIdea>,
+    Query(asked): Query<Asked>,
 ) -> Result<Json<Vec<PlaceDTO>>, Problem> {
-    let places =
-        appearances
-            .places_of(&asked.idea, &agent)
-            .await
-            .map_err(|refusal| match refusal {
-                AppearancesError::IdeaNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
-                beyond_reach => Problem::unexpected(beyond_reach),
-            })?;
+    let places = match (asked.idea, asked.asset) {
+        (Some(idea), None) => appearances.places_of_idea(&idea, &agent).await,
+        (None, Some(asset)) => appearances.places_of_asset(&asset, &agent).await,
+        _ => {
+            return Err(Problem::rejected(
+                serving::UNREADABLE,
+                "ask where one idea or one asset appears",
+            ));
+        }
+    }
+    .map_err(|refusal| match refusal {
+        AppearancesError::NotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+        beyond_reach => Problem::unexpected(beyond_reach),
+    })?;
 
     Ok(Json(places.iter().map(to_dto).collect()))
 }

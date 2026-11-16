@@ -196,7 +196,7 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 event.prevent_default();
                 rename();
                 if !state.editors.back_into(&scene) {
-                    state.left_off.land(Some(scene.clone()));
+                    state.left_off.land(Some(scene.clone()), None);
                 }
             }
             "Escape" => {
@@ -206,7 +206,7 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
                     typed.set_value(&titled().unwrap_or_default());
                 }
                 if !state.editors.back_into(&scene) {
-                    state.left_off.land(Some(scene.clone()));
+                    state.left_off.land(Some(scene.clone()), None);
                 }
             }
             _ => {}

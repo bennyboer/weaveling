@@ -147,11 +147,11 @@ impl Heard {
     async fn sees(&self, account: &str) -> bool {
         match self
             .appearances
-            .places_of(AN_IDEA, &Agent::Account(AccountId::from(account)))
+            .places_of_idea(AN_IDEA, &Agent::Account(AccountId::from(account)))
             .await
         {
             Ok(_) => true,
-            Err(AppearancesError::IdeaNotThere) => false,
+            Err(AppearancesError::NotThere) => false,
             Err(failed) => panic!("asking should succeed: {failed:?}"),
         }
     }

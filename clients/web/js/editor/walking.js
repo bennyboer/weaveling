@@ -1,4 +1,4 @@
-import { Selection, TextSelection } from "prosemirror-state";
+import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 
 const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
   ? "Alt"
@@ -213,6 +213,34 @@ export function landed(view, at) {
 
   focusAt(view, TextSelection.near(doc.resolve(caret)));
   lineOfCaret(view)?.scrollIntoView({ block: "center" });
+}
+
+export function landedOnAsset(view, asset) {
+  const focused = document.activeElement;
+
+  if (focused && focused !== document.body) {
+    return;
+  }
+
+  let found;
+  view.state.doc.descendants((node, at) => {
+    if (found === undefined && node.type.name === "figure" && node.attrs.asset === asset) {
+      found = at;
+    }
+
+    return found === undefined;
+  });
+  if (found === undefined) {
+    landed(view, 0);
+    return;
+  }
+
+  view.dispatch(
+    view.state.tr.setSelection(NodeSelection.create(view.state.doc, found)),
+  );
+  view.focus();
+  view.input.lastFocus = 0;
+  view.nodeDOM(found)?.scrollIntoView({ block: "center" });
 }
 
 export function arrived(view, towards) {

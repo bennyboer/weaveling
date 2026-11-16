@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 use leptos::task;
+use web_sys::File;
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
@@ -27,6 +28,21 @@ pub enum Unplaced {
     Section { titled: String },
 }
 
+/// An image a new scene carries over from the line it began on:
+/// files given there, to be uploaded into it, or an asset the project holds, chosen there.
+#[derive(Clone, Debug)]
+pub enum CarriedImage {
+    Files(Vec<File>),
+    Asset(String),
+}
+
+/// What a new scene carries over from the line it began on: the words typed there, and the images given there.
+#[derive(Clone, Debug, Default)]
+pub struct Carried {
+    pub words: Option<String>,
+    pub images: Vec<CarriedImage>,
+}
+
 #[derive(Clone, Copy)]
 pub struct Beginnings {
     structure: Structure,
@@ -38,6 +54,7 @@ pub struct Beginnings {
     focus_next: StoredValue<Option<SectionId>>,
     opening: RwSignal<HashSet<SectionId>>,
     opening_words: StoredValue<HashMap<SectionId, String>>,
+    opening_images: StoredValue<HashMap<SectionId, Vec<CarriedImage>>, LocalStorage>,
     opened: StoredValue<HashMap<SceneId, SectionId>>,
     unplaced: RwSignal<Option<Unplaced>>,
 }
@@ -54,6 +71,7 @@ impl Beginnings {
             focus_next: StoredValue::new(None),
             opening: RwSignal::new(HashSet::new()),
             opening_words: StoredValue::new(HashMap::new()),
+            opening_images: StoredValue::new_local(HashMap::new()),
             opened: StoredValue::new(HashMap::new()),
             unplaced: RwSignal::new(None),
         }
@@ -260,6 +278,8 @@ impl Beginnings {
                 {
                     self.opening_words
                         .update_value(|words| _ = words.remove(&section));
+                    self.opening_images
+                        .update_value(|images| _ = images.remove(&section));
                 }
                 let deleting = self.scenes.deleted(scene);
                 task::spawn_local(async move {
@@ -275,7 +295,14 @@ impl Beginnings {
             .update_value(|words| _ = words.insert(section, typed));
     }
 
-    pub fn words_to_carry(self, scene: &SceneId) -> Option<String> {
+    /// Keeps an image given on the line a scene begins on, for the scene to take in once its editor is there.
+    pub fn opening_image_given(self, section: SectionId, given: CarriedImage) {
+        self.opening_images
+            .update_value(|images| images.entry(section).or_default().push(given));
+    }
+
+    /// Returns what a scene just begun carries over from its line, once, if it was begun on one.
+    pub fn carried(self, scene: &SceneId) -> Option<Carried> {
         let section = self
             .opened
             .try_update_value(|opened| opened.remove(scene))
@@ -285,9 +312,17 @@ impl Beginnings {
             self.pending.set(None);
         }
 
-        self.opening_words
-            .try_update_value(|words| words.remove(&section))
-            .flatten()
+        Some(Carried {
+            words: self
+                .opening_words
+                .try_update_value(|words| words.remove(&section))
+                .flatten(),
+            images: self
+                .opening_images
+                .try_update_value(|images| images.remove(&section))
+                .flatten()
+                .unwrap_or_default(),
+        })
     }
 
     pub fn hands_over(self, section: &SectionId) -> bool {

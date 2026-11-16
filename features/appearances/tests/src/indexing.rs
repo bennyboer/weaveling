@@ -2,18 +2,22 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
-    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, AssetLink, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
 use appearances_messaging::{
-    ForgetDeletedProjectListener, ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener,
-    ProjectSceneAppearancesListener, RememberIdeaProjectListener,
+    AssetAppearancesListener, ForgetDeletedProjectListener, ForgetDiscardedIdeaListener,
+    ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
+    RememberIdeaProjectListener,
 };
 use clock::FixedClock;
 use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
-use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
+use scenes_contract::{
+    ASSETS_CHANGED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneAssetsChangedDTO,
+    SceneDeletedDTO,
+};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
@@ -25,6 +29,7 @@ struct Wired {
     ideas: Inboxed<ForgetDiscardedIdeaListener>,
     projects: Inboxed<RememberIdeaProjectListener>,
     deletions: Inboxed<ForgetDeletedProjectListener>,
+    assets: Inboxed<AssetAppearancesListener>,
 }
 
 fn a_workbench() -> Wired {
@@ -57,7 +62,12 @@ fn a_workbench() -> Wired {
             inbox.clone(),
         ),
         deletions: Inboxed::new(
-            ForgetDeletedProjectListener::new(appearances),
+            ForgetDeletedProjectListener::new(appearances.clone()),
+            transactions.clone(),
+            inbox.clone(),
+        ),
+        assets: Inboxed::new(
+            AssetAppearancesListener::new(appearances),
             transactions,
             inbox,
         ),
@@ -68,7 +78,7 @@ fn a_workbench() -> Wired {
 impl Wired {
     /// Returns where an idea appears, once the idea is known to belong to `PROJECT`.
     /// The places belong to `PROJECT` too, unless a case says otherwise.
-    async fn places_of(&self, idea: &str) -> Vec<Place> {
+    async fn places_of_idea(&self, idea: &str) -> Vec<Place> {
         self.hears(&self.projects, captured(idea, PROJECT)).await;
 
         self.places_of_as_known(idea).await
@@ -241,7 +251,7 @@ async fn an_idea_noted_in_a_section_appears_there() {
 
     // then: it appears there
     assert_eq!(
-        wired.places_of("idea_1").await,
+        wired.places_of_idea("idea_1").await,
         vec![a_section("section_1")]
     );
 }
@@ -264,7 +274,7 @@ async fn a_note_moved_between_sections_appears_only_where_it_went() {
 
     // then: it appears only in the other
     assert_eq!(
-        wired.places_of("idea_1").await,
+        wired.places_of_idea("idea_1").await,
         vec![a_section("section_2")],
         "the outline announces a move as a detach naming the old section, then an attach"
     );
@@ -294,7 +304,7 @@ async fn a_scene_attached_in_the_outline_is_not_an_appearance() {
 
     // then: nothing appears there
     assert!(
-        wired.places_of("idea_1").await.is_empty(),
+        wired.places_of_idea("idea_1").await.is_empty(),
         "only ideas are subjects; a scene placed in a section is the book, not a note about it"
     );
 }
@@ -324,8 +334,8 @@ async fn a_removed_section_takes_its_notes_with_it() {
         .await;
 
     // then: neither appears anywhere
-    assert!(wired.places_of("idea_1").await.is_empty());
-    assert!(wired.places_of("idea_2").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_2").await.is_empty());
 }
 
 #[tokio::test]
@@ -338,14 +348,17 @@ async fn an_idea_linked_from_a_scene_appears_there_until_unlinked() {
         .hears(&wired.scenes, linked("idea_1", "scene_1", 1))
         .await;
     // then: it appears there
-    assert_eq!(wired.places_of("idea_1").await, vec![a_scene("scene_1")]);
+    assert_eq!(
+        wired.places_of_idea("idea_1").await,
+        vec![a_scene("scene_1")]
+    );
 
     // when: it is unlinked
     wired
         .hears(&wired.scenes, unlinked("idea_1", "scene_1", 2))
         .await;
     // then: it appears nowhere
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
 }
 
 #[tokio::test]
@@ -363,8 +376,8 @@ async fn a_deleted_scene_takes_every_link_with_it() {
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
     // then: neither appears anywhere
-    assert!(wired.places_of("idea_1").await.is_empty());
-    assert!(wired.places_of("idea_2").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_2").await.is_empty());
 }
 
 #[tokio::test]
@@ -386,10 +399,10 @@ async fn a_discarded_idea_appears_nowhere() {
     wired.hears(&wired.ideas, discarded("idea_1")).await;
 
     // then: it appears nowhere
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
     // and: the other stays where it was
     assert_eq!(
-        wired.places_of("idea_2").await,
+        wired.places_of_idea("idea_2").await,
         vec![a_section("section_1")],
         "one idea being discarded leaves every other idea where it was"
     );
@@ -412,7 +425,7 @@ async fn hearing_the_same_message_twice_is_harmless() {
 
     // then: the idea appears once in each place
     assert_eq!(
-        wired.places_of("idea_1").await,
+        wired.places_of_idea("idea_1").await,
         vec![a_scene("scene_1"), a_section("section_1")],
         "deliveries are at least once, so a redelivery must not make an idea appear twice"
     );
@@ -435,7 +448,7 @@ async fn a_note_tried_again_after_it_was_taken_out_stays_out() {
 
     // then: the idea stays out
     assert!(
-        wired.places_of("idea_1").await.is_empty(),
+        wired.places_of_idea("idea_1").await.is_empty(),
         "an attachment that failed and was tried again after its detachment is older news"
     );
 }
@@ -457,7 +470,7 @@ async fn a_removal_tried_again_after_a_new_note_leaves_the_note() {
 
     // then: the idea stays noted
     assert_eq!(
-        wired.places_of("idea_1").await,
+        wired.places_of_idea("idea_1").await,
         vec![a_section("section_1")]
     );
 }
@@ -475,7 +488,7 @@ async fn a_note_tried_again_after_its_section_was_removed_stays_gone() {
     wired.hears(&wired.outline, late).await;
 
     // then: the idea appears nowhere
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
 }
 
 #[tokio::test]
@@ -490,7 +503,7 @@ async fn a_note_tried_again_after_its_idea_was_discarded_stays_gone() {
 
     // then: the idea appears nowhere
     assert!(
-        wired.places_of("idea_1").await.is_empty(),
+        wired.places_of_idea("idea_1").await.is_empty(),
         "the discard comes from the idea's stream, so no outline version can outrank it"
     );
 }
@@ -506,7 +519,7 @@ async fn a_link_tried_again_after_its_scene_was_deleted_stays_gone() {
     wired.hears(&wired.scenes, late).await;
 
     // then: the idea appears nowhere
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
 }
 
 #[tokio::test]
@@ -522,7 +535,7 @@ async fn a_link_tried_again_after_it_was_unlinked_stays_unlinked() {
     wired.hears(&wired.scenes, late).await;
 
     // then: the idea stays unlinked
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
 }
 
 #[tokio::test]
@@ -541,7 +554,10 @@ async fn an_unlink_tried_again_after_a_new_link_leaves_the_link() {
     wired.hears(&wired.scenes, late).await;
 
     // then: the idea stays linked
-    assert_eq!(wired.places_of("idea_1").await, vec![a_scene("scene_1")]);
+    assert_eq!(
+        wired.places_of_idea("idea_1").await,
+        vec![a_scene("scene_1")]
+    );
 }
 
 #[tokio::test]
@@ -645,7 +661,7 @@ async fn a_link_in_no_project_shows_its_idea_nowhere() {
     wired.hears(&wired.outline, noted).await;
 
     // then: it appears nowhere
-    assert!(wired.places_of("idea_1").await.is_empty());
+    assert!(wired.places_of_idea("idea_1").await.is_empty());
 }
 
 #[tokio::test]
@@ -709,4 +725,192 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
         [0, 3, 0],
         "laid when it happened, not when it was heard, and forgotten for good"
     );
+}
+
+fn uploaded(asset: &str, owner: Value) -> Message {
+    published(
+        assets_contract::UPLOADED,
+        asset,
+        "asset",
+        json!({
+            "name": "UPLOADED",
+            "owner": owner,
+            "content_type": "image/png",
+            "width": 1,
+            "height": 1,
+            "original_size": 1,
+            "total_size": 1,
+        }),
+    )
+}
+
+fn uploaded_into_the_project(asset: &str) -> Message {
+    uploaded(asset, json!({ "kind": "project", "id": PROJECT }))
+}
+
+fn asset_deleted(asset: &str) -> Message {
+    published(
+        assets_contract::DELETED,
+        asset,
+        "asset",
+        json!({ "name": "DELETED" }),
+    )
+}
+
+fn holding(scene: &str, assets: &[&str], version: u64) -> Message {
+    from_scenes(
+        ASSETS_CHANGED,
+        serde_json::to_value(SceneAssetsChangedDTO {
+            scene: scene.to_owned(),
+            assets: assets.iter().map(|asset| (*asset).to_owned()).collect(),
+            version,
+        })
+        .expect("the assets of a scene are plain data"),
+    )
+}
+
+impl Wired {
+    async fn places_of_asset(&self, asset: &str) -> Vec<Place> {
+        self.catalog
+            .places_of(&Subject::Asset(AssetLink::from(asset)))
+            .await
+            .expect("asking should succeed")
+    }
+}
+
+#[tokio::test]
+async fn an_asset_in_a_scene_s_text_appears_there_until_taken_out() {
+    // given: an asset uploaded into the project
+    let wired = a_workbench();
+    wired
+        .hears(&wired.assets, uploaded_into_the_project("asset_1"))
+        .await;
+
+    // when: a scene holds it
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 1))
+        .await;
+    // then: it appears there
+    assert_eq!(
+        wired.places_of_asset("asset_1").await,
+        vec![a_scene("scene_1")]
+    );
+
+    // when: the scene holds it no longer
+    wired.hears(&wired.scenes, holding("scene_1", &[], 2)).await;
+    // then: it appears nowhere
+    assert!(wired.places_of_asset("asset_1").await.is_empty());
+}
+
+#[tokio::test]
+async fn assets_a_scene_held_before_arriving_late_change_nothing() {
+    // given: two assets of the project, and a scene holding one of them
+    let wired = a_workbench();
+    for asset in ["asset_1", "asset_2"] {
+        wired
+            .hears(&wired.assets, uploaded_into_the_project(asset))
+            .await;
+    }
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 3))
+        .await;
+
+    // when: the assets it held before arrive late
+    wired
+        .hears(
+            &wired.scenes,
+            holding("scene_1", &["asset_1", "asset_2"], 2),
+        )
+        .await;
+
+    // then: the other asset appears nowhere
+    assert!(
+        wired.places_of_asset("asset_2").await.is_empty(),
+        "a message tried again late must not put back an asset the scene no longer holds"
+    );
+}
+
+#[tokio::test]
+async fn an_asset_of_an_account_s_own_appears_nowhere() {
+    // given: an asset of an account's own
+    let wired = a_workbench();
+    wired
+        .hears(
+            &wired.assets,
+            uploaded("asset_1", json!({ "kind": "account", "id": "account_ada" })),
+        )
+        .await;
+
+    // when: a scene holds it anyway, its id known from elsewhere
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 1))
+        .await;
+
+    // then: it appears nowhere
+    assert!(
+        wired.places_of_asset("asset_1").await.is_empty(),
+        "only an asset of a project appears in that project's scenes"
+    );
+}
+
+#[tokio::test]
+async fn an_asset_held_by_a_scene_of_another_project_appears_nowhere() {
+    // given: an asset uploaded into the project
+    let wired = a_workbench();
+    wired
+        .hears(&wired.assets, uploaded_into_the_project("asset_1"))
+        .await;
+
+    // when: a scene of another project holds it
+    wired
+        .hears(
+            &wired.scenes,
+            in_project(holding("scene_strange", &["asset_1"], 1), "project_2"),
+        )
+        .await;
+
+    // then: it appears nowhere
+    assert!(wired.places_of_asset("asset_1").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_asset_appears_nowhere_even_when_held_again() {
+    // given: an asset held by a scene
+    let wired = a_workbench();
+    wired
+        .hears(&wired.assets, uploaded_into_the_project("asset_1"))
+        .await;
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 1))
+        .await;
+
+    // when: it is deleted, and a later message says the scene holds it
+    wired.hears(&wired.assets, asset_deleted("asset_1")).await;
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 2))
+        .await;
+
+    // then: it appears nowhere
+    assert!(wired.places_of_asset("asset_1").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_scene_takes_its_assets_with_it() {
+    // given: an asset held by a scene
+    let wired = a_workbench();
+    wired
+        .hears(&wired.assets, uploaded_into_the_project("asset_1"))
+        .await;
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 1))
+        .await;
+
+    // when: the scene is deleted, and its assets arrive late
+    wired.hears(&wired.scenes, deleted("scene_1")).await;
+    wired
+        .hears(&wired.scenes, holding("scene_1", &["asset_1"], 2))
+        .await;
+
+    // then: the asset appears nowhere
+    assert!(wired.places_of_asset("asset_1").await.is_empty());
 }

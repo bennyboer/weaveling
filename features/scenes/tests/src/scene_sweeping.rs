@@ -86,7 +86,7 @@ impl SceneStore for Wavering {
         self.held.announce_opening(transaction, id, opening).await
     }
 
-    async fn announce_images(
+    async fn announce_assets(
         &self,
         transaction: &mut Transaction,
         id: SceneId,
@@ -94,7 +94,7 @@ impl SceneStore for Wavering {
         as_of: u64,
     ) -> Result<(), StoreError> {
         self.held
-            .announce_images(transaction, id, images, as_of)
+            .announce_assets(transaction, id, images, as_of)
             .await
     }
 

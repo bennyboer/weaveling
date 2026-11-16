@@ -58,7 +58,7 @@ pub struct LiveScene {
     counting: OneAtATime<()>,
     counted_at: Mutex<Option<Moment>>,
     opening_told: Mutex<Option<String>>,
-    images_told: Mutex<Option<BTreeSet<String>>>,
+    assets_told: Mutex<Option<BTreeSet<String>>>,
     speakers: Speakers,
 }
 
@@ -74,7 +74,7 @@ impl LiveScene {
             counting: OneAtATime::new(()),
             counted_at: Mutex::new(None),
             opening_told: Mutex::new(None),
-            images_told: Mutex::new(None),
+            assets_told: Mutex::new(None),
             speakers: Speakers::default(),
         }
     }
@@ -138,20 +138,20 @@ impl LiveScene {
             .expect("live scene opening lock poisoned")
             .as_ref()
             != Some(&opening);
-        let images = self.scene.images();
-        let images_changed = self
-            .images_told
+        let assets = self.scene.assets();
+        let assets_changed = self
+            .assets_told
             .lock()
-            .expect("live scene images lock poisoned")
+            .expect("live scene assets lock poisoned")
             .as_ref()
-            != Some(&images);
+            != Some(&assets);
 
         scenes
             .announce_what_it_holds(
                 &id,
                 self.scene.words(),
                 changed.then_some(opening.as_str()),
-                images_changed.then_some(&images),
+                assets_changed.then_some(&assets),
                 as_of,
             )
             .await?;
@@ -160,9 +160,9 @@ impl LiveScene {
             .lock()
             .expect("live scene opening lock poisoned") = Some(opening);
         *self
-            .images_told
+            .assets_told
             .lock()
-            .expect("live scene images lock poisoned") = Some(images);
+            .expect("live scene assets lock poisoned") = Some(assets);
 
         Ok(())
     }

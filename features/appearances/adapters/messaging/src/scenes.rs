@@ -3,7 +3,10 @@ use appearances_core::{AppearancesCore, Place, SceneLink};
 use crate::projects::project_of;
 use inbox::KeptHandler;
 use messaging::{Failure, Message};
-use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
+use scenes_contract::{
+    ASSETS_CHANGED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneAssetsChangedDTO,
+    SceneDeletedDTO,
+};
 use transacting::Transaction;
 
 pub struct ProjectSceneAppearancesListener {
@@ -40,6 +43,18 @@ impl ProjectSceneAppearancesListener {
                     )
                     .await?;
             }
+            ASSETS_CHANGED => {
+                let changed: SceneAssetsChangedDTO = message.payload_as()?;
+                self.appearances
+                    .assets_changed(
+                        Some(transaction),
+                        &a_scene(changed.scene),
+                        &changed.assets,
+                        changed.version,
+                        project_of(message).as_deref(),
+                    )
+                    .await?;
+            }
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
                 self.appearances
@@ -64,8 +79,10 @@ fn a_scene(id: String) -> Place {
 #[async_trait::async_trait]
 impl KeptHandler for ProjectSceneAppearancesListener {
     const NAME: &'static str = "index-scene-appearances";
-    const LISTENS_TO: &'static [&'static str] = &[IDEA_LINKED, IDEA_UNLINKED, DELETED];
-    const WHEN_REFUSED: &'static str = "Where an idea appears in your scenes was not updated.";
+    const LISTENS_TO: &'static [&'static str] =
+        &[IDEA_LINKED, IDEA_UNLINKED, ASSETS_CHANGED, DELETED];
+    const WHEN_REFUSED: &'static str =
+        "Where an idea or an asset appears in your scenes was not updated.";
 
     async fn take_in(
         &self,

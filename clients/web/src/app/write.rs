@@ -44,6 +44,7 @@ pub fn LooseScenesPage() -> impl IntoView {
 
 fn writing_on(side: Side) -> impl IntoView {
     let following = untrack(|| hooks::use_query_map().read().get("scene")).map(SceneId::from);
+    let asset = untrack(|| hooks::use_query_map().read().get("asset"));
 
     let roles = expect_context::<Roles>();
 
@@ -54,11 +55,13 @@ fn writing_on(side: Side) -> impl IntoView {
             Memo::new(move |_| roles.may_write(&project))
         };
         let following = following.clone();
+        let asset = asset.clone();
 
         move || match may_write.get() {
             true => WriteView(WriteViewProps {
                 project: project.clone(),
                 following: following.clone(),
+                asset: asset.clone(),
                 side,
             })
             .into_any(),
