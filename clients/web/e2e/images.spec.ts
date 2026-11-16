@@ -775,3 +775,59 @@ test("the + on the line a new scene begins on goes once something is typed there
   await expect(sceneRows(page)).toHaveCount(2);
   await expect(sceneRows(page).nth(1)).toContainText("Then");
 });
+
+test("a chosen image is copied as a picture, and pasted back it is the same image, not uploaded again", async ({
+  page,
+  context,
+}) => {
+  // given: a scene holding a pasted image with a caption, and the clipboard open to the page
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const only = await aSceneToWriteIn(page, "CopiedOut");
+  await pasted(scene(page, only), { image: A_PIXEL });
+  const figure = scene(page, only).locator("figure.figure");
+  await expect(figure).toHaveAttribute("data-asset", /^asset_/);
+  const image = (await figure.getAttribute("data-asset"))!;
+  await figure.locator("figcaption").click();
+  await page.keyboard.type("A map");
+
+  // when: the image is chosen and copied
+  await figure.locator("img").click();
+  await expect(figureBar(page)).toBeVisible();
+  await page.keyboard.press("Control+c");
+
+  // then: the clipboard holds the picture, the figure with the picture in it, and the caption as text
+  await expect
+    .poll(() => page.evaluate(async () => (await navigator.clipboard.read())[0]?.types ?? []))
+    .toEqual(expect.arrayContaining(["image/png", "text/html", "text/plain"]));
+  const told = await page.evaluate(async () => {
+    const [item] = await navigator.clipboard.read();
+    const picture = await item.getType("image/png");
+
+    return {
+      html: await (await item.getType("text/html")).text(),
+      text: await (await item.getType("text/plain")).text(),
+      picture: picture.size,
+    };
+  });
+  expect(told.html).toContain(`data-asset="${image}"`);
+  expect(told.html).toMatch(/<img[^>]*src="data:image\/png;base64,/);
+  expect(told.text).toBe("A map");
+  expect(told.picture).toBeGreaterThan(0);
+
+  // when: it is pasted on a new line after the image, every upload counted
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/api/assets")) {
+      sent.push(request.url());
+    }
+  });
+  await figure.locator("figcaption").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Control+v");
+
+  // then: the scene holds the same image twice, and nothing was uploaded
+  await expect(figure).toHaveCount(2);
+  await expect(figure.nth(1)).toHaveAttribute("data-asset", image);
+  expect(sent).toHaveLength(0);
+});

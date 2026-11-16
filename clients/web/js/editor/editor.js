@@ -6,6 +6,7 @@ import { keymap } from "prosemirror-keymap";
 import { redo, undo, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 
 import { SceneSync } from "../sync.js";
+import { copiedPicture, holdsAFigure } from "./copying.js";
 import {
   FigureView,
   backIntoFigure,
@@ -141,16 +142,22 @@ export class ProseEditor {
 
               return focusedWhereTheBrowserPutIt(view);
             },
+            copy: (view) => copiedPicture(view),
+            cut: (view) => copiedPicture(view),
           },
           handleClick: (view, pos, event) => openedLink(view, pos, event),
           handleClickOn: (view, _, node, at, event) =>
             clickedFigure(view, node, at, event),
           handlePaste: (view, event) =>
+            !holdsAFigure(event.clipboardData) &&
             this.uploads.given(
               event.clipboardData?.files,
               view.state.selection.from,
             ),
           handleDrop: (view, event) => {
+            if (holdsAFigure(event.dataTransfer)) {
+              return false;
+            }
             const dropped = view.posAtCoords({
               left: event.clientX,
               top: event.clientY,
