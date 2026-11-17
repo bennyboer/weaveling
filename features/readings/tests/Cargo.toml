@@ -4,10 +4,17 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+async-trait = { workspace = true }
 axum = { workspace = true }
 axum-test = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 readings-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-readings-catalog" }
 readings-contract = { version = "0.1.0", path = "../contract", package = "weaveling-readings-contract" }

@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 sqlx = { workspace = true, optional = true }
 
+access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
@@ -14,5 +17,5 @@ readings-core = { version = "0.1.0", path = "../core", package = "weaveling-read
 readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "transacting/postgres", "access/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "transacting/sqlite", "access/sqlite"]

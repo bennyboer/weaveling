@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, openTheBoard, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
-import { flow, scene } from "./support/writing";
+import { flow, gapBelow, scene } from "./support/writing";
 
 const masthead = (page: Page) => page.locator(".masthead");
 
@@ -285,4 +285,32 @@ test("moving into the next scene brightens its paragraph and fades the one left"
 
   // then: its paragraph is bright and the one left fades
   await expect.poll(() => shown(page)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1]);
+});
+
+test("in focus mode the break between scenes is dimmed, and shown whole while it is reached for", async ({
+  page,
+}) => {
+  // given: an author writing in the first of two scenes, in focus mode
+  await aNewProject(page, "FocusBreak");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first] = scenes["Part One"];
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await scene(page, first).click();
+  await page.keyboard.type("Where the cursor is.");
+  await page.keyboard.press("Control+Shift+F");
+  await page.mouse.move(0, 0);
+  const between = gapBelow(page, first).locator(".between-scenes");
+
+  // expect: the break below it is dimmed with the rest
+  await expect
+    .poll(() => between.evaluate((shown) => Number(getComputedStyle(shown).opacity)))
+    .toBeCloseTo(0.3);
+
+  // when: the pointer comes near it
+  await gapBelow(page, first).locator(".reach").hover();
+
+  // then: it is shown whole, as its lines are
+  await expect
+    .poll(() => between.evaluate((shown) => Number(getComputedStyle(shown).opacity)))
+    .toBe(1);
 });

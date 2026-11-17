@@ -1,31 +1,54 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use ::access::KeptAccess;
+use authorizing::{Act, Authorizer};
+use clock::Clock;
 use eventsourcing::Agent;
+use transacting::Transactions;
 
 use crate::catalog::{BookOutline, OutlineCatalog, SceneTextCatalog};
 use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
 use crate::link::{ProjectLink, SceneLink};
 
+mod access;
+
 #[derive(Clone)]
 pub struct ReadingsCore {
     outlines: Arc<dyn OutlineCatalog>,
     texts: Arc<dyn SceneTextCatalog>,
+    transactions: Arc<dyn Transactions>,
+    access: KeptAccess,
+    authorizer: Arc<dyn Authorizer>,
+    clock: Arc<dyn Clock>,
 }
 
 impl ReadingsCore {
-    pub fn new(outlines: Arc<dyn OutlineCatalog>, texts: Arc<dyn SceneTextCatalog>) -> Self {
-        Self { outlines, texts }
+    pub fn new(
+        outlines: Arc<dyn OutlineCatalog>,
+        texts: Arc<dyn SceneTextCatalog>,
+        transactions: Arc<dyn Transactions>,
+        access: KeptAccess,
+        authorizer: Arc<dyn Authorizer>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
+        Self {
+            outlines,
+            texts,
+            transactions,
+            access,
+            authorizer,
+            clock,
+        }
     }
 
     /// The book as it is written now, put together from its outline and its scenes' text.
-    pub async fn live_book(
-        &self,
-        project: &str,
-        _agent: &Agent,
-    ) -> Result<Contents, ReadingsError> {
-        // TODO: members only
+    /// It is there only for whoever may read the project.
+    pub async fn live_book(&self, project: &str, agent: &Agent) -> Result<Contents, ReadingsError> {
+        if !self.authorizer.may(agent, Act::Read, project).await? {
+            return Err(ReadingsError::ProjectNotThere);
+        }
         let project = ProjectLink::from(project);
         let Some(outline) = self.outlines.outline_of(&project).await? else {
             return Err(ReadingsError::ProjectNotThere);

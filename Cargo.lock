@@ -6666,7 +6666,11 @@ dependencies = [
  "async-trait",
  "thiserror 2.0.21",
  "tokio",
+ "weaveling-access",
+ "weaveling-authorizing",
+ "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -6685,14 +6689,21 @@ dependencies = [
 name = "weaveling-readings-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
+ "serde_json",
+ "time",
  "tokio",
+ "weaveling-access",
+ "weaveling-authorizing",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-readings-catalog",
  "weaveling-readings-contract",
  "weaveling-readings-core",
  "weaveling-readings-rest",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -6700,10 +6711,13 @@ name = "weaveling-readings-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "weaveling-access",
+ "weaveling-authorizing",
  "weaveling-outbox",
  "weaveling-readings-catalog",
  "weaveling-readings-core",
  "weaveling-readings-rest",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 

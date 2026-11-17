@@ -2,18 +2,10 @@ use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
 use readings_contract::{BlockDTO, ContentsDTO, MarksDTO, PartDTO, RunDTO};
-use std::sync::Arc;
-
-use readings_catalog::SampleBook;
-use readings_core::ReadingsCore;
 
 fn server() -> TestServer {
     TestServer::new(
-        readings_rest::router(ReadingsCore::new(
-            Arc::new(SampleBook),
-            Arc::new(SampleBook),
-        ))
-        .layer(Extension(Agent::Local)),
+        readings_rest::router(crate::allowing::everyone()).layer(Extension(Agent::Local)),
     )
 }
 

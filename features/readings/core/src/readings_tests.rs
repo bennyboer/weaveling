@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
+use authorizing::AllowingEverything;
+use clock::FixedClock;
 use eventsourcing::Agent;
+use transacting::InMemoryTransactions;
 
 use crate::catalog::{
     BookOutline, CatalogError, OutlineCatalog, OutlinedSection, SceneTextCatalog,
@@ -66,6 +70,10 @@ fn readings(sections: Vec<OutlinedSection>, texts: &[(&str, &str)]) -> ReadingsC
                 .map(|(scene, words)| (SceneLink::from(*scene), text(words)))
                 .collect(),
         )),
+        Arc::new(InMemoryTransactions::new()),
+        KeptAccess::new(Arc::new(InMemoryAccess::new())),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     )
 }
 

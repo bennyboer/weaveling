@@ -126,6 +126,10 @@ $springing: cubic-bezier(0.3, 0.7, 0.2, 1.15);
   }
 }
 
+body.focused .writing .insertion:is(.landing, :has(.reach:hover), :has(.scene-break:focus-visible), :has(.scene-break[aria-expanded="true"])) .between-scenes {
+  opacity: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .diamonds .diamond,
   .diamonds .plus,
