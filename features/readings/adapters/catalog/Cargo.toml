@@ -1,0 +1,9 @@
+[package]
+name = "weaveling-readings-catalog"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+
+readings-core = { version = "0.1.0", path = "../../core", package = "weaveling-readings-core" }

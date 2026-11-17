@@ -9,6 +9,7 @@ sqlx = { workspace = true, optional = true }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
+readings-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-readings-catalog" }
 readings-core = { version = "0.1.0", path = "../core", package = "weaveling-readings-core" }
 readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
 

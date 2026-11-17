@@ -1,88 +1,70 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use eventsourcing::Agent;
 
-use crate::contents::{Block, Contents, Marks, Part, Run};
+use crate::catalog::{BookOutline, OutlineCatalog, SceneTextCatalog};
+use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
-use crate::link::{ProjectLink, SceneLink, SectionLink};
+use crate::link::{ProjectLink, SceneLink};
 
-#[derive(Clone, Default)]
-pub struct ReadingsCore;
+#[derive(Clone)]
+pub struct ReadingsCore {
+    outlines: Arc<dyn OutlineCatalog>,
+    texts: Arc<dyn SceneTextCatalog>,
+}
 
 impl ReadingsCore {
-    pub fn new() -> Self {
-        Self
+    pub fn new(outlines: Arc<dyn OutlineCatalog>, texts: Arc<dyn SceneTextCatalog>) -> Self {
+        Self { outlines, texts }
     }
 
-    /// The book as it is written now, put together from the outline and the scenes.
+    /// The book as it is written now, put together from its outline and its scenes' text.
     pub async fn live_book(
         &self,
         project: &str,
         _agent: &Agent,
     ) -> Result<Contents, ReadingsError> {
-        // TODO: members only, and the book put together from the outline and the scenes behind ports
-        Ok(sample_book(project))
+        // TODO: members only
+        let project = ProjectLink::from(project);
+        let Some(outline) = self.outlines.outline_of(&project).await? else {
+            return Err(ReadingsError::ProjectNotThere);
+        };
+        let scenes = outline
+            .sections
+            .iter()
+            .flat_map(|section| section.scenes.iter().cloned())
+            .collect::<Vec<_>>();
+        let texts = self.texts.texts_of(&scenes).await?;
+
+        Ok(put_together(project, outline, texts))
     }
 }
 
-fn sample_book(project: &str) -> Contents {
+/// Lays the book out in reading order: each section, then the scenes it holds.
+/// A scene whose text is not kept yet is left out, rather than shown empty.
+fn put_together(
+    project: ProjectLink,
+    outline: BookOutline,
+    mut texts: HashMap<SceneLink, Vec<Block>>,
+) -> Contents {
+    let mut parts = Vec::new();
+    for section in outline.sections {
+        parts.push(Part::Section {
+            section: section.section,
+            depth: section.depth,
+            title: section.title,
+        });
+        for scene in section.scenes {
+            if let Some(blocks) = texts.remove(&scene) {
+                parts.push(Part::Scene { scene, blocks });
+            }
+        }
+    }
+
     Contents {
-        project: ProjectLink::from(project),
-        title: "The Loom".to_owned(),
-        parts: vec![
-            Part::Section {
-                section: SectionLink::from("section_morning"),
-                depth: 0,
-                title: "Morning".to_owned(),
-            },
-            Part::Scene {
-                scene: SceneLink::from("scene_harbour"),
-                blocks: vec![
-                    Block::Paragraph(vec![
-                        Run::plain("The boats came in before the light did, "),
-                        Run::Text {
-                            text: "one by one".to_owned(),
-                            marks: Marks {
-                                emphasis: true,
-                                ..Marks::default()
-                            },
-                        },
-                        Run::plain(", their lamps swinging."),
-                    ]),
-                    Block::Paragraph(vec![Run::plain(
-                        "Hedy counted them from the wall and lost count twice.",
-                    )]),
-                ],
-            },
-            Part::Scene {
-                scene: SceneLink::from("scene_wall"),
-                blocks: vec![Block::Paragraph(vec![Run::plain(
-                    "By the time the last lamp was in, she had stopped pretending she was counting at all.",
-                )])],
-            },
-            Part::Section {
-                section: SectionLink::from("section_market"),
-                depth: 1,
-                title: "The market".to_owned(),
-            },
-            Part::Scene {
-                scene: SceneLink::from("scene_stalls"),
-                blocks: vec![
-                    Block::Quote(vec![Block::Paragraph(vec![Run::plain(
-                        "Fresh today, fresh tomorrow.",
-                    )])]),
-                    Block::Rule,
-                    Block::Paragraph(vec![
-                        Run::plain("Nobody believed the sign."),
-                        Run::Break,
-                        Run::Text {
-                            text: "Everybody bought the fish.".to_owned(),
-                            marks: Marks {
-                                strong: true,
-                                ..Marks::default()
-                            },
-                        },
-                    ]),
-                ],
-            },
-        ],
+        project,
+        title: outline.title,
+        parts,
     }
 }

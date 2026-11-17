@@ -31,6 +31,7 @@ async fn live_book(
             .await
             .map_err(|refusal| match refusal {
                 ReadingsError::ProjectNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+                beyond_reach => Problem::unexpected(beyond_reach),
             })?;
 
     Ok(Json(transformer::to_dto(&book)))

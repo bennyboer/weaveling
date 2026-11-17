@@ -6645,6 +6645,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-readings-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "weaveling-readings-core",
+]
+
+[[package]]
 name = "weaveling-readings-contract"
 version = "0.1.0"
 dependencies = [
@@ -6655,7 +6663,9 @@ dependencies = [
 name = "weaveling-readings-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "thiserror 2.0.21",
+ "tokio",
  "weaveling-eventsourcing",
 ]
 
@@ -6679,6 +6689,7 @@ dependencies = [
  "axum-test",
  "tokio",
  "weaveling-eventsourcing",
+ "weaveling-readings-catalog",
  "weaveling-readings-contract",
  "weaveling-readings-core",
  "weaveling-readings-rest",
@@ -6690,6 +6701,7 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "weaveling-outbox",
+ "weaveling-readings-catalog",
  "weaveling-readings-core",
  "weaveling-readings-rest",
  "weaveling-wiring",

@@ -9,6 +9,7 @@ axum-test = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
+readings-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-readings-catalog" }
 readings-contract = { version = "0.1.0", path = "../contract", package = "weaveling-readings-contract" }
 readings-core = { version = "0.1.0", path = "../core", package = "weaveling-readings-core" }
 readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
