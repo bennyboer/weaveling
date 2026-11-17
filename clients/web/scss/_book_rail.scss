@@ -1,4 +1,5 @@
-.book-rail {
+.book-rail,
+.reading-contents {
   .fold-all {
     display: grid;
     place-items: center;
@@ -103,4 +104,8 @@
       color: var(--ink);
     }
   }
+}
+
+.reading-contents .rail-section .rail-entry {
+  margin-left: 0;
 }

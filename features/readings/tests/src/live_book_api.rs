@@ -29,7 +29,7 @@ async fn a_project_answers_with_its_book() {
             PartDTO::Scene { .. } => "scene",
         })
         .collect();
-    assert_eq!(kinds, ["section", "scene", "section", "scene"]);
+    assert_eq!(kinds, ["section", "scene", "scene", "section", "scene"]);
 }
 
 #[tokio::test]

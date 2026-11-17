@@ -52,6 +52,7 @@ web-sys = { workspace = true, features = [
     "PointerEvent",
     "ProgressEvent",
     "Range",
+    "RequestCache",
     "ResponseInit",
     "ScrollIntoViewOptions",
     "ScrollLogicalPosition",
@@ -87,6 +88,7 @@ scenes-contract = { version = "0.1.0", path = "../../features/scenes/contract", 
 members-contract = { version = "0.1.0", path = "../../features/members/contract", package = "weaveling-members-contract" }
 notifications-contract = { version = "0.1.0", path = "../../features/notifications/contract", package = "weaveling-notifications-contract" }
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
+readings-contract = { version = "0.1.0", path = "../../features/readings/contract", package = "weaveling-readings-contract" }
 statistics-contract = { version = "0.1.0", path = "../../features/statistics/contract", package = "weaveling-statistics-contract" }
 
 [dev-dependencies]

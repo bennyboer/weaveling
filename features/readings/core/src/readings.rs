@@ -52,6 +52,12 @@ fn sample_book(project: &str) -> Contents {
                     )]),
                 ],
             },
+            Part::Scene {
+                scene: SceneLink::from("scene_wall"),
+                blocks: vec![Block::Paragraph(vec![Run::plain(
+                    "By the time the last lamp was in, she had stopped pretending she was counting at all.",
+                )])],
+            },
             Part::Section {
                 section: SectionLink::from("section_market"),
                 depth: 1,

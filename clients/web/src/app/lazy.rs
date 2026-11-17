@@ -7,6 +7,7 @@ use crate::app::idea::IdeaPage;
 use crate::app::ideas::IdeasPage;
 use crate::app::members::{MembersInvitedPage, MembersPage};
 use crate::app::outline::OutlinePage;
+use crate::app::read::ReadPage;
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::assets::storage_page::StoragePage;
 use crate::instance::{
@@ -68,6 +69,20 @@ impl LazyRoute for LooseScenesRoute {
 
 fn with_the_editor() -> LocalResource<()> {
     LocalResource::new(crate::scenes::prose::editor_loaded)
+}
+
+/// The reading view, of the book as it is written now.
+pub struct ReadRoute;
+
+#[lazy_route]
+impl LazyRoute for ReadRoute {
+    fn data() -> Self {
+        Self
+    }
+
+    fn view(_: Self) -> AnyView {
+        ReadPage().into_any()
+    }
 }
 
 /// The board.

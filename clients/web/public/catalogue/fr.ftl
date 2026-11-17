@@ -1,6 +1,7 @@
 masthead-all-projects = Tous les projets
 masthead-views = Vues
 view-write = Écrire
+view-read = Lire
 view-board = Tableau
 view-outline = Plan
 view-ideas = Idées

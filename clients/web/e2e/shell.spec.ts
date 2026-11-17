@@ -320,6 +320,7 @@ test("the writing view comes first among a project's views", async ({
   // then: the writing view comes first among its views
   await expect(views(page).getByRole("link")).toHaveText([
     "Write",
+    "Read",
     "Board",
     "Outline",
     "Ideas",

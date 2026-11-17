@@ -499,9 +499,10 @@ fn section_around(event: &FocusEvent) -> Option<SectionId> {
 
 fn book(state: WriteViewState) -> impl IntoView {
     let ends_in_a_scene = Memo::new(move |_| state.structure.ends_in_a_scene());
+    let begun = Memo::new(move |_| state.structure.last_section().is_some());
 
     view! {
-        {menus::book_edge(Edge::Start, state)}
+        {move || begun.get().then(|| menus::book_edge(Edge::Start, state))}
         <For
             each=move || state.structure.sections()
             key=|(_, section)| section.id.clone()
@@ -509,7 +510,7 @@ fn book(state: WriteViewState) -> impl IntoView {
         >
             {section_in_flow(section, state)}
         </For>
-        {move || (!ends_in_a_scene.get()).then(|| menus::book_edge(Edge::End, state))}
+        {move || (begun.get() && !ends_in_a_scene.get()).then(|| menus::book_edge(Edge::End, state))}
     }
 }
 

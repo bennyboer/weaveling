@@ -4,6 +4,7 @@ use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
 use gloo_net::http::Request;
 use leptos::logging::warn;
 use unic_langid::LanguageIdentifier;
+use web_sys::RequestCache;
 
 use crate::speech::language::Language;
 
@@ -12,14 +13,21 @@ thread_local! {
         Default::default();
 }
 
+/// Words a message in a language.
+/// A message its catalogue does not have yet, as one fetched before the client was updated, is worded in English.
 pub fn worded(language: Language, message: &str, args: Option<&FluentArgs>) -> String {
+    match worded_in(language, message, args) {
+        Some(worded) => worded,
+        None if language != Language::English => worded(Language::English, message, args),
+        None => message.to_owned(),
+    }
+}
+
+fn worded_in(language: Language, message: &str, args: Option<&FluentArgs>) -> Option<String> {
     in_the_catalogue_of(language, |catalogue| {
-        let Some(pattern) = catalogue
+        let pattern = catalogue
             .get_message(message)
-            .and_then(|found| found.value())
-        else {
-            return message.to_owned();
-        };
+            .and_then(|found| found.value())?;
         let mut errors = Vec::new();
         let worded = catalogue
             .format_pattern(pattern, args, &mut errors)
@@ -28,7 +36,7 @@ pub fn worded(language: Language, message: &str, args: Option<&FluentArgs>) -> S
             warn!("{message} in {language:?} is worded with errors: {errors:?}");
         }
 
-        worded
+        Some(worded)
     })
 }
 
@@ -46,6 +54,7 @@ pub async fn fetched(language: Language) -> bool {
         return true;
     }
     let source = match Request::get(&format!("/catalogue/{}.ftl", language.tag()))
+        .cache(RequestCache::NoCache)
         .send()
         .await
     {
@@ -327,6 +336,21 @@ mod tests {
                 "{kind} is not worded"
             );
         }
+    }
+
+    #[test]
+    fn a_message_a_fetched_catalogue_lacks_is_worded_in_english() {
+        // given: a spanish catalogue from before a message was added
+        taken_in(
+            Language::Spanish,
+            "workspace-heading = Tus proyectos".to_owned(),
+        );
+
+        // when: the message it lacks is worded in spanish
+        let worded = worded(Language::Spanish, "masthead-views", None);
+
+        // then: it is worded in english rather than shown by its name
+        assert_eq!(worded, "Views");
     }
 
     #[test]

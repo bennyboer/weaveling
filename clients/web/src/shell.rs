@@ -33,6 +33,7 @@ pub enum Viewing {
     Outline,
     Ideas,
     Write,
+    Read,
 }
 
 impl Viewing {
@@ -42,6 +43,7 @@ impl Viewing {
             Self::Outline => "view-outline",
             Self::Ideas => "view-ideas",
             Self::Write => "view-write",
+            Self::Read => "view-read",
         }
     }
 
@@ -51,6 +53,7 @@ impl Viewing {
             Self::Outline => route::outline(project),
             Self::Ideas => route::pool(project),
             Self::Write => route::writing(project),
+            Self::Read => route::reading(project),
         }
     }
 }
@@ -175,6 +178,7 @@ fn whereabouts(
 
                 [
                     Viewing::Write,
+                    Viewing::Read,
                     Viewing::Board,
                     Viewing::Outline,
                     Viewing::Ideas,
@@ -277,7 +281,11 @@ fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
     let here = here == Some(view);
 
     view! {
-        <A href=at attr:class=move || if here { "view here" } else { "view" }>
+        <A
+            href=at
+            attr:class=move || if here { "view here" } else { "view" }
+            attr:data-label=speech::said(view.message())
+        >
             <span>{speech::said(view.message())}</span>
         </A>
     }

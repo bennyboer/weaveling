@@ -1,6 +1,7 @@
 masthead-all-projects = All projects
 masthead-views = Views
 view-write = Write
+view-read = Read
 view-board = Board
 view-outline = Outline
 view-ideas = Ideas

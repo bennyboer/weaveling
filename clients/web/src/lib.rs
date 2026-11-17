@@ -27,6 +27,7 @@ mod path;
 mod problem;
 mod projects;
 mod quiet_note;
+mod readings;
 mod refusals;
 mod route;
 mod scene_break;

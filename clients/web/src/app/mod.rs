@@ -11,6 +11,7 @@ mod members;
 mod missing;
 mod outline;
 mod project_page;
+mod read;
 mod trash;
 mod workspace;
 mod write;
@@ -29,7 +30,7 @@ use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::lazy::{
     BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
     InstanceRoute, InstanceStorageRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute,
-    OutlineRoute, ProjectRoute, SecurityRoute, StorageRoute, WriteRoute,
+    OutlineRoute, ProjectRoute, ReadRoute, SecurityRoute, StorageRoute, WriteRoute,
 };
 use crate::app::missing::MissingPage;
 use crate::app::trash::{TrashPage, TrashPageProps};
@@ -106,6 +107,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/projects/:project/members/invited") view={Lazy::<MembersInvitedRoute>::new()} />
             <Route path=path!("/projects/:project/write") view={Lazy::<WriteRoute>::new()} />
             <Route path=path!("/projects/:project/write/loose") view={Lazy::<LooseScenesRoute>::new()} />
+            <Route path=path!("/projects/:project/read") view={Lazy::<ReadRoute>::new()} />
             <Route path=path!("/projects/:project/ideas/:idea") view={Lazy::<IdeaRoute>::new()} />
         </Routes>
     }

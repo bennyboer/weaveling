@@ -1,0 +1,110 @@
+.reading-view {
+  width: 100%;
+  max-width: 42.5rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.reading-view .book {
+  padding: 3.5rem 0 50vh;
+  font: 300 1.25rem/1.6 var(--reading);
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--heading);
+    font-weight: 500;
+    scroll-margin-top: 1.5rem;
+  }
+
+  h1 {
+    margin: 0 0 2.5rem;
+    font-size: 2.6rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+
+  h2 {
+    margin: 3rem 0 1.5rem;
+    font-size: 2.1rem;
+    line-height: 1.15;
+  }
+
+  h3 {
+    margin: 2.5rem 0 1.25rem;
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  h4,
+  h5,
+  h6 {
+    margin: 2rem 0 1rem;
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+
+  p {
+    margin: 0 0 1.1rem;
+    text-wrap: pretty;
+  }
+
+  strong {
+    font-weight: 500;
+  }
+
+  blockquote {
+    margin: 0 0 1.1rem;
+    padding-left: 1.25rem;
+    border-left: 3px solid var(--line);
+    color: var(--muted);
+  }
+
+  pre {
+    margin: 0 0 1.1rem;
+    white-space: pre-wrap;
+  }
+
+  a {
+    color: var(--accent);
+  }
+
+  .scene-break {
+    display: flex;
+    justify-content: center;
+    padding: 1.9rem 0;
+  }
+
+  .figure {
+    width: 100%;
+    margin: 1.5rem auto;
+    text-align: center;
+
+    &.small {
+      width: 40%;
+    }
+
+    &.medium {
+      width: 70%;
+    }
+
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 0.5rem;
+      background: var(--line);
+    }
+
+    figcaption {
+      margin-top: 0.5rem;
+      color: var(--muted);
+      font-size: 0.85em;
+      font-style: italic;
+    }
+  }
+}

@@ -44,6 +44,10 @@ pub fn writing(project: &str) -> String {
     format!("/projects/{project}/write")
 }
 
+pub fn reading(project: &str) -> String {
+    format!("/projects/{project}/read")
+}
+
 pub fn loose_scenes(project: &str) -> String {
     format!("/projects/{project}/write/loose")
 }

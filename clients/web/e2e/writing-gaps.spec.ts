@@ -384,6 +384,28 @@ test("New section is offered only where nothing has to move", async ({
   await expect(menuItem(page, "New section")).toBeVisible();
 });
 
+test("an empty book offers no gap until its first section is named", async ({
+  page,
+}) => {
+  // given: an empty book open in the writing view
+  await aNewProject(page, "EmptyNoGaps");
+  await openTheWritingView(page);
+
+  // expect: no gap to add anything in around its first heading
+  await expect(flow(page).getByRole("heading")).toBeVisible();
+  await expect(bookStart(page)).toHaveCount(0);
+  await expect(bookEnd(page)).toHaveCount(0);
+
+  // when: its first section is named
+  await flow(page).getByRole("heading").click();
+  await page.keyboard.type("Part One");
+  await expect.poll(() => savedTitles(page)).toEqual(["Part One"]);
+
+  // then: the book's edges offer to add a section
+  await expect(bookStart(page)).toHaveCount(1);
+  await expect(bookEnd(page)).toHaveCount(1);
+});
+
 test("before the first section, New section begins the book", async ({
   page,
 }) => {

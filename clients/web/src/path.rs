@@ -145,6 +145,7 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
                     view("view-write", route::writing(project)),
                     said("writing-side-loose", None),
                 ],
+                ["read"] => vec![named, said("view-read", None)],
                 ["board"] => vec![named, said("view-board", None)],
                 ["outline"] => vec![named, said("view-outline", None)],
                 ["ideas"] => vec![named, said("view-ideas", None)],
@@ -216,6 +217,19 @@ mod tests {
                 label: Label::Said("view-board"),
                 leads_to: None,
             }
+        );
+    }
+
+    #[test]
+    fn the_reading_view_is_named_under_its_project() {
+        // expect: the project, then the reading view as where one is
+        assert_eq!(
+            labels("/projects/the-loom-project_1/read"),
+            vec![
+                Label::Home,
+                Label::Project("the-loom-project_1".to_owned()),
+                Label::Said("view-read"),
+            ]
         );
     }
 

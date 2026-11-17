@@ -66,6 +66,7 @@ test.describe("a browser asking for German", () => {
     const views = page.getByRole("navigation", { name: "Ansichten" });
     await expect(views.getByRole("link")).toHaveText([
       "Schreiben",
+      "Lesen",
       "Pinnwand",
       "Gliederung",
       "Ideen",
