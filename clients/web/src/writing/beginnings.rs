@@ -10,6 +10,7 @@ use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 use crate::writing::scene_copies::SceneCopies;
 use crate::writing::structure::Structure;
+use crate::writing::viewport::Viewport;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pending {
@@ -47,6 +48,7 @@ pub struct Carried {
 pub struct Beginnings {
     structure: Structure,
     scenes: SceneCopies,
+    viewport: Viewport,
     problems: Problems,
     pending: RwSignal<Option<Pending>>,
     beginning_section: StoredValue<bool>,
@@ -60,10 +62,16 @@ pub struct Beginnings {
 }
 
 impl Beginnings {
-    pub fn of(structure: Structure, scenes: SceneCopies, problems: Problems) -> Self {
+    pub fn of(
+        structure: Structure,
+        scenes: SceneCopies,
+        viewport: Viewport,
+        problems: Problems,
+    ) -> Self {
         Self {
             structure,
             scenes,
+            viewport,
             problems,
             pending: RwSignal::new(None),
             beginning_section: StoredValue::new(false),
@@ -225,6 +233,7 @@ impl Beginnings {
                 .update_value(|opened| _ = opened.insert(made.id.clone(), section.clone()));
             let scene = made.id.clone();
             self.scenes.hold(made);
+            self.viewport.bring_near(scene.clone());
 
             let Err(failure) = self
                 .structure
@@ -326,6 +335,10 @@ impl Beginnings {
     }
 
     pub fn hands_over(self, section: &SectionId) -> bool {
-        self.opening.with(|opening| opening.contains(section))
+        let pending_here = self.pending.with(|pending| {
+            matches!(pending, Some(Pending::Scene { section: held, .. }) if held == section)
+        });
+
+        !pending_here && self.opening.with(|opening| opening.contains(section))
     }
 }

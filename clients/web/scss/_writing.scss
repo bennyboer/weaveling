@@ -97,6 +97,7 @@
 
   .opening-line {
     position: relative;
+    margin-bottom: 1.1rem;
   }
 
   .opening-measure {
@@ -259,62 +260,44 @@
   }
 
 
-  .between-scenes {
-    margin: 0;
-    border: none;
-    border-top: 1px solid var(--line);
-  }
-
   .insertion {
+    --reach-margin: 16rem;
     position: relative;
   }
 
   .insertion.below-a-scene {
+    padding: calc(1.9rem + 6.3px) 0;
+  }
+
+  .pending-gap {
+    display: flex;
+    justify-content: center;
     padding: 1.9rem 0;
   }
 
   .scene-slot:last-child .insertion.below-a-scene {
     padding: 0;
-
-    .between-scenes {
-      display: none;
-    }
   }
 
   .insertion:has(.menu) {
     z-index: 10;
   }
 
-  .insertion:has(.reach:hover, [aria-expanded="true"]) .between-scenes {
-    visibility: hidden;
-  }
-
   .reach {
     position: absolute;
-    inset: 0 0 0 -16rem;
-
-    &::after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      left: 16rem;
-      right: 0;
-      border-top: 1px solid var(--accent);
-      opacity: 0;
-      transition: opacity 120ms;
-      pointer-events: none;
-    }
-
-    &:hover::after,
-    &:has([aria-expanded="true"])::after {
-      opacity: 0.7;
-    }
+    inset: 0 0 0 calc(var(--reach-margin) * -1);
 
     .margin-actions {
       position: absolute;
       top: 50%;
-      left: 13rem;
-      translate: 0 -50%;
+      left: calc(var(--reach-margin) + (100% - var(--reach-margin)) / 2);
+      translate: -50% -50%;
+    }
+
+    .menu {
+      right: auto;
+      left: 50%;
+      translate: -50% 0;
     }
   }
 
@@ -343,25 +326,8 @@
   }
 
   @media (max-width: 72rem) {
-    .reach {
-      left: 0;
-
-      &::after {
-        left: 2.5rem;
-      }
-
-      .margin-actions {
-        left: 0;
-      }
-
-      .menu-button {
-        opacity: 0;
-      }
-
-      &:hover .menu-button,
-      .menu-button[aria-expanded="true"] {
-        opacity: 1;
-      }
+    .insertion {
+      --reach-margin: 0rem;
     }
 
     .scene-margin {
@@ -628,15 +594,6 @@ body:has(.alarm) .status-note {
 
 .writing .scene-slot.carried {
   opacity: 0.4;
-}
-
-.writing .insertion.landing .reach::after {
-  border-top-width: 2px;
-  opacity: 1;
-}
-
-.writing .insertion.landing .between-scenes {
-  visibility: hidden;
 }
 
 body:has(.writing .scene-slot.carried) {

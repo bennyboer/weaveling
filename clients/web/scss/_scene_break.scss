@@ -1,0 +1,135 @@
+$diamonds: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48.2 12.6' fill='none' stroke='black'%3E%3Cpolygon points='0.5,6.3 4.5,2.3 8.5,6.3 4.5,10.3'/%3E%3Cpolygon points='8.5,6.3 13.4,1.4 18.3,6.3 13.4,11.2'/%3E%3Cpolygon points='18.3,6.3 24.1,0.5 29.9,6.3 24.1,12.1'/%3E%3Cpolygon points='29.9,6.3 34.8,1.4 39.7,6.3 34.8,11.2'/%3E%3Cpolygon points='39.7,6.3 43.7,2.3 47.7,6.3 43.7,10.3'/%3E%3C/svg%3E";
+$springing: cubic-bezier(0.3, 0.7, 0.2, 1.15);
+
+.ProseMirror hr {
+  height: 12.6px;
+  margin: 1.9rem 0;
+  border: none;
+  background-color: var(--muted);
+  mask: url($diamonds) center / 48.2px 12.6px no-repeat;
+}
+
+.diamonds {
+  display: block;
+  overflow: visible;
+  color: var(--muted);
+
+  .diamond {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      translate 200ms $springing,
+      scale 200ms $springing;
+  }
+
+  .plus {
+    opacity: 0;
+    scale: 0.3;
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      opacity 160ms ease,
+      scale 200ms cubic-bezier(0.3, 0.7, 0.2, 1.4);
+  }
+}
+
+.writing :where(.insertion) {
+  --aside: 0px;
+
+  .menu-button.scene-break {
+    width: auto;
+    height: auto;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    color: var(--muted);
+    opacity: 1;
+    transition:
+      color 200ms ease,
+      opacity 200ms ease;
+
+    svg {
+      width: auto;
+      height: auto;
+      color: inherit;
+    }
+  }
+
+  .rule {
+    position: absolute;
+    top: 50%;
+    height: 1px;
+    background: var(--accent);
+    opacity: 0.55;
+    scale: 0 1;
+    transition: scale 280ms ease;
+    pointer-events: none;
+  }
+
+  .rule.before {
+    left: var(--reach-margin);
+    right: calc((100% - var(--reach-margin)) / 2 + 24.1px + var(--aside));
+    transform-origin: right;
+  }
+
+  .rule.after {
+    left: calc(var(--reach-margin) + (100% - var(--reach-margin)) / 2 + 24.1px + var(--aside));
+    right: 0;
+    transform-origin: left;
+  }
+}
+
+.writing :where(.insertion:not(.below-a-scene), .scene-slot:last-child .insertion) .menu-button.scene-break {
+  opacity: 0;
+}
+
+.writing .insertion.landing {
+  .menu-button.scene-break {
+    opacity: 1;
+    color: var(--accent);
+  }
+
+  .rule {
+    opacity: 1;
+    scale: 1 1;
+  }
+}
+
+.writing .insertion:is(:has(.reach:hover), :has(.scene-break:focus-visible), :has(.scene-break[aria-expanded="true"])) {
+  --aside: 5.8px;
+
+  .menu-button.scene-break {
+    opacity: 1;
+    color: var(--accent);
+  }
+
+  .plus {
+    opacity: 1;
+    scale: 1;
+  }
+
+  .rule {
+    scale: 1 1;
+  }
+
+  .diamond.leftmost,
+  .diamond.left {
+    translate: calc(var(--aside) * -1) 0;
+  }
+
+  .diamond.right,
+  .diamond.rightmost {
+    translate: var(--aside) 0;
+  }
+
+  .diamond.middle {
+    scale: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diamonds .diamond,
+  .diamonds .plus,
+  .writing .insertion .rule {
+    transition: none;
+  }
+}

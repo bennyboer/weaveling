@@ -87,7 +87,7 @@ impl WriteViewState {
             structure,
             walk,
             editors,
-            beginnings: Beginnings::of(structure, scenes, problems),
+            beginnings: Beginnings::of(structure, scenes, viewport, problems),
             labels: Labels::of(scenes),
             margin: Margin::closed(),
             saving,

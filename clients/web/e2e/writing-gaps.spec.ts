@@ -119,13 +119,13 @@ test("a gap's + shows only when the pointer comes near the gap", async ({
   const scenes = await aBookWithScenes(page, { "Part One": 2 });
   const [first, second] = scenes["Part One"];
   await openTheWritingView(page);
-  const plus = addHere(gapBelow(page, first));
+  const plus = addHere(gapBelow(page, first)).locator(".plus");
 
   // when: the pointer is on a scene
   await scene(page, first).hover();
   // then: no gap's + shows
   await expect(plus).toHaveCSS("opacity", "0");
-  await expect(addHere(gapBelow(page, second))).toHaveCSS("opacity", "0");
+  await expect(addHere(gapBelow(page, second)).locator(".plus")).toHaveCSS("opacity", "0");
 
   // when: the pointer comes near a gap
   await gapBelow(page, first).locator(".reach").hover();

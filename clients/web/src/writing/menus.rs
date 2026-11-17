@@ -8,6 +8,7 @@ use web_sys::{Element, HtmlElement, KeyboardEvent};
 use crate::icons;
 use crate::icons::Icon;
 use crate::outline::model::SectionId;
+use crate::scene_break;
 use crate::scenes::model::SceneId;
 use crate::speech;
 use crate::writing::bringing_back::Landing;
@@ -51,7 +52,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
         },
         margin_menu(
             "scene-actions",
-            Icon::More,
+            Face::Icon(Icon::More),
             (marked, Menu::Changing),
             state,
             move || {
@@ -97,7 +98,7 @@ pub fn section_margin(
         .class(move || format!("heading-margin level-{}", heading::level_of(depth.get())))
         .child((margin_menu(
             "section-actions",
-            Icon::More,
+            Face::Icon(Icon::More),
             (marked, Menu::Changing),
             state,
             move || {
@@ -151,11 +152,11 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
         .attr("data-section", section)
         .attr("data-after", after)
         .attr("data-first-in", first_in)
-        .child((
-            below_a_scene.then(|| html::hr().class("between-scenes")),
-            html::div().class("reach").child(margin_menu(
+        .child((html::div().class("reach").child((
+            rules(),
+            margin_menu(
                 "add-here",
-                Icon::Plus,
+                Face::SceneBreak,
                 (marked, Menu::Adding),
                 state,
                 move || {
@@ -188,8 +189,8 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                     )
                         .into_any()
                 },
-            )),
-        ))
+            ),
+        )),))
 }
 
 pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
@@ -198,21 +199,24 @@ pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
             Edge::Start => "insertion book-start",
             Edge::End => "insertion book-end",
         })
-        .child(html::div().class("reach").child(margin_menu(
-            "add-here",
-            Icon::Plus,
-            (Marked::Edge(edge), Menu::Adding),
-            state,
-            move || {
-                item("menu-new-section", false, move || {
-                    state.margin.close();
-                    match edge {
-                        Edge::Start => state.beginnings.new_section_at(None, None),
-                        Edge::End => new_section_at_the_end(state),
-                    }
-                })
-                .into_any()
-            },
+        .child(html::div().class("reach").child((
+            rules(),
+            margin_menu(
+                "add-here",
+                Face::SceneBreak,
+                (Marked::Edge(edge), Menu::Adding),
+                state,
+                move || {
+                    item("menu-new-section", false, move || {
+                        state.margin.close();
+                        match edge {
+                            Edge::Start => state.beginnings.new_section_at(None, None),
+                            Edge::End => new_section_at_the_end(state),
+                        }
+                    })
+                    .into_any()
+                },
+            ),
         )))
 }
 
@@ -258,9 +262,21 @@ fn begin_scene_at(landing: &Landing, state: WriteViewState) {
 
 const OPENS_THE_MENU: &str = "Shift+F10";
 
+enum Face {
+    Icon(Icon),
+    SceneBreak,
+}
+
+fn rules() -> impl IntoView {
+    (
+        html::span().class("rule before"),
+        html::span().class("rule after"),
+    )
+}
+
 fn margin_menu(
     named: &'static str,
-    icon: Icon,
+    face: Face,
     (marked, menu_kind): (Marked, Menu),
     state: WriteViewState,
     items: impl Fn() -> AnyView + Send + Sync + 'static,
@@ -287,7 +303,8 @@ fn margin_menu(
         .child((
             html::button()
                 .class("menu-button")
-                .class(("dotted", matches!(icon, Icon::More)))
+                .class(("dotted", matches!(face, Face::Icon(Icon::More))))
+                .class(("scene-break", matches!(face, Face::SceneBreak)))
                 .attr("aria-label", speech::said(named))
                 .attr("aria-keyshortcuts", opened_by)
                 .attr("title", move || {
@@ -305,7 +322,10 @@ fn margin_menu(
                 .on(ev::click, move |_| {
                     state.margin.toggle(marked.clone(), menu_kind)
                 })
-                .child(icons::mark(icon)),
+                .child(match face {
+                    Face::Icon(icon) => icons::mark(icon).into_any(),
+                    Face::SceneBreak => scene_break::diamonds().into_any(),
+                }),
             move || {
                 open.get().then(|| {
                     html::div()

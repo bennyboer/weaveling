@@ -11,6 +11,7 @@ use crate::outline::model::{Section, SectionId};
 use crate::problem;
 use crate::projects::open_project::OpenProject;
 use crate::route;
+use crate::scene_break;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
 use crate::speech;
@@ -686,9 +687,14 @@ fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> i
     });
 
     move || {
-        wanted
-            .get()
-            .then(|| opening::pending_scene(section.clone(), scene.clone(), state))
+        wanted.get().then(|| {
+            (
+                html::div()
+                    .class("pending-gap")
+                    .child(scene_break::diamonds()),
+                opening::pending_scene(section.clone(), scene.clone(), state),
+            )
+        })
     }
 }
 

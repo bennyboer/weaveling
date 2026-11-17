@@ -15,10 +15,11 @@ async function aFrame(page: Page) {
 
 const laidOut = (page: Page) =>
   flow(page).evaluate((book) =>
-    [...book.querySelectorAll("[role=heading], hr.between-scenes, .scene")]
-      .filter(
-        (part) => !part.matches("hr") || (part as HTMLElement).offsetParent,
-      )
+    [...book.querySelectorAll("[role=heading], .between-scenes, .scene")]
+      .filter((part) => {
+        const shown = part.closest(".menu-button");
+        return !part.matches(".between-scenes") || !shown || getComputedStyle(shown).opacity !== "0";
+      })
       .map((part) =>
         part.matches("[role=heading]")
           ? `heading ${part.textContent}`

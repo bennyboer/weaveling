@@ -29,6 +29,7 @@ mod projects;
 mod quiet_note;
 mod refusals;
 mod route;
+mod scene_break;
 mod scenes;
 mod setup;
 mod shell;
