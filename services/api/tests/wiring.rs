@@ -1392,6 +1392,23 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         StatusCode::OK,
         "its owner reads it once the members have heard of her"
     );
+    let book = format!(
+        "/api/readings/live?project={}",
+        started["id"].as_str().expect("an id")
+    );
+    let mut reading = StatusCode::NOT_FOUND;
+    for _ in 0..1_000 {
+        reading = server.get(&book).await.status_code();
+        if reading == StatusCode::OK {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        reading,
+        StatusCode::OK,
+        "its owner reads its book once the readings have heard of her"
+    );
 
     // when: another account signs in
     server
@@ -1432,6 +1449,8 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .json(&json!({ "project": project, "title": "Grace's idea" }))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+    // and: does not read its book
+    server.get(&book).await.assert_status(StatusCode::NOT_FOUND);
     // and: neither follows the project nor its ideas
     let mut socket = server
         .get_websocket("/api/live")

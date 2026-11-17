@@ -6665,11 +6665,28 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "weaveling-access",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-transacting",
+]
+
+[[package]]
+name = "weaveling-readings-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "weaveling-access",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-inbox",
+ "weaveling-members-contract",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-readings-core",
  "weaveling-transacting",
 ]
 
@@ -6698,10 +6715,16 @@ dependencies = [
  "weaveling-access",
  "weaveling-authorizing",
  "weaveling-clock",
+ "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
+ "weaveling-members-contract",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
  "weaveling-readings-catalog",
  "weaveling-readings-contract",
  "weaveling-readings-core",
+ "weaveling-readings-messaging",
  "weaveling-readings-rest",
  "weaveling-transacting",
 ]
@@ -6711,11 +6734,19 @@ name = "weaveling-readings-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "time",
+ "tokio",
  "weaveling-access",
  "weaveling-authorizing",
+ "weaveling-chores",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-inbox",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-readings-catalog",
  "weaveling-readings-core",
+ "weaveling-readings-messaging",
  "weaveling-readings-rest",
  "weaveling-transacting",
  "weaveling-wiring",

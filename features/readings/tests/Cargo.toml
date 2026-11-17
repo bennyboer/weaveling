@@ -13,10 +13,19 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventpublishing = { version = "0.1.0", path = "../../../libraries/eventpublishing", package = "weaveling-eventpublishing", features = ["testing"] }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 readings-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-readings-catalog" }
 readings-contract = { version = "0.1.0", path = "../contract", package = "weaveling-readings-contract" }
 readings-core = { version = "0.1.0", path = "../core", package = "weaveling-readings-core" }
+readings-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-readings-messaging" }
 readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
+members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

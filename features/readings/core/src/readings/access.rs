@@ -1,10 +1,28 @@
 use ::access::{HearsAccess, Role};
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
+use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::error::ReadingsError;
 use crate::readings::ReadingsCore;
+
+impl ReadingsCore {
+    /// Forgets, in batches, the records of accounts that left a project long enough ago
+    /// that no message about them can still arrive.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ReadingsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok(self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?)
+        })
+    }
+}
 
 #[async_trait]
 impl HearsAccess for ReadingsCore {
