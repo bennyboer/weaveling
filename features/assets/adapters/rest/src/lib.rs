@@ -1,12 +1,13 @@
+mod transformer;
+
 use assets_contract::{
-    AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, AssetUseDTO, HolderDTO,
-    InstanceStorageDTO, OwnerDTO, ProjectAssetDTO, ProjectAssetsDTO, ProjectOwnerDTO,
-    ProjectStorageDTO, ProjectsStorageDTO, UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO,
-    asset_type, bound, purpose, refused, sort,
+    AccountLimitRequest, AccountStorageDTO, AccountsStorageDTO, AssetDTO, InstanceStorageDTO,
+    ProjectAssetDTO, ProjectAssetsDTO, ProjectOwnerDTO, ProjectStorageDTO, ProjectsStorageDTO,
+    UploadDTO, UploadLimitsDTO, UploadsDTO, UsageDTO, asset_type, bound, refused, sort,
 };
 use assets_core::{
-    Asset, AssetError, AssetType, AssetUse, AssetsCore, AssetsError, Bound, HeldMark, Holder,
-    ImageRefused, Limit, Listed, Owner, Purpose, Sorted, UploadMark, UploadsSorted,
+    Asset, AssetError, AssetType, AssetUse, AssetsCore, AssetsError, Bound, HeldMark, ImageRefused,
+    Limit, Listed, Sorted, UploadMark, UploadsSorted,
 };
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
@@ -441,7 +442,7 @@ async fn uploads(
             .into_iter()
             .map(|own| UploadDTO {
                 id: own.upload.id.to_string(),
-                owner: owner_told(&own.upload.owner),
+                owner: transformer::to_owner_dto(&own.upload.owner),
                 project_name: own.upload.project_name,
                 content_type: own.upload.format.content_type().to_owned(),
                 width: own.upload.width,
@@ -449,7 +450,7 @@ async fn uploads(
                 total_size: own.upload.total_size,
                 uploaded_at: clock::text::serialize(own.upload.uploaded_at),
                 deletable: own.deletable,
-                uses: own.uses.iter().map(use_told).collect(),
+                uses: own.uses.iter().map(transformer::to_use_dto).collect(),
             })
             .collect(),
     }))
@@ -463,20 +464,6 @@ async fn asset(
     let (standing, uses) = assets.asset(&id, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &id, &standing, &uses))
-}
-
-fn use_told(used: &AssetUse) -> AssetUseDTO {
-    AssetUseDTO {
-        purpose: match used.purpose {
-            Purpose::AccountPicture => purpose::ACCOUNT_PICTURE,
-            Purpose::SceneImage => purpose::SCENE_IMAGE,
-        }
-        .to_owned(),
-        by: match &used.by {
-            Holder::Account(account) => HolderDTO::Account(account.to_string()),
-            Holder::Scene(scene) => HolderDTO::Scene(scene.to_string()),
-        },
-    }
 }
 
 async fn delete(
@@ -504,24 +491,17 @@ fn to_response(
         Json(AssetDTO {
             id: id.to_owned(),
             version: standing.version.count(),
-            owner: owner_told(asset.owner()),
+            owner: transformer::to_owner_dto(asset.owner()),
             content_type: image.format.content_type().to_owned(),
             width: image.width,
             height: image.height,
             widths: image.variants.clone(),
             original_size: image.original_size,
             total_size: asset.total_size(),
-            uses: uses.iter().map(use_told).collect(),
+            uses: uses.iter().map(transformer::to_use_dto).collect(),
         }),
     )
         .into_response()
-}
-
-fn owner_told(owner: &Owner) -> OwnerDTO {
-    match owner {
-        Owner::Project(project) => OwnerDTO::Project(project.to_string()),
-        Owner::Account(account) => OwnerDTO::Account(account.to_string()),
-    }
 }
 
 fn bound_told(told: Bound) -> &'static str {

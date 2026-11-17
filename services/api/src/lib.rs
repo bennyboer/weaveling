@@ -31,6 +31,7 @@ use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use notifications_wiring::NotificationsFeature;
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
+use readings_wiring::ReadingsFeature;
 use scenes_wiring::SceneFeature;
 use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
@@ -139,6 +140,7 @@ impl Adapters {
             wiring::assemble::<OutlineFeature>(&storage, &context).await?,
             wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
             wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
+            wiring::assemble::<ReadingsFeature>(&storage, &context).await?,
             assets_wiring::assembled_assets(&storage, &context, assets).await?,
         ];
         if let Some(members) = members {

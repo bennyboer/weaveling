@@ -1,0 +1,17 @@
+[package]
+name = "weaveling-readings-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sqlx = { workspace = true, optional = true }
+
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
+readings-core = { version = "0.1.0", path = "../core", package = "weaveling-readings-core" }
+readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
+
+[features]
+postgres = ["dep:sqlx", "wiring/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite"]

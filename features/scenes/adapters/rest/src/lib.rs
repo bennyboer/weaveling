@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -16,7 +18,7 @@ use eventsourcing::{Agent, Standing, Version};
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Teller, Topic};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
-    ScenePageDTO, SceneSummaryDTO, refused,
+    ScenePageDTO, refused,
 };
 use scenes_core::{
     CatalogError, InvalidSceneTitle, Page, ProjectLink, QuotationRestylingProgress,
@@ -119,7 +121,7 @@ impl TellingScenes {
                         .await
                         .ok()
                         .flatten()
-                        .map(|summary| to_summary_dto(&summary))
+                        .map(|summary| transformer::to_summary_dto(&summary))
                 })
                 .await;
         });
@@ -274,7 +276,11 @@ impl TellingRestylingTasks {
         transaction.after_commit(async move {
             teller
                 .tell_latest(RestylingChanges(project.clone()), project.as_str(), async {
-                    kept.progress(&project).await.ok().flatten().map(as_dto)
+                    kept.progress(&project)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(transformer::to_restyling_dto)
                 })
                 .await;
         });
@@ -337,15 +343,6 @@ impl QuotationRestylingTasks for TellingRestylingTasks {
     }
 }
 
-fn as_dto(progress: QuotationRestylingProgress) -> QuotationRestylingDTO {
-    QuotationRestylingDTO {
-        change: progress.change,
-        total: progress.total,
-        done: progress.done.min(progress.total),
-        finished: progress.finished,
-    }
-}
-
 async fn progress(
     State(scenes): State<ScenesCore>,
     Extension(agent): Extension<Agent>,
@@ -362,7 +359,7 @@ async fn progress(
             )
         })?;
 
-    Ok(Json(as_dto(progress)))
+    Ok(Json(transformer::to_restyling_dto(progress)))
 }
 
 pub const PAGE: usize = 1000;
@@ -389,17 +386,8 @@ async fn list(
         next: more
             .then(|| found.last().map(|last| last.id.to_string()))
             .flatten(),
-        scenes: found.iter().map(to_summary_dto).collect(),
+        scenes: found.iter().map(transformer::to_summary_dto).collect(),
     }))
-}
-
-fn to_summary_dto(summary: &SceneSummary) -> SceneSummaryDTO {
-    SceneSummaryDTO {
-        id: summary.id.to_string(),
-        project: summary.project.to_string(),
-        title: summary.title.to_string(),
-        opening: summary.opening.clone(),
-    }
 }
 
 async fn create(

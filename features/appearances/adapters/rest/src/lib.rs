@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::sync::Arc;
 
 use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
@@ -101,7 +103,7 @@ impl TellingAppearances {
                                 .await
                                 .ok()
                                 .map(|places| IdeaPlacesDTO {
-                                    places: places.iter().map(to_dto).collect(),
+                                    places: places.iter().map(transformer::to_dto).collect(),
                                 })
                         },
                     )
@@ -266,16 +268,5 @@ async fn places_of(
         beyond_reach => Problem::unexpected(beyond_reach),
     })?;
 
-    Ok(Json(places.iter().map(to_dto).collect()))
-}
-
-fn to_dto(place: &Place) -> PlaceDTO {
-    match place {
-        Place::Scene(scene) => PlaceDTO::Scene {
-            id: scene.to_string(),
-        },
-        Place::Section(section) => PlaceDTO::Section {
-            id: section.to_string(),
-        },
-    }
+    Ok(Json(places.iter().map(transformer::to_dto).collect()))
 }

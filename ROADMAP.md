@@ -1203,6 +1203,8 @@ In slices, in this order:
 - **Commenting on the live book makes a copy.** *Settled 2026-11-17.* Feedback is only ever given on a copy. A member who selects a passage of the live book, or asks to comment on a scene, a section or the whole book, is told that this makes a reading copy frozen at this moment, where the comment will be kept. The copy is of the whole book, and the member is then moved into it, so their next comments land in the same copy. Readers may therefore make copies too. If a scene changed between what the member saw and the copy, the copy is still made, and the member is told so and selects the passage again in the copy. That should be rare, since a scene's changes are told only after a short pause. A copy of the whole book is about 0.5 to 1 MB at 50,000 words. Should many copies of a barely changed book add up, the store can keep each scene's blocks once, by a hash of their content, without changing the model.
 - **Every copy is listed in every member's tray**, whoever made it, with a name made up for it (*Hedy's copy, 17 Nov*) that can be changed.
 - **A copy is open for a while, and expires later.** *Settled 2026-11-17.* These are two separate times, each set when the copy is made, and each may be unlimited. While a copy is **open**, its readers may read it and give feedback. Once it closes, nobody can give feedback on it any more, and those who came by a link can no longer read it either. The project's members still find it in their tray, marked as closed, until it expires. When it **expires**, it is deleted for good, with all its feedback. A copy cannot stay open beyond its expiry. By default a copy is open for 30 days and expires after 90, and a copy made by commenting on the live book gets these defaults without being asked. Both times are shown wherever the copy is, and both may later be moved further into the future.
+- **Feedback starts as a draft.** *Settled 2026-11-17.* A comment is first a draft that only whoever wrote it sees, and they submit their drafts together when they are ready, so nobody sees feedback still being written. Drafts are kept on the server, for members, guests and other accounts alike. A draft not submitted before its copy closes is lost, and the list of copies says where someone still has drafts.
+- **The internal view's layout.** *Settled 2026-11-17, from the UI drafts.* The contents rail is on the left, as in the writing view, and lists the sections only; in a copy it counts the comments not done in each section. *Changed 2026-11-17 by the user:* the reading view names no scenes, neither in the rail nor in the text; consecutive scenes are just that, set apart by a scene break. *Chosen 2026-11-17 by the user, from a preview:* five diamonds tip to tip, outlined, rising to the middle, drawn as an inline SVG in `currentColor`, coloured `--muted`. The writing view draws the same between its scenes in place of its thin line (`.between-scenes`), which was never a conscious choice, and a `Rule` inside a scene looks the same, as both are a scene break to the reader. The line that shows where a scene can be added in the writing view stays a line. Which copy is read, or the live book, is chosen with a switcher above the text, which lists every copy with its dates. So the internal and the external view are laid out alike: contents, text, feedback.
 - **Renaming, extending and deleting a copy.** *Settled 2026-11-17.* Whoever made a copy may rename it, extend its times or delete it, and an owner may do so for any copy.
 
 **The questions from the notes, and what is proposed:**
@@ -1220,22 +1222,41 @@ In slices, in this order:
 - **The printed book with pages** is a project of its own (page breaks, typography, perhaps hyphenation), so it comes last.
 
 **In slices, in this order:**
-1. The internal reading view, looking like the writing view, first of the live book, then of copies. A new feature, so cut by layer, the live book first since it needs no store:
-   1. the `ReadingCopy` model with its tests;
-   2. turning the outline and the scenes' documents into it;
-   3. REST and wiring: every member reads the live book;
-   4. the client's reading view, drawing it;
-   5. the live book following the authors' changes;
-   6. the store port, the memory adapter and the suite;
-   7. the PostgreSQL and SQLite adapters;
-   8. making, renaming, deleting and expiring copies, over REST;
-   9. the tray of copies in the client.
+1. The internal reading view, looking like the writing view, first of the live book, then of copies. A new feature, so cut by layer, the live book first since it needs no store. *Planned 2026-11-17:* a copy is two things, the `ReadingCopy` aggregate (name, maker, when made, its `Extent`, open until, deleted on; events `Made`, `Renamed`, `Extended`, `Deleted`) and its `Contents`, kept apart under the copy's id and never changed. `Contents` is the book as parts (a section with its depth and title, or a scene with the id it came from and its blocks; *no scene titles, decided 2026-11-17 with the user:* they are often working titles not meant for readers, and the reading view shows only the sections' titles), blocks as the editor's nodes (paragraph, heading, quote, list, code, rule, figure), text as runs with their marks; the `quote` and `speech` marks are left out. Feedback will point into it by a part's index and character offsets in the scene's text. What was shared is not kept: the contents say it.
+   *Top down, decided 2026-11-17 with the user:* the client first, against a service whose methods are stubs marked `// TODO`, then one layer further down at a time.
+   1. `ContentsDTO` in `readings/contract`, what the server sends and the client reads (*core type plus DTO, decided 2026-11-17:* the core keeps its own `Contents`; `Extent` comes with copies);
+   2. the live book's REST route and wiring, onto a service method that answers a fixed sample book, with the core's `Contents` and its turning into the DTO;
+   3. the client's reading view: the Read view, the contents rail, the sample book drawn, with a browser test;
+   4. the service for real: members only, the book put together from the outline and the scenes behind ports, tested against fakes;
+   5. one scene's document turned into blocks, with tests on documents built for them;
+   6. the ports' adapters onto the outline and the scenes;
+   7. the live book following the authors' changes;
+   8. copies in the client, the switcher, a copy drawn, the share dialog, onto REST routes and service methods that are stubs;
+   9. the `ReadingCopy` aggregate with its rules and tests, and the service using it;
+   10. the contents' store port, the memory adapter and the suite;
+   11. the PostgreSQL and SQLite adapters, and the sweep that deletes expired copies.
 2. Feedback in it from members, shown to the authors in the writing view, on the scene it came from.
 3. Links to a copy and the external view: a guest's session, an account that is not a member, and their feedback.
 4. Setting up the reading, and where a reader left off.
 5. The printed book with pages.
 
 **Done when:** a reader member reads the book and comments on a passage, an author shares two sections with someone without an account who comments on them, and the authors find both comments on their scenes in the writing view, each shown at its passage in the reading copy it was given on.
+
+### Milestone 19 — Notes in the margin
+
+*Noted 2026-11-17 by the user, while drafting M18's reading view; comes after M18.* A feature of its own, `notes`, apart from reading copies: notes are about the live text, feedback about a frozen copy. The two meet only in the writing view's margin and inspector, where the client shows both.
+
+**Goal:** members keep notes on the book where they belong, on a passage, a scene or a section, and talk them over.
+
+**Decided 2026-11-17 with the user:**
+- **A note on a passage is anchored by a mark in the scene's document.** The text carries a `note` mark holding only the note's id; everything else about the note lives in `notes`. So the anchor moves with the text through every edit, undo and concurrent change. If the passage is deleted, the mark goes with it, and the note says its passage is gone. The conversion into a reading copy drops these marks.
+- **A note may also be on a whole scene or a whole section**, which needs no mark, only the id of what it is about.
+- **Shared or private, chosen by whoever writes it.** A shared note is seen by everyone in the project, and anyone who sees it may reply. A private note is seen only by whoever wrote it, who may still add replies of their own, as a thread to themselves. A private note's mark sits in the shared document but carries only an id, and the client draws only the marks of notes the member may see.
+- **Feedback can become a note.** On a reader's comment in the writing view, *Keep as note* makes a note of it on the live scene it came from: on the passage, if the passage can still be found there, else on the whole scene.
+
+- **Notes belong to the writing view.** Readers never see them, not in the reading view either.
+- **Copying a passage with a note asks.** Whoever pastes a passage that carries a note mark is asked what should become of the note.
+- **A note can be marked done, or dismissed.**
 
 ### Later — polish and what can wait
 
@@ -1260,6 +1281,8 @@ In slices, in this order:
 - **No case on the moment between a read and a command.** The operator removing TOTP (13e-3, L10) and removing a key both hold the account to the version read, but no case stands in that moment, needing a store that pauses there; built once, it covers both.
 
 **A tab open across a deploy loads a view of another build.** *Noted 2026-11-10, the user finding a blank Security page after the development server rebuilt the client under an open tab:* the split files keep their names from build to build (`chunk_14.wasm`, `split___board_route_view_….wasm`, the number naming the route, not the build), so a tab still running the old main module that opens a lazy route for the first time fetches the new build's chunk, and wasm-split's canary refuses it (`LinkError`, "a split module that does not belong to the same compilation unit"): the page stays blank, with nothing said, until it is reloaded. In production this befalls anyone with a tab open while a new version is deployed, opening Security, a board, the outline, the ideas or the instance's pages for the first time in that tab; a view the tab loaded already keeps working. *Chosen fix, when taken up:* the client catches a split chunk that fails to load and reloads the page once, or says "Weaveling was updated" with a button to reload, whatever the file names; versioned file names would only help with the previous build's files kept on the server after a deploy, a change to the build and the hosting both. Whether a browser's cache hides it meanwhile depends on the headers `/pkg` is served with, not checked.
+
+**A scene break inside a scene, in the editor.** *Noted 2026-11-17 by the user, during M18 slice 1:* the editor's schema holds `horizontal_rule` from `prosemirror-schema-basic`, and a reading copy keeps it as `Rule`, but the writing view offers no way to add one; it only arrives by pasting an `<hr>`. Authors use such breaks (`* * *`) within a scene, so the editor should offer it: a button in the toolbar, an input rule (`***` or `---` on an empty line), and its look in the writing view and the reading view alike.
 
 **Several boards a project.** *Noted 2026-11-09, the user having reconsidered the one board a project has:* a project holds more than one board; on the left of the board view a tray of its own lists them, beside the ideas tray that is already there, and choosing one shows it. Not urgent; to be planned with the user when taken up: making, naming, ordering and removing boards, what a new project starts with, what the view opens on and remembers, a card's place when its board goes, how the outline and the writing view refer to a board if they do, and the boards' live topic and catalog.
 

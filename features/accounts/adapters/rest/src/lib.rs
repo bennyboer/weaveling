@@ -1,18 +1,18 @@
+mod transformer;
+
 use accounts_contract::{
-    AccountPageDTO, AccountSummaryDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest,
-    DeclineInvitationRequest, DeletionDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest,
-    KeyDTO, LockDTO, LockRequest, NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest,
-    PasswordRequest, PasswordResetRequest, PictureRequest, PreferredWayRequest, PromoteKeyRequest,
-    RecoveryCodesDTO, RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest,
-    SettingUpTotpDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO,
-    TakeUpInvitationRequest, TotpCodeRequest, VerifyEmailRequest, WaysInDTO, deletion_asked_by,
-    key_role, lock_kind, refused, second_step_way, stage,
+    AccountPageDTO, AddKeyRequest, AddedKeyDTO, BecomeOperatorRequest, DeclineInvitationRequest,
+    DeletionDTO, KeyAnswerRequest, KeyChallengeDTO, KeyChallengeRequest, KeyDTO, LockRequest,
+    NewPasswordRequest, PasskeyChallengeDTO, PasskeySignInRequest, PasswordRequest,
+    PasswordResetRequest, PictureRequest, PreferredWayRequest, PromoteKeyRequest, RecoveryCodesDTO,
+    RenameKeyRequest, SESSION_COOKIE, SecondFactorDTO, SendCodeRequest, SettingUpTotpDTO,
+    SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    TotpCodeRequest, VerifyEmailRequest, WaysInDTO, key_role, refused, second_step_way, stage,
 };
 use accounts_core::{
-    AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, AddedKey,
-    DeletionAskedBy, InvalidAccountName, InvalidEmailAddress, InvalidKeyName, InvalidLockReason,
-    InvalidPassword, Key, KeyId, KeyRole, LockKind, PendingDeletion, PreferredWay, SecondStepWay,
-    Session, SessionToken, SignedIn, SigningIn, Stage,
+    AccountError, AccountId, AccountsCore, AccountsError, AddedKey, InvalidAccountName,
+    InvalidEmailAddress, InvalidKeyName, InvalidLockReason, InvalidPassword, KeyId, KeyRole,
+    PreferredWay, SecondStepWay, Session, SessionToken, SignedIn, SigningIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -425,21 +425,10 @@ async fn list_keys(
     let keys = accounts.keys_of(&account).await.map_err(problem_of)?;
 
     Ok(Json(
-        keys.iter().map(|(key, held)| key_told(key, held)).collect(),
+        keys.iter()
+            .map(|(key, held)| transformer::to_key_dto(key, held))
+            .collect(),
     ))
-}
-
-fn key_told(key: &KeyId, held: &Key) -> KeyDTO {
-    KeyDTO {
-        key: key.to_string(),
-        name: held.name.to_string(),
-        role: match held.role {
-            KeyRole::Primary => key_role::PRIMARY,
-            KeyRole::SecondFactor => key_role::SECOND_FACTOR,
-        }
-        .to_owned(),
-        since: text::serialize(held.since),
-    }
 }
 
 async fn ways_in(
@@ -457,7 +446,7 @@ async fn ways_in(
         keys: ways
             .keys
             .iter()
-            .map(|(key, held)| key_told(key, held))
+            .map(|(key, held)| transformer::to_key_dto(key, held))
             .collect(),
         totp_since: ways.totp.map(|totp| text::serialize(totp.since)),
         recovery_codes_left: ways.recovery_codes_left,
@@ -765,7 +754,7 @@ async fn list_accounts(
         next: more
             .then(|| found.last().map(|last| last.id.to_string()))
             .flatten(),
-        accounts: found.iter().map(to_summary_dto).collect(),
+        accounts: found.iter().map(transformer::to_summary_dto).collect(),
     }))
 }
 
@@ -842,7 +831,7 @@ async fn mark_for_deletion(
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(deletion_told(pending)))
+    Ok(Json(transformer::to_deletion_dto(pending)))
 }
 
 async fn keep_account_of(
@@ -869,32 +858,6 @@ fn key_named(given: &str) -> Result<KeyId, Problem> {
     given
         .parse()
         .map_err(|_| Problem::rejected(refused::KEY_ID_INVALID, "this is no key's id"))
-}
-
-fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
-    AccountSummaryDTO {
-        deletion: summary.deletion.map(deletion_told),
-        second_factor: summary.second_factor,
-        id: summary.id.to_string(),
-        version: summary.version.count(),
-        name: summary.name.to_string(),
-        email: summary.email.to_string(),
-        verified: summary.verified,
-        operator: summary.operator,
-        signed_up_at: text::serialize(summary.signed_up_at),
-        locks: summary
-            .locks
-            .iter()
-            .map(|(kind, lock)| LockDTO {
-                kind: match kind {
-                    LockKind::Operator => lock_kind::OPERATOR,
-                }
-                .to_owned(),
-                reason: lock.reason.to_string(),
-                since: text::serialize(lock.since),
-            })
-            .collect(),
-    }
 }
 
 async fn current(
@@ -942,7 +905,10 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
         }
         .to_owned(),
         operator: signed_in.account.is_operator(),
-        deletion: signed_in.account.pending_deletion().map(deletion_told),
+        deletion: signed_in
+            .account
+            .pending_deletion()
+            .map(transformer::to_deletion_dto),
         picture: signed_in.account.picture().map(ToString::to_string),
         second_factor: signed_in.account.second_factor().zip(asked_way).map(
             |(factor, asked_way)| SecondFactorDTO {
@@ -961,17 +927,6 @@ async fn told(accounts: &AccountsCore, signed_in: &SignedIn) -> Result<SignedInD
     })
 }
 
-fn deletion_told(pending: PendingDeletion) -> DeletionDTO {
-    DeletionDTO {
-        until: text::serialize(pending.until),
-        by: match pending.asked_by {
-            DeletionAskedBy::Holder => deletion_asked_by::HOLDER,
-            DeletionAskedBy::Operator => deletion_asked_by::OPERATOR,
-        }
-        .to_owned(),
-    }
-}
-
 async fn ask_deletion(
     State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
@@ -982,7 +937,11 @@ async fn ask_deletion(
         .await
         .map_err(problem_of)?;
 
-    Ok(([(SET_COOKIE, letting_go())], Json(deletion_told(pending))).into_response())
+    Ok((
+        [(SET_COOKIE, letting_go())],
+        Json(transformer::to_deletion_dto(pending)),
+    )
+        .into_response())
 }
 
 async fn keep_account(

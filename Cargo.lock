@@ -6644,6 +6644,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-readings-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-readings-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-readings-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "weaveling-eventsourcing",
+ "weaveling-readings-contract",
+ "weaveling-readings-core",
+ "weaveling-serving",
+]
+
+[[package]]
+name = "weaveling-readings-tests"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-test",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-readings-contract",
+ "weaveling-readings-core",
+ "weaveling-readings-rest",
+]
+
+[[package]]
+name = "weaveling-readings-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-outbox",
+ "weaveling-readings-core",
+ "weaveling-readings-rest",
+ "weaveling-wiring",
+]
+
+[[package]]
 name = "weaveling-registry"
 version = "0.1.0"
 dependencies = [
@@ -6885,6 +6936,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-outline-wiring",
  "weaveling-projects-wiring",
+ "weaveling-readings-wiring",
  "weaveling-scenes-wiring",
  "weaveling-serving",
  "weaveling-statistics-wiring",

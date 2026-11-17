@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -166,12 +168,5 @@ async fn word_counts(
             beyond_reach => Problem::unexpected(beyond_reach),
         })?;
 
-    Ok(Json(counts.iter().map(to_dto).collect()))
-}
-
-fn to_dto(count: &WordCount) -> WordCountDTO {
-    WordCountDTO {
-        scene: count.scene.to_string(),
-        words: count.words,
-    }
+    Ok(Json(counts.iter().map(transformer::to_dto).collect()))
 }

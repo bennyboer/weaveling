@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::error::Error;
 use std::sync::Arc;
 
@@ -11,13 +13,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use boards_contract::{
-    BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
-    SpotDTO, refused,
+    OpenBoardRequest, PinIdeaRequest, ReshapeIdeaRequest, SizeDTO, SpotDTO, refused,
 };
-use boards_core::{
-    Board, BoardError, BoardsCore, BoardsError, IdeaLink, PositionedIdea, Size, Spot,
-};
-use eventsourcing::{Agent, ServiceError, Standing, Version};
+use boards_core::{Board, BoardError, BoardsCore, BoardsError, IdeaLink, Size, Spot};
+use eventsourcing::{Agent, ServiceError, Standing};
 use live::{About, AccessWatch, Broadcaster, Gate, Refused, Subscribed, Topic};
 use serving::Problem;
 
@@ -212,32 +211,13 @@ fn to_response(status: StatusCode, board: &str, standing: &Standing<Board>) -> R
     (
         status,
         [(ETAG, serving::tag(standing.version))],
-        Json(to_dto(board, &standing.state, standing.version)),
+        Json(transformer::to_dto(
+            board,
+            &standing.state,
+            standing.version,
+        )),
     )
         .into_response()
-}
-
-fn to_dto(board: &str, held: &Board, version: Version) -> BoardDTO {
-    BoardDTO {
-        id: board.to_owned(),
-        version: version.count(),
-        project: held.project().to_string(),
-        ideas: held.ideas().iter().map(to_positioned_dto).collect(),
-    }
-}
-
-fn to_positioned_dto(held: &PositionedIdea) -> PositionedIdeaDTO {
-    PositionedIdeaDTO {
-        idea: held.idea.to_string(),
-        spot: SpotDTO {
-            x: held.spot.x,
-            y: held.spot.y,
-        },
-        size: SizeDTO {
-            width: held.size.width,
-            height: held.size.height,
-        },
-    }
 }
 
 fn problem_of(refusal: BoardsError) -> Problem {

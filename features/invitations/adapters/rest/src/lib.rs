@@ -1,20 +1,19 @@
 mod telling;
 mod topic;
+mod transformer;
 
 use acting::Acting;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json, Router, routing};
-use clock::text;
 use email::{EmailAddress, InvalidEmailAddress};
 use eventsourcing::{ServiceError, StoreError};
 use invitations_contract::{
     DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
-    InviteRequest, ScopeDTO, decline_reason, refused, role, status,
+    InviteRequest, ScopeDTO, refused,
 };
 use invitations_core::{
-    DeclineReason, InvitationError, InvitationId, InvitationToYou, InvitationsCore,
-    InvitationsError, ListedInvitation, Role, Scope, Status,
+    InvitationError, InvitationId, InvitationsCore, InvitationsError, ListedInvitation, Status,
 };
 use serde::Deserialize;
 use serving::Problem;
@@ -59,7 +58,7 @@ async fn invite(
                 .await
         }
         ScopeDTO::Project { project, role } => {
-            let as_whom = to_role(role).ok_or_else(|| {
+            let as_whom = transformer::to_role(role).ok_or_else(|| {
                 Problem::unprocessable(
                     refused::ROLE_UNKNOWN,
                     "an invitation into a project invites as an owner, an author or a reader",
@@ -75,7 +74,7 @@ async fn invite(
 
     Ok((
         StatusCode::CREATED,
-        Json(to_summary_dto(&ListedInvitation {
+        Json(transformer::to_summary_dto(&ListedInvitation {
             summary,
             status: Status::Open,
         })),
@@ -91,18 +90,7 @@ async fn mine(
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(yours.iter().map(to_you_dto).collect()))
-}
-
-fn to_you_dto(yours: &InvitationToYou) -> InvitationToYouDTO {
-    InvitationToYouDTO {
-        id: yours.id.to_string(),
-        project: yours.project.to_string(),
-        project_name: yours.project_name.clone(),
-        role: named(yours.role).to_owned(),
-        invited_by: yours.invited_by.clone(),
-        until: text::serialize(yours.until),
-    }
+    Ok(Json(yours.iter().map(transformer::to_you_dto).collect()))
 }
 
 pub const PAGE: usize = 100;
@@ -139,57 +127,8 @@ async fn list(
         next: more
             .then(|| found.last().map(|last| last.summary.id.to_string()))
             .flatten(),
-        invitations: found.iter().map(to_summary_dto).collect(),
+        invitations: found.iter().map(transformer::to_summary_dto).collect(),
     }))
-}
-
-fn to_summary_dto(listed: &ListedInvitation) -> InvitationSummaryDTO {
-    let (told, declined_for) = match listed.status {
-        Status::Open => (status::OPEN, None),
-        Status::Expired => (status::EXPIRED, None),
-        Status::Declined(DeclineReason::AddressHasAccount) => (
-            status::DECLINED,
-            Some(decline_reason::ADDRESS_HAS_ACCOUNT.to_owned()),
-        ),
-        Status::Declined(DeclineReason::TurnedDown) => (
-            status::DECLINED,
-            Some(decline_reason::TURNED_DOWN.to_owned()),
-        ),
-    };
-
-    InvitationSummaryDTO {
-        id: listed.summary.id.to_string(),
-        version: listed.summary.version.count(),
-        email: listed.summary.to.to_string(),
-        issued_at: text::serialize(listed.summary.issued_at),
-        until: text::serialize(listed.summary.until),
-        status: told.to_owned(),
-        declined_for,
-        scope: match &listed.summary.scope {
-            Scope::Instance => ScopeDTO::Instance,
-            Scope::Project { project, role } => ScopeDTO::Project {
-                project: project.to_string(),
-                role: named(*role).to_owned(),
-            },
-        },
-    }
-}
-
-fn named(given: Role) -> &'static str {
-    match given {
-        Role::Owner => role::OWNER,
-        Role::Author => role::AUTHOR,
-        Role::Reader => role::READER,
-    }
-}
-
-fn to_role(named: &str) -> Option<Role> {
-    match named {
-        role::OWNER => Some(Role::Owner),
-        role::AUTHOR => Some(Role::Author),
-        role::READER => Some(Role::Reader),
-        _ => None,
-    }
 }
 
 fn invitation_named(raw: &str) -> Result<InvitationId, Problem> {

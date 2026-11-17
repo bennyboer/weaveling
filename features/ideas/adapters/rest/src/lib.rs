@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
@@ -13,9 +15,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
-use ideas_core::{
-    Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle, ProjectLink,
-};
+use ideas_core::{Idea, IdeaError, IdeasCore, IdeasError, InvalidIdeaTitle, ProjectLink};
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use serde::Deserialize;
 use serving::Problem;
@@ -86,16 +86,7 @@ async fn list(
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(found.iter().map(to_dto).collect()))
-}
-
-fn to_dto(summary: &IdeaSummary) -> IdeaDTO {
-    IdeaDTO {
-        id: summary.id.to_string(),
-        version: summary.version.count(),
-        project: summary.project.to_string(),
-        title: summary.title.to_string(),
-    }
+    Ok(Json(found.iter().map(transformer::to_dto).collect()))
 }
 
 async fn capture(

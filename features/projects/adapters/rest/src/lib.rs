@@ -1,3 +1,5 @@
+mod transformer;
+
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -14,7 +16,7 @@ use projects_contract::{
 };
 use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
-    Project, ProjectError, ProjectSummary, ProjectsCore, ProjectsError, RawDetails,
+    Project, ProjectError, ProjectsCore, ProjectsError, RawDetails,
 };
 use serving::Problem;
 
@@ -41,17 +43,7 @@ async fn list(
 ) -> Result<Json<Vec<ProjectDTO>>, Problem> {
     let found = projects.list(&acting).await.map_err(problem_of)?;
 
-    Ok(Json(found.iter().map(to_dto).collect()))
-}
-
-fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
-    ProjectDTO {
-        id: summary.id.to_string(),
-        version: summary.version.count(),
-        name: summary.name.to_string(),
-        created_at: text::serialize(summary.created_at),
-        updated_at: text::serialize(summary.updated_at),
-    }
+    Ok(Json(found.iter().map(transformer::to_dto).collect()))
 }
 
 async fn create(
@@ -154,16 +146,12 @@ async fn trash_list(
 ) -> Result<Json<Vec<TrashedProjectDTO>>, Problem> {
     let found = projects.trash_list(&acting).await.map_err(problem_of)?;
 
-    Ok(Json(found.iter().filter_map(to_trashed_dto).collect()))
-}
-
-fn to_trashed_dto(summary: &ProjectSummary) -> Option<TrashedProjectDTO> {
-    Some(TrashedProjectDTO {
-        id: summary.id.to_string(),
-        version: summary.version.count(),
-        name: summary.name.to_string(),
-        until: text::serialize(summary.trashed_until?),
-    })
+    Ok(Json(
+        found
+            .iter()
+            .filter_map(transformer::to_trashed_dto)
+            .collect(),
+    ))
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Response {

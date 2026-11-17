@@ -1,3 +1,5 @@
+mod transformer;
+
 use std::error::Error;
 use std::sync::Arc;
 
@@ -9,14 +11,11 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json, Router};
-use clock::text;
 use eventsourcing::{Agent, ServiceError, Standing, StoreError};
 use live::{About, Broadcaster, Gate, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
-use members_contract::{
-    ChangeRoleRequest, MemberDTO, MembersEventDTO, MembershipDTO, refused, role,
-};
-use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Membership, Role};
+use members_contract::{ChangeRoleRequest, MemberDTO, MembersEventDTO, MembershipDTO, refused};
+use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -58,7 +57,9 @@ async fn mine(
 ) -> Result<Json<Vec<MembershipDTO>>, Problem> {
     let held = members.memberships(&agent).await.map_err(problem_of)?;
 
-    Ok(Json(held.iter().map(membership_dto).collect()))
+    Ok(Json(
+        held.iter().map(transformer::to_membership_dto).collect(),
+    ))
 }
 
 async fn change_role(
@@ -68,7 +69,7 @@ async fn change_role(
     headers: HeaderMap,
     Json(request): Json<ChangeRoleRequest>,
 ) -> Result<Response, Problem> {
-    let to = to_role(&request.role).ok_or_else(|| {
+    let to = transformer::to_role(&request.role).ok_or_else(|| {
         Problem::unprocessable(
             refused::ROLE_UNKNOWN,
             format!("{} is no role in a project", request.role),
@@ -112,46 +113,11 @@ fn to_response(standing: &Standing<Vec<ListedMember>>) -> Response {
             standing
                 .state
                 .iter()
-                .map(to_dto)
+                .map(transformer::to_dto)
                 .collect::<Vec<MemberDTO>>(),
         ),
     )
         .into_response()
-}
-
-fn to_dto(member: &ListedMember) -> MemberDTO {
-    MemberDTO {
-        account: member.account.to_string(),
-        role: named(member.role).to_owned(),
-        name: member.name.clone(),
-        email: member.email.clone(),
-        leaving_until: member.leaving_until.map(text::serialize),
-        picture: member.picture.clone(),
-    }
-}
-
-fn membership_dto(membership: &Membership) -> MembershipDTO {
-    MembershipDTO {
-        project: membership.project.to_string(),
-        role: named(membership.role).to_owned(),
-    }
-}
-
-fn named(given: Role) -> &'static str {
-    match given {
-        Role::Owner => role::OWNER,
-        Role::Author => role::AUTHOR,
-        Role::Reader => role::READER,
-    }
-}
-
-fn to_role(named: &str) -> Option<Role> {
-    match named {
-        role::OWNER => Some(Role::Owner),
-        role::AUTHOR => Some(Role::Author),
-        role::READER => Some(Role::Reader),
-        _ => None,
-    }
 }
 
 fn problem_of(refusal: MembersCoreError) -> Problem {
