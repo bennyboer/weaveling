@@ -1,61 +1,141 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
+use live_contract::FrameDTO;
+use readings_contract::BookChangeDTO;
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 
+use crate::asking::Asking;
 use crate::assets::service as assets;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
+use crate::http::ApiError;
+use crate::live::Subscription;
 use crate::outline::model::SectionId;
 use crate::problem;
-use crate::readings::model::{Block, Book, Marks, Part, Run};
+use crate::projects::model::ProjectId;
+use crate::readings::model::{Applied, Block, Book, Change, Marks, Run};
 use crate::readings::service;
 use crate::route;
 use crate::scene_break;
+use crate::scenes::model::SceneId;
 use crate::speech;
 
 const FIGURE_WIDTH: u32 = 1536;
 const CONTENTS: &str = "reading-contents";
 
+/// What the book shows, in reading order: each section, and each scene with something written.
+/// A scene after another scene stands behind a scene break.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Shown {
+    Section {
+        section: SectionId,
+        depth: u8,
+        title: String,
+    },
+    Scene {
+        scene: SceneId,
+        after_a_scene: bool,
+    },
+}
+
+/// The live book, followed as it is written: each change told swaps in the piece that changed.
 pub fn reading_view(project: String) -> impl IntoView {
     let rail = Drawer::as_last_left("weaveling.reading-contents", true);
     let project = route::project_id(&project);
-    let book = LocalResource::new(move || {
+    let book = RwSignal::new(None::<Book>);
+    let failed = RwSignal::new(None::<ApiError>);
+    let asking = Asking::new();
+    let reading_now = StoredValue::new(false);
+    let reading = Action::new_local(move |project: &ProjectId| {
+        let project = project.clone();
+        let asked = asking.next();
+        reading_now.set_value(true);
+
+        async move {
+            let read = service::live_book(&project).await;
+            if asking.is_latest(asked) {
+                reading_now.set_value(false);
+                match read {
+                    Ok(read) => {
+                        failed.set(None);
+                        book.set(Some(read));
+                    }
+                    Err(failure) => failed.set(Some(failure)),
+                }
+            }
+        }
+    });
+    let heard = {
         let project = project.clone();
 
-        async move { service::live_book(&project).await }
-    });
+        move |told: FrameDTO| {
+            let Ok(change) = serde_json::from_value::<BookChangeDTO>(told.event) else {
+                return;
+            };
+            let applied = book
+                .try_update(|held| held.as_mut().map(|held| held.apply(Change::from(change))))
+                .flatten();
+            if reading_now.get_value() || applied != Some(Applied::Whole) {
+                reading.dispatch(project.clone());
+            }
+        }
+    };
+    let opened = {
+        let project = project.clone();
+
+        move || _ = reading.dispatch(project.clone())
+    };
+    let following = StoredValue::new_local(Some(Subscription::start(
+        "readings",
+        &[("project", project.to_string().as_str())],
+        heard,
+        opened,
+    )));
+    on_cleanup(move || following.set_value(None));
+    let has_book = Memo::new(move |_| book.with(Option::is_some));
 
     move || {
-        book.get().map(|loaded| match loaded {
-            Ok(book) => read(book, rail).into_any(),
-            Err(failure) => problem::problem(failure).into_any(),
-        })
+        if let Some(failure) = failed.get() {
+            Some(problem::problem(failure).into_any())
+        } else if has_book.get() {
+            Some(read(book, rail).into_any())
+        } else {
+            None
+        }
     }
 }
 
-fn read(book: Book, rail: Drawer) -> impl IntoView {
+fn read(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
+    let title = Memo::new(move |_| {
+        book.with(|held| held.as_ref().map(|held| held.title.clone()))
+            .unwrap_or_default()
+    });
+
     (
-        contents(&book.parts, rail),
+        contents(book, rail),
         html::div().class("reading-view").child(
             html::article()
                 .class("book")
-                .child((html::h1().child(book.title), parts(book.parts))),
+                .child((html::h1().child(move || title.get()), parts(book))),
         ),
     )
 }
 
-fn contents(parts: &[Part], rail: Drawer) -> impl IntoView + use<> {
-    let sections = parts
-        .iter()
-        .filter_map(|part| match part {
-            Part::Section {
-                section,
-                depth,
-                title,
-            } => Some(entry(section.clone(), *depth, title.clone())),
-            Part::Scene { .. } => None,
+fn contents(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
+    let sections = Memo::new(move |_| {
+        book.with(|held| {
+            held.iter()
+                .flat_map(|held| &held.sections)
+                .map(|outlined| {
+                    (
+                        outlined.section.clone(),
+                        outlined.depth,
+                        outlined.title.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
         })
-        .collect::<Vec<_>>();
+    });
 
     drawer::drawer(
         rail,
@@ -66,7 +146,13 @@ fn contents(parts: &[Part], rail: Drawer) -> impl IntoView + use<> {
             named: speech::said("contents").into(),
             called: "contents",
             head: html::p().class("tally").child(speech::said("contents")),
-            body: html::ol().class("rail-entries").child(sections),
+            body: html::ol()
+                .class("rail-entries")
+                .child(For(ForProps::builder()
+                    .each(move || sections.get())
+                    .key(Clone::clone)
+                    .children(|(section, depth, title)| entry(section, depth, title))
+                    .build())),
         },
     )
 }
@@ -96,36 +182,64 @@ fn heading_id(section: &SectionId) -> String {
     format!("section-{section}")
 }
 
-fn parts(parts: Vec<Part>) -> impl IntoView {
-    let mut after_a_scene = false;
+fn shown(book: &Book) -> Vec<Shown> {
+    let mut shown = Vec::new();
+    for outlined in &book.sections {
+        let mut after_a_scene = false;
+        shown.push(Shown::Section {
+            section: outlined.section.clone(),
+            depth: outlined.depth,
+            title: outlined.title.clone(),
+        });
+        for scene in &outlined.scenes {
+            if book.text_of(scene).is_some() {
+                shown.push(Shown::Scene {
+                    scene: scene.clone(),
+                    after_a_scene,
+                });
+                after_a_scene = true;
+            }
+        }
+    }
 
-    parts
-        .into_iter()
-        .map(|part| match part {
-            Part::Section {
+    shown
+}
+
+fn parts(book: RwSignal<Option<Book>>) -> impl IntoView {
+    let shown = Memo::new(move |_| book.with(|held| held.as_ref().map(shown).unwrap_or_default()));
+
+    For(ForProps::builder()
+        .each(move || shown.get())
+        .key(Clone::clone)
+        .children(move |part| match part {
+            Shown::Section {
                 section,
                 depth,
                 title,
+            } => section_heading(&section, depth, title).into_any(),
+            Shown::Scene {
+                scene,
+                after_a_scene,
             } => {
-                after_a_scene = false;
+                let text = {
+                    let scene = scene.clone();
 
-                section_heading(&section, depth, title).into_any()
-            }
-            Part::Scene { scene, blocks } => {
-                let between = after_a_scene.then(scene_break);
-                after_a_scene = true;
+                    Memo::new(move |_| {
+                        book.with(|held| held.as_ref().and_then(|held| held.text_of(&scene)))
+                    })
+                };
 
                 (
-                    between,
+                    after_a_scene.then(scene_break),
                     html::section()
                         .class("scene")
                         .attr("data-scene", scene.to_string())
-                        .child(blocks_of(blocks)),
+                        .child(move || text.get().map(|told| blocks_of(told.blocks().to_vec()))),
                 )
                     .into_any()
             }
         })
-        .collect::<Vec<_>>()
+        .build())
 }
 
 fn section_heading(section: &SectionId, depth: u8, title: String) -> impl IntoView {

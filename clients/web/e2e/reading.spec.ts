@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookShaped } from "./support/book";
+import { routingLive } from "./support/live";
 import {
   aNewProject,
   API,
@@ -10,7 +11,7 @@ import {
 } from "./support/shell";
 import { openTheWritingView, projectOf, scene } from "./support/writing";
 
-const book = (page: Page) => page.getByRole("article");
+const book = (page: Page) => page.locator(".reading-view").getByRole("article");
 
 const contents = (page: Page) =>
   page.getByRole("complementary", { name: "Contents" });
@@ -113,14 +114,14 @@ async function aBookWritten(page: Page, named: string) {
     "Everybody bought the fish.",
   ]);
 
-  return title;
+  return { title, placed };
 }
 
 test("the reading view shows the book as it was written, with its sections and scenes", async ({
   page,
 }) => {
   // given: a book written in the writing view
-  const title = await aBookWritten(page, "Reading");
+  const { title } = await aBookWritten(page, "Reading");
 
   // when: its reading view is opened
   await openTheReadingView(page);
@@ -221,4 +222,137 @@ test("a project whose outline was never opened reads as its name alone", async (
     book(page).getByRole("heading", { level: 1, name: title }),
   ).toBeVisible();
   await expect(book(page).getByRole("heading", { level: 2 })).toHaveCount(0);
+});
+
+const saying = (words: string) => [
+  {
+    kind: "paragraph",
+    runs: [
+      {
+        kind: "text",
+        text: words,
+        marks: { emphasis: false, strong: false, code: false, link: null },
+      },
+    ],
+  },
+];
+
+test("a scene's text told while reading is swapped in, and the rest of the book stays as it is", async ({
+  page,
+}) => {
+  // given: a written book's reading view, its other scenes marked as drawn
+  const live = await routingLive(page);
+  const { placed } = await aBookWritten(page, "ReadingLiveText");
+  await openTheReadingView(page);
+  const drawn = (scene: string) =>
+    book(page).locator(`[data-scene="${scene}"]`);
+  for (const scene of [placed.harbour, placed.stalls]) {
+    await drawn(scene).evaluate((held) =>
+      held.setAttribute("data-drawn", "once"),
+    );
+  }
+
+  // when: another author's change to one scene is told
+  live.tell("readings", {
+    version: 1,
+    event: {
+      kind: "text",
+      scene: placed.wall,
+      blocks: saying("Hedy counted them twice."),
+    },
+  });
+
+  // then: that scene reads as told
+  await expect(drawn(placed.wall)).toHaveText("Hedy counted them twice.");
+  // and: the other scenes were not drawn again
+  for (const scene of [placed.harbour, placed.stalls]) {
+    await expect(drawn(scene)).toHaveAttribute("data-drawn", "once");
+  }
+});
+
+test("the book's sections and title told while reading are shown as told", async ({
+  page,
+}) => {
+  // given: a written book's reading view
+  const live = await routingLive(page);
+  const { placed } = await aBookWritten(page, "ReadingLiveOutline");
+  await openTheReadingView(page);
+
+  // when: its sections are told rearranged, the market first and the morning under it, and its title anew
+  live.tell("readings", {
+    version: 1,
+    event: {
+      kind: "outline",
+      sections: [
+        {
+          section: "section_market",
+          depth: 0,
+          title: "The market",
+          scenes: [placed.stalls],
+        },
+        {
+          section: "section_morning",
+          depth: 1,
+          title: "Morning",
+          scenes: [placed.wall, placed.harbour],
+        },
+      ],
+    },
+  });
+  live.tell("readings", {
+    version: 2,
+    event: { kind: "title", title: "The Loom, Again" },
+  });
+
+  // then: the book is laid out as told, under its new title
+  await expect(book(page).getByRole("heading", { level: 1 })).toHaveText(
+    "The Loom, Again",
+  );
+  await expect(book(page).getByRole("heading", { level: 2 })).toHaveText([
+    "The market",
+  ]);
+  await expect(book(page).getByRole("heading", { level: 3 })).toHaveText([
+    "Morning",
+  ]);
+  await expect(book(page).locator("[data-scene]")).toHaveText([
+    "Everybody bought the fish.",
+    "Hedy counted them from the wall.",
+    "The boats came in one by one, their lamps swinging.",
+  ]);
+  // and: the contents follow
+  await expect(contents(page).locator(".rail-entry")).toHaveText([
+    "The market",
+    "Morning",
+  ]);
+});
+
+test("a scene placed in the book since it was read has the book read again", async ({
+  page,
+}) => {
+  // given: a written book's reading view
+  const live = await routingLive(page);
+  const { placed } = await aBookWritten(page, "ReadingLivePlaced");
+  await openTheReadingView(page);
+
+  // when: its sections are told holding a scene it was never told the text of
+  const readAgain = page.waitForRequest((asked) =>
+    asked.url().includes("/api/readings/live?"),
+  );
+  live.tell("readings", {
+    version: 1,
+    event: {
+      kind: "outline",
+      sections: [
+        {
+          section: "section_morning",
+          depth: 0,
+          title: "Morning",
+          scenes: [placed.harbour, "scene_placed_since"],
+        },
+      ],
+    },
+  });
+
+  // then: the book is read again
+  await readAgain;
 });

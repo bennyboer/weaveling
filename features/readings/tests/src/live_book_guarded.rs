@@ -9,6 +9,8 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, Version};
+use live::testing::Subscriber;
+use live::{Broadcaster, Topics};
 use readings_core::ReadingsCore;
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -180,6 +182,48 @@ async fn a_project_only_ada_may_read() -> Guarded {
         access,
         readings,
     }
+}
+
+/// The one socket, as an account opens it.
+fn socket_of(readings: &ReadingsCore, account: &str) -> TestServer {
+    TestServer::builder().http_transport().build(
+        live::live_socket(Topics::of(vec![readings_rest::topic(
+            readings.clone(),
+            Broadcaster::new(),
+        )]))
+        .layer(Extension(Agent::Account(AccountId::from(account)))),
+    )
+}
+
+#[tokio::test]
+async fn whoever_may_read_the_project_follows_its_book() {
+    // given: a project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+    let server = socket_of(&guarded.readings, "account_ada");
+    let mut ada = Subscriber::on(&server).await;
+
+    // when: ada follows its live book
+    ada.subscribe("book", "readings", &[("project", PROJECT)])
+        .await;
+
+    // then: she is following it
+    ada.following("book").await;
+}
+
+#[tokio::test]
+async fn whoever_may_not_read_the_project_cannot_follow_its_book_as_if_it_were_not_there() {
+    // given: a project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+    let server = socket_of(&guarded.readings, "account_grace");
+    let mut grace = Subscriber::on(&server).await;
+
+    // when: grace follows its live book
+    grace
+        .subscribe("book", "readings", &[("project", PROJECT)])
+        .await;
+
+    // then: she is told it is not there
+    assert_eq!(grace.ended().await, "not-there");
 }
 
 #[tokio::test]

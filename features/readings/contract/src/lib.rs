@@ -21,6 +21,30 @@ pub enum PartDTO {
     },
 }
 
+/// A change to the live book, told to whoever follows it.
+/// Each carries the whole of the piece that changed, so a follower swaps it in for what it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BookChangeDTO {
+    /// A scene's text, as it now reads.
+    Text {
+        scene: String,
+        blocks: Vec<BlockDTO>,
+    },
+    /// The book's sections in reading order, with the scenes each holds.
+    Outline { sections: Vec<OutlinedSectionDTO> },
+    /// The book's title.
+    Title { title: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OutlinedSectionDTO {
+    pub section: String,
+    pub depth: u8,
+    pub title: String,
+    pub scenes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BlockDTO {

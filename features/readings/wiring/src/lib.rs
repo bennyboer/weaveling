@@ -4,6 +4,7 @@ use access::{InMemoryAccess, KeptAccess};
 use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
+use live::Broadcaster;
 use outbox::Outbox;
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{OutlineCatalog, ReadingsCore, SceneTextCatalog};
@@ -39,7 +40,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
+    // TODO: tell each change kept to the book's followers, through this broadcaster
+    let broadcaster = Broadcaster::new();
+
     Wired::serving(readings_rest::router(readings.clone()))
+        .followed_live(vec![readings_rest::topic(readings.clone(), broadcaster)])
         .listening(vec![
             Arc::new(hearing.inboxed(RememberRolesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(RememberTrashListener::new(readings.clone()))),

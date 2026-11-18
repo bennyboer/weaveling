@@ -6704,9 +6704,11 @@ dependencies = [
 name = "weaveling-readings-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-readings-contract",
  "weaveling-readings-core",
  "weaveling-serving",
@@ -6728,6 +6730,7 @@ dependencies = [
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
+ "weaveling-live",
  "weaveling-members-contract",
  "weaveling-messaging",
  "weaveling-outline-contract",
@@ -6754,6 +6757,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-inbox",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-readings-catalog",

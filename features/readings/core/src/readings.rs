@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ::access::KeptAccess;
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::Agent;
 use time::OffsetDateTime;
@@ -70,6 +70,15 @@ impl ReadingsCore {
 }
 
 impl ReadingsCore {
+    /// Whether the agent may follow a project's live book, as they may read it.
+    pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, ReadingsError> {
+        Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
+    }
+
     /// Forgets, in batches, the tombstones laid long enough ago that no message about them can still arrive:
     /// those of deleted scenes, those of deleted projects' books, and those of accounts that left a project.
     pub async fn forget_tombstones_laid_before(
