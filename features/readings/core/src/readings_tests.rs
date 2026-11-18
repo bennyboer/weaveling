@@ -6,7 +6,8 @@ use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
-use transacting::InMemoryTransactions;
+use time::OffsetDateTime;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::catalog::{
     BookOutline, CatalogError, OutlineCatalog, OutlinedSection, SceneTextCatalog,
@@ -29,6 +30,34 @@ struct Texts(HashMap<SceneLink, Vec<Block>>);
 
 #[async_trait]
 impl SceneTextCatalog for Texts {
+    async fn keep(
+        &self,
+        _transaction: &mut Transaction,
+        _scene: &SceneLink,
+        _blocks: &[Block],
+        _version: u64,
+    ) -> Result<bool, CatalogError> {
+        Ok(false)
+    }
+
+    async fn forget_scene(
+        &self,
+        _transaction: &mut Transaction,
+        _scene: &SceneLink,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        _transaction: &mut Transaction,
+        _before: OffsetDateTime,
+        _at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(0)
+    }
+
     async fn texts_of(
         &self,
         scenes: &[SceneLink],

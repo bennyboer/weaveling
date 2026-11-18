@@ -5,6 +5,8 @@ use readings_core::{
     Block, BookOutline, CatalogError, Marks, OutlineCatalog, OutlinedSection, ProjectLink, Run,
     SceneLink, SceneTextCatalog, SectionLink,
 };
+use time::OffsetDateTime;
+use transacting::Transaction;
 
 /// The same small book for every project, until the catalogs are kept from the outline's and the scenes' messages.
 pub struct SampleBook;
@@ -41,6 +43,34 @@ impl OutlineCatalog for SampleBook {
 
 #[async_trait]
 impl SceneTextCatalog for SampleBook {
+    async fn keep(
+        &self,
+        _transaction: &mut Transaction,
+        _scene: &SceneLink,
+        _blocks: &[Block],
+        _version: u64,
+    ) -> Result<bool, CatalogError> {
+        Ok(false)
+    }
+
+    async fn forget_scene(
+        &self,
+        _transaction: &mut Transaction,
+        _scene: &SceneLink,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        _transaction: &mut Transaction,
+        _before: OffsetDateTime,
+        _at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(0)
+    }
+
     async fn texts_of(
         &self,
         scenes: &[SceneLink],

@@ -3,6 +3,8 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::contents::Block;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
@@ -39,6 +41,32 @@ pub trait OutlineCatalog: Send + Sync {
 /// A scene whose text is not kept yet is missing from what it answers.
 #[async_trait]
 pub trait SceneTextCatalog: Send + Sync {
+    /// Keeps a scene's text, read at its prose version.
+    /// A text older than the one kept, or of a scene already deleted, is not kept.
+    /// Returns whether it was.
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        scene: &SceneLink,
+        blocks: &[Block],
+        version: u64,
+    ) -> Result<bool, CatalogError>;
+
+    /// Forgets a deleted scene's text, and lays a tombstone so a late text does not bring it back.
+    async fn forget_scene(
+        &self,
+        transaction: &mut Transaction,
+        scene: &SceneLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
+
     async fn texts_of(
         &self,
         scenes: &[SceneLink],

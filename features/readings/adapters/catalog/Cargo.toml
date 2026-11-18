@@ -5,5 +5,12 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+time = { workspace = true }
+
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 readings-core = { version = "0.1.0", path = "../../core", package = "weaveling-readings-core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

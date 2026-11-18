@@ -13,7 +13,9 @@ This feature lets the book be read: the live book for members, and later reading
 
 The chore `forget-old-readings-tombstones` deletes the records of accounts that left long ago, and `forget-old-readings-hearings` the old records of messages received. Without accounts, everyone is allowed.
 
-**For now both catalogs are a fixed sample.** `SampleBook` in `adapters/catalog` answers the same small book for every project. Keeping the catalogs from messages comes in a later step.
+**A scene's text is kept as the scenes feature tells it.** The listener `readings-keep-scene-texts` receives `scene.text.settled` and `scene.deleted` through the feature's own inbox. `ReadingsCore::text_settled` keeps a text only if it was read at a newer prose version than the one kept, so a late message does not undo a newer one. `scene_deleted` forgets the text and lays a tombstone, so a late text does not bring the scene back. The chore `forget-old-readings-tombstones` forgets these tombstones too. `InMemorySceneTextCatalog` keeps them in memory, and the suite in `adapters/catalog` holds every backend to the same cases.
+
+**For now both catalogs are a fixed sample.** `SampleBook` in `adapters/catalog` answers the same small book for every project, and the wiring uses it for both catalogs until the outline is kept from messages too; then both are switched together.
 
 **`Contents` is the core's, `ContentsDTO` the contract's.** The REST adapter turns one into the other. A section carries its depth, so the parts are one flat list in reading order. A scene keeps the id of the scene it came from. Runs carry only the marks a reader sees: emphasis, strong, code and links.
 

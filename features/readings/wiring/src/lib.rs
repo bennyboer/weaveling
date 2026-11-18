@@ -25,7 +25,7 @@ impl Ports {
         access: KeptAccess,
         inbox: Arc<dyn Inbox>,
     ) -> Self {
-        // TODO: catalogs kept from the outline's and the scenes' messages, in memory and in the databases
+        // TODO: the outline kept from its messages, then both catalogs switched together with KeepSceneTextsListener registered, and in the databases
         Self {
             outlines: Arc::new(SampleBook),
             texts: Arc::new(SampleBook),

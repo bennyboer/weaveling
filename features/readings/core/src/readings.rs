@@ -5,6 +5,7 @@ use ::access::KeptAccess;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::Agent;
+use time::OffsetDateTime;
 use transacting::Transactions;
 
 use crate::catalog::{BookOutline, OutlineCatalog, SceneTextCatalog};
@@ -13,6 +14,7 @@ use crate::error::ReadingsError;
 use crate::link::{ProjectLink, SceneLink};
 
 mod access;
+mod texts;
 
 #[derive(Clone)]
 pub struct ReadingsCore {
@@ -61,6 +63,29 @@ impl ReadingsCore {
         let texts = self.texts.texts_of(&scenes).await?;
 
         Ok(put_together(project, outline, texts))
+    }
+}
+
+impl ReadingsCore {
+    /// Forgets, in batches, the tombstones laid long enough ago that no message about them can still arrive:
+    /// those of deleted scenes, and those of accounts that left a project.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ReadingsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            let texts = self
+                .texts
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+            let access = self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
+
+            Ok(texts + access)
+        })
     }
 }
 

@@ -29,3 +29,4 @@ readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weave
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
 members-contract = { version = "0.1.0", path = "../../members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+scenes-contract = { version = "0.1.0", path = "../../scenes/contract", package = "weaveling-scenes-contract" }

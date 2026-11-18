@@ -6649,7 +6649,11 @@ name = "weaveling-readings-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "time",
+ "tokio",
+ "weaveling-clock",
  "weaveling-readings-core",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -6687,6 +6691,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-readings-core",
+ "weaveling-scenes-contract",
  "weaveling-transacting",
 ]
 
@@ -6726,6 +6731,7 @@ dependencies = [
  "weaveling-readings-core",
  "weaveling-readings-messaging",
  "weaveling-readings-rest",
+ "weaveling-scenes-contract",
  "weaveling-transacting",
 ]
 
