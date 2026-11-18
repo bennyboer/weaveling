@@ -55,6 +55,7 @@ impl ReadingsCore {
         made.extent = match shared {
             Shared::Book => Extent::Book,
             Shared::Sections { .. } => Extent::Sections(1),
+            Shared::Scenes { .. } => Extent::Scenes(1),
         };
         made.open_until = open_until;
         made.deleted_on = deleted_on;

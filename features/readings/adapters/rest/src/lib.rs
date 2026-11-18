@@ -18,7 +18,7 @@ use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use readings_contract::{
     ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO, SharedDTO, refused,
 };
-use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SectionLink, Shared};
+use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SceneLink, SectionLink, Shared};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -131,6 +131,10 @@ async fn make_copy(
         SharedDTO::Sections { first, last } => Shared::Sections {
             first: SectionLink::from(first),
             last: SectionLink::from(last),
+        },
+        SharedDTO::Scenes { first, last } => Shared::Scenes {
+            first: SceneLink::from(first),
+            last: SceneLink::from(last),
         },
     };
     let made = readings

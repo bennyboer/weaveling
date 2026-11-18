@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
@@ -17,6 +19,8 @@ use crate::readings::service;
 use crate::readings::sharing;
 use crate::readings::sharing::{KeptFor, OpenFor};
 use crate::route;
+use crate::scenes::model::SceneId;
+use crate::scenes::service as scenes;
 use crate::speech;
 
 const OPEN_BY_DEFAULT: i64 = 30;
@@ -26,6 +30,7 @@ const KEPT_BY_DEFAULT: i64 = 90;
 enum What {
     Book,
     Sections,
+    Scenes,
 }
 
 fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
@@ -70,8 +75,25 @@ pub fn share_dialog(
             }
         }
     });
+    let names = LocalResource::new({
+        let project = project.clone();
+
+        move || {
+            let project = project.clone();
+
+            async move {
+                scenes::in_project(&project)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|summary| (summary.id.clone(), summary.shown_as()))
+                    .collect::<HashMap<SceneId, String>>()
+            }
+        }
+    });
     let what = RwSignal::new(What::Book);
     let run = RwSignal::new(None::<(usize, usize)>);
+    let scene_run = RwSignal::new(None::<(usize, usize)>);
     let name = RwSignal::new(said_with(
         "share-name-default",
         &[("day", moment::human_day(now))],
@@ -85,7 +107,12 @@ pub fn share_dialog(
         let project = project.clone();
         let slug = slug.clone();
         let navigate = navigate.clone();
-        let shared = shared(what.get_untracked(), run.get_untracked(), sections);
+        let shared = shared(
+            what.get_untracked(),
+            run.get_untracked(),
+            scene_run.get_untracked(),
+            sections,
+        );
         let named = name.get_untracked();
         let (open_until, deleted_on) = times.get_untracked();
 
@@ -109,7 +136,11 @@ pub fn share_dialog(
     });
     let unusable = move || {
         name.with(|named| named.trim().is_empty())
-            || (what.get() == What::Sections && run.get().is_none())
+            || match what.get() {
+                What::Book => false,
+                What::Sections => run.get().is_none(),
+                What::Scenes => scene_run.get().is_none(),
+            }
     };
 
     dialog::modal(
@@ -123,8 +154,12 @@ pub fn share_dialog(
             html::div().class("halves").child((
                 html::div()
                     .class("half")
-                    .child((what_to_share(what), move || {
-                        (what.get() == What::Sections).then(|| sections_to_share(sections, run))
+                    .child((what_to_share(what), move || match what.get() {
+                        What::Book => None,
+                        What::Sections => Some(sections_to_share(sections, run).into_any()),
+                        What::Scenes => {
+                            Some(scenes_to_share(sections, names, scene_run).into_any())
+                        }
                     })),
                 html::div().class("half").child((
                     html::label().class("field").child((
@@ -158,10 +193,11 @@ pub fn share_dialog(
     )
 }
 
-/// What to send for the choice: the whole work, or the run of sections from its first to its last.
+/// What to send for the choice: the whole work, or the run of sections or of scenes from its first to its last.
 fn shared(
     what: What,
     run: Option<(usize, usize)>,
+    scene_run: Option<(usize, usize)>,
     sections: LocalResource<Vec<OutlinedSection>>,
 ) -> Option<SharedDTO> {
     match what {
@@ -174,6 +210,21 @@ fn shared(
                 Some(SharedDTO::Sections {
                     first: held.get(first)?.section.to_string(),
                     last: held.get(last)?.section.to_string(),
+                })
+            })
+        }
+        What::Scenes => {
+            let (first, last) = scene_run?;
+            sections.with_untracked(|held| {
+                let in_order: Vec<&SceneId> = held
+                    .as_ref()?
+                    .iter()
+                    .flat_map(|outlined| &outlined.scenes)
+                    .collect();
+
+                Some(SharedDTO::Scenes {
+                    first: in_order.get(first)?.to_string(),
+                    last: in_order.get(last)?.to_string(),
                 })
             })
         }
@@ -205,19 +256,37 @@ fn chosen_among<T: Copy + PartialEq + Send + Sync + 'static>(
 }
 
 fn what_to_share(what: RwSignal<What>) -> impl IntoView {
-    html::div().class("field").child((
+    let options = [
+        ("book", "share-whole", What::Book),
+        ("sections", "share-sections", What::Sections),
+        ("scenes", "share-scenes", What::Scenes),
+    ];
+
+    html::label().class("field").child((
         html::span()
             .class("label")
             .child(speech::said("share-what")),
-        chosen_among(
-            "share-what",
-            what,
-            vec![
-                ("share-whole", What::Book),
-                ("share-sections", What::Sections),
-            ],
-            |chosen, option| chosen == option,
-        ),
+        html::select()
+            .on(ev::change, move |event| {
+                let chosen = event_target_value(&event);
+                if let Some((_, _, option)) = options.iter().find(|(named, _, _)| *named == chosen)
+                {
+                    what.set(*option);
+                }
+            })
+            .child(
+                options
+                    .iter()
+                    .map(|(named, label, option)| {
+                        let option = *option;
+
+                        html::option()
+                            .value(*named)
+                            .prop("selected", move || what.get() == option)
+                            .child(speech::said(label))
+                    })
+                    .collect::<Vec<_>>(),
+            ),
     ))
 }
 
@@ -372,4 +441,77 @@ fn how_long_kept(
             None => speech::say("share-kept-hint-ever"),
         }),
     ))
+}
+
+/// The scenes in reading order under their sections, ticked as a run like the sections; a section's title is not ticked itself.
+fn scenes_to_share(
+    sections: LocalResource<Vec<OutlinedSection>>,
+    names: LocalResource<HashMap<SceneId, String>>,
+    run: RwSignal<Option<(usize, usize)>>,
+) -> impl IntoView {
+    let in_run = move |at: usize| {
+        run.get()
+            .is_some_and(|(first, last)| first <= at && at <= last)
+    };
+
+    (
+        html::ul()
+            .class("tree")
+            .attr("aria-label", speech::said("share-scenes"))
+            .child(move || {
+                let named = names.get().unwrap_or_default();
+                sections.get().map(|held| {
+                    let mut at = 0;
+                    held.iter()
+                        .flat_map(|outlined| {
+                            let next = at;
+                            let between = move || next > 0 && in_run(next - 1) && in_run(next);
+                            let heading = html::li()
+                                .class(move || if between() { "heading in" } else { "heading" })
+                                .style(("--depth", outlined.depth.to_string()))
+                                .child(outlined.title.clone())
+                                .into_any();
+                            let scenes = outlined.scenes.iter().map(|scene| {
+                                let here = at;
+                                at += 1;
+
+                                html::li()
+                                    .class(move || if in_run(here) { "in" } else { "" })
+                                    .style(("--depth", (outlined.depth + 1).to_string()))
+                                    .child(
+                                        html::label().child((
+                                            html::input()
+                                                .r#type("checkbox")
+                                                .prop("checked", move || in_run(here))
+                                                .on(ev::change, move |_| {
+                                                    run.update(|chosen| {
+                                                        *chosen = sharing::ticked(*chosen, here);
+                                                    });
+                                                }),
+                                            html::span().child(
+                                                named
+                                                    .get(scene)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| speech::say("scene-empty")),
+                                            ),
+                                        )),
+                                    )
+                                    .into_any()
+                            });
+
+                            std::iter::once(heading).chain(scenes).collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            }),
+        html::p().class("hint").child(move || match run.get() {
+            Some((first, last)) => {
+                let mut told = FluentArgs::new();
+                told.set("count", last - first + 1);
+
+                speech::say_with("share-scenes-chosen", &told)
+            }
+            None => speech::say("share-scenes-none"),
+        }),
+    )
 }

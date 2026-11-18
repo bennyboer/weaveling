@@ -113,3 +113,23 @@ async fn a_moment_that_cannot_be_read_is_refused() {
         refused::MOMENT_UNREADABLE
     );
 }
+
+#[tokio::test]
+async fn a_copy_of_scenes_in_a_row_holds_scenes() {
+    // given: a copy asked for of a run of scenes
+    let mut asked = asked_for(None);
+    asked.shared = SharedDTO::Scenes {
+        first: "scene_harbour".to_owned(),
+        last: "scene_wall".to_owned(),
+    };
+
+    // when: it is made
+    let response = server().post("/readings/copies").json(&asked).await;
+
+    // then: it holds scenes
+    response.assert_status(StatusCode::CREATED);
+    assert!(matches!(
+        response.json::<ListedReadingCopyDTO>().extent,
+        ExtentDTO::Scenes { .. }
+    ));
+}

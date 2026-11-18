@@ -399,6 +399,12 @@ share-sections-chosen = { $count ->
        *[other] { $count } sections chosen. Ticking one further away takes in the ones between.
     }
 share-sections-none = Tick the sections to share.
+share-scenes = Scenes in a row
+share-scenes-chosen = { $count ->
+        [one] One scene chosen. Ticking one further away takes in the ones between.
+       *[other] { $count } scenes chosen. Ticking one further away takes in the ones between.
+    }
+share-scenes-none = Tick the scenes to share.
 share-name = Name of the copy
 share-name-default = Reading copy, { $day }
 share-open = Open for feedback

@@ -399,6 +399,12 @@ share-sections-chosen = { $count ->
        *[other] { $count } Abschnitte gewählt. Hakst du einen weiter entfernten an, kommen die dazwischen mit.
     }
 share-sections-none = Hak die Abschnitte an, die du teilen willst.
+share-scenes = Szenen am Stück
+share-scenes-chosen = { $count ->
+        [one] Eine Szene gewählt. Hakst du eine weiter entfernte an, kommen die dazwischen mit.
+       *[other] { $count } Szenen gewählt. Hakst du eine weiter entfernte an, kommen die dazwischen mit.
+    }
+share-scenes-none = Hak die Szenen an, die du teilen willst.
 share-name = Name der Kopie
 share-name-default = Lesekopie, { $day }
 share-open = Offen für Rückmeldungen

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aBookShaped } from "./support/book";
+import { aBookShaped, aBookWithScenes } from "./support/book";
 import { routingLive } from "./support/live";
 import {
   aNewProject,
@@ -14,6 +14,7 @@ import {
   projectOf,
   projectsOutline,
   scene,
+  titled,
 } from "./support/writing";
 
 const book = (page: Page) => page.locator(".reading-view").getByRole("article");
@@ -573,9 +574,7 @@ test("an author shares the whole work as a reading copy, and is taken to it", as
   // expect: the copy is named for the day, the whole work shared
   const name = sharing(page).getByLabel("Name of the copy");
   await expect(name).toHaveValue(/^Reading copy, /);
-  await expect(
-    sharing(page).getByRole("button", { name: "The whole work" }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(sharing(page).getByLabel("What to share")).toHaveValue("book");
 
   // when: it is named and made
   await name.fill("For Lena");
@@ -606,9 +605,7 @@ test("sections in a row are shared from the first ticked to the last", async ({
   await readable(page);
   await openTheReadingView(page);
   await openTheShareDialog(page);
-  await sharing(page)
-    .getByRole("button", { name: "Sections in a row" })
-    .click();
+  await sharing(page).getByLabel("What to share").selectOption("sections");
 
   // when: the first and the third are ticked
   await sharing(page).getByRole("checkbox", { name: "One" }).check();
@@ -673,4 +670,53 @@ test("a copy open with no end closes when it is deleted, unless it is kept for g
   await expect(
     sharing(page).getByText("Kept for good, with its comments."),
   ).toBeVisible();
+});
+
+test("scenes in a row are shared from the first ticked to the last, across their sections", async ({
+  page,
+}) => {
+  // given: two chapters of titled scenes, the share dialog open on scenes in a row
+  await aNewProject(page, "ReadingShareScenes");
+  const scenes = await aBookWithScenes(page, { Morning: 2, Market: 1 });
+  const [harbour, wall] = scenes["Morning"];
+  const [stalls] = scenes["Market"];
+  for (const [scene, title] of [
+    [harbour, "At the harbour"],
+    [wall, "On the wall"],
+    [stalls, "The stalls"],
+  ]) {
+    await titled(page, scene, title);
+  }
+  await readable(page);
+  await openTheReadingView(page);
+  await openTheShareDialog(page);
+  await sharing(page).getByLabel("What to share").selectOption("scenes");
+
+  // expect: the scenes stand under their sections, which cannot be ticked
+  await expect(sharing(page).locator(".tree li.heading")).toHaveText([
+    "Morning",
+    "Market",
+  ]);
+  await expect(sharing(page).getByRole("checkbox")).toHaveCount(3);
+
+  // when: the first and the last scene are ticked
+  await sharing(page).getByRole("checkbox", { name: "At the harbour" }).check();
+  await sharing(page).getByRole("checkbox", { name: "The stalls" }).check();
+
+  // then: the scene between is taken in, across the chapters
+  await expect(
+    sharing(page).getByRole("checkbox", { name: "On the wall" }),
+  ).toBeChecked();
+  await expect(sharing(page)).toContainText("3 scenes chosen.");
+
+  // when: the copy is made
+  const asked = copyAskedFor(page);
+  await sharing(page).getByRole("button", { name: "Make the copy" }).click();
+
+  // then: the run from the first scene to the last is asked for
+  expect((await asked).postDataJSON().shared).toEqual({
+    kind: "scenes",
+    first: harbour,
+    last: stalls,
+  });
 });

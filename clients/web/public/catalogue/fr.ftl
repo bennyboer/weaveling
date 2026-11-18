@@ -399,6 +399,12 @@ share-sections-chosen = { $count ->
        *[other] { $count } sections choisies. En cocher une plus loin inclut celles d’entre-deux.
     }
 share-sections-none = Cochez les sections à partager.
+share-scenes = Des scènes à la suite
+share-scenes-chosen = { $count ->
+        [one] Une scène choisie. En cocher une plus loin inclut celles d’entre-deux.
+       *[other] { $count } scènes choisies. En cocher une plus loin inclut celles d’entre-deux.
+    }
+share-scenes-none = Cochez les scènes à partager.
 share-name = Nom de la copie
 share-name-default = Copie de lecture, { $day }
 share-open = Ouverte aux commentaires

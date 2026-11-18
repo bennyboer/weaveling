@@ -59,12 +59,13 @@ pub struct MakeReadingCopyRequest {
     pub deleted_on: Option<String>,
 }
 
-/// What of the work a reading copy is asked to hold: all of it, or a run of sections from the first to the last.
+/// What of the work a reading copy is asked to hold: all of it, or a run of sections or of scenes from the first to the last.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SharedDTO {
     Book,
     Sections { first: String, last: String },
+    Scenes { first: String, last: String },
 }
 
 /// One reading copy with what it holds.

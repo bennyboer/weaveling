@@ -1,7 +1,7 @@
 use eventsourcing::Agent;
 use time::OffsetDateTime;
 
-use crate::link::{ProjectLink, ReadingCopyLink, SectionLink};
+use crate::link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
 
 /// What a reading copy holds of the book.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +18,10 @@ pub enum Shared {
     Sections {
         first: SectionLink,
         last: SectionLink,
+    },
+    Scenes {
+        first: SceneLink,
+        last: SceneLink,
     },
 }
 
