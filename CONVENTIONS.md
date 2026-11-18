@@ -170,6 +170,16 @@ The ROADMAP says the same in its notes. But a note in the ROADMAP is not read wh
 - Every `expect` states the reason why it cannot fail: `.expect("a plain title is fine")`.
 - Modules and re-exports that sit behind a cargo feature come last. They follow a blank line and are grouped by feature. This keeps what a build may leave out apart from what every build has. A feature's test module sits in that feature's group. The blank line also stops rustfmt from sorting them back in among the others.
 
+## State messages
+
+Most messages are events: each one says what happened, and a listener needs all of them, in order, to know where things stand. Sometimes another feature needs the whole of something instead, such as the outline of a book or the text of a scene. Then the owning feature does not make the listener replay its events with its own rules. It sends a **state message**: the whole state after a change.
+
+- The routing key is **`state.<what>.changed`**: `state.outline.changed`, `state.scene-text.changed`. Like `follow-up.`, the prefix lies outside every `<kind>.#`. So a listener to an aggregate's events never takes a state message for one of them, and the listener that sends it never hears its own message.
+- The payload is a **`<What>StateDTO`**: `OutlineStateDTO`, `SceneTextStateDTO`. It carries the id, a `version` and the whole state. It never carries a change.
+- A receiver **keeps only the newest version** and ignores one that is older or the same. A late message changes nothing, and a lost one is made good by the next.
+- The sender may **send it again** at any time, for example after a change of format, for every aggregate it holds. So an old format only needs to stay readable as long as its messages may still be on their way.
+- A state message is cheap to receive and dearer to send: every change sends all of it. Use one when the receiver needs the whole thing, not when it needs to react to what happened.
+
 ## Writes that hold together
 
 These points are checked in the review of every slice that writes data or sends messages. Each point is a fault that both integrity audits found more than once.

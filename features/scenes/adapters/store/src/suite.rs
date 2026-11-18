@@ -264,7 +264,7 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             blocks,
             version,
         } => (
-            "scene.text.settled",
+            "state.scene-text.changed",
             json!({
                 "scene": scene.to_string(),
                 "project": project.to_string(),
@@ -1654,7 +1654,7 @@ pub async fn announcing_the_text_enqueues_it_with_the_scene_s_project_and_versio
     assert_eq!(
         told_after_creating(bench.enqueued().await),
         vec![(
-            "scene.text.settled".to_owned(),
+            "state.scene-text.changed".to_owned(),
             json!({
                 "scene": id.to_string(),
                 "project": a_project().to_string(),

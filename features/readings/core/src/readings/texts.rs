@@ -8,7 +8,7 @@ use crate::readings::ReadingsCore;
 
 impl ReadingsCore {
     /// Keeps a scene's text as the scenes feature told it once it had settled, read at its prose version.
-    pub async fn text_settled(
+    pub async fn text_changed(
         &self,
         within: Option<&mut Transaction>,
         scene: &str,

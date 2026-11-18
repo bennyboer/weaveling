@@ -4,6 +4,7 @@ mod belonging;
 mod cataloguing;
 mod detaching;
 mod publishing;
+mod state;
 mod sweeping;
 
 pub use access::{RememberRolesListener, RememberTrashListener};
@@ -17,6 +18,7 @@ pub use detaching::{
     DetachOnSceneDeletedListener,
 };
 pub use publishing::message_for;
+pub use state::TellStateListener;
 
 pub use sweeping::{
     DiscardOutlinesOnProjectDeletedListener, RememberDeletedProjectsListener, SWEEP_PROJECT,

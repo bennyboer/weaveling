@@ -12,7 +12,7 @@ pub const CREATED: &str = "scene.created";
 pub const RETITLED: &str = "scene.retitled";
 pub const OPENING_CHANGED: &str = "scene.opening.changed";
 pub const ASSETS_CHANGED: &str = "scene.assets.changed";
-pub const TEXT_SETTLED: &str = "scene.text.settled";
+pub const TEXT_STATE_CHANGED: &str = "state.scene-text.changed";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdeaLinkDTO {
@@ -66,7 +66,7 @@ pub struct SceneAssetsChangedDTO {
 /// A scene's text as a reader sees it, once it has settled.
 /// `version` is the scene's prose version it was read at, so a late, older message can be told apart.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct SceneTextSettledDTO {
+pub struct SceneTextStateDTO {
     pub scene: String,
     pub blocks: Vec<BlockDTO>,
     pub version: u64,

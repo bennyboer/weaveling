@@ -11,6 +11,7 @@ pub const ATTACHED: &str = "outline.attached";
 pub const DETACHED: &str = "outline.detached";
 pub const DISCARDED: &str = "outline.discarded";
 pub const EVERY_OUTLINE: &str = "outline.#";
+pub const STATE_CHANGED: &str = "state.outline.changed";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -33,6 +34,26 @@ pub struct OutlineDTO {
     pub version: u64,
     pub project: String,
     pub sections: Vec<PlacedSectionDTO>,
+}
+
+/// An outline's whole state after a change, told to other features.
+/// Only the newest version counts, so a listener can keep just the latest and ignore late ones.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OutlineStateDTO {
+    pub outline: String,
+    pub project: String,
+    pub version: u64,
+    pub discarded: bool,
+    /// The sections in reading order, each after its parent.
+    pub sections: Vec<SectionStateDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SectionStateDTO {
+    pub section: String,
+    pub parent: Option<String>,
+    pub title: String,
+    pub attachments: Vec<AttachmentDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

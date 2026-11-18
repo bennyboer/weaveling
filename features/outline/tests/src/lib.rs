@@ -19,6 +19,9 @@ mod outline_cataloguing;
 mod outline_live;
 
 #[cfg(test)]
+mod outline_state;
+
+#[cfg(test)]
 mod outline_tidying;
 
 #[cfg(test)]

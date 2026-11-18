@@ -170,7 +170,7 @@ So the first telling after a start, and the chore `tell-scenes-left-untold`, tel
 The assets feature keeps these sets, so an image a scene shows is not deleted.
 
 When a live scene is told, it also compares its blocks with the last ones it told, as it does its assets.
-If they differ, `announce_what_it_holds` tells them as `scene.text.settled` (`SceneTextSettledDTO`), in the same transaction as the words.
+If they differ, `announce_what_it_holds` tells them as `state.scene-text.changed` (`SceneTextStateDTO`), in the same transaction as the words.
 The message carries the scene, its blocks, and the prose version they were read at, so a late, older text can be told apart; its context names the project.
 A change only the writing view shows, as marking speech, leaves the blocks as they were and tells nothing.
 A scene that was not told yet counts as changed.

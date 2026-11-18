@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use async_trait::async_trait;
@@ -9,9 +9,13 @@ use clock::Clock;
 use eventsourcing::{AccountId, InMemoryEventStore, Version};
 use inbox::InMemoryInbox;
 use live::Topic;
-use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
+use messaging::{
+    DeliveryConsumer, Failure, Handler, InMemoryDeliveries, InProcessDispatcher, Listener, Message,
+    WithoutInbox,
+};
 use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
+use outline_contract::{OutlineStateDTO, STATE_CHANGED};
 use outline_core::{OutlineEvent, OutlinesCore};
 use registry::InMemoryRegistry;
 use time::OffsetDateTime;
@@ -149,6 +153,39 @@ impl AccessCatalog for WhoMayDoWhat {
     }
 }
 
+/// The states the outline told other features, in the order they were told.
+#[derive(Default)]
+pub struct StatesTold(Mutex<Vec<OutlineStateDTO>>);
+
+impl StatesTold {
+    pub fn told(&self) -> Vec<OutlineStateDTO> {
+        self.0.lock().expect("the states told are never poisoned").clone()
+    }
+
+    pub fn last(&self) -> OutlineStateDTO {
+        self.told()
+            .pop()
+            .expect("the outline should have told its state")
+    }
+}
+
+#[async_trait]
+impl Handler for StatesTold {
+    const NAME: &'static str = "overhear-outline-states";
+    const LISTENS_TO: &'static [&'static str] = &[STATE_CHANGED];
+    const WHEN_REFUSED: &'static str = "A state told was not overheard.";
+    const WITHOUT_INBOX: WithoutInbox = WithoutInbox::Fleeting;
+
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        self.0
+            .lock()
+            .expect("the states told are never poisoned")
+            .push(message.payload_as()?);
+
+        Ok(())
+    }
+}
+
 pub struct Wired {
     pub outlines: OutlinesCore,
     pub reopened: Box<dyn Fn() -> OutlinesCore + Send + Sync>,
@@ -169,6 +206,7 @@ pub struct Wired {
     pub remembering_roles: Arc<dyn Listener>,
     pub remembering_trash: Arc<dyn Listener>,
     pub access: Arc<WhoMayDoWhat>,
+    pub states: Arc<StatesTold>,
     pub clock: Arc<dyn Clock>,
     told: AtomicU64,
 }
@@ -256,6 +294,8 @@ fn a_workbench_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
     for listener in &wired.listeners {
         dispatcher.listen(listener.clone());
     }
+    let states = Arc::new(StatesTold::default());
+    dispatcher.listen(states.clone());
 
     let named = |wanted: &str| {
         wired
@@ -297,6 +337,7 @@ fn a_workbench_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
         remembering_roles,
         remembering_trash,
         access,
+        states,
         clock: context.clock.clone(),
         told: AtomicU64::new(0),
     }

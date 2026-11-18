@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use outbox::Outbox;
-use scenes_contract::{BlockDTO, MarksDTO, RunDTO, SceneTextSettledDTO, TEXT_SETTLED};
+use scenes_contract::{BlockDTO, MarksDTO, RunDTO, SceneTextStateDTO, TEXT_STATE_CHANGED};
 use scenes_core::SceneId;
 use yrs::types::xml::XmlOut;
 use yrs::{Any, Text, XmlFragment};
@@ -10,7 +10,7 @@ use yrs::{Any, Text, XmlFragment};
 use crate::scene_images::{Wired, Writer, a_workbench};
 
 impl Wired {
-    async fn text_told(&self, id: SceneId) -> Vec<SceneTextSettledDTO> {
+    async fn text_told(&self, id: SceneId) -> Vec<SceneTextStateDTO> {
         self.outbox
             .deliver(100)
             .await
@@ -19,10 +19,10 @@ impl Wired {
         self.published
             .heard()
             .into_iter()
-            .filter(|message| message.routing.to_string() == TEXT_SETTLED)
+            .filter(|message| message.routing.to_string() == TEXT_STATE_CHANGED)
             .map(|message| {
                 message
-                    .payload_as::<SceneTextSettledDTO>()
+                    .payload_as::<SceneTextStateDTO>()
                     .expect("the text reads back as the contract says")
             })
             .filter(|told| told.scene == id.to_string())
@@ -74,7 +74,7 @@ async fn a_scene_s_text_is_told_as_blocks_once_it_has_settled() {
     // then: the text is told as its blocks, with the version of the prose it was read from
     assert_eq!(
         bench.text_told(id).await.last(),
-        Some(&SceneTextSettledDTO {
+        Some(&SceneTextStateDTO {
             scene: id.to_string(),
             blocks: vec![BlockDTO::Paragraph {
                 runs: vec![plain("The loom stood silent.")],

@@ -93,6 +93,12 @@ impl OutlinesCore {
         Ok(standing)
     }
 
+    /// The outline as it stands now, without asking who wants to know.
+    /// Only the system reads this, to tell other features the outline's shape.
+    pub async fn standing(&self, outline: &OutlineId) -> Result<Standing<Outline>, OutlinesError> {
+        self.service.latest(outline).await
+    }
+
     pub async fn watch_access(&self, outline: &str) -> Result<AccessWatch, OutlinesError> {
         let outline: OutlineId = outline.parse()?;
         let standing = self.service.latest(&outline).await?;

@@ -1,7 +1,7 @@
 use inbox::KeptHandler;
 use messaging::{Failure, Message};
 use readings_core::ReadingsCore;
-use scenes_contract::{DELETED, SceneDeletedDTO, SceneTextSettledDTO, TEXT_SETTLED};
+use scenes_contract::{DELETED, SceneDeletedDTO, SceneTextStateDTO, TEXT_STATE_CHANGED};
 use transacting::Transaction;
 
 use crate::transformer;
@@ -17,14 +17,14 @@ impl KeepSceneTextsListener {
 
     async fn keep(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
-            TEXT_SETTLED => {
-                let settled: SceneTextSettledDTO = message.payload_as()?;
+            TEXT_STATE_CHANGED => {
+                let told: SceneTextStateDTO = message.payload_as()?;
                 self.readings
-                    .text_settled(
+                    .text_changed(
                         Some(transaction),
-                        &settled.scene,
-                        &transformer::to_blocks(&settled.blocks),
-                        settled.version,
+                        &told.scene,
+                        &transformer::to_blocks(&told.blocks),
+                        told.version,
                     )
                     .await?;
             }
@@ -44,7 +44,7 @@ impl KeepSceneTextsListener {
 #[async_trait::async_trait]
 impl KeptHandler for KeepSceneTextsListener {
     const NAME: &'static str = "readings-keep-scene-texts";
-    const LISTENS_TO: &'static [&'static str] = &[TEXT_SETTLED, DELETED];
+    const LISTENS_TO: &'static [&'static str] = &[TEXT_STATE_CHANGED, DELETED];
     const WHEN_REFUSED: &'static str =
         "A scene's text did not reach the readings feature. The book may show it as it was before.";
 

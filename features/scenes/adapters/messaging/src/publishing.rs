@@ -4,7 +4,7 @@ use projects_contract::context::PROJECT;
 use scenes_contract::{
     ASSETS_CHANGED, BlockDTO, CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, MarksDTO,
     OPENING_CHANGED, OpeningChangedDTO, RETITLED, RunDTO, SceneAssetsChangedDTO, SceneCreatedDTO,
-    SceneDeletedDTO, SceneRetitledDTO, SceneTextSettledDTO, TEXT_SETTLED, WORDS_COUNTED,
+    SceneDeletedDTO, SceneRetitledDTO, SceneTextStateDTO, TEXT_STATE_CHANGED, WORDS_COUNTED,
     WordsCountedDTO,
 };
 use scenes_core::{Block, FigureSize, Marks, Run, SceneChange};
@@ -109,8 +109,8 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             version,
             ..
         } => (
-            TEXT_SETTLED,
-            to_payload(&SceneTextSettledDTO {
+            TEXT_STATE_CHANGED,
+            to_payload(&SceneTextStateDTO {
                 scene: scene.to_string(),
                 blocks: to_blocks_dto(blocks),
                 version: *version,
@@ -384,12 +384,12 @@ mod tests {
         );
 
         // then: it goes under the text's key
-        assert_eq!(told.routing.to_string(), TEXT_SETTLED);
+        assert_eq!(told.routing.to_string(), TEXT_STATE_CHANGED);
         // and: reads back as the scene's blocks, with their version
         assert_eq!(
-            serde_json::from_value::<SceneTextSettledDTO>(told.payload.clone())
+            serde_json::from_value::<SceneTextStateDTO>(told.payload.clone())
                 .expect("reads back"),
-            SceneTextSettledDTO {
+            SceneTextStateDTO {
                 scene: scene.to_string(),
                 blocks: vec![
                     BlockDTO::Heading {

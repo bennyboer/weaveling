@@ -10,7 +10,7 @@ use readings_catalog::{InMemorySceneTextCatalog, SampleBook};
 use readings_core::{Block, Part, ReadingsCore, Run};
 use readings_messaging::KeepSceneTextsListener;
 use scenes_contract::{
-    BlockDTO, DELETED, MarksDTO, RunDTO, SceneDeletedDTO, SceneTextSettledDTO, TEXT_SETTLED,
+    BlockDTO, DELETED, MarksDTO, RunDTO, SceneDeletedDTO, SceneTextStateDTO, TEXT_STATE_CHANGED,
 };
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
@@ -69,8 +69,8 @@ impl Wired {
 
 fn settled(scene: &str, words: &str, version: u64) -> Message {
     Message::opening(
-        RoutingKey::parse(TEXT_SETTLED).expect("a declared key"),
-        serde_json::to_value(SceneTextSettledDTO {
+        RoutingKey::parse(TEXT_STATE_CHANGED).expect("a declared key"),
+        serde_json::to_value(SceneTextStateDTO {
             scene: scene.to_owned(),
             blocks: vec![BlockDTO::Paragraph {
                 runs: vec![RunDTO::Text {
@@ -106,7 +106,7 @@ fn it_listens_for_settled_texts_and_for_deletions() {
     let bench = a_workbench();
 
     // expect: it hears a scene's settled text and its deletion
-    for routing in [TEXT_SETTLED, DELETED] {
+    for routing in [TEXT_STATE_CHANGED, DELETED] {
         assert!(
             bench
                 .keeping

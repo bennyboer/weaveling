@@ -16,6 +16,7 @@ use outline_messaging::{
     DetachOnDiscardListener, DetachOnSceneDeletedListener, DiscardOutlinesOnProjectDeletedListener,
     IndexAttachmentsListener, RememberDeletedProjectsListener,
     RememberProjectsOfAttachmentsListener, RememberRolesListener, RememberTrashListener,
+    TellStateListener,
 };
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
@@ -84,6 +85,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let remember_roles = hearing.inboxed(RememberRolesListener::new(outlines.clone()));
     let remember_trash = hearing.inboxed(RememberTrashListener::new(outlines.clone()));
+    let tell_state = hearing.inboxed(TellStateListener::new(
+        outlines.clone(),
+        ports.outbox.clone(),
+        context.clock.clone(),
+    ));
     let broadcaster = Broadcaster::new();
     let broadcast =
         BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone(), |published| {
@@ -108,6 +114,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(sweep),
             Arc::new(remember_roles),
             Arc::new(remember_trash),
+            Arc::new(tell_state),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

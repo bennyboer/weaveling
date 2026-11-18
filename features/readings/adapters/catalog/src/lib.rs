@@ -1,3 +1,4 @@
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 mod kept;
 mod memory;
 mod sample;
