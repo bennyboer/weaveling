@@ -102,6 +102,7 @@ impl Feature for ReadingsFeature {
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
+            readings_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
             access::postgres::migrations(),
         ]
@@ -118,7 +119,11 @@ impl Feature for ReadingsFeature {
 
     #[cfg(feature = "sqlite")]
     fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![inbox::sqlite::migrations(), access::sqlite::migrations()]
+        vec![
+            readings_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
+        ]
     }
 
     fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {

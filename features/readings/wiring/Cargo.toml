@@ -20,8 +20,8 @@ readings-messaging = { version = "0.1.0", path = "../adapters/messaging", packag
 readings-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-readings-rest" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "transacting/postgres", "inbox/postgres", "access/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "transacting/sqlite", "inbox/sqlite", "access/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "readings-catalog/postgres", "transacting/postgres", "inbox/postgres", "access/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "readings-catalog/sqlite", "transacting/sqlite", "inbox/sqlite", "access/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

@@ -6649,10 +6649,14 @@ name = "weaveling-readings-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-clock",
  "weaveling-readings-core",
+ "weaveling-test-harness",
  "weaveling-transacting",
 ]
 
