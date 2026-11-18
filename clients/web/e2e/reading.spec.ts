@@ -544,3 +544,133 @@ test("on a phone, the contents open from the status bar, with no tab over the te
   await expect(contents(page)).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 });
+
+const sharing = (page: Page) =>
+  page.getByRole("dialog", { name: "Share a reading copy" });
+
+async function openTheShareDialog(page: Page) {
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("button", { name: "Share a reading copy" })
+    .click();
+  await expect(sharing(page)).toBeVisible();
+}
+
+function copyAskedFor(page: Page) {
+  return page.waitForRequest(
+    (asked) =>
+      asked.method() === "POST" && asked.url().endsWith("/api/readings/copies"),
+  );
+}
+
+test("an author shares the whole work as a reading copy, and is taken to it", async ({
+  page,
+}) => {
+  // given: a project's reading view, the share dialog open
+  await aReadingView(page, "ReadingShare");
+  await openTheShareDialog(page);
+
+  // expect: the copy is named for the day, the whole work shared
+  const name = sharing(page).getByLabel("Name of the copy");
+  await expect(name).toHaveValue(/^Reading copy, /);
+  await expect(
+    sharing(page).getByRole("button", { name: "The whole work" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  // when: it is named and made
+  await name.fill("For Lena");
+  const asked = copyAskedFor(page);
+  await sharing(page).getByRole("button", { name: "Make the copy" }).click();
+
+  // then: the whole work is asked for under that name, closing before it is deleted
+  const made = (await asked).postDataJSON();
+  expect(made.name).toBe("For Lena");
+  expect(made.shared).toEqual({ kind: "book" });
+  expect(Date.parse(made.open_until)).toBeLessThan(Date.parse(made.deleted_on));
+  // and: the dialog is gone and the copy is read
+  await expect(sharing(page)).toBeHidden();
+  await expect(page).toHaveURL(/\/read\/copy_sample_book$/);
+});
+
+test("sections in a row are shared from the first ticked to the last", async ({
+  page,
+}) => {
+  // given: a work of four sections, its share dialog open on sections in a row
+  await aNewProject(page, "ReadingShareSections");
+  const { ids } = await aBookShaped(page, [
+    { title: "One" },
+    { title: "Two", after: "One" },
+    { title: "Three", after: "Two" },
+    { title: "Four", after: "Three" },
+  ]);
+  await readable(page);
+  await openTheReadingView(page);
+  await openTheShareDialog(page);
+  await sharing(page)
+    .getByRole("button", { name: "Sections in a row" })
+    .click();
+
+  // when: the first and the third are ticked
+  await sharing(page).getByRole("checkbox", { name: "One" }).check();
+  await sharing(page).getByRole("checkbox", { name: "Three" }).check();
+
+  // then: the second is taken in, the fourth not
+  for (const [title, ticked] of [
+    ["One", true],
+    ["Two", true],
+    ["Three", true],
+    ["Four", false],
+  ] as const) {
+    await expect(
+      sharing(page).getByRole("checkbox", { name: title }),
+    ).toBeChecked({
+      checked: ticked,
+    });
+  }
+  await expect(sharing(page)).toContainText("3 sections chosen.");
+
+  // when: the copy is made
+  const asked = copyAskedFor(page);
+  await sharing(page).getByRole("button", { name: "Make the copy" }).click();
+
+  // then: the run from the first to the third is asked for
+  expect((await asked).postDataJSON().shared).toEqual({
+    kind: "sections",
+    first: ids["One"],
+    last: ids["Three"],
+  });
+});
+
+test("a copy open with no end closes when it is deleted, unless it is kept for good", async ({
+  page,
+}) => {
+  // given: a project's share dialog
+  await aReadingView(page, "ReadingShareTimes");
+  await openTheShareDialog(page);
+  const open = sharing(page).getByRole("group", { name: "Open for feedback" });
+  const kept = sharing(page).getByRole("group", {
+    name: "Deleted with its comments",
+  });
+
+  // when: it is to be open with no end, and deleted after 90 days
+  await open.getByRole("button", { name: "No end" }).click();
+
+  // then: it is open until the day it is deleted
+  const deletedOn = (await sharing(page)
+    .getByText(/^On .*\. Members can read it/)
+    .textContent())!.match(/^On (.*)\. Members/)![1];
+  await expect(
+    sharing(page).getByText(
+      `Until ${deletedOn}. Its readers can read and comment until then.`,
+    ),
+  ).toBeVisible();
+
+  // when: it is kept for good
+  await kept.getByRole("button", { name: "Keep for good" }).click();
+
+  // then: it is open with no end
+  await expect(sharing(page).getByText(/^With no end\./)).toBeVisible();
+  await expect(
+    sharing(page).getByText("Kept for good, with its comments."),
+  ).toBeVisible();
+});

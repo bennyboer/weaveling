@@ -245,6 +245,28 @@ async fn a_project_s_copies_are_not_there_for_whoever_may_not_read_it() {
 }
 
 #[tokio::test]
+async fn a_copy_is_made_by_any_member_and_by_nobody_else() {
+    // given: a project ada may only read
+    let guarded = a_project_only_ada_may_read().await;
+    let asked = serde_json::json!({
+        "project": PROJECT,
+        "name": "Ada's copy",
+        "shared": { "kind": "book" },
+        "open_until": null,
+        "deleted_on": null,
+    });
+
+    // when: ada, and grace who is not in it, ask to make a copy
+    let by_ada = guarded.ada.post("/readings/copies").json(&asked).await;
+    let by_grace = guarded.grace.post("/readings/copies").json(&asked).await;
+
+    // then: ada, a reader, makes it, as commenting on the live work makes one
+    by_ada.assert_status(StatusCode::CREATED);
+    // and: to grace the project is not there
+    by_grace.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn a_copy_is_read_by_whoever_may_read_the_project_it_was_made_of() {
     // given: a project only ada may read
     let guarded = a_project_only_ada_may_read().await;

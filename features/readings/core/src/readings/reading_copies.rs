@@ -5,7 +5,7 @@ use time::{Duration, OffsetDateTime};
 use crate::contents::{Block, Contents, Marks, Part, Run};
 use crate::error::ReadingsError;
 use crate::link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
-use crate::reading_copies::{Extent, ListedReadingCopy};
+use crate::reading_copies::{Extent, ListedReadingCopy, Shared};
 use crate::readings::ReadingsCore;
 
 impl ReadingsCore {
@@ -25,6 +25,41 @@ impl ReadingsCore {
             agent,
             self.clock.now(),
         ))
+    }
+
+    /// Makes a reading copy of the work as it is now, for any member of the project.
+    /// Readers make copies too, as commenting on the live work makes one; only sharing a copy by a link is for authors.
+    pub async fn make_copy(
+        &self,
+        project: &str,
+        name: &str,
+        shared: &Shared,
+        open_until: Option<OffsetDateTime>,
+        deleted_on: Option<OffsetDateTime>,
+        agent: &Agent,
+    ) -> Result<ListedReadingCopy, ReadingsError> {
+        if !self.authorizer.may(agent, Act::Read, project).await? {
+            return Err(ReadingsError::ProjectNotThere);
+        }
+
+        // TODO: the copy made from the live work and kept, by the ReadingCopy aggregate's rules
+        let now = self.clock.now();
+        let [mut made, ..] = <[ListedReadingCopy; 2]>::try_from(sample_copies(
+            &ProjectLink::from(SAMPLE_PROJECT),
+            agent,
+            now,
+        ))
+        .expect("there are two sample copies");
+        made.name = name.to_owned();
+        made.made_at = now;
+        made.extent = match shared {
+            Shared::Book => Extent::Book,
+            Shared::Sections { .. } => Extent::Sections(1),
+        };
+        made.open_until = open_until;
+        made.deleted_on = deleted_on;
+
+        Ok(made)
     }
 
     /// One reading copy with what it holds, for whoever may read the project it was made of.

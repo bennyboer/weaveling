@@ -47,6 +47,26 @@ pub enum ExtentDTO {
     Scenes { count: u32 },
 }
 
+/// Asks for a reading copy of the work as it is now, shared under a name.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MakeReadingCopyRequest {
+    pub project: String,
+    pub name: String,
+    pub shared: SharedDTO,
+    /// Until when it is open for reading and feedback; none for no end.
+    pub open_until: Option<String>,
+    /// When it is deleted for good, with its feedback; none to keep it.
+    pub deleted_on: Option<String>,
+}
+
+/// What of the work a reading copy is asked to hold: all of it, or a run of sections from the first to the last.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SharedDTO {
+    Book,
+    Sections { first: String, last: String },
+}
+
 /// One reading copy with what it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ReadingCopyDTO {
@@ -119,4 +139,10 @@ pub struct MarksDTO {
     pub strong: bool,
     pub code: bool,
     pub link: Option<String>,
+}
+
+pub mod refused {
+    pub const MOMENT_UNREADABLE: &str = "reading-copy-moment-unreadable";
+
+    pub const EVERY: [&str; 1] = [MOMENT_UNREADABLE];
 }

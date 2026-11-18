@@ -1,5 +1,9 @@
 use gloo_net::http::Request;
-use readings_contract::{ContentsDTO, ListedReadingCopyDTO, ReadingCopyDTO};
+use readings_contract::{
+    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO, SharedDTO,
+};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::http;
 use crate::http::ApiError;
@@ -39,4 +43,31 @@ pub async fn copy(copy: &ReadingCopyId) -> Result<(ListedReadingCopy, Book), Api
         ListedReadingCopy::try_from(read.copy)?,
         Book::from(read.contents),
     ))
+}
+
+/// Makes a reading copy of the work as it is now, shared under a name.
+pub async fn make_copy(
+    project: &ProjectId,
+    name: &str,
+    shared: SharedDTO,
+    open_until: Option<OffsetDateTime>,
+    deleted_on: Option<OffsetDateTime>,
+) -> Result<ListedReadingCopy, ApiError> {
+    let payload = MakeReadingCopyRequest {
+        project: project.to_string(),
+        name: name.to_owned(),
+        shared,
+        open_until: open_until.map(written),
+        deleted_on: deleted_on.map(written),
+    };
+    let response = http::sent_with(Request::post(COPIES), &payload).await?;
+    let made: ListedReadingCopyDTO = http::parsed(response, COPY).await?;
+
+    ListedReadingCopy::try_from(made)
+}
+
+fn written(moment: OffsetDateTime) -> String {
+    moment
+        .format(&Rfc3339)
+        .expect("a moment chosen in the dialog is always representable as RFC 3339")
 }

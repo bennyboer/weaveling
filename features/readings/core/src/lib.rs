@@ -14,5 +14,5 @@ pub use contents::{Block, Contents, FigureSize, Marks, Part, Run};
 pub use error::ReadingsError;
 pub use following::{BookFollowers, NobodyFollows};
 pub use link::{AssetLink, ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
-pub use reading_copies::{Extent, ListedReadingCopy};
+pub use reading_copies::{Extent, ListedReadingCopy, Shared};
 pub use readings::{ReadingsCore, ToldSection};

@@ -2,7 +2,10 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use eventsourcing::Agent;
-use readings_contract::{ExtentDTO, ListedReadingCopyDTO, PartDTO, ReadingCopyDTO};
+use readings_contract::{
+    ExtentDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, PartDTO, ReadingCopyDTO, SharedDTO,
+    refused,
+};
 
 fn server() -> TestServer {
     TestServer::new(
@@ -62,4 +65,51 @@ async fn a_copy_that_is_not_there_is_not_found() {
 
     // then: it is not there
     response.assert_status(StatusCode::NOT_FOUND);
+}
+
+fn asked_for(open_until: Option<&str>) -> MakeReadingCopyRequest {
+    MakeReadingCopyRequest {
+        project: "project_loom".to_owned(),
+        name: "Chapters 1–3 for Lena".to_owned(),
+        shared: SharedDTO::Sections {
+            first: "section_morning".to_owned(),
+            last: "section_market".to_owned(),
+        },
+        open_until: open_until.map(str::to_owned),
+        deleted_on: None,
+    }
+}
+
+#[tokio::test]
+async fn a_copy_made_answers_as_it_is_listed() {
+    // when: a copy of two sections is made, open until a day
+    let response = server()
+        .post("/readings/copies")
+        .json(&asked_for(Some("2026-12-17T12:00:00Z")))
+        .await;
+
+    // then: it is made, under its name, holding sections, open until that day and kept
+    response.assert_status(StatusCode::CREATED);
+    let made = response.json::<ListedReadingCopyDTO>();
+    assert_eq!(made.name, "Chapters 1–3 for Lena");
+    assert!(matches!(made.extent, ExtentDTO::Sections { .. }));
+    assert_eq!(made.open_until.as_deref(), Some("2026-12-17T12:00:00Z"));
+    assert_eq!(made.deleted_on, None);
+    assert!(made.made_by_you);
+}
+
+#[tokio::test]
+async fn a_moment_that_cannot_be_read_is_refused() {
+    // when: a copy is asked for with a moment that is none
+    let response = server()
+        .post("/readings/copies")
+        .json(&asked_for(Some("next tuesday")))
+        .await;
+
+    // then: it is refused as unreadable
+    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response.json::<serde_json::Value>()["type"],
+        refused::MOMENT_UNREADABLE
+    );
 }

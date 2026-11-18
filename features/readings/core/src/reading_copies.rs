@@ -1,7 +1,7 @@
 use eventsourcing::Agent;
 use time::OffsetDateTime;
 
-use crate::link::{ProjectLink, ReadingCopyLink};
+use crate::link::{ProjectLink, ReadingCopyLink, SectionLink};
 
 /// What a reading copy holds of the book.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,6 +9,16 @@ pub enum Extent {
     Book,
     Sections(u32),
     Scenes(u32),
+}
+
+/// What of the work a reading copy is asked to hold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shared {
+    Book,
+    Sections {
+        first: SectionLink,
+        last: SectionLink,
+    },
 }
 
 /// A reading copy as its project's members find it listed: what it is, who made it, and how long it is open and kept.

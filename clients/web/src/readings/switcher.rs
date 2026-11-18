@@ -2,8 +2,10 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use crate::members::roles::Roles;
 use crate::moment;
 use crate::readings::reading_copies::{Extent, ListedReadingCopy, ReadingCopyId};
+use crate::readings::share_dialog;
 use crate::route;
 use crate::speech;
 
@@ -63,11 +65,19 @@ pub fn reading_bar(
         }
     };
 
-    html::div().class("reading-bar").child(
+    let sharing = RwSignal::new(false);
+    let shared_from = slug.clone();
+
+    html::div().class("reading-bar").child((
         html::div()
             .class("what-is-read")
-            .child((switcher(slug, reading, copies, chosen), marks)),
-    )
+            .child((switcher(slug, reading, copies, chosen, sharing), marks)),
+        move || {
+            sharing.get().then(|| {
+                share_dialog::share_dialog(shared_from.clone(), move || sharing.set(false))
+            })
+        },
+    ))
 }
 
 /// The mark of the live work: a dot and the word, as it follows the authors' changes.
@@ -83,8 +93,15 @@ fn switcher(
     reading: Option<ReadingCopyId>,
     copies: LocalResource<Vec<ListedReadingCopy>>,
     chosen: RwSignal<Option<ListedReadingCopy>>,
+    sharing: RwSignal<bool>,
 ) -> impl IntoView {
     let open = RwSignal::new(false);
+    let roles = expect_context::<Roles>();
+    let may_share = {
+        let slug = slug.clone();
+
+        Memo::new(move |_| roles.may_write(&slug))
+    };
     let button: NodeRef<html::Button> = NodeRef::new();
     let reading_live = reading.is_none();
     let name = move || {
@@ -131,11 +148,26 @@ fn switcher(
                             close();
                         }
                     })
-                    .child((live_entry(&slug, reading.is_none()), move || {
-                        copies
-                            .get()
-                            .map(|listed| copy_entries(&slug, reading.as_ref(), listed.to_vec()))
-                    }))
+                    .child((
+                        live_entry(&slug, reading.is_none()),
+                        move || {
+                            copies.get().map(|listed| {
+                                copy_entries(&slug, reading.as_ref(), listed.to_vec())
+                            })
+                        },
+                        move || {
+                            may_share.get().then(|| {
+                                html::button()
+                                    .r#type("button")
+                                    .class("share")
+                                    .on(ev::click, move |_| {
+                                        open.set(false);
+                                        sharing.set(true);
+                                    })
+                                    .child(speech::said("share-copy"))
+                            })
+                        },
+                    ))
             })
         },
     ))

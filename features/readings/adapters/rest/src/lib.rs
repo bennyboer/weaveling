@@ -10,12 +10,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::extract::Path;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
-use readings_contract::{ContentsDTO, ListedReadingCopyDTO, ReadingCopyDTO};
-use readings_core::{ProjectLink, ReadingsCore, ReadingsError};
+use readings_contract::{
+    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO, SharedDTO, refused,
+};
+use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SectionLink, Shared};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -65,7 +68,7 @@ pub fn topic(readings: ReadingsCore, broadcaster: Broadcaster<BookChanges>) -> A
 pub fn router(readings: ReadingsCore) -> Router {
     Router::new()
         .route("/readings/live", routing::get(live_book))
-        .route("/readings/copies", routing::get(copies))
+        .route("/readings/copies", routing::get(copies).post(make_copy))
         .route("/readings/copies/{copy}", routing::get(copy))
         .with_state(readings)
 }
@@ -116,6 +119,49 @@ async fn copy(
     Ok(Json(transformer::to_reading_copy_dto(
         &listed, &contents, &agent,
     )))
+}
+
+async fn make_copy(
+    State(readings): State<ReadingsCore>,
+    Extension(agent): Extension<Agent>,
+    Json(asked): Json<MakeReadingCopyRequest>,
+) -> Result<(StatusCode, Json<ListedReadingCopyDTO>), Problem> {
+    let shared = match asked.shared {
+        SharedDTO::Book => Shared::Book,
+        SharedDTO::Sections { first, last } => Shared::Sections {
+            first: SectionLink::from(first),
+            last: SectionLink::from(last),
+        },
+    };
+    let made = readings
+        .make_copy(
+            &asked.project,
+            &asked.name,
+            &shared,
+            moment_in(asked.open_until.as_deref())?,
+            moment_in(asked.deleted_on.as_deref())?,
+            &agent,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(transformer::to_listed_reading_copy_dto(&made, &agent)),
+    ))
+}
+
+fn moment_in(written: Option<&str>) -> Result<Option<time::OffsetDateTime>, Problem> {
+    written
+        .map(|written| {
+            clock::text::read(written).ok_or_else(|| {
+                Problem::unprocessable(
+                    refused::MOMENT_UNREADABLE,
+                    format!("{written} is not a moment as RFC 3339 writes it"),
+                )
+            })
+        })
+        .transpose()
 }
 
 fn problem_of(refusal: ReadingsError) -> Problem {
