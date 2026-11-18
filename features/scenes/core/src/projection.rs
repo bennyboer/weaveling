@@ -104,7 +104,7 @@ pub(crate) fn assets_in(doc: &Doc) -> BTreeSet<String> {
 
 /// Whether a figure's attribute has the shape of an asset's id.
 /// Anything else is no asset, whatever a client wrote there.
-fn is_asset_id(named: &str) -> bool {
+pub(crate) fn is_asset_id(named: &str) -> bool {
     named.starts_with(ASSET_ID_START)
         && named.len() <= LONGEST_ASSET_ID
         && named

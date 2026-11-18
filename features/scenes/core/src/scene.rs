@@ -9,6 +9,8 @@ use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 use quotation::QuotationMarks;
 
 use crate::projection;
+use crate::readable;
+use crate::readable::Block;
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
 #[derive(Debug, Error)]
@@ -111,6 +113,11 @@ impl Scene {
     /// At most `MOST_ASSETS` are returned, the first ones in sorted order.
     pub fn assets(&self) -> BTreeSet<String> {
         projection::assets_in(&self.doc)
+    }
+
+    /// Returns the scene's text as a reader sees it, in blocks of runs with their marks.
+    pub fn blocks(&self) -> Vec<Block> {
+        readable::blocks_of(&self.doc)
     }
 
     pub fn words(&self) -> usize {

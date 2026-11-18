@@ -5,6 +5,9 @@ mod id;
 mod link;
 mod projection;
 mod quotation_restyling_tasks;
+mod readable;
+#[cfg(test)]
+mod readable_tests;
 mod restyler;
 mod scene;
 mod scenes;
@@ -22,6 +25,7 @@ pub use quotation_restyling_tasks::{
     Page, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingStanding,
     QuotationRestylingTaskError, QuotationRestylingTasks,
 };
+pub use readable::{Block, FigureSize, Marks, Run};
 pub use restyler::SceneRestyler;
 pub use scene::{Scene, SceneError};
 pub use scenes::{Access, ScenesCore};

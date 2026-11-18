@@ -158,6 +158,14 @@ If they differ, `announce_what_it_holds` tells them as `scene.assets.changed` (`
 The message carries the scene, the sorted ids, and the prose version the count was taken at.
 Its context names the project, as for the other scene messages.
 A scene that was not told yet counts as changed.
+
+**A scene can be read as a reader sees it** (*M18, step 5, 2026-11-18*).
+`Scene::blocks` reads the prose into blocks (`readable.rs`), for the readings feature to show and keep.
+Paragraphs, headings, quotes, lists, code blocks, rules and figures become the blocks of the same name, a hard break a break within its paragraph.
+Of the marks, emphasis, strong, code and links are kept; quotation marks and speech are left out, as the quotation marks are in the text already and speech is for the writing view, and runs they alone kept apart are joined.
+A figure whose image is not an asset's id is left out, and a size not known is shown full.
+An element not known is read as the blocks it holds, so nothing written in it is lost.
+How the blocks reach the readings feature, as a message once the text has settled, is its next step.
 So the first count after a start, and the chore `count-scenes-left-uncounted`, tell the set again, even an empty one.
 The assets feature keeps these sets, so an image a scene shows is not deleted.
 
