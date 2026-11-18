@@ -159,7 +159,10 @@ pub struct StatesTold(Mutex<Vec<OutlineStateDTO>>);
 
 impl StatesTold {
     pub fn told(&self) -> Vec<OutlineStateDTO> {
-        self.0.lock().expect("the states told are never poisoned").clone()
+        self.0
+            .lock()
+            .expect("the states told are never poisoned")
+            .clone()
     }
 
     pub fn last(&self) -> OutlineStateDTO {

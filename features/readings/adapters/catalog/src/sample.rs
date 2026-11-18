@@ -13,6 +13,44 @@ pub struct SampleBook;
 
 #[async_trait]
 impl OutlineCatalog for SampleBook {
+    async fn keep_outline(
+        &self,
+        _transaction: &mut Transaction,
+        _project: &ProjectLink,
+        _sections: &[OutlinedSection],
+        _version: u64,
+    ) -> Result<bool, CatalogError> {
+        Ok(false)
+    }
+
+    async fn keep_title(
+        &self,
+        _transaction: &mut Transaction,
+        _project: &ProjectLink,
+        _title: &str,
+        _version: u64,
+    ) -> Result<bool, CatalogError> {
+        Ok(false)
+    }
+
+    async fn forget_book(
+        &self,
+        _transaction: &mut Transaction,
+        _project: &ProjectLink,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        _transaction: &mut Transaction,
+        _before: OffsetDateTime,
+        _at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(0)
+    }
+
     async fn outline_of(
         &self,
         _project: &ProjectLink,

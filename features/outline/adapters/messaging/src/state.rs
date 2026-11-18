@@ -8,7 +8,7 @@ use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
 use outline_contract::{
     ATTACHED, DETACHED, DISCARDED, OutlineStateDTO, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
-    SECTION_PROMOTED, SECTION_REMOVED, SECTION_RETITLED, STATE_CHANGED, STARTED, SectionStateDTO,
+    SECTION_PROMOTED, SECTION_REMOVED, SECTION_RETITLED, STARTED, STATE_CHANGED, SectionStateDTO,
 };
 use outline_core::{KIND, Outline, OutlineId, OutlinesCore};
 use serde::de::IgnoredAny;

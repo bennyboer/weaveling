@@ -14,7 +14,10 @@ use crate::error::ReadingsError;
 use crate::link::{ProjectLink, SceneLink};
 
 mod access;
+mod outlines;
 mod texts;
+
+pub use outlines::ToldSection;
 
 #[derive(Clone)]
 pub struct ReadingsCore {
@@ -68,7 +71,7 @@ impl ReadingsCore {
 
 impl ReadingsCore {
     /// Forgets, in batches, the tombstones laid long enough ago that no message about them can still arrive:
-    /// those of deleted scenes, and those of accounts that left a project.
+    /// those of deleted scenes, those of deleted projects' books, and those of accounts that left a project.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -79,12 +82,16 @@ impl ReadingsCore {
                 .texts
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
+            let books = self
+                .outlines
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
             let access = self
                 .access
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
 
-            Ok(texts + access)
+            Ok(texts + books + access)
         })
     }
 }

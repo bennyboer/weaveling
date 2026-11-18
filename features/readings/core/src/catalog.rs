@@ -31,9 +31,50 @@ pub struct OutlinedSection {
     pub scenes: Vec<SceneLink>,
 }
 
-/// The outline of each project's book, kept by the readings feature itself.
+/// The outline of each project's book and the project's name as its title, kept by the readings feature itself.
+/// The outline and the title come from different features, so each is kept at a version of its own.
 #[async_trait]
 pub trait OutlineCatalog: Send + Sync {
+    /// Keeps a book's sections, as the outline told them at a version.
+    /// Sections older than the ones kept, or of a deleted project, are not kept.
+    /// Returns whether they were.
+    async fn keep_outline(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        sections: &[OutlinedSection],
+        version: u64,
+    ) -> Result<bool, CatalogError>;
+
+    /// Keeps a book's title, as the projects feature named the project at a version.
+    /// A title older than the one kept, or of a deleted project, is not kept.
+    /// Returns whether it was.
+    async fn keep_title(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        title: &str,
+        version: u64,
+    ) -> Result<bool, CatalogError>;
+
+    /// Forgets a deleted project's book, and lays a tombstone so a late outline or title does not bring it back.
+    async fn forget_book(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
+
+    /// The book's title and sections.
+    /// A book with a title but no outline yet has no sections, and one with an outline but no title yet has an empty title.
+    /// A book with neither is not there.
     async fn outline_of(&self, project: &ProjectLink) -> Result<Option<BookOutline>, CatalogError>;
 }
 

@@ -11,4 +11,4 @@ pub use catalog::{BookOutline, CatalogError, OutlineCatalog, OutlinedSection, Sc
 pub use contents::{Block, Contents, FigureSize, Marks, Part, Run};
 pub use error::ReadingsError;
 pub use link::{AssetLink, ProjectLink, SceneLink, SectionLink};
-pub use readings::ReadingsCore;
+pub use readings::{ReadingsCore, ToldSection};

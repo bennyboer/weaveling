@@ -1,6 +1,9 @@
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 mod kept;
 mod memory;
+mod outline_memory;
+#[cfg(test)]
+mod outline_suite;
 mod sample;
 #[cfg(test)]
 mod suite;
@@ -16,6 +19,7 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use memory::InMemorySceneTextCatalog;
+pub use outline_memory::InMemoryOutlineCatalog;
 pub use sample::SampleBook;
 
 #[cfg(feature = "postgres")]

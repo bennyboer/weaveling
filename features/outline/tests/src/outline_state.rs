@@ -210,7 +210,10 @@ async fn an_event_older_than_the_outline_tells_nothing_as_a_later_one_will() {
     let now = version_of(&wired, &outline).await;
 
     // expect: an older event tells nothing, and the newest tells the state
-    assert_eq!(told_on_hearing(&wired, added_at(&outline, now - 1)).await, 0);
+    assert_eq!(
+        told_on_hearing(&wired, added_at(&outline, now - 1)).await,
+        0
+    );
     assert_eq!(told_on_hearing(&wired, added_at(&outline, now)).await, 1);
 }
 

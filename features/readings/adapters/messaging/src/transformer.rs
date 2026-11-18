@@ -1,5 +1,27 @@
-use readings_core::{AssetLink, Block, FigureSize, Marks, Run};
+use outline_contract::{AttachmentDTO, SectionStateDTO};
+use readings_core::{
+    AssetLink, Block, FigureSize, Marks, Run, SceneLink, SectionLink, ToldSection,
+};
 use scenes_contract::{BlockDTO, MarksDTO, RunDTO};
+
+/// The sections as the outline told them, with only the scenes they hold, as a book shows no notes.
+pub(crate) fn to_told_sections(told: &[SectionStateDTO]) -> Vec<ToldSection> {
+    told.iter()
+        .map(|section| ToldSection {
+            section: SectionLink::from(section.section.as_str()),
+            parent: section.parent.as_deref().map(SectionLink::from),
+            title: section.title.clone(),
+            scenes: section
+                .attachments
+                .iter()
+                .filter_map(|attachment| match attachment {
+                    AttachmentDTO::Scene { id } => Some(SceneLink::from(id.as_str())),
+                    AttachmentDTO::Idea { .. } => None,
+                })
+                .collect(),
+        })
+        .collect()
+}
 
 pub(crate) fn to_blocks(told: &[BlockDTO]) -> Vec<Block> {
     told.iter().map(to_block).collect()

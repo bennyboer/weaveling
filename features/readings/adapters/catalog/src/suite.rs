@@ -7,7 +7,7 @@ use transacting::{Transaction, Transactions, Tried};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
-    type Catalog: SceneTextCatalog;
+    type Catalog: Sync;
 
     async fn setup() -> Self;
 
@@ -26,15 +26,15 @@ pub trait Workbench: Sized {
 }
 
 pub struct Committing<'a, C> {
-    catalog: &'a C,
-    transactions: &'a dyn Transactions,
+    pub(crate) catalog: &'a C,
+    pub(crate) transactions: &'a dyn Transactions,
 }
 
-fn unreachable(failure: transacting::Failure) -> CatalogError {
+pub(crate) fn unreachable(failure: transacting::Failure) -> CatalogError {
     CatalogError::Backend(Box::new(failure))
 }
 
-impl<C: SceneTextCatalog> Committing<'_, C> {
+impl<C> Committing<'_, C> {
     pub async fn begun(&self) -> Transaction {
         self.transactions
             .begin()
@@ -45,7 +45,9 @@ impl<C: SceneTextCatalog> Committing<'_, C> {
     pub fn uncommitted(&self) -> &C {
         self.catalog
     }
+}
 
+impl<C: SceneTextCatalog> Committing<'_, C> {
     pub async fn keep(
         &self,
         scene: &SceneLink,

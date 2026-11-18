@@ -11,4 +11,7 @@ mod live_book_api;
 mod live_book_guarded;
 
 #[cfg(test)]
+mod outlines_kept;
+
+#[cfg(test)]
 mod scene_texts_kept;
