@@ -7,7 +7,7 @@ use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use readings_catalog::InMemorySceneTextCatalog;
-use readings_core::{Block, Part, ReadingsCore, Run};
+use readings_core::{Block, NobodyFollows, Part, ReadingsCore, Run};
 use readings_messaging::KeepSceneTextsListener;
 use scenes_contract::{
     BlockDTO, DELETED, MarksDTO, RunDTO, SceneDeletedDTO, SceneTextStateDTO, TEXT_STATE_CHANGED,
@@ -27,6 +27,7 @@ fn a_workbench() -> Wired {
     let readings = ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(InMemorySceneTextCatalog::new()),
+        Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
@@ -53,7 +54,7 @@ impl Wired {
             .expect("the listener should take this message");
     }
 
-    /// The scenes of the book, each with its text, in reading order.
+    /// The scenes of the book that have a text, each with it, in reading order.
     async fn scenes(&self) -> Vec<(String, Vec<Block>)> {
         self.readings
             .live_book("project_loom", &Agent::Local)
@@ -62,7 +63,10 @@ impl Wired {
             .parts
             .into_iter()
             .filter_map(|part| match part {
-                Part::Scene { scene, blocks } => Some((scene.to_string(), blocks)),
+                Part::Scene { scene, blocks } if !blocks.is_empty() => {
+                    Some((scene.to_string(), blocks))
+                }
+                Part::Scene { .. } => None,
                 Part::Section { .. } => None,
             })
             .collect()

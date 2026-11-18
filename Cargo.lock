@@ -6712,6 +6712,7 @@ dependencies = [
  "weaveling-readings-contract",
  "weaveling-readings-core",
  "weaveling-serving",
+ "weaveling-transacting",
 ]
 
 [[package]]

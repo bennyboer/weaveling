@@ -11,7 +11,7 @@ use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, Version};
 use live::testing::Subscriber;
 use live::{Broadcaster, Topics};
-use readings_core::ReadingsCore;
+use readings_core::{NobodyFollows, ReadingsCore};
 use serde_json::Value;
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction};
@@ -152,6 +152,7 @@ async fn a_project_only_ada_may_read() -> Guarded {
     let readings = ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(SampleBook),
+        Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         kept_access.clone(),
         Arc::new(kept_access),

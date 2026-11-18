@@ -9,7 +9,12 @@ import {
   scenesCatalogued,
   views,
 } from "./support/shell";
-import { openTheWritingView, projectOf, scene } from "./support/writing";
+import {
+  openTheWritingView,
+  projectOf,
+  projectsOutline,
+  scene,
+} from "./support/writing";
 
 const book = (page: Page) => page.locator(".reading-view").getByRole("article");
 
@@ -355,4 +360,50 @@ test("a scene placed in the book since it was read has the book read again", asy
 
   // then: the book is read again
   await readAgain;
+});
+
+test("a reader sees the book as its author writes it, the words and the sections", async ({
+  page,
+}) => {
+  // given: a written book, its reading view open in another tab
+  const { placed } = await aBookWritten(page, "ReadingFollowed");
+  const reader = await page.context().newPage();
+  await reader.goto(page.url().replace(/\/write$/, "/read"));
+  await expect(
+    book(reader).getByText("Hedy counted them from the wall."),
+  ).toBeVisible();
+
+  let readAgain = 0;
+  reader.on("request", (asked) => {
+    if (asked.url().includes("/api/readings/live?")) {
+      readAgain += 1;
+    }
+  });
+
+  // when: the author writes on in a scene
+  await scene(page, placed.wall).click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Twice.");
+
+  // then: the reader sees the words as they settle, without reading again
+  await expect(
+    book(reader).locator(`[data-scene="${placed.wall}"]`),
+  ).toHaveText("Hedy counted them from the wall. Twice.", { timeout: 15_000 });
+
+  expect(
+    readAgain,
+    "a changed text is told whole, so the book is not read again",
+  ).toBe(0);
+
+  // when: the author adds a chapter
+  const outline = (await projectsOutline(page)).id;
+  const added = await page.request.post(`${API}/outlines/${outline}/sections`, {
+    data: { title: "Evening", under: null, after: null },
+  });
+  expect(added.status()).toBe(201);
+
+  // then: the reader sees it
+  await expect(
+    book(reader).getByRole("heading", { level: 2, name: "Evening" }),
+  ).toBeVisible({ timeout: 15_000 });
 });

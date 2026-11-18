@@ -1,5 +1,6 @@
 use inbox::KeptHandler;
 use messaging::{Failure, Message};
+use projects_contract::context::PROJECT;
 use readings_core::ReadingsCore;
 use scenes_contract::{DELETED, SceneDeletedDTO, SceneTextStateDTO, TEXT_STATE_CHANGED};
 use transacting::Transaction;
@@ -22,6 +23,7 @@ impl KeepSceneTextsListener {
                 self.readings
                     .text_changed(
                         Some(transaction),
+                        eventpublishing::context_in(message).get(PROJECT),
                         &told.scene,
                         &transformer::to_blocks(&told.blocks),
                         told.version,

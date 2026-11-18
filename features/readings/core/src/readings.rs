@@ -11,6 +11,7 @@ use transacting::Transactions;
 use crate::catalog::{BookOutline, OutlineCatalog, SceneTextCatalog};
 use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
+use crate::following::BookFollowers;
 use crate::link::{ProjectLink, SceneLink};
 
 mod access;
@@ -23,6 +24,7 @@ pub use outlines::ToldSection;
 pub struct ReadingsCore {
     outlines: Arc<dyn OutlineCatalog>,
     texts: Arc<dyn SceneTextCatalog>,
+    followers: Arc<dyn BookFollowers>,
     transactions: Arc<dyn Transactions>,
     access: KeptAccess,
     authorizer: Arc<dyn Authorizer>,
@@ -33,6 +35,7 @@ impl ReadingsCore {
     pub fn new(
         outlines: Arc<dyn OutlineCatalog>,
         texts: Arc<dyn SceneTextCatalog>,
+        followers: Arc<dyn BookFollowers>,
         transactions: Arc<dyn Transactions>,
         access: KeptAccess,
         authorizer: Arc<dyn Authorizer>,
@@ -41,6 +44,7 @@ impl ReadingsCore {
         Self {
             outlines,
             texts,
+            followers,
             transactions,
             access,
             authorizer,
@@ -106,7 +110,7 @@ impl ReadingsCore {
 }
 
 /// Lays the book out in reading order: each section, then the scenes it holds.
-/// A scene whose text is not kept yet is left out, rather than shown empty.
+/// A scene whose text is not kept yet is there with no blocks, so whoever follows the book knows it holds it.
 fn put_together(
     project: ProjectLink,
     outline: BookOutline,
@@ -120,9 +124,8 @@ fn put_together(
             title: section.title,
         });
         for scene in section.scenes {
-            if let Some(blocks) = texts.remove(&scene) {
-                parts.push(Part::Scene { scene, blocks });
-            }
+            let blocks = texts.remove(&scene).unwrap_or_default();
+            parts.push(Part::Scene { scene, blocks });
         }
     }
 

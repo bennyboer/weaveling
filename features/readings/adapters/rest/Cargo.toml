@@ -12,4 +12,5 @@ readings-contract = { version = "0.1.0", path = "../../contract", package = "wea
 readings-core = { version = "0.1.0", path = "../../core", package = "weaveling-readings-core" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }

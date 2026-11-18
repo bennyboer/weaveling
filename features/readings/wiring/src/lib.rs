@@ -31,17 +31,20 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(AllowingEverything)
     };
 
+    let broadcaster = Broadcaster::new();
     let readings = ReadingsCore::new(
         ports.outlines.clone(),
         ports.texts.clone(),
+        Arc::new(readings_rest::TellingFollowers::new(
+            ports.outlines.clone(),
+            ports.texts.clone(),
+            broadcaster.clone(),
+        )),
         ports.transactions.clone(),
         ports.access.clone(),
         authorizer,
         context.clock.clone(),
     );
-
-    // TODO: tell each change kept to the book's followers, through this broadcaster
-    let broadcaster = Broadcaster::new();
 
     Wired::serving(readings_rest::router(readings.clone()))
         .followed_live(vec![readings_rest::topic(readings.clone(), broadcaster)])

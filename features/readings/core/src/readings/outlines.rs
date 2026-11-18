@@ -28,11 +28,16 @@ impl ReadingsCore {
         version: u64,
     ) -> Result<(), ReadingsError> {
         let outlined = nested(sections);
+        let project = ProjectLink::from(project);
 
         transacting::joining!(&*self.transactions, within, |transaction| {
-            self.outlines
-                .keep_outline(transaction, &ProjectLink::from(project), &outlined, version)
-                .await?;
+            if self
+                .outlines
+                .keep_outline(transaction, &project, &outlined, version)
+                .await?
+            {
+                self.followers.outline_kept(transaction, &project);
+            }
 
             Ok(())
         })
@@ -46,10 +51,16 @@ impl ReadingsCore {
         title: &str,
         version: u64,
     ) -> Result<(), ReadingsError> {
+        let project = ProjectLink::from(project);
+
         transacting::joining!(&*self.transactions, within, |transaction| {
-            self.outlines
-                .keep_title(transaction, &ProjectLink::from(project), title, version)
-                .await?;
+            if self
+                .outlines
+                .keep_title(transaction, &project, title, version)
+                .await?
+            {
+                self.followers.title_kept(transaction, &project);
+            }
 
             Ok(())
         })

@@ -14,6 +14,7 @@ use crate::catalog::{
 };
 use crate::contents::{Block, Part, Run};
 use crate::error::ReadingsError;
+use crate::following::NobodyFollows;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
 use crate::readings::ReadingsCore;
 
@@ -137,6 +138,7 @@ fn readings(sections: Vec<OutlinedSection>, texts: &[(&str, &str)]) -> ReadingsC
                 .map(|(scene, words)| (SceneLink::from(*scene), text(words)))
                 .collect(),
         )),
+        Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
@@ -222,7 +224,7 @@ async fn a_section_that_holds_no_scene_is_its_heading_alone() {
 }
 
 #[tokio::test]
-async fn a_scene_whose_text_is_not_kept_yet_is_left_out() {
+async fn a_scene_whose_text_is_not_kept_yet_is_there_with_nothing_in_it() {
     // given: a book of two scenes, the text of one not kept yet
     let readings = readings(
         vec![section("part_one", 0, &["scene_harbour", "scene_new"])],
@@ -235,8 +237,16 @@ async fn a_scene_whose_text_is_not_kept_yet_is_left_out() {
         .await
         .expect("the book should be put together");
 
-    // then: only the scene with its text is shown
-    assert_eq!(shape(&book.parts), ["part_one", "- scene_harbour"]);
+    // then: both scenes are in it, so a follower knows every scene the book holds
+    assert_eq!(
+        shape(&book.parts),
+        ["part_one", "- scene_harbour", "- scene_new"]
+    );
+    // and: the one not kept yet has nothing in it
+    assert!(matches!(
+        &book.parts[2],
+        Part::Scene { blocks, .. } if blocks.is_empty()
+    ));
 }
 
 #[tokio::test]

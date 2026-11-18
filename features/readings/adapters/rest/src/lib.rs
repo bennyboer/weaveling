@@ -1,4 +1,7 @@
+mod telling;
 mod transformer;
+
+pub use telling::TellingFollowers;
 
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};

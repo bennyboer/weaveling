@@ -8,6 +8,9 @@ mod allowing;
 mod live_book_api;
 
 #[cfg(test)]
+mod live_book_followed;
+
+#[cfg(test)]
 mod live_book_guarded;
 
 #[cfg(test)]

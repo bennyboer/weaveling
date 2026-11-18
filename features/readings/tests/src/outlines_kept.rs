@@ -10,7 +10,8 @@ use outline_contract::{AttachmentDTO, OutlineStateDTO, STATE_CHANGED, SectionSta
 use projects_contract::{DELETED, RENAMED, STARTED};
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{
-    Block, Contents, Part, ProjectLink, ReadingsCore, ReadingsError, Run, SceneLink, SectionLink,
+    Block, Contents, NobodyFollows, Part, ProjectLink, ReadingsCore, ReadingsError, Run, SceneLink,
+    SectionLink,
 };
 use readings_messaging::{KeepBookTitlesListener, KeepOutlinesListener};
 use serde_json::json;
@@ -39,6 +40,7 @@ async fn a_workbench() -> Wired {
     let readings = ReadingsCore::new(
         Arc::new(InMemoryOutlineCatalog::new()),
         Arc::new(InMemorySceneTextCatalog::new()),
+        Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),
         Arc::new(AllowingEverything),
@@ -46,7 +48,7 @@ async fn a_workbench() -> Wired {
     );
     for scene in ["scene_harbour", "scene_wall", "scene_stalls"] {
         readings
-            .text_changed(None, scene, &saying(scene), 1)
+            .text_changed(None, None, scene, &saying(scene), 1)
             .await
             .expect("keeping a text should succeed");
     }

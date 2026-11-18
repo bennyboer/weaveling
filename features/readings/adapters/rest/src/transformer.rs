@@ -1,5 +1,5 @@
-use readings_contract::{BlockDTO, ContentsDTO, MarksDTO, PartDTO, RunDTO};
-use readings_core::{Block, Contents, FigureSize, Marks, Part, Run};
+use readings_contract::{BlockDTO, ContentsDTO, MarksDTO, OutlinedSectionDTO, PartDTO, RunDTO};
+use readings_core::{Block, Contents, FigureSize, Marks, OutlinedSection, Part, Run};
 
 pub(crate) fn to_dto(contents: &Contents) -> ContentsDTO {
     ContentsDTO {
@@ -27,7 +27,7 @@ fn to_part_dto(part: &Part) -> PartDTO {
     }
 }
 
-fn to_blocks_dto(blocks: &[Block]) -> Vec<BlockDTO> {
+pub(crate) fn to_blocks_dto(blocks: &[Block]) -> Vec<BlockDTO> {
     blocks.iter().map(to_block_dto).collect()
 }
 
@@ -89,5 +89,14 @@ fn to_marks_dto(marks: &Marks) -> MarksDTO {
         strong: marks.strong,
         code: marks.code,
         link: marks.link.clone(),
+    }
+}
+
+pub(crate) fn to_outlined_section_dto(outlined: &OutlinedSection) -> OutlinedSectionDTO {
+    OutlinedSectionDTO {
+        section: outlined.section.to_string(),
+        depth: outlined.depth,
+        title: outlined.title.clone(),
+        scenes: outlined.scenes.iter().map(ToString::to_string).collect(),
     }
 }
