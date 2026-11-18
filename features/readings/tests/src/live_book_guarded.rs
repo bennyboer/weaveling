@@ -228,6 +228,36 @@ async fn whoever_may_not_read_the_project_cannot_follow_its_book_as_if_it_were_n
 }
 
 #[tokio::test]
+async fn a_project_s_copies_are_not_there_for_whoever_may_not_read_it() {
+    // given: a project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+
+    // when: grace asks for its copies, and for one of them
+    let listed = guarded
+        .grace
+        .get(&format!("/readings/copies?project={PROJECT}"))
+        .await;
+    let one = guarded.grace.get("/readings/copies/copy_sample_book").await;
+
+    // then: neither is there for her, as if the project were not
+    listed.assert_status(StatusCode::NOT_FOUND);
+    one.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_copy_is_read_by_whoever_may_read_the_project_it_was_made_of() {
+    // given: a project only ada may read
+    let guarded = a_project_only_ada_may_read().await;
+
+    // when: ada asks for one of its copies by the copy alone
+    let one = guarded.ada.get("/readings/copies/copy_sample_book").await;
+
+    // then: she is given it, the project it was made of found from the copy
+    one.assert_status_ok();
+    assert_eq!(one.json::<Value>()["contents"]["project"], PROJECT);
+}
+
+#[tokio::test]
 async fn whoever_may_read_the_project_is_shown_its_book() {
     // given: a project only ada may read
     let guarded = a_project_only_ada_may_read().await;

@@ -21,6 +21,39 @@ pub enum PartDTO {
     },
 }
 
+/// A reading copy as a project's members find it listed.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ListedReadingCopyDTO {
+    pub id: String,
+    pub name: String,
+    /// The name of whoever made it.
+    pub maker: String,
+    pub made_by_you: bool,
+    pub made_at: String,
+    pub extent: ExtentDTO,
+    /// Until when it is open for reading and feedback; none for no end.
+    pub open_until: Option<String>,
+    /// When it is deleted for good, with its feedback; none to keep it.
+    pub deleted_on: Option<String>,
+    pub open: bool,
+}
+
+/// What a reading copy holds of the book.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExtentDTO {
+    Book,
+    Sections { count: u32 },
+    Scenes { count: u32 },
+}
+
+/// One reading copy with what it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ReadingCopyDTO {
+    pub copy: ListedReadingCopyDTO,
+    pub contents: ContentsDTO,
+}
+
 /// A change to the live book, told to whoever follows it.
 /// Each carries the whole of the piece that changed, so a follower swaps it in for what it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

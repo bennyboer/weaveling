@@ -236,7 +236,8 @@ body:has(.drawer:not([hidden])) .drawer-toggles {
     display: flex;
   }
 
-  main:has(> .writing) .drawer-tab {
+  main:has(> .writing) .drawer-tab,
+  main:has(> .reading-view) .drawer-tab {
     display: none;
   }
 }

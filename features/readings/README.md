@@ -3,6 +3,7 @@
 This feature lets the book be read: the live book for members, and later reading copies that are frozen and shared by link. See M18 in the [roadmap](../../ROADMAP.md).
 
 - `GET /readings/live?project=…` returns the live book as it is written now: its sections and scenes in reading order, each scene with its text as blocks and runs.
+- `GET /readings/copies?project=…` lists the project's reading copies, newest first, and `GET /readings/copies/{copy}` returns one with what it holds, to whoever may read the project it was made of. *For now both answer a fixed sample of two copies; the copies are kept from step 9 on.*
 
 **The book is put together from two catalogs.** `OutlineCatalog` holds each project's title and its sections in reading order, with how deep each is nested and the scenes it holds. `SceneTextCatalog` holds each scene's text as blocks. `ReadingsCore::live_book` lays out each section, then its scenes. A scene whose text is not kept yet is there with no blocks, which the reading view does not show. A project known by its name alone has a book with nothing in it, and one heard of not at all is not there. The feature keeps both catalogs itself, from the [state messages](../../CONVENTIONS.md#state-messages) of the outline and the scenes and from the projects' events.
 

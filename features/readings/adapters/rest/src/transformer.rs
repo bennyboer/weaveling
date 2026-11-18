@@ -1,5 +1,12 @@
-use readings_contract::{BlockDTO, ContentsDTO, MarksDTO, OutlinedSectionDTO, PartDTO, RunDTO};
-use readings_core::{Block, Contents, FigureSize, Marks, OutlinedSection, Part, Run};
+use clock::text;
+use eventsourcing::Agent;
+use readings_contract::{
+    BlockDTO, ContentsDTO, ExtentDTO, ListedReadingCopyDTO, MarksDTO, OutlinedSectionDTO, PartDTO,
+    ReadingCopyDTO, RunDTO,
+};
+use readings_core::{
+    Block, Contents, Extent, FigureSize, ListedReadingCopy, Marks, OutlinedSection, Part, Run,
+};
 
 pub(crate) fn to_dto(contents: &Contents) -> ContentsDTO {
     ContentsDTO {
@@ -98,5 +105,42 @@ pub(crate) fn to_outlined_section_dto(outlined: &OutlinedSection) -> OutlinedSec
         depth: outlined.depth,
         title: outlined.title.clone(),
         scenes: outlined.scenes.iter().map(ToString::to_string).collect(),
+    }
+}
+
+/// A copy as listed for the agent asking, who may have made it.
+pub(crate) fn to_listed_reading_copy_dto(
+    listed: &ListedReadingCopy,
+    asking: &Agent,
+) -> ListedReadingCopyDTO {
+    ListedReadingCopyDTO {
+        id: listed.copy.to_string(),
+        name: listed.name.clone(),
+        maker: listed.maker.clone(),
+        made_by_you: &listed.made_by == asking,
+        made_at: text::serialize(listed.made_at),
+        extent: to_extent_dto(listed.extent),
+        open_until: listed.open_until.map(text::serialize),
+        deleted_on: listed.deleted_on.map(text::serialize),
+        open: listed.open,
+    }
+}
+
+pub(crate) fn to_reading_copy_dto(
+    listed: &ListedReadingCopy,
+    contents: &Contents,
+    asking: &Agent,
+) -> ReadingCopyDTO {
+    ReadingCopyDTO {
+        copy: to_listed_reading_copy_dto(listed, asking),
+        contents: to_dto(contents),
+    }
+}
+
+fn to_extent_dto(extent: Extent) -> ExtentDTO {
+    match extent {
+        Extent::Book => ExtentDTO::Book,
+        Extent::Sections(count) => ExtentDTO::Sections { count },
+        Extent::Scenes(count) => ExtentDTO::Scenes { count },
     }
 }

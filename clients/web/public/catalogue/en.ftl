@@ -366,6 +366,29 @@ bring-back-no-match = No scene matches.
 contents-unfold-all = Unfold all
 contents-fold-all = Fold all
 contents-unfold = Unfold { $section }
+reading-reading = Reading
+reading-live = The work as it is now
+reading-live-mark = Live
+reading-what-to-read = What to read
+reading-copies = Reading copies · { $count }
+reading-no-copies = No reading copies yet.
+reading-copy = Reading copy
+copy-by-you = You
+copy-extent-book = the whole work
+copy-extent-sections = { $count ->
+        [one] one section
+       *[other] { $count } sections
+    }
+copy-extent-scenes = { $count ->
+        [one] one scene
+       *[other] { $count } scenes
+    }
+copy-open-until = Open until { $day }
+copy-open-no-end = Open, no end
+copy-closed-since = Closed { $day }
+copy-deleted-on = Deleted { $day }
+copy-kept = Kept for good
+copy-frozen = Frozen { $day }
 this-section = This section
 inspector-nothing-yet = Put the cursor in a scene or a heading to see it here.
 inspector-section-removed = This section was removed.

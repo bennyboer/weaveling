@@ -1,0 +1,227 @@
+use fluent_bundle::FluentArgs;
+use leptos::prelude::*;
+use leptos::{IntoView, ev, html};
+
+use crate::moment;
+use crate::readings::reading_copies::{Extent, ListedReadingCopy, ReadingCopyId};
+use crate::route;
+use crate::speech;
+
+const PANEL: &str = "what-to-read";
+
+fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
+    let mut told = FluentArgs::new();
+    for (name, value) in args {
+        told.set(*name, value.clone());
+    }
+
+    speech::say_with(key, &told)
+}
+
+fn counted(key: &'static str, count: u32) -> String {
+    let mut told = FluentArgs::new();
+    told.set("count", count);
+
+    speech::say_with(key, &told)
+}
+
+fn extent(extent: Extent) -> String {
+    match extent {
+        Extent::Book => speech::say("copy-extent-book"),
+        Extent::Sections(count) => counted("copy-extent-sections", count),
+        Extent::Scenes(count) => counted("copy-extent-scenes", count),
+    }
+}
+
+fn day(moment: time::OffsetDateTime) -> String {
+    moment::human_day(moment)
+}
+
+/// The bar above the text: the switcher, and for a copy when it was frozen and how long it is open and kept.
+pub fn reading_bar(
+    slug: String,
+    reading: Option<ReadingCopyId>,
+    copies: LocalResource<Vec<ListedReadingCopy>>,
+    chosen: RwSignal<Option<ListedReadingCopy>>,
+) -> impl IntoView {
+    let reading_live = reading.is_none();
+    let marks = move || {
+        if reading_live {
+            Some(live_mark().into_any())
+        } else {
+            chosen.get().map(|copy| {
+                html::span()
+                    .class("chips")
+                    .child((
+                        html::span()
+                            .class("chip frozen")
+                            .child(said_with("copy-frozen", &[("day", day(copy.made_at))])),
+                        chips(&copy),
+                    ))
+                    .into_any()
+            })
+        }
+    };
+
+    html::div().class("reading-bar").child(
+        html::div()
+            .class("what-is-read")
+            .child((switcher(slug, reading, copies, chosen), marks)),
+    )
+}
+
+/// The mark of the live work: a dot and the word, as it follows the authors' changes.
+fn live_mark() -> impl IntoView {
+    html::span().class("chip live").child((
+        html::span().class("dot").attr("aria-hidden", "true"),
+        speech::said("reading-live-mark"),
+    ))
+}
+
+fn switcher(
+    slug: String,
+    reading: Option<ReadingCopyId>,
+    copies: LocalResource<Vec<ListedReadingCopy>>,
+    chosen: RwSignal<Option<ListedReadingCopy>>,
+) -> impl IntoView {
+    let open = RwSignal::new(false);
+    let button: NodeRef<html::Button> = NodeRef::new();
+    let reading_live = reading.is_none();
+    let name = move || {
+        if reading_live {
+            speech::say("reading-live")
+        } else {
+            chosen
+                .with(|held| held.as_ref().map(|copy| copy.name.clone()))
+                .unwrap_or_default()
+        }
+    };
+    let close = move || {
+        open.set(false);
+        if let Some(button) = button.get_untracked() {
+            _ = button.focus();
+        }
+    };
+
+    html::div().class("switching").child((
+        html::button()
+            .node_ref(button)
+            .r#type("button")
+            .class("switcher")
+            .attr("aria-haspopup", "dialog")
+            .attr("aria-controls", PANEL)
+            .attr("aria-expanded", move || open.get().to_string())
+            .on(ev::click, move |_| open.update(|shown| *shown = !*shown))
+            .child((
+                html::small().child(speech::said("reading-reading")),
+                html::b().child(name),
+            )),
+        move || {
+            open.get().then(|| {
+                let slug = slug.clone();
+                let reading = reading.clone();
+
+                html::div()
+                    .id(PANEL)
+                    .class("what-to-read")
+                    .role("dialog")
+                    .attr("aria-label", speech::said("reading-what-to-read"))
+                    .on(ev::keydown, move |pressed| {
+                        if pressed.key() == "Escape" {
+                            close();
+                        }
+                    })
+                    .child((live_entry(&slug, reading.is_none()), move || {
+                        copies
+                            .get()
+                            .map(|listed| copy_entries(&slug, reading.as_ref(), listed.to_vec()))
+                    }))
+            })
+        },
+    ))
+}
+
+fn live_entry(slug: &str, here: bool) -> impl IntoView + use<> {
+    html::a()
+        .href(route::reading(slug))
+        .class(if here { "entry here" } else { "entry" })
+        .attr("aria-current", here.then_some("true"))
+        .child((
+            html::span()
+                .class("name")
+                .child(speech::said("reading-live")),
+            html::span().class("chips").child(live_mark()),
+        ))
+}
+
+fn copy_entries(
+    slug: &str,
+    reading: Option<&ReadingCopyId>,
+    listed: Vec<ListedReadingCopy>,
+) -> impl IntoView + use<> {
+    let count = u32::try_from(listed.len()).unwrap_or(u32::MAX);
+    let entries = listed
+        .into_iter()
+        .map(|copy| {
+            let here = reading == Some(&copy.id);
+
+            html::a()
+                .href(route::reading_copy(slug, &copy.id.to_string()))
+                .class(if here { "entry here" } else { "entry" })
+                .attr("aria-current", here.then_some("true"))
+                .child((
+                    html::span().class("name").child(copy.name.clone()),
+                    html::span().class("meta").child(format!(
+                        "{} · {}",
+                        maker(&copy),
+                        extent(copy.extent)
+                    )),
+                    html::span().class("chips").child(chips(&copy)),
+                ))
+        })
+        .collect::<Vec<_>>();
+
+    (
+        html::h2().child(counted("reading-copies", count)),
+        (count == 0).then(|| {
+            html::p()
+                .class("none")
+                .child(speech::said("reading-no-copies"))
+        }),
+        entries,
+    )
+}
+
+fn maker(copy: &ListedReadingCopy) -> String {
+    if copy.made_by_you {
+        speech::say("copy-by-you")
+    } else {
+        copy.maker.clone()
+    }
+}
+
+fn chips(copy: &ListedReadingCopy) -> Vec<impl IntoView + use<>> {
+    let open = match (copy.open, copy.open_until) {
+        (true, Some(until)) => (
+            "chip open",
+            said_with("copy-open-until", &[("day", day(until))]),
+        ),
+        (true, None) => ("chip open", speech::say("copy-open-no-end")),
+        (false, until) => (
+            "chip closed",
+            said_with(
+                "copy-closed-since",
+                &[("day", until.map(day).unwrap_or_default())],
+            ),
+        ),
+    };
+    let kept = match copy.deleted_on {
+        Some(on) => said_with("copy-deleted-on", &[("day", day(on))]),
+        None => speech::say("copy-kept"),
+    };
+
+    vec![
+        html::span().class(open.0).child(open.1),
+        html::span().class("chip").child(kept),
+    ]
+}

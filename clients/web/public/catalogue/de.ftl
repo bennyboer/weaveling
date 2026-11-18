@@ -366,6 +366,29 @@ bring-back-no-match = Keine Szene passt.
 contents-unfold-all = Alles aufklappen
 contents-fold-all = Alles einklappen
 contents-unfold = { $section } aufklappen
+reading-reading = Du liest
+reading-live = Das Werk, wie es jetzt ist
+reading-live-mark = Live
+reading-what-to-read = Was du liest
+reading-copies = Lesekopien · { $count }
+reading-no-copies = Noch keine Lesekopien.
+reading-copy = Lesekopie
+copy-by-you = Du
+copy-extent-book = das ganze Werk
+copy-extent-sections = { $count ->
+        [one] ein Abschnitt
+       *[other] { $count } Abschnitte
+    }
+copy-extent-scenes = { $count ->
+        [one] eine Szene
+       *[other] { $count } Szenen
+    }
+copy-open-until = Offen bis { $day }
+copy-open-no-end = Offen, ohne Ende
+copy-closed-since = Geschlossen am { $day }
+copy-deleted-on = Gelöscht am { $day }
+copy-kept = Bleibt für immer
+copy-frozen = Eingefroren am { $day }
 this-section = Dieser Abschnitt
 inspector-nothing-yet = Setz den Cursor in eine Szene oder eine Überschrift, um sie hier zu sehen.
 inspector-section-removed = Dieser Abschnitt wurde entfernt.

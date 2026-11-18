@@ -366,6 +366,29 @@ bring-back-no-match = Nenhuma cena corresponde.
 contents-unfold-all = Expandir tudo
 contents-fold-all = Recolher tudo
 contents-unfold = Expandir { $section }
+reading-reading = Lendo
+reading-live = A obra como está agora
+reading-live-mark = Ao vivo
+reading-what-to-read = O que ler
+reading-copies = Cópias de leitura · { $count }
+reading-no-copies = Ainda não há cópias de leitura.
+reading-copy = Cópia de leitura
+copy-by-you = Você
+copy-extent-book = a obra toda
+copy-extent-sections = { $count ->
+        [one] uma seção
+       *[other] { $count } seções
+    }
+copy-extent-scenes = { $count ->
+        [one] uma cena
+       *[other] { $count } cenas
+    }
+copy-open-until = Aberta até { $day }
+copy-open-no-end = Aberta, sem fim
+copy-closed-since = Fechada em { $day }
+copy-deleted-on = Excluída em { $day }
+copy-kept = Guardada para sempre
+copy-frozen = Congelada em { $day }
 this-section = Esta seção
 inspector-nothing-yet = Coloque o cursor numa cena ou num título para vê-lo aqui.
 inspector-section-removed = Esta seção foi removida.

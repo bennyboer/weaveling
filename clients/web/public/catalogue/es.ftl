@@ -366,6 +366,29 @@ bring-back-no-match = Ninguna escena coincide.
 contents-unfold-all = Desplegar todo
 contents-fold-all = Plegar todo
 contents-unfold = Desplegar { $section }
+reading-reading = Leyendo
+reading-live = La obra tal como está ahora
+reading-live-mark = En vivo
+reading-what-to-read = Qué leer
+reading-copies = Copias de lectura · { $count }
+reading-no-copies = Todavía no hay copias de lectura.
+reading-copy = Copia de lectura
+copy-by-you = Tú
+copy-extent-book = toda la obra
+copy-extent-sections = { $count ->
+        [one] una sección
+       *[other] { $count } secciones
+    }
+copy-extent-scenes = { $count ->
+        [one] una escena
+       *[other] { $count } escenas
+    }
+copy-open-until = Abierta hasta el { $day }
+copy-open-no-end = Abierta, sin fin
+copy-closed-since = Cerrada el { $day }
+copy-deleted-on = Se elimina el { $day }
+copy-kept = Se guarda para siempre
+copy-frozen = Congelada el { $day }
 this-section = Esta sección
 inspector-nothing-yet = Pon el cursor en una escena o un encabezado para verlo aquí.
 inspector-section-removed = Esta sección se quitó.

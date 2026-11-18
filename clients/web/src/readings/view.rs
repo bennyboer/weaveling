@@ -9,12 +9,16 @@ use crate::assets::service as assets;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::http::ApiError;
+use crate::icons;
+use crate::icons::Icon;
 use crate::live::Subscription;
 use crate::outline::model::SectionId;
 use crate::problem;
 use crate::projects::model::ProjectId;
 use crate::readings::model::{Applied, Block, Book, Change, Marks, Run};
+use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
 use crate::readings::service;
+use crate::readings::switcher;
 use crate::route;
 use crate::scene_break;
 use crate::scenes::model::SceneId;
@@ -38,12 +42,49 @@ enum Shown {
     },
 }
 
-/// The live book, followed as it is written: each change told swaps in the piece that changed.
-pub fn reading_view(project: String) -> impl IntoView {
+/// The work to read: the live book, or a reading copy of it.
+/// Above the text, the switcher chooses between them.
+pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
     let rail = Drawer::as_last_left("weaveling.reading-contents", true);
-    let project = route::project_id(&project);
+    let project = route::project_id(&slug);
     let book = RwSignal::new(None::<Book>);
     let failed = RwSignal::new(None::<ApiError>);
+    let chosen = RwSignal::new(None::<ListedReadingCopy>);
+    let copy = copy.map(ReadingCopyId::from);
+    match &copy {
+        None => following_live(project.clone(), book, failed),
+        Some(copy) => reading_a_copy(copy.clone(), book, chosen, failed),
+    }
+    let copies = LocalResource::new({
+        let project = project.clone();
+
+        move || {
+            let project = project.clone();
+
+            async move { service::copies(&project).await.unwrap_or_default() }
+        }
+    });
+    let has_book = Memo::new(move |_| book.with(Option::is_some));
+
+    move || {
+        if let Some(failure) = failed.get() {
+            Some(problem::problem(failure).into_any())
+        } else if has_book.get() {
+            let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
+
+            Some(read(book, rail, bar.into_any()).into_any())
+        } else {
+            None
+        }
+    }
+}
+
+/// Follows the live book as it is written: each change told swaps in the piece that changed.
+fn following_live(
+    project: ProjectId,
+    book: RwSignal<Option<Book>>,
+    failed: RwSignal<Option<ApiError>>,
+) {
     let asking = Asking::new();
     let reading_now = StoredValue::new(false);
     let reading = Action::new_local(move |project: &ProjectId| {
@@ -92,20 +133,27 @@ pub fn reading_view(project: String) -> impl IntoView {
         opened,
     )));
     on_cleanup(move || following.set_value(None));
-    let has_book = Memo::new(move |_| book.with(Option::is_some));
-
-    move || {
-        if let Some(failure) = failed.get() {
-            Some(problem::problem(failure).into_any())
-        } else if has_book.get() {
-            Some(read(book, rail).into_any())
-        } else {
-            None
-        }
-    }
 }
 
-fn read(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
+/// Reads a reading copy once, as it never changes.
+fn reading_a_copy(
+    copy: ReadingCopyId,
+    book: RwSignal<Option<Book>>,
+    chosen: RwSignal<Option<ListedReadingCopy>>,
+    failed: RwSignal<Option<ApiError>>,
+) {
+    leptos::task::spawn_local(async move {
+        match service::copy(&copy).await {
+            Ok((listed, read)) => {
+                _ = chosen.try_set(Some(listed));
+                _ = book.try_set(Some(read));
+            }
+            Err(failure) => _ = failed.try_set(Some(failure)),
+        }
+    });
+}
+
+fn read(book: RwSignal<Option<Book>>, rail: Drawer, bar: AnyView) -> impl IntoView {
     let title = Memo::new(move |_| {
         book.with(|held| held.as_ref().map(|held| held.title.clone()))
             .unwrap_or_default()
@@ -113,11 +161,27 @@ fn read(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
 
     (
         contents(book, rail),
-        html::div().class("reading-view").child(
+        html::div().class("reading-view").child((
+            bar,
             html::article()
                 .class("book")
                 .child((html::h1().child(move || title.get()), parts(book))),
-        ),
+        )),
+        contents_toggle(rail),
+    )
+}
+
+/// On a phone the contents open from the status bar, as no tab may lie over the text.
+fn contents_toggle(rail: Drawer) -> impl IntoView {
+    html::div().class("drawer-toggles").child(
+        html::button()
+            .r#type("button")
+            .attr("aria-label", speech::said("contents"))
+            .attr("title", speech::said("contents"))
+            .attr("aria-controls", CONTENTS)
+            .attr("aria-expanded", move || rail.is_open().to_string())
+            .on(ev::click, move |_| rail.toggle())
+            .child(icons::mark(Icon::Section)),
     )
 }
 

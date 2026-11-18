@@ -35,3 +35,4 @@ link!(ProjectLink);
 link!(SectionLink);
 link!(SceneLink);
 link!(AssetLink);
+link!(ReadingCopyLink);

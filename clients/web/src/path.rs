@@ -146,6 +146,11 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
                     said("writing-side-loose", None),
                 ],
                 ["read"] => vec![named, said("view-read", None)],
+                ["read", _] => vec![
+                    named,
+                    view("view-read", route::reading(project)),
+                    said("reading-copy", None),
+                ],
                 ["board"] => vec![named, said("view-board", None)],
                 ["outline"] => vec![named, said("view-outline", None)],
                 ["ideas"] => vec![named, said("view-ideas", None)],
@@ -229,6 +234,24 @@ mod tests {
                 Label::Home,
                 Label::Project("the-loom-project_1".to_owned()),
                 Label::Said("view-read"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reading_copy_lies_under_the_reading_view() {
+        // expect: the reading view leads back to the live work, and the copy is where one is
+        assert_eq!(
+            crumbs_of("/projects/the-loom-project_1/read/copy_1")[2..],
+            [
+                Crumb {
+                    label: Label::Said("view-read"),
+                    leads_to: Some("/projects/the-loom-project_1/read".to_owned()),
+                },
+                Crumb {
+                    label: Label::Said("reading-copy"),
+                    leads_to: None,
+                },
             ]
         );
     }

@@ -407,3 +407,140 @@ test("a reader sees the book as its author writes it, the words and the sections
     book(reader).getByRole("heading", { level: 2, name: "Evening" }),
   ).toBeVisible({ timeout: 15_000 });
 });
+
+const switcher = (page: Page) => page.locator(".reading-view .switcher");
+
+const whatToRead = (page: Page) =>
+  page.getByRole("dialog", { name: "What to read" });
+
+/// A project's reading view, the work shaped but nothing written.
+async function aReadingView(page: Page, named: string) {
+  const title = await aNewProject(page, named);
+  await aBookShaped(page, [{ title: "Morning" }]);
+  await readable(page);
+  await openTheReadingView(page);
+
+  return title;
+}
+
+test("the switcher lists the live work and every reading copy, with when each closes and is deleted", async ({
+  page,
+}) => {
+  // given: a project's reading view
+  await aReadingView(page, "ReadingSwitcher");
+
+  // expect: the live work is marked live beside the switcher
+  await expect(
+    page.locator(".reading-view .what-is-read .chip.live"),
+  ).toHaveText("Live");
+
+  // when: the switcher is opened
+  await switcher(page).click();
+
+  // then: the live work is listed first, as what is read
+  await expect(switcher(page)).toHaveAttribute("aria-expanded", "true");
+  const entries = whatToRead(page).locator(".entry");
+  await expect(entries.first()).toContainText("The work as it is now");
+  await expect(entries.first()).toHaveAttribute("aria-current", "true");
+  // and: then every copy, newest first, with who made it and what it holds
+  await expect(
+    whatToRead(page).getByRole("heading", { name: "Reading copies · 2" }),
+  ).toBeVisible();
+  await expect(whatToRead(page).locator(".entry .name")).toHaveText([
+    "The work as it is now",
+    "Draft for Lena",
+    "First draft, part one",
+  ]);
+  await expect(whatToRead(page).locator(".entry .meta")).toHaveText([
+    "You · the whole work",
+    "Hedy · one section",
+  ]);
+  // and: whether each is open, and when it is deleted
+  await expect(entries.nth(1)).toContainText("Open until");
+  await expect(entries.nth(2)).toContainText("Closed");
+  await expect(entries.nth(2)).toContainText("Kept for good");
+});
+
+test("a copy chosen is read as it was frozen, and the live work is a choice away", async ({
+  page,
+}) => {
+  // given: a project's reading view
+  const title = await aReadingView(page, "ReadingCopy");
+
+  // when: a copy is chosen
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /Draft for Lena/ })
+    .click();
+
+  // then: it is read, named in the switcher, with when it was frozen and how long it is open
+  await expect(page).toHaveURL(/\/read\/copy_sample_book$/);
+  await expect(switcher(page)).toContainText("Draft for Lena");
+  await expect(page.locator(".reading-view .chip.frozen")).toContainText(
+    "Frozen",
+  );
+  const marks = page.locator(".reading-view .what-is-read .chip");
+  await expect(marks.nth(1)).toContainText("Open until");
+  await expect(marks.nth(2)).toContainText("Deleted");
+  await expect(book(page)).toContainText("Hedy counted them from the wall.");
+  // and: the path names it a reading copy
+  await expect(page.getByRole("navigation", { name: "Path" })).toContainText(
+    "Reading copy",
+  );
+
+  // when: the live work is chosen again
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /The work as it is now/ })
+    .click();
+
+  // then: the live work is read
+  await expect(page).toHaveURL(/\/read$/);
+  await expect(
+    book(page).getByRole("heading", { level: 1, name: title }),
+  ).toBeVisible();
+});
+
+test("Escape closes the switcher and hands the focus back to it", async ({
+  page,
+}) => {
+  // given: a project's reading view, the switcher open
+  await aReadingView(page, "ReadingSwitcherKeys");
+  await switcher(page).click();
+  await whatToRead(page).locator(".entry").first().focus();
+
+  // when: Escape is pressed
+  await page.keyboard.press("Escape");
+
+  // then: the list is gone and the switcher has the focus
+  await expect(whatToRead(page)).toBeHidden();
+  await expect(switcher(page)).toBeFocused();
+  await expect(switcher(page)).toHaveAttribute("aria-expanded", "false");
+});
+
+test("on a phone, the contents open from the status bar, with no tab over the text", async ({
+  page,
+}) => {
+  // given: a project's reading view on a phone
+  await page.setViewportSize({ width: 375, height: 700 });
+  await aReadingView(page, "ReadingPhone");
+
+  // then: no tab lies over the text, the button sits in the status bar
+  await expect(contentsTab(page)).toBeHidden();
+  const status = page.getByRole("contentinfo", { name: "Status" });
+  const toggle = page.getByRole("button", { name: "Contents", exact: true });
+  const bar = (await status.boundingBox())!;
+  const seen = (await toggle.boundingBox())!;
+  expect(seen.y, "it sits in the status bar").toBeGreaterThanOrEqual(bar.y);
+
+  // when: it is pressed until the contents show
+  if ((await toggle.getAttribute("aria-expanded")) === "true") {
+    await toggle.click();
+    await expect(contents(page)).toBeHidden();
+  }
+  await toggle.click();
+
+  // then: they show, and the button says so
+  await expect(contents(page)).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+});

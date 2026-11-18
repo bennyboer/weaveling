@@ -16,6 +16,7 @@ use crate::link::{ProjectLink, SceneLink};
 
 mod access;
 mod outlines;
+mod reading_copies;
 mod texts;
 
 pub use outlines::ToldSection;

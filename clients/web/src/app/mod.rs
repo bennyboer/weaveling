@@ -108,6 +108,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/projects/:project/write") view={Lazy::<WriteRoute>::new()} />
             <Route path=path!("/projects/:project/write/loose") view={Lazy::<LooseScenesRoute>::new()} />
             <Route path=path!("/projects/:project/read") view={Lazy::<ReadRoute>::new()} />
+            <Route path=path!("/projects/:project/read/:copy") view={Lazy::<ReadRoute>::new()} />
             <Route path=path!("/projects/:project/ideas/:idea") view={Lazy::<IdeaRoute>::new()} />
         </Routes>
     }

@@ -5,6 +5,9 @@ mod access_kept;
 mod allowing;
 
 #[cfg(test)]
+mod copies_api;
+
+#[cfg(test)]
 mod live_book_api;
 
 #[cfg(test)]

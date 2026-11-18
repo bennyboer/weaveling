@@ -10,6 +10,7 @@ serde = { workspace = true }
 
 readings-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-readings-contract" }
 readings-core = { version = "0.1.0", path = "../../core", package = "weaveling-readings-core" }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
