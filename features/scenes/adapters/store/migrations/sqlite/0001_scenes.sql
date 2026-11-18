@@ -4,12 +4,12 @@ CREATE TABLE scenes (
     title       TEXT    NOT NULL,
     version     INTEGER NOT NULL DEFAULT 0,
     prose_version INTEGER NOT NULL DEFAULT 0,
-    uncounted   INTEGER NOT NULL DEFAULT 0,
+    untold   INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE INDEX scenes_by_project ON scenes (project, scene);
-CREATE INDEX scenes_uncounted ON scenes (scene) WHERE uncounted;
+CREATE INDEX scenes_untold ON scenes (scene) WHERE untold;
 
 CREATE TABLE scene_updates (
     seq         INTEGER PRIMARY KEY AUTOINCREMENT,

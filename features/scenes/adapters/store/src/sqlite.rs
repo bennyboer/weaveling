@@ -9,7 +9,7 @@ use clock::Clock;
 use outbox::Origin;
 use outbox::sqlite;
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
+    Block, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqliteConnection, SqlitePool};
@@ -37,9 +37,9 @@ const BUMP: &str =
 const UNLINK_EVERYWHERE: &str = "DELETE FROM scene_ideas WHERE idea = ?1";
 
 const PROSE_MOVED: &str =
-    "UPDATE scenes SET prose_version = prose_version + 1, uncounted = 1 WHERE scene = ?1";
+    "UPDATE scenes SET prose_version = prose_version + 1, untold = 1 WHERE scene = ?1";
 
-const COUNTED: &str = "UPDATE scenes SET uncounted = 0 WHERE scene = ?1 AND prose_version = ?2";
+const TOLD: &str = "UPDATE scenes SET untold = 0 WHERE scene = ?1 AND prose_version = ?2";
 
 const VERSION_OF: &str = "SELECT version FROM scenes WHERE scene = ?1";
 
@@ -47,7 +47,7 @@ const PROSE_VERSION_OF: &str = "SELECT prose_version FROM scenes WHERE scene = ?
 
 const HELD_VERSION: &str = "SELECT version FROM scenes WHERE scene = ?1";
 
-const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT ?1";
+const UNTOLD: &str = "SELECT scene FROM scenes WHERE untold ORDER BY scene LIMIT ?1";
 
 const LINKED_IDEAS: &str = "SELECT idea FROM scene_ideas WHERE scene = ?1 ORDER BY seq";
 
@@ -429,7 +429,7 @@ impl SceneStore for SqliteSceneStore {
             words,
         })
         .await?;
-        sqlx::query(COUNTED)
+        sqlx::query(TOLD)
             .bind(id.to_string())
             .bind(i64::try_from(as_of).expect("a version fits a signed 64-bit column"))
             .execute(connection(transaction)?)
@@ -464,6 +464,22 @@ impl SceneStore for SqliteSceneStore {
             scene: id,
             project,
             assets: assets.clone(),
+            version: as_of,
+        })
+        .await
+    }
+
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.announce(transaction, id, |project| SceneChange::TextSettled {
+            scene: id,
+            project,
+            blocks: blocks.to_vec(),
             version: as_of,
         })
         .await
@@ -619,8 +635,8 @@ impl SceneStore for SqliteSceneStore {
         })
     }
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
-        let found: Vec<String> = sqlx::query_scalar(UNCOUNTED)
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        let found: Vec<String> = sqlx::query_scalar(UNTOLD)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .fetch_all(&self.pool)
             .await

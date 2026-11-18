@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use clock::Clock;
 use outbox::InMemoryOutbox;
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
+    Block, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use transacting::Transaction;
 
@@ -20,7 +20,7 @@ struct StoredScene {
     version: u64,
     prose_version: u64,
     state: Vec<u8>,
-    uncounted: bool,
+    untold: bool,
 }
 
 #[derive(Default)]
@@ -99,7 +99,7 @@ impl SceneStore for InMemorySceneStore {
                 version: 0,
                 prose_version: 0,
                 state: scene.everything(),
-                uncounted: false,
+                untold: false,
             },
         );
         self.enqueue_change(
@@ -145,7 +145,7 @@ impl SceneStore for InMemorySceneStore {
                 version: stored.version,
                 prose_version: stored.prose_version + 1,
                 state: scene.everything(),
-                uncounted: true,
+                untold: true,
             },
         );
 
@@ -213,7 +213,7 @@ impl SceneStore for InMemorySceneStore {
             .get_mut(&id)
             .map(|stored| {
                 if stored.prose_version == as_of {
-                    stored.uncounted = false;
+                    stored.untold = false;
                 }
                 stored.project.clone()
             })
@@ -249,6 +249,32 @@ impl SceneStore for InMemorySceneStore {
                 scene: id,
                 project,
                 assets: assets.clone(),
+                version: as_of,
+            },
+        );
+
+        Ok(())
+    }
+
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
+        let project = self
+            .read()
+            .get(&id)
+            .map(|stored| stored.project.clone())
+            .ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(
+            transaction,
+            SceneChange::TextSettled {
+                scene: id,
+                project,
+                blocks: blocks.to_vec(),
                 version: as_of,
             },
         );
@@ -365,11 +391,11 @@ impl SceneStore for InMemorySceneStore {
         self.version_of(id).await
     }
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
         let mut found: Vec<SceneId> = self
             .read()
             .iter()
-            .filter(|(_, stored)| stored.uncounted)
+            .filter(|(_, stored)| stored.untold)
             .map(|(id, _)| *id)
             .collect();
         found.sort();

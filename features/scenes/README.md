@@ -132,15 +132,16 @@ That upsert then loses the race and is tried again.
 (*The lock was removed on 2026-11-04, when every PostgreSQL transaction became serializable.* Before that, a lock on the scene did this.)
 On SQLite, only one writer runs at a time, which has the same effect. In memory, the feature's one lock does.
 
-**A count clears only what it counted.**
+**A telling clears only what it read.**
+A live scene tells what it holds (its words, its opening, its images and its text) at most every two seconds (`TELL_AT_MOST_EVERY`), and once more before it is let go; the mark it clears is `untold`.
 A live scene runs one word count at a time, behind a lock of its own.
 So a count that stalls is never reported after a newer one.
 The count reads the scene's `version` before it reads the words and the opening.
 `announce_what_it_holds` reports the words, and the opening if it changed, in one transaction.
 It also reports the images the scene holds, if they changed (see below).
-It clears the scene's `uncounted` mark only `WHERE version` is still the one it read.
+It clears the scene's `untold` mark only `WHERE version` is still the one it read.
 So an edit stored while the count was running keeps the mark.
-If the process stops first, `count-scenes-left-uncounted` counts the scene again.
+If the process stops first, `tell-scenes-left-untold` tells the scene again.
 Retitling and linking also move the version.
 So one of them landing during a count costs one more count, nothing worse.
 
@@ -165,9 +166,14 @@ Paragraphs, headings, quotes, lists, code blocks, rules and figures become the b
 Of the marks, emphasis, strong, code and links are kept; quotation marks and speech are left out, as the quotation marks are in the text already and speech is for the writing view, and runs they alone kept apart are joined.
 A figure whose image is not an asset's id is left out, and a size not known is shown full.
 An element not known is read as the blocks it holds, so nothing written in it is lost.
-How the blocks reach the readings feature, as a message once the text has settled, is its next step.
-So the first count after a start, and the chore `count-scenes-left-uncounted`, tell the set again, even an empty one.
+So the first telling after a start, and the chore `tell-scenes-left-untold`, tell the set again, even an empty one.
 The assets feature keeps these sets, so an image a scene shows is not deleted.
+
+When a live scene is told, it also compares its blocks with the last ones it told, as it does its assets.
+If they differ, `announce_what_it_holds` tells them as `scene.text.settled` (`SceneTextSettledDTO`), in the same transaction as the words.
+The message carries the scene, its blocks, and the prose version they were read at, so a late, older text can be told apart; its context names the project.
+A change only the writing view shows, as marking speech, leaves the blocks as they were and tells nothing.
+A scene that was not told yet counts as changed.
 
 **An edit the store refused is not left for eviction.**
 If a live scene's edit could not be stored, the scene is marked unsaved.
@@ -209,14 +215,14 @@ Nothing is retried, because no write here aims at a version.
 
 **A scene owes its count until it is told.**
 *Fixed on 2026-11-02, after the transaction audit. Before, a crash in the two seconds between storing the prose and announcing its count lost both the count and the opening, until the scene's next edit.*
-The store marks a scene `uncounted` in the transaction that applies an update.
+The store marks a scene `untold` in the transaction that applies an update.
 Announcing its word count clears the mark, in its own transaction.
 So the debt is committed together with the prose, and paid only together with the count.
-`uncounted(at_most)` lists the scenes that still owe a count.
-The chore `count-scenes-left-uncounted` runs every minute, a hundred scenes at a time.
+`untold(at_most)` lists the scenes that still owe their telling.
+The chore `tell-scenes-left-untold` runs every minute, a hundred scenes at a time.
 It joins each scene through `LiveScenes` and counts it there.
 It counts the words and, because a rehydrated scene has reported no opening, the opening too.
-So a scene left uncounted, by a crash or by a count that failed, is counted without waiting for another edit.
+So a scene left untold, by a crash or by a telling that failed, is told without waiting for another edit.
 A scene can be evicted before its count was reported. This still happens to a scene whose count failed.
 Such a scene is caught up the same way.
 Counting through the live copy, which holds every stored update, never clears the mark of an update it has not seen.

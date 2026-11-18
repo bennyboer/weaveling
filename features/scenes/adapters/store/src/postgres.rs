@@ -9,7 +9,7 @@ use clock::Clock;
 use outbox::Origin;
 use outbox::postgres;
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
+    Block, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
@@ -57,7 +57,7 @@ const WRITE_SNAPSHOT: &str = "
 
 const WRITE_UPDATE: &str = "
     WITH bumped AS (
-        UPDATE scenes SET prose_version = prose_version + 1, uncounted = TRUE WHERE scene = $1
+        UPDATE scenes SET prose_version = prose_version + 1, untold = TRUE WHERE scene = $1
     )
     INSERT INTO scene_updates (scene, is_snapshot, bytes)
     VALUES ($1, FALSE, $2)
@@ -89,7 +89,7 @@ const FORGET_BEFORE: &str = "DELETE FROM scene_updates WHERE scene = $1 AND seq 
 
 const FORGET: &str = "DELETE FROM scenes WHERE scene = $1 RETURNING project";
 
-const COUNTED: &str = "UPDATE scenes SET uncounted = FALSE WHERE scene = $1 AND prose_version = $2";
+const TOLD: &str = "UPDATE scenes SET untold = FALSE WHERE scene = $1 AND prose_version = $2";
 
 const VERSION_OF: &str = "SELECT version FROM scenes WHERE scene = $1";
 
@@ -97,7 +97,7 @@ const PROSE_VERSION_OF: &str = "SELECT prose_version FROM scenes WHERE scene = $
 
 const HELD_VERSION: &str = "SELECT version FROM scenes WHERE scene = $1 FOR UPDATE";
 
-const UNCOUNTED: &str = "SELECT scene FROM scenes WHERE uncounted ORDER BY scene LIMIT $1";
+const UNTOLD: &str = "SELECT scene FROM scenes WHERE untold ORDER BY scene LIMIT $1";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
@@ -427,7 +427,7 @@ impl SceneStore for PostgresSceneStore {
             words,
         })
         .await?;
-        sqlx::query(COUNTED)
+        sqlx::query(TOLD)
             .bind(id.to_string())
             .bind(i64::try_from(as_of).expect("a version fits a signed 64-bit column"))
             .execute(connection(transaction)?)
@@ -462,6 +462,22 @@ impl SceneStore for PostgresSceneStore {
             scene: id,
             project,
             assets: assets.clone(),
+            version: as_of,
+        })
+        .await
+    }
+
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.announce(transaction, id, |project| SceneChange::TextSettled {
+            scene: id,
+            project,
+            blocks: blocks.to_vec(),
             version: as_of,
         })
         .await
@@ -617,8 +633,8 @@ impl SceneStore for PostgresSceneStore {
         })
     }
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
-        let found: Vec<String> = sqlx::query_scalar(UNCOUNTED)
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        let found: Vec<String> = sqlx::query_scalar(UNTOLD)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .fetch_all(&self.pool)
             .await

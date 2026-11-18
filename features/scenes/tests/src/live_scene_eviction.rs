@@ -11,7 +11,7 @@ use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{
-    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneRestyler, SceneStore, SceneTitle,
+    Block, FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneRestyler, SceneStore, SceneTitle,
     ScenesCore, StoreError,
 };
 use scenes_store::InMemorySceneStore;
@@ -157,6 +157,22 @@ impl SceneStore for FalteringStore {
             .await
     }
 
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        if self.faltering.load(Ordering::SeqCst) {
+            return Err(StoreError::Backend("the store is down".into()));
+        }
+
+        self.held
+            .announce_text(transaction, id, blocks, as_of)
+            .await
+    }
+
     async fn link(
         &self,
         transaction: &mut Transaction,
@@ -226,8 +242,8 @@ impl SceneStore for FalteringStore {
         self.held.version_within(transaction, id).await
     }
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
-        self.held.uncounted(at_most).await
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        self.held.untold(at_most).await
     }
 }
 
@@ -620,7 +636,7 @@ async fn edits_close_behind_are_counted_once_a_short_wait_is_over() {
     assert_eq!(
         bench.last_announced(id),
         Some(7),
-        "the wait ends in a count, so a burst of typing is never left uncounted"
+        "the wait ends in a count, so a burst of typing is never left untold"
     );
 }
 
@@ -752,10 +768,10 @@ async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
         .await
         .expect("the prose is stored, and then the server stops before counting it");
 
-    // when: the uncounted are counted
+    // when: the untold are told
     let counted = bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("counting should succeed");
 
@@ -771,7 +787,7 @@ async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
     assert!(
         bench
             .service
-            .uncounted(10)
+            .untold(10)
             .await
             .expect("asking should succeed")
             .is_empty()
@@ -780,7 +796,7 @@ async fn a_count_lost_in_a_crash_is_caught_up_without_another_edit() {
 
 #[tokio::test(start_paused = true)]
 async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
-    // given: a scene with uncounted prose
+    // given: a scene with untold prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -791,10 +807,10 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
     // and: the store down
     bench.store.falter(true);
 
-    // when: the uncounted are counted
+    // when: the untold are told
     let counted = bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("a count that fails is no failure of the round");
     bench.store.falter(false);
@@ -805,7 +821,7 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
     assert_eq!(
         bench
             .service
-            .uncounted(10)
+            .untold(10)
             .await
             .expect("asking should succeed"),
         vec![id],
@@ -815,7 +831,7 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
     assert_eq!(
         bench
             .live
-            .count_the_uncounted(10)
+            .tell_the_untold(10)
             .await
             .expect("counting should succeed"),
         1
@@ -825,7 +841,7 @@ async fn a_count_that_cannot_be_stored_stays_owed_until_it_can() {
 
 #[tokio::test(start_paused = true)]
 async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
-    // given: a scene with uncounted prose
+    // given: a scene with untold prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -837,10 +853,10 @@ async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
     *bench.store.edited_mid_count.lock().expect("never poisoned") =
         Some(a_paragraph("Then it spoke."));
 
-    // when: the uncounted are counted
+    // when: the untold are told
     bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("counting should succeed");
 
@@ -850,7 +866,7 @@ async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
     assert_eq!(
         bench
             .service
-            .uncounted(10)
+            .untold(10)
             .await
             .expect("asking should succeed"),
         vec![id],
@@ -860,7 +876,7 @@ async fn an_edit_stored_while_a_count_is_under_way_keeps_the_scene_owed() {
 
 #[tokio::test(start_paused = true)]
 async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
-    // given: a scene with uncounted prose
+    // given: a scene with untold prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
     bench
@@ -871,22 +887,22 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
     // and: a store refusing openings
     bench.store.refusing_openings.store(true, Ordering::SeqCst);
 
-    // when: the uncounted are counted
+    // when: the untold are told
     bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("a count that fails is no failure of the round");
     let owed = bench
         .service
-        .uncounted(10)
+        .untold(10)
         .await
         .expect("asking should succeed");
     // and: counted again once openings are taken
     bench.store.refusing_openings.store(false, Ordering::SeqCst);
     bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("counting should succeed");
 
@@ -905,7 +921,7 @@ async fn a_count_whose_opening_cannot_be_told_is_not_kept_either() {
     assert!(
         bench
             .service
-            .uncounted(10)
+            .untold(10)
             .await
             .expect("asking should succeed")
             .is_empty()

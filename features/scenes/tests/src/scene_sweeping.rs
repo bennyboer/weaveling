@@ -12,7 +12,7 @@ use projects_contract::DELETED;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, ScenesError,
+    Block, IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, ScenesError,
     StoreError,
 };
 use scenes_messaging::DeleteOnProjectDeletedListener;
@@ -98,6 +98,18 @@ impl SceneStore for Wavering {
             .await
     }
 
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        self.held
+            .announce_text(transaction, id, blocks, as_of)
+            .await
+    }
+
     async fn link(
         &self,
         transaction: &mut Transaction,
@@ -162,8 +174,8 @@ impl SceneStore for Wavering {
         self.held.version_within(transaction, id).await
     }
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
-        self.held.uncounted(at_most).await
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError> {
+        self.held.untold(at_most).await
     }
 }
 

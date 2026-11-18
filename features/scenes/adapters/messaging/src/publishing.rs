@@ -2,11 +2,12 @@ use eventsourcing::AggregateContext;
 use messaging::{Message, RoutingKey};
 use projects_contract::context::PROJECT;
 use scenes_contract::{
-    ASSETS_CHANGED, CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, OPENING_CHANGED,
-    OpeningChangedDTO, RETITLED, SceneAssetsChangedDTO, SceneCreatedDTO, SceneDeletedDTO,
-    SceneRetitledDTO, WORDS_COUNTED, WordsCountedDTO,
+    ASSETS_CHANGED, BlockDTO, CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, MarksDTO,
+    OPENING_CHANGED, OpeningChangedDTO, RETITLED, RunDTO, SceneAssetsChangedDTO, SceneCreatedDTO,
+    SceneDeletedDTO, SceneRetitledDTO, SceneTextSettledDTO, TEXT_SETTLED, WORDS_COUNTED,
+    WordsCountedDTO,
 };
-use scenes_core::SceneChange;
+use scenes_core::{Block, FigureSize, Marks, Run, SceneChange};
 use serde_json::Value;
 use time::OffsetDateTime;
 
@@ -102,6 +103,19 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 version: *version,
             }),
         ),
+        SceneChange::TextSettled {
+            scene,
+            blocks,
+            version,
+            ..
+        } => (
+            TEXT_SETTLED,
+            to_payload(&SceneTextSettledDTO {
+                scene: scene.to_string(),
+                blocks: to_blocks_dto(blocks),
+                version: *version,
+            }),
+        ),
     };
 
     let mut payload = payload;
@@ -114,6 +128,69 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
         payload,
         at,
     )
+}
+
+fn to_blocks_dto(blocks: &[Block]) -> Vec<BlockDTO> {
+    blocks.iter().map(to_block_dto).collect()
+}
+
+fn to_block_dto(block: &Block) -> BlockDTO {
+    match block {
+        Block::Paragraph(runs) => BlockDTO::Paragraph {
+            runs: to_runs_dto(runs),
+        },
+        Block::Heading { level, runs } => BlockDTO::Heading {
+            level: *level,
+            runs: to_runs_dto(runs),
+        },
+        Block::Quote(blocks) => BlockDTO::Quote {
+            blocks: to_blocks_dto(blocks),
+        },
+        Block::List { ordered, items } => BlockDTO::List {
+            ordered: *ordered,
+            items: items.iter().map(|item| to_blocks_dto(item)).collect(),
+        },
+        Block::Code(text) => BlockDTO::Code { text: text.clone() },
+        Block::Rule => BlockDTO::Rule,
+        Block::Figure {
+            asset,
+            size,
+            caption,
+        } => BlockDTO::Figure {
+            asset: asset.clone(),
+            size: size_name(*size).to_owned(),
+            caption: caption.clone(),
+        },
+    }
+}
+
+fn size_name(size: FigureSize) -> &'static str {
+    match size {
+        FigureSize::Small => "small",
+        FigureSize::Medium => "medium",
+        FigureSize::Full => "full",
+    }
+}
+
+fn to_runs_dto(runs: &[Run]) -> Vec<RunDTO> {
+    runs.iter()
+        .map(|run| match run {
+            Run::Text { text, marks } => RunDTO::Text {
+                text: text.clone(),
+                marks: to_marks_dto(marks),
+            },
+            Run::Break => RunDTO::Break,
+        })
+        .collect()
+}
+
+fn to_marks_dto(marks: &Marks) -> MarksDTO {
+    MarksDTO {
+        emphasis: marks.emphasis,
+        strong: marks.strong,
+        code: marks.code,
+        link: marks.link.clone(),
+    }
 }
 
 fn to_payload(dto: &impl serde::Serialize) -> Value {
@@ -265,6 +342,87 @@ mod tests {
             },
             "the version tells a late, older set from a newer one"
         );
+    }
+
+    #[test]
+    fn a_scene_s_settled_text_is_announced_as_blocks_with_the_version_it_was_read_at() {
+        // given: a scene
+        let scene = a_scene();
+
+        // when: its text is announced, a heading, a marked paragraph with a break, and a figure
+        let told = message_for(
+            &SceneChange::TextSettled {
+                scene,
+                project: ProjectLink::from("project_1"),
+                blocks: vec![
+                    Block::Heading {
+                        level: 2,
+                        runs: vec![Run::Text {
+                            text: "At the harbour".to_owned(),
+                            marks: Marks::default(),
+                        }],
+                    },
+                    Block::Paragraph(vec![
+                        Run::Text {
+                            text: "one by one".to_owned(),
+                            marks: Marks {
+                                emphasis: true,
+                                ..Marks::default()
+                            },
+                        },
+                        Run::Break,
+                    ]),
+                    Block::Figure {
+                        asset: "asset_frames".to_owned(),
+                        size: FigureSize::Medium,
+                        caption: "The drying frames.".to_owned(),
+                    },
+                ],
+                version: 9,
+            },
+            clock::at(2_000),
+        );
+
+        // then: it goes under the text's key
+        assert_eq!(told.routing.to_string(), TEXT_SETTLED);
+        // and: reads back as the scene's blocks, with their version
+        assert_eq!(
+            serde_json::from_value::<SceneTextSettledDTO>(told.payload.clone())
+                .expect("reads back"),
+            SceneTextSettledDTO {
+                scene: scene.to_string(),
+                blocks: vec![
+                    BlockDTO::Heading {
+                        level: 2,
+                        runs: vec![RunDTO::Text {
+                            text: "At the harbour".to_owned(),
+                            marks: MarksDTO::default(),
+                        }],
+                    },
+                    BlockDTO::Paragraph {
+                        runs: vec![
+                            RunDTO::Text {
+                                text: "one by one".to_owned(),
+                                marks: MarksDTO {
+                                    emphasis: true,
+                                    ..MarksDTO::default()
+                                },
+                            },
+                            RunDTO::Break,
+                        ],
+                    },
+                    BlockDTO::Figure {
+                        asset: "asset_frames".to_owned(),
+                        size: "medium".to_owned(),
+                        caption: "The drying frames.".to_owned(),
+                    },
+                ],
+                version: 9,
+            },
+            "the version tells a late, older text from a newer one"
+        );
+        // and: names the scene's project in its context
+        assert_eq!(told.payload["context"]["project"], "project_1");
     }
 
     #[test]

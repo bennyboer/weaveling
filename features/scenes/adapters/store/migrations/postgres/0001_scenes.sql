@@ -4,12 +4,12 @@ CREATE TABLE scenes (
     title       TEXT             NOT NULL,
     version     BIGINT           NOT NULL DEFAULT 0,
     prose_version BIGINT         NOT NULL DEFAULT 0,
-    uncounted   BOOLEAN          NOT NULL DEFAULT FALSE,
+    untold   BOOLEAN          NOT NULL DEFAULT FALSE,
     created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX scenes_by_project ON scenes (project, scene);
-CREATE INDEX scenes_uncounted ON scenes (scene) WHERE uncounted;
+CREATE INDEX scenes_untold ON scenes (scene) WHERE untold;
 
 CREATE TABLE scene_updates (
     seq         BIGSERIAL   PRIMARY KEY,

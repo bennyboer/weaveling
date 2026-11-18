@@ -10,7 +10,7 @@ use authorizing::AccessWatch;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_core::{
-    Access, Scene, SceneError, SceneId, SceneRestyler, ScenesCore, ScenesError, StoreError,
+    Access, Block, Scene, SceneError, SceneId, SceneRestyler, ScenesCore, ScenesError, StoreError,
 };
 use thiserror::Error;
 use tokio::sync::{Mutex as OneAtATime, broadcast};
@@ -27,7 +27,7 @@ type Rooms = HashMap<SceneId, Room>;
 pub(crate) const BACKLOG: usize = 256;
 const GRACE: Duration = Duration::from_secs(30);
 const SWEEP_EVERY: Duration = Duration::from_secs(10);
-const RECOUNT_EVERY: Duration = Duration::from_secs(2);
+const TELL_AT_MOST_EVERY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Error)]
 pub enum LiveSceneError {
@@ -53,12 +53,13 @@ pub struct LiveScene {
     traffic: broadcast::Sender<Overheard>,
     unsaved: AtomicBool,
     gone: AtomicBool,
-    uncounted: AtomicBool,
-    recount_waiting: AtomicBool,
-    counting: OneAtATime<()>,
-    counted_at: Mutex<Option<Moment>>,
+    untold: AtomicBool,
+    retell_waiting: AtomicBool,
+    telling: OneAtATime<()>,
+    told_at: Mutex<Option<Moment>>,
     opening_told: Mutex<Option<String>>,
     assets_told: Mutex<Option<BTreeSet<String>>>,
+    text_told: Mutex<Option<Vec<Block>>>,
     speakers: Speakers,
 }
 
@@ -69,12 +70,13 @@ impl LiveScene {
             traffic: broadcast::channel(BACKLOG).0,
             unsaved: AtomicBool::new(false),
             gone: AtomicBool::new(false),
-            uncounted: AtomicBool::new(false),
-            recount_waiting: AtomicBool::new(false),
-            counting: OneAtATime::new(()),
-            counted_at: Mutex::new(None),
+            untold: AtomicBool::new(false),
+            retell_waiting: AtomicBool::new(false),
+            telling: OneAtATime::new(()),
+            told_at: Mutex::new(None),
             opening_told: Mutex::new(None),
             assets_told: Mutex::new(None),
+            text_told: Mutex::new(None),
             speakers: Speakers::default(),
         }
     }
@@ -100,29 +102,29 @@ impl LiveScene {
         }
     }
 
-    fn next_count_in(&self) -> Duration {
-        self.counted_at
+    fn next_telling_in(&self) -> Duration {
+        self.told_at
             .lock()
-            .expect("live scene count lock poisoned")
+            .expect("live scene telling lock poisoned")
             .map_or(Duration::ZERO, |counted| {
-                RECOUNT_EVERY.saturating_sub(counted.elapsed())
+                TELL_AT_MOST_EVERY.saturating_sub(counted.elapsed())
             })
     }
 
-    async fn recount(&self, scenes: &ScenesCore) {
-        let _counting = self.counting.lock().await;
-        if !self.uncounted.swap(false, Ordering::AcqRel) {
+    async fn retell(&self, scenes: &ScenesCore) {
+        let _telling = self.telling.lock().await;
+        if !self.untold.swap(false, Ordering::AcqRel) {
             return;
         }
         *self
-            .counted_at
+            .told_at
             .lock()
-            .expect("live scene count lock poisoned") = Some(Moment::now());
+            .expect("live scene telling lock poisoned") = Some(Moment::now());
 
         match self.tell_what_it_holds(scenes).await {
             Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
             Err(problem) => {
-                self.uncounted.store(true, Ordering::Release);
+                self.untold.store(true, Ordering::Release);
                 warn!(scene = %self.id(), %problem, "what a scene holds could not be told");
             }
         }
@@ -145,6 +147,13 @@ impl LiveScene {
             .expect("live scene assets lock poisoned")
             .as_ref()
             != Some(&assets);
+        let blocks = self.scene.blocks();
+        let text_changed = self
+            .text_told
+            .lock()
+            .expect("live scene text lock poisoned")
+            .as_ref()
+            != Some(&blocks);
 
         scenes
             .announce_what_it_holds(
@@ -152,6 +161,7 @@ impl LiveScene {
                 self.scene.words(),
                 changed.then_some(opening.as_str()),
                 assets_changed.then_some(&assets),
+                text_changed.then_some(blocks.as_slice()),
                 as_of,
             )
             .await?;
@@ -163,6 +173,10 @@ impl LiveScene {
             .assets_told
             .lock()
             .expect("live scene assets lock poisoned") = Some(assets);
+        *self
+            .text_told
+            .lock()
+            .expect("live scene text lock poisoned") = Some(blocks);
 
         Ok(())
     }
@@ -280,7 +294,7 @@ impl Presence {
             )
             .await;
         match persisted {
-            Ok(()) => self.count_soon().await,
+            Ok(()) => self.tell_soon().await,
             Err(ScenesError::Store(StoreError::NotFound(_))) => {
                 self.scene.gone.store(true, Ordering::Release)
             }
@@ -290,15 +304,15 @@ impl Presence {
         persisted
     }
 
-    async fn count_soon(&self) {
-        self.scene.uncounted.store(true, Ordering::Release);
-        let wait = self.scene.next_count_in();
+    async fn tell_soon(&self) {
+        self.scene.untold.store(true, Ordering::Release);
+        let wait = self.scene.next_telling_in();
 
         if wait.is_zero() {
-            self.scene.recount(&self.shared.scenes).await;
+            self.scene.retell(&self.shared.scenes).await;
             return;
         }
-        if self.scene.recount_waiting.swap(true, Ordering::AcqRel) {
+        if self.scene.retell_waiting.swap(true, Ordering::AcqRel) {
             return;
         }
 
@@ -306,8 +320,8 @@ impl Presence {
         let scenes = self.shared.scenes.clone();
         tokio::spawn(async move {
             tokio::time::sleep(wait).await;
-            scene.recount_waiting.store(false, Ordering::Release);
-            scene.recount(&scenes).await;
+            scene.retell_waiting.store(false, Ordering::Release);
+            scene.retell(&scenes).await;
         });
     }
 }
@@ -421,7 +435,7 @@ impl LiveScenes {
 
         for scene in idle {
             if self.flushed(&scene).await {
-                scene.recount(&self.shared.scenes).await;
+                scene.retell(&self.shared.scenes).await;
                 self.let_go(&scene, idle_before);
             }
         }
@@ -437,23 +451,23 @@ impl LiveScenes {
         }
     }
 
-    pub async fn count_the_uncounted(&self, at_most: usize) -> Result<u64, ScenesError> {
-        let mut counted = 0;
+    pub async fn tell_the_untold(&self, at_most: usize) -> Result<u64, ScenesError> {
+        let mut told = 0;
 
-        for id in self.shared.scenes.uncounted(at_most).await? {
+        for id in self.shared.scenes.untold(at_most).await? {
             let present = match self.join(id).await {
                 Ok(present) => present,
                 Err(ScenesError::Store(StoreError::NotFound(_))) => continue,
                 Err(problem) => return Err(problem),
             };
-            present.scene.uncounted.store(true, Ordering::Release);
-            present.scene.recount(&self.shared.scenes).await;
-            if !present.scene.uncounted.load(Ordering::Acquire) {
-                counted += 1;
+            present.scene.untold.store(true, Ordering::Release);
+            present.scene.retell(&self.shared.scenes).await;
+            if !present.scene.untold.load(Ordering::Acquire) {
+                told += 1;
             }
         }
 
-        Ok(counted)
+        Ok(told)
     }
 
     pub async fn settle(&self) {
@@ -466,7 +480,7 @@ impl LiveScenes {
 
         for scene in live {
             self.flushed(&scene).await;
-            scene.recount(&self.shared.scenes).await;
+            scene.retell(&self.shared.scenes).await;
         }
     }
 

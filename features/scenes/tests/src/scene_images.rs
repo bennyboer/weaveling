@@ -21,14 +21,14 @@ use yrs::{
 
 const A_PROJECT: &str = "project_1";
 
-struct Wired {
-    scenes: ScenesCore,
-    live: LiveScenes,
-    outbox: Arc<InMemoryOutbox>,
-    published: Arc<FakePublisher>,
+pub(crate) struct Wired {
+    pub(crate) scenes: ScenesCore,
+    pub(crate) live: LiveScenes,
+    pub(crate) outbox: Arc<InMemoryOutbox>,
+    pub(crate) published: Arc<FakePublisher>,
 }
 
-fn a_workbench() -> Wired {
+pub(crate) fn a_workbench() -> Wired {
     let clock = Arc::new(FixedClock::new(clock::at(1_000)));
     let published = Arc::new(FakePublisher::default());
     let outbox = Arc::new(InMemoryOutbox::new(published.clone(), clock.clone()));
@@ -56,16 +56,19 @@ fn a_workbench() -> Wired {
 }
 
 /// A writer's own copy of a scene, handing out each edit as an update.
-struct Writer {
+pub(crate) struct Writer {
     doc: Doc,
 }
 
 impl Writer {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { doc: Doc::new() }
     }
 
-    fn edited(&self, edit: impl FnOnce(&mut TransactionMut, &XmlFragmentRef)) -> Vec<u8> {
+    pub(crate) fn edited(
+        &self,
+        edit: impl FnOnce(&mut TransactionMut, &XmlFragmentRef),
+    ) -> Vec<u8> {
         let before = self.doc.transact().state_vector();
         let fragment = self.doc.get_or_insert_xml_fragment(FRAGMENT);
         {
@@ -76,7 +79,7 @@ impl Writer {
         self.doc.transact().encode_state_as_update_v1(&before)
     }
 
-    fn a_paragraph(&self, saying: &str) -> Vec<u8> {
+    pub(crate) fn a_paragraph(&self, saying: &str) -> Vec<u8> {
         self.edited(|txn, fragment| {
             let at = fragment.len(txn);
             let paragraph = fragment.insert(txn, at, XmlElementPrelim::empty("paragraph"));
@@ -114,7 +117,7 @@ impl Writer {
 }
 
 impl Wired {
-    async fn a_scene(&self) -> SceneId {
+    pub(crate) async fn a_scene(&self) -> SceneId {
         self.scenes
             .create(A_PROJECT, &Agent::Local)
             .await
@@ -122,7 +125,7 @@ impl Wired {
             .id()
     }
 
-    async fn writing(&self, present: &Presence, update: Vec<u8>) {
+    pub(crate) async fn writing(&self, present: &Presence, update: Vec<u8>) {
         present
             .receive(Message::JustHappened(update.clone()))
             .expect("should write");
@@ -149,7 +152,7 @@ impl Wired {
             .collect()
     }
 
-    async fn prose_version(&self, id: SceneId) -> u64 {
+    pub(crate) async fn prose_version(&self, id: SceneId) -> u64 {
         self.scenes
             .prose_version_of(&id.to_string())
             .await
@@ -158,7 +161,7 @@ impl Wired {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_image_added_to_a_scene_is_told_with_the_prose_version_it_was_counted_at() {
+async fn an_image_added_to_a_scene_is_told_with_the_prose_version_it_was_read_at() {
     // given: a joined scene holding prose
     let bench = a_workbench();
     let id = bench.a_scene().await;
@@ -184,7 +187,7 @@ async fn an_image_added_to_a_scene_is_told_with_the_prose_version_it_was_counted
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_recount_holding_the_same_images_tells_nothing_more() {
+async fn a_retelling_holding_the_same_images_tells_nothing_more() {
     // given: a joined scene whose image was told
     let bench = a_workbench();
     let id = bench.a_scene().await;
@@ -246,10 +249,10 @@ async fn a_scene_counted_for_the_first_time_tells_that_it_holds_no_images() {
         .await
         .expect("the prose is stored");
 
-    // when: the uncounted are counted
+    // when: the untold are told
     bench
         .live
-        .count_the_uncounted(10)
+        .tell_the_untold(10)
         .await
         .expect("counting should succeed");
 

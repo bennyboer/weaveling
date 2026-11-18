@@ -12,6 +12,7 @@ pub const CREATED: &str = "scene.created";
 pub const RETITLED: &str = "scene.retitled";
 pub const OPENING_CHANGED: &str = "scene.opening.changed";
 pub const ASSETS_CHANGED: &str = "scene.assets.changed";
+pub const TEXT_SETTLED: &str = "scene.text.settled";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdeaLinkDTO {
@@ -60,6 +61,58 @@ pub struct SceneAssetsChangedDTO {
     pub scene: String,
     pub assets: Vec<String>,
     pub version: u64,
+}
+
+/// A scene's text as a reader sees it, once it has settled.
+/// `version` is the scene's prose version it was read at, so a late, older message can be told apart.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SceneTextSettledDTO {
+    pub scene: String,
+    pub blocks: Vec<BlockDTO>,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BlockDTO {
+    Paragraph {
+        runs: Vec<RunDTO>,
+    },
+    Heading {
+        level: u8,
+        runs: Vec<RunDTO>,
+    },
+    Quote {
+        blocks: Vec<BlockDTO>,
+    },
+    List {
+        ordered: bool,
+        items: Vec<Vec<BlockDTO>>,
+    },
+    Code {
+        text: String,
+    },
+    Rule,
+    Figure {
+        asset: String,
+        size: String,
+        caption: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RunDTO {
+    Text { text: String, marks: MarksDTO },
+    Break,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MarksDTO {
+    pub emphasis: bool,
+    pub strong: bool,
+    pub code: bool,
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

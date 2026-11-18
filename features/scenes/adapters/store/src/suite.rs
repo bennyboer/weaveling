@@ -8,8 +8,8 @@ use std::ops::Deref;
 
 use messaging::{Message, RoutingKey};
 use scenes_core::{
-    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle,
-    StoreError,
+    Block, FRAGMENT, IdeaLink, Marks, ProjectLink, Run, Scene, SceneChange, SceneId, SceneStore,
+    SceneTitle, StoreError,
 };
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -130,6 +130,19 @@ impl<S: SceneStore> Committing<'_, S> {
         transaction.finish().await.map_err(unreachable)
     }
 
+    pub async fn announce_text(
+        &self,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .announce_text(&mut transaction, id, blocks, as_of)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
     pub async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
         let mut transaction = self.begun().await?;
         self.store.link(&mut transaction, id, idea).await?;
@@ -242,6 +255,20 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 "scene": scene.to_string(),
                 "project": project.to_string(),
                 "assets": assets,
+                "version": version
+            }),
+        ),
+        SceneChange::TextSettled {
+            scene,
+            project,
+            blocks,
+            version,
+        } => (
+            "scene.text.settled",
+            json!({
+                "scene": scene.to_string(),
+                "project": project.to_string(),
+                "blocks": format!("{blocks:?}"),
                 "version": version
             }),
         ),
@@ -789,11 +816,11 @@ pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(
     );
 }
 
-async fn uncounted(store: &Committing<'_, impl SceneStore>) -> Vec<SceneId> {
+async fn untold(store: &Committing<'_, impl SceneStore>) -> Vec<SceneId> {
     store
-        .uncounted(10)
+        .untold(10)
         .await
-        .expect("asking what is uncounted should succeed")
+        .expect("asking what is untold should succeed")
 }
 
 pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
@@ -805,7 +832,7 @@ pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
     an_empty_scene(store, quiet).await;
     // and: neither owes a count
     assert!(
-        uncounted(store).await.is_empty(),
+        untold(store).await.is_empty(),
         "a scene only made owes no count"
     );
 
@@ -816,7 +843,7 @@ pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
         .expect("writing should succeed");
     // then: it alone owes a count
     assert_eq!(
-        uncounted(store).await,
+        untold(store).await,
         vec![written],
         "the prose and the count it owes are kept together, so a crash cannot lose the debt"
     );
@@ -827,7 +854,7 @@ pub async fn writing_leaves_a_scene_owing_its_count_until_the_count_is_told(
         .await
         .expect("announcing should succeed");
     // then: none owes a count
-    assert!(uncounted(store).await.is_empty());
+    assert!(untold(store).await.is_empty());
 }
 
 pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
@@ -858,7 +885,7 @@ pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
 
     // then: it still owes a count
     assert_eq!(
-        uncounted(store).await,
+        untold(store).await,
         vec![id],
         "what was written after the words were read is not in the count, so it is still owed"
     );
@@ -869,7 +896,7 @@ pub async fn a_count_as_of_an_older_version_leaves_the_newer_writing_owed(
         .await
         .expect("announcing should succeed");
     // then: it owes none
-    assert!(uncounted(store).await.is_empty());
+    assert!(untold(store).await.is_empty());
 }
 
 pub async fn the_version_of_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
@@ -1037,7 +1064,7 @@ pub async fn a_write_rolled_back_owes_no_count(store: &Committing<'_, impl Scene
     drop(transaction);
 
     // then: it owes no count
-    assert!(uncounted(store).await.is_empty());
+    assert!(untold(store).await.is_empty());
 }
 
 fn an_idea(named: &str) -> IdeaLink {
@@ -1605,6 +1632,58 @@ pub async fn announcing_the_images_of_a_missing_scene_is_not_found(
     );
 }
 
+pub async fn announcing_the_text_enqueues_it_with_the_scene_s_project_and_version(
+    bench: &impl Workbench,
+) {
+    // given: a scene
+    let store = &bench.committing();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+    let blocks = vec![Block::Paragraph(vec![Run::Text {
+        text: "The loom stood silent.".to_owned(),
+        marks: Marks::default(),
+    }])];
+
+    // when: its text is announced
+    store
+        .announce_text(id, &blocks, 3)
+        .await
+        .expect("announcing should succeed");
+
+    // then: it is told with the scene's project and the version it was read at
+    assert_eq!(
+        told_after_creating(bench.enqueued().await),
+        vec![(
+            "scene.text.settled".to_owned(),
+            json!({
+                "scene": id.to_string(),
+                "project": a_project().to_string(),
+                "blocks": format!("{blocks:?}"),
+                "version": 3
+            })
+        )]
+    );
+}
+
+pub async fn announcing_the_text_of_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
+    // given: a scene never created
+    let missing = an_id(1_000);
+
+    // when: its text is announced
+    let error = store
+        .announce_text(missing, &[], 1)
+        .await
+        .expect_err("announcing should not find the scene");
+
+    // then: it is not found
+    assert!(
+        matches!(&error, StoreError::NotFound(id) if *id == missing),
+        "expected NotFound({missing}), got {error:?}"
+    );
+}
+
 pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(
     store: &Committing<'_, impl SceneStore>,
 ) {
@@ -1777,6 +1856,10 @@ macro_rules! conformance_tests {
             $workbench,
             announcing_the_images_of_a_missing_scene_is_not_found
         );
+        $crate::suite::conformance_case!(
+            $workbench,
+            announcing_the_text_of_a_missing_scene_is_not_found
+        );
         $crate::suite::conformance_case!($workbench, a_new_scene_has_no_linked_ideas);
         $crate::suite::conformance_case!(
             $workbench,
@@ -1824,6 +1907,10 @@ macro_rules! conformance_tests {
         $crate::suite::bench_case!(
             $workbench,
             announcing_the_images_enqueues_them_with_the_scene_s_project_and_version
+        );
+        $crate::suite::bench_case!(
+            $workbench,
+            announcing_the_text_enqueues_it_with_the_scene_s_project_and_version
         );
     };
 }

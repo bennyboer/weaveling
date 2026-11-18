@@ -26,6 +26,9 @@ mod scene_cataloguing;
 mod scene_images;
 
 #[cfg(test)]
+mod scene_text;
+
+#[cfg(test)]
 mod scenes_api;
 
 #[cfg(test)]

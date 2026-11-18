@@ -12,9 +12,9 @@ use transacting::{Transaction, Transactions};
 
 use crate::service::SceneService;
 use crate::{
-    Page, ProjectLink, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTasks,
-    Scene, SceneCatalog, SceneId, SceneRestyler, SceneStore, SceneSummary, SceneTitle, ScenesError,
-    StoreError,
+    Block, Page, ProjectLink, QuotationRestyling, QuotationRestylingProgress,
+    QuotationRestylingTasks, Scene, SceneCatalog, SceneId, SceneRestyler, SceneStore, SceneSummary,
+    SceneTitle, ScenesError, StoreError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,24 +227,26 @@ impl ScenesCore {
         })
     }
 
-    pub async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
-        self.service.uncounted(at_most).await
+    pub async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
+        self.service.untold(at_most).await
     }
 
     pub async fn prose_version_of(&self, id: &str) -> Result<u64, ScenesError> {
         self.service.prose_version_of(id).await
     }
 
-    /// Tells what a scene holds, as one count found it at the prose version `as_of`:
-    /// its words, its opening if it changed, and the assets it holds if they changed.
-    /// All of it lands in one transaction, together with clearing the scene's mark as uncounted.
-    /// So either everything is told and the scene counts as counted, or nothing is, and the next count tries again.
+    /// Tells what a scene holds, as read at the prose version `as_of`:
+    /// its words, its opening if it changed, the assets it holds if they changed,
+    /// and its text as a reader sees it if that changed.
+    /// All of it lands in one transaction, together with clearing the scene's mark as untold.
+    /// So either everything is told and the scene is no longer untold, or nothing is, and the next telling tries again.
     pub async fn announce_what_it_holds(
         &self,
         id: &str,
         words: usize,
         opening: Option<&str>,
         assets: Option<&BTreeSet<String>>,
+        blocks: Option<&[Block]>,
         as_of: u64,
     ) -> Result<(), ScenesError> {
         transacting::retrying!(&*self.transactions, |transaction| {
@@ -259,6 +261,11 @@ impl ScenesCore {
             if let Some(assets) = assets {
                 self.service
                     .announce_assets(transaction, id, assets, as_of)
+                    .await?;
+            }
+            if let Some(blocks) = blocks {
+                self.service
+                    .announce_text(transaction, id, blocks, as_of)
                     .await?;
             }
 

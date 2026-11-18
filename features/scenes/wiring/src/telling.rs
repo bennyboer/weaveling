@@ -8,20 +8,20 @@ use scenes_sync::LiveScenes;
 const EVERY: Duration = Duration::from_secs(60);
 const AT_MOST: usize = 100;
 
-pub struct CountTheUncounted {
+pub struct TellTheUntold {
     live: LiveScenes,
 }
 
-impl CountTheUncounted {
+impl TellTheUntold {
     pub fn of(live: LiveScenes) -> Self {
         Self { live }
     }
 }
 
 #[async_trait]
-impl Chore for CountTheUncounted {
+impl Chore for TellTheUntold {
     fn named(&self) -> &'static str {
-        "count-scenes-left-uncounted"
+        "tell-scenes-left-untold"
     }
 
     fn every(&self) -> Duration {
@@ -29,6 +29,6 @@ impl Chore for CountTheUncounted {
     }
 
     async fn carry_out(&self) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(self.live.count_the_uncounted(AT_MOST).await?)
+        Ok(self.live.tell_the_untold(AT_MOST).await?)
     }
 }

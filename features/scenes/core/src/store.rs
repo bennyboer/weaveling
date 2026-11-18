@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use transacting::{Failure, LostRace, Transaction};
 
-use crate::{IdeaLink, ProjectLink, Scene, SceneId, SceneTitle};
+use crate::{Block, IdeaLink, ProjectLink, Scene, SceneId, SceneTitle};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -74,6 +74,15 @@ pub trait SceneStore: Send + Sync {
         as_of: u64,
     ) -> Result<(), StoreError>;
 
+    /// Tells the scene's text as a reader sees it, as read at the given prose version.
+    async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), StoreError>;
+
     async fn link(
         &self,
         transaction: &mut Transaction,
@@ -113,5 +122,5 @@ pub trait SceneStore: Send + Sync {
         id: SceneId,
     ) -> Result<u64, StoreError>;
 
-    async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError>;
+    async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, StoreError>;
 }

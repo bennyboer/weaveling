@@ -5,7 +5,7 @@ use clock::Clock;
 use eventsourcing::Version;
 use transacting::Transaction;
 
-use crate::{IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesError};
+use crate::{Block, IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesError};
 
 #[derive(Clone)]
 pub struct SceneService {
@@ -50,8 +50,8 @@ impl SceneService {
         Ok(self.store.apply(transaction, id, update).await?)
     }
 
-    pub async fn uncounted(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
-        Ok(self.store.uncounted(at_most).await?)
+    pub async fn untold(&self, at_most: usize) -> Result<Vec<SceneId>, ScenesError> {
+        Ok(self.store.untold(at_most).await?)
     }
 
     pub async fn in_project(
@@ -136,6 +136,21 @@ impl SceneService {
         Ok(self
             .store
             .announce_assets(transaction, id, assets, as_of)
+            .await?)
+    }
+
+    pub async fn announce_text(
+        &self,
+        transaction: &mut Transaction,
+        id: &str,
+        blocks: &[Block],
+        as_of: u64,
+    ) -> Result<(), ScenesError> {
+        let id: SceneId = id.parse()?;
+
+        Ok(self
+            .store
+            .announce_text(transaction, id, blocks, as_of)
             .await?)
     }
 
