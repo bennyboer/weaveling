@@ -9,10 +9,14 @@ mod sample;
 mod suite;
 
 #[cfg(feature = "postgres")]
+mod outline_postgres;
+#[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(all(test, feature = "postgres"))]
 mod postgres_tests;
 
+#[cfg(feature = "sqlite")]
+mod outline_sqlite;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 #[cfg(all(test, feature = "sqlite"))]
@@ -23,7 +27,11 @@ pub use outline_memory::InMemoryOutlineCatalog;
 pub use sample::SampleBook;
 
 #[cfg(feature = "postgres")]
+pub use outline_postgres::PostgresOutlineCatalog;
+#[cfg(feature = "postgres")]
 pub use postgres::PostgresSceneTextCatalog;
 
+#[cfg(feature = "sqlite")]
+pub use outline_sqlite::SqliteOutlineCatalog;
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteSceneTextCatalog;

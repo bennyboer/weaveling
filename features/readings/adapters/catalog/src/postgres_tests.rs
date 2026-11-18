@@ -4,20 +4,17 @@ use test_harness::PostgresFixture;
 use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
-use crate::postgres::PostgresSceneTextCatalog;
 use crate::suite::Workbench;
 
-struct OnPostgres {
+/// The feature's database, laid out afresh, with a catalog over it.
+struct OnPostgres<C> {
     fixture: PostgresFixture,
     transactions: PostgresTransactions,
-    catalog: PostgresSceneTextCatalog,
+    catalog: C,
 }
 
-#[async_trait]
-impl Workbench for OnPostgres {
-    type Catalog = PostgresSceneTextCatalog;
-
-    async fn setup() -> Self {
+impl<C> OnPostgres<C> {
+    async fn over(catalog: fn(PgPool) -> C) -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool: PgPool = fixture.create_schema("readings").await;
         postgres::migrations()
@@ -28,12 +25,8 @@ impl Workbench for OnPostgres {
         Self {
             fixture,
             transactions: PostgresTransactions::new(pool.clone()),
-            catalog: PostgresSceneTextCatalog::new(pool),
+            catalog: catalog(pool),
         }
-    }
-
-    fn catalog(&self) -> &Self::Catalog {
-        &self.catalog
     }
 
     fn transactions(&self) -> &dyn Transactions {
@@ -45,4 +38,58 @@ impl Workbench for OnPostgres {
     }
 }
 
-crate::suite::conformance_tests!(OnPostgres);
+mod texts {
+    use super::*;
+    use crate::postgres::PostgresSceneTextCatalog;
+
+    #[async_trait]
+    impl Workbench for OnPostgres<PostgresSceneTextCatalog> {
+        type Catalog = PostgresSceneTextCatalog;
+
+        async fn setup() -> Self {
+            OnPostgres::over(PostgresSceneTextCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnPostgres::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnPostgres::cleanup(self).await;
+        }
+    }
+
+    crate::suite::conformance_tests!(OnPostgres<PostgresSceneTextCatalog>);
+}
+
+mod outlines {
+    use super::*;
+    use crate::outline_postgres::PostgresOutlineCatalog;
+
+    #[async_trait]
+    impl Workbench for OnPostgres<PostgresOutlineCatalog> {
+        type Catalog = PostgresOutlineCatalog;
+
+        async fn setup() -> Self {
+            OnPostgres::over(PostgresOutlineCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnPostgres::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnPostgres::cleanup(self).await;
+        }
+    }
+
+    crate::outline_suite::outline_conformance_tests!(OnPostgres<PostgresOutlineCatalog>);
+}

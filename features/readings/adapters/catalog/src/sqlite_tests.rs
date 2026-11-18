@@ -4,20 +4,17 @@ use test_harness::SqliteFixture;
 use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
-use crate::sqlite::SqliteSceneTextCatalog;
 use crate::suite::Workbench;
 
-struct OnSqlite {
+/// The feature's database, laid out afresh, with a catalog over it.
+struct OnSqlite<C> {
     fixture: SqliteFixture,
     transactions: SqliteTransactions,
-    catalog: SqliteSceneTextCatalog,
+    catalog: C,
 }
 
-#[async_trait]
-impl Workbench for OnSqlite {
-    type Catalog = SqliteSceneTextCatalog;
-
-    async fn setup() -> Self {
+impl<C> OnSqlite<C> {
+    async fn over(catalog: fn(SqlitePool) -> C) -> Self {
         let fixture = SqliteFixture::setup();
         let pool: SqlitePool = fixture.create_database("readings").await;
         sqlite::migrations()
@@ -28,12 +25,8 @@ impl Workbench for OnSqlite {
         Self {
             fixture,
             transactions: SqliteTransactions::new(pool.clone()),
-            catalog: SqliteSceneTextCatalog::new(pool),
+            catalog: catalog(pool),
         }
-    }
-
-    fn catalog(&self) -> &Self::Catalog {
-        &self.catalog
     }
 
     fn transactions(&self) -> &dyn Transactions {
@@ -45,4 +38,58 @@ impl Workbench for OnSqlite {
     }
 }
 
-crate::suite::conformance_tests!(OnSqlite);
+mod texts {
+    use super::*;
+    use crate::sqlite::SqliteSceneTextCatalog;
+
+    #[async_trait]
+    impl Workbench for OnSqlite<SqliteSceneTextCatalog> {
+        type Catalog = SqliteSceneTextCatalog;
+
+        async fn setup() -> Self {
+            OnSqlite::over(SqliteSceneTextCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnSqlite::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnSqlite::cleanup(self).await;
+        }
+    }
+
+    crate::suite::conformance_tests!(OnSqlite<SqliteSceneTextCatalog>);
+}
+
+mod outlines {
+    use super::*;
+    use crate::outline_sqlite::SqliteOutlineCatalog;
+
+    #[async_trait]
+    impl Workbench for OnSqlite<SqliteOutlineCatalog> {
+        type Catalog = SqliteOutlineCatalog;
+
+        async fn setup() -> Self {
+            OnSqlite::over(SqliteOutlineCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnSqlite::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnSqlite::cleanup(self).await;
+        }
+    }
+
+    crate::outline_suite::outline_conformance_tests!(OnSqlite<SqliteOutlineCatalog>);
+}
