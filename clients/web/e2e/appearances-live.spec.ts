@@ -107,7 +107,7 @@ test("a section another author notes the idea in shows in its inspector, named, 
   await aNewProject(page, "AppearingLive");
   const idea = await anIdea(page, "A girl in a wood");
   const asks = await inspectedLive(page, idea);
-  await expect(page.getByText("Not in the book yet")).toBeVisible();
+  await expect(page.getByText("Not in the work yet")).toBeVisible();
 
   // when: another author notes it in a section
   await noteInASection(page, idea, "Chapter one");
@@ -136,8 +136,8 @@ test("a scene that no longer draws on the idea leaves its inspector", async ({ p
   const unlinked = await page.request.delete(`${API}/scenes/${scene}/ideas/${idea}`);
   expect(unlinked.ok()).toBe(true);
 
-  // then: the idea is in the book nowhere
-  await expect(page.getByText("Not in the book yet")).toBeVisible();
+  // then: the idea is in the work nowhere
+  await expect(page.getByText("Not in the work yet")).toBeVisible();
 });
 
 test("a scene deleted leaves the inspector of every idea it drew on", async ({ page }) => {
@@ -213,7 +213,7 @@ test("a scene the inspector hears of only through the idea's places is asked for
   await aNewProject(page, "AppearingUnknownScene");
   const idea = await anIdea(page, "A girl in a wood");
   await inspectedLive(page, idea);
-  await expect(page.getByText("Not in the book yet")).toBeVisible();
+  await expect(page.getByText("Not in the work yet")).toBeVisible();
 
   // when: a scene draws on it
   await linkFromAScene(page, idea, "The clearing");

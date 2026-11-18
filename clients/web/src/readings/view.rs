@@ -7,9 +7,9 @@ use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::outline::model::SectionId;
 use crate::problem;
-use crate::projects::model::ProjectId;
 use crate::readings::model::{Block, Book, Marks, Part, Run};
 use crate::readings::service;
+use crate::route;
 use crate::scene_break;
 use crate::speech;
 
@@ -18,8 +18,9 @@ const CONTENTS: &str = "reading-contents";
 
 pub fn reading_view(project: String) -> impl IntoView {
     let rail = Drawer::as_last_left("weaveling.reading-contents", true);
+    let project = route::project_id(&project);
     let book = LocalResource::new(move || {
-        let project = ProjectId::from(project.clone());
+        let project = project.clone();
 
         async move { service::live_book(&project).await }
     });

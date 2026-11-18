@@ -399,7 +399,7 @@ test("Delete asks first, naming what is chosen, and Cancel keeps it chosen", asy
   await expect(removing(page)).toContainText("2 scenes are chosen.");
   await expect(removing(page).getByRole("button")).toHaveText([
     "Cancel",
-    "Take out of the book",
+    "Take out of the work",
     "Delete for good",
   ]);
   // when: the question is cancelled
@@ -432,7 +432,7 @@ test("Escape closes the question and leaves the scenes chosen", async ({
   await expect.poll(() => chosen(page)).toEqual([first]);
 });
 
-test("taken out of the book, the chosen scenes wait among those not in it", async ({
+test("taken out of the work, the chosen scenes wait among those not in it", async ({
   page,
 }) => {
   // given: two of three scenes chosen and asked about
@@ -442,9 +442,9 @@ test("taken out of the book, the chosen scenes wait among those not in it", asyn
   await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Delete");
 
-  // when: they are taken out of the book
+  // when: they are taken out of the work
   await removing(page)
-    .getByRole("button", { name: "Take out of the book" })
+    .getByRole("button", { name: "Take out of the work" })
     .click();
 
   // then: the book keeps only the third
@@ -452,10 +452,10 @@ test("taken out of the book, the chosen scenes wait among those not in it", asyn
   // and: the two scenes still exist
   expect(await sceneExists(page, first)).toBe(true);
   expect(await sceneExists(page, second)).toBe(true);
-  // and: they wait among those not in the book
+  // and: they wait among those not in the work
   await expect(flow(page).locator(`[data-scene="${first}"]`)).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: /Not in the book/ }),
+    page.getByRole("link", { name: /Not in the work/ }),
   ).toContainText("2");
 });
 
@@ -515,11 +515,11 @@ test("a chosen heading removes its section with the sections inside it and all t
   await page.keyboard.press("Delete");
   // then: the question names the scenes and sections chosen
   await expect(removing(page).locator("p")).toHaveText(
-    "2 scenes and 2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the book, the scenes move to the scenes not in the book. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
+    "2 scenes and 2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the work, the scenes move to the scenes not in the work. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
   );
-  // when: they are taken out of the book
+  // when: they are taken out of the work
   await removing(page)
-    .getByRole("button", { name: "Take out of the book" })
+    .getByRole("button", { name: "Take out of the work" })
     .click();
 
   // then: the book keeps only the first section
@@ -551,7 +551,7 @@ test("headings chosen without a scene among them are asked about as sections alo
 
   // then: the question names the sections alone
   await expect(removing(page).locator("p")).toHaveText(
-    "2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the book, the scenes move to the scenes not in the book. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
+    "2 sections are chosen. Each section is removed together with the sections inside it and all their scenes. If you take them out of the work, the scenes move to the scenes not in the work. If you delete them, they and everything written in them are gone for good. This cannot be undone.",
   );
 });
 
@@ -586,7 +586,7 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
   await expect.poll(() => sceneExists(page, first)).toBe(false);
 });
 
-test("scenes begun in the view, taken out of the book, show among those outside it at once, before the catalog has heard of them", async ({
+test("scenes begun in the view, taken out of the work, show among those outside it at once, before the catalog has heard of them", async ({
   page,
 }) => {
   // given: a scene begun in the view
@@ -612,15 +612,15 @@ test("scenes begun in the view, taken out of the book, show among those outside 
     });
   });
 
-  // when: it is chosen and taken out of the book
+  // when: it is chosen and taken out of the work
   await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Delete");
   await removing(page)
-    .getByRole("button", { name: "Take out of the book" })
+    .getByRole("button", { name: "Take out of the work" })
     .click();
 
   // then: it shows among those outside the book
-  const outside = page.getByRole("link", { name: /Not in the book/ });
+  const outside = page.getByRole("link", { name: /Not in the work/ });
   await expect(outside).toBeVisible();
   await outside.click();
   await expect(scene(page, begun)).toHaveText("Begun right here.");

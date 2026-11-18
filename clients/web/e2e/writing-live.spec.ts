@@ -492,7 +492,7 @@ test("a scene I am writing in keeps my cursor when another author moves its sect
 });
 
 const quietNote = (page: Page) =>
-  page.getByRole("status").filter({ hasText: "rearranged the book" });
+  page.getByRole("status").filter({ hasText: "rearranged the work" });
 
 test("a quiet note says when someone else rearranges the book around where I write", async ({
   page,
@@ -514,7 +514,7 @@ test("a quiet note says when someone else rearranges the book around where I wri
 
   // then: a quiet note says the book was rearranged around it
   await expect(quietNote(page)).toHaveText(
-    "Someone else rearranged the book around “Part Two”.",
+    "Someone else rearranged the work around “Part Two”.",
   );
   // when: the note is dismissed
   await quietNote(page).getByRole("button", { name: "Dismiss" }).click();
@@ -545,7 +545,7 @@ test("writing in a chapter, the note names the part that was moved", async ({
 
   // then: the note names the part
   await expect(quietNote(page)).toHaveText(
-    "Someone else rearranged the book around “Part One”.",
+    "Someone else rearranged the work around “Part One”.",
   );
 });
 
@@ -626,7 +626,7 @@ test("a section removed while I write in its scene asks, and Show it goes to my 
   await expect.poll(() => shown(page, mine)).toBe("Hello");
 });
 
-test("keeping on writing after my section was removed stays in the book", async ({
+test("keeping on writing after my section was removed stays in the work", async ({
   page,
 }) => {
   // given: a scene of the second section being written in, followed live
@@ -648,7 +648,7 @@ test("keeping on writing after my section was removed stays in the book", async 
 
   // then: the question goes
   await expect(removedMeanwhile(page)).toHaveCount(0);
-  // and: i stay in the book
+  // and: i stay in the work
   await expect(page).toHaveURL(/\/write$/);
 });
 
@@ -789,7 +789,7 @@ test("a new scene whose place is removed while it begins asks where its words go
   await expect(
     placeGone(page).getByRole("button"),
     "the words have to go somewhere, so there is no way back",
-  ).toHaveText(["Discard", "Put it at the end of the book"]);
+  ).toHaveText(["Discard", "Put it at the end of the work"]);
 });
 
 test("a new scene put at the end of the book keeps its words", async ({
@@ -800,7 +800,7 @@ test("a new scene put at the end of the book keeps its words", async ({
 
   // when: i put it at the end of the book
   await placeGone(page)
-    .getByRole("button", { name: "Put it at the end of the book" })
+    .getByRole("button", { name: "Put it at the end of the work" })
     .click();
 
   // then: it is there with its words
@@ -860,7 +860,7 @@ test("a new section whose neighbour is removed while it begins can go to the end
   );
   // when: i put it at the end of the book
   await placeGone(page)
-    .getByRole("button", { name: "Put it at the end of the book" })
+    .getByRole("button", { name: "Put it at the end of the work" })
     .click();
   // then: it is saved there
   await expect
@@ -941,7 +941,7 @@ test("a change made from a view that is behind is refused gently, and the view c
   await expect(
     page.getByRole("status").filter({ hasText: "in the meantime" }),
   ).toHaveText(
-    "Someone else changed the book in the meantime, so that could not be done. You now see the current version.",
+    "Someone else changed the work in the meantime, so that could not be done. You now see the current version.",
   );
   // and: the book shows how it is now
   await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
@@ -1060,7 +1060,7 @@ test("a change another author makes while mine is on its way is caught up once m
   // and: my renaming goes through
   released();
 
-  // then: their scene is in the book
+  // then: their scene is in the work
   await expect(
     flow(page).locator(`[data-scene="${theirs}"]`),
     "the scene they placed while my rename was on its way",

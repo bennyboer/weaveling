@@ -282,14 +282,14 @@ test("on a narrow window, choosing an entry puts the contents away", async ({
   ).toBeFocused();
 });
 
-test("the scenes not in the book have no contents", async ({ page }) => {
+test("the scenes not in the work have no contents", async ({ page }) => {
   // given: a book open in the writing view
   await aNewProject(page, "Loose");
   await aBookInParts(page, { "Part One": ["The Letter"] });
   await openTheWritingView(page);
   await expect(tab(page)).toBeVisible();
 
-  // when: the scenes not in the book are opened
+  // when: the scenes not in the work are opened
   await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
 

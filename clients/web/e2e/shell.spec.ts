@@ -225,7 +225,7 @@ for (const width of [375, 700, 900, 1100]) {
     // and: a long-named project open in the writing view
     const title = await aNewProject(page, "A rather long name for a phone");
     await views(page).getByRole("link", { name: "Write", exact: true }).click();
-    await expect(page.getByRole("article", { name: "The book" })).toBeVisible();
+    await expect(page.getByRole("article", { name: "The work" })).toBeVisible();
 
     // when: the masthead is measured
     const seen = await page.evaluate(() => {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::sample::SampleBook;
 use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use async_trait::async_trait;
 use axum::Extension;
@@ -8,7 +9,6 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, Version};
-use readings_catalog::SampleBook;
 use readings_core::ReadingsCore;
 use serde_json::Value;
 use time::OffsetDateTime;

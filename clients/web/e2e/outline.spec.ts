@@ -7,10 +7,10 @@ const manuscript = (page: Page) =>
   page.getByRole("list", { name: "The manuscript" });
 
 const waitingScenes = (page: Page) =>
-  page.getByRole("list", { name: "Scenes not in the book" });
+  page.getByRole("list", { name: "Scenes not in the work" });
 
 const waitingIdeas = (page: Page) =>
-  page.getByRole("list", { name: "Ideas not in the book" });
+  page.getByRole("list", { name: "Ideas not in the work" });
 
 const titles = (page: Page) => page.locator(".branch .title");
 
@@ -94,7 +94,7 @@ test("a book starts with nothing in it", async ({ page }) => {
 
   // then: the book has nothing in it
   await expect(
-    page.getByText("Nothing in the book yet. Add a section to begin."),
+    page.getByText("Nothing in the work yet. Add a section to begin."),
   ).toBeVisible();
   await expect(titles(page)).toHaveCount(0);
 });
@@ -322,7 +322,7 @@ test("a section with nothing in it is flagged without being refused", async ({
 });
 
 test("a scene is placed from the tray and leaves it", async ({ page }) => {
-  // given: an outline with a section and a scene not in the book
+  // given: an outline with a section and a scene not in the work
   await aNewProject(page, "Placing");
   await aLooseScene(page);
   await openTheOutline(page);
@@ -355,7 +355,7 @@ test("writing in a section opens the new scene", async ({ page }) => {
   // then: a new scene opens, ready to write in
   await expect(
     page
-      .getByRole("article", { name: "The book" })
+      .getByRole("article", { name: "The work" })
       .locator(".scene .ProseMirror"),
     "the button says write, so it has to leave the author writing rather than appending a blank row they may not even see",
   ).toBeFocused();
@@ -459,7 +459,7 @@ test("a scene written in a section is held there", async ({ page }) => {
   await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
 });
 
-test("a scene in the book opens from the outline", async ({ page }) => {
+test("a scene in the work opens from the outline", async ({ page }) => {
   // given: a section with a scene in it
   await aNewProject(page, "Opening");
   await openTheOutline(page);
@@ -473,16 +473,16 @@ test("a scene in the book opens from the outline", async ({ page }) => {
   // when: the scene is opened from the outline
   await page.locator(".leaf").getByRole("link", { name: "Empty" }).click();
 
-  // then: it opens where it stands in the book, ready to write in
+  // then: it opens where it stands in the work, ready to write in
   await expect(
     page
-      .getByRole("article", { name: "The book" })
+      .getByRole("article", { name: "The work" })
       .locator(".scene .ProseMirror"),
-    "a scene in the book is written where it stands in the book",
+    "a scene in the work is written where it stands in the work",
   ).toBeFocused();
   await expect(page).toHaveURL(/\/write$/);
 });
-test("a scene taken out of the book goes back to the tray", async ({
+test("a scene taken out of the work goes back to the tray", async ({
   page,
 }) => {
   // given: a section with a scene in it
@@ -495,9 +495,9 @@ test("a scene taken out of the book goes back to the tray", async ({
   await openTheOutline(page);
   await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
 
-  // when: the scene is taken out of the book
+  // when: the scene is taken out of the work
   await page
-    .getByRole("button", { name: "Take Empty out of the book" })
+    .getByRole("button", { name: "Take Empty out of the work" })
     .click();
 
   // then: it goes back to the tray
@@ -612,7 +612,7 @@ test("a section cannot be dragged inside itself", async ({ page }) => {
 test("a scene can be dragged from the rail onto a section", async ({
   page,
 }) => {
-  // given: an outline with a section and a scene not in the book
+  // given: an outline with a section and a scene not in the work
   await aNewProject(page, "Dragging");
   await aLooseScene(page);
   await openTheOutline(page);
@@ -730,7 +730,7 @@ test("removing a section lifts its children into its place", async ({
 });
 
 test("an idea is noted in a section and is not a scene", async ({ page }) => {
-  // given: an outline with a section and an idea not in the book
+  // given: an outline with a section and an idea not in the work
   await aNewProject(page, "Noting");
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
@@ -799,7 +799,7 @@ test("a note leads to the idea, not to an editor", async ({ page }) => {
 });
 
 test("the tally counts scenes with no home, never ideas", async ({ page }) => {
-  // given: two ideas and a scene not in the book
+  // given: two ideas and a scene not in the work
   await aNewProject(page, "Tallying");
   await openThePool(page);
   await captureIdea(page, "A first idea");
@@ -810,8 +810,8 @@ test("the tally counts scenes with no home, never ideas", async ({ page }) => {
 
   // then: the tally counts only the scene
   await expect(
-    page.getByRole("button", { name: /^Not in the book ·/ }),
-  ).toHaveText(/^Not in the book · 1$/);
+    page.getByRole("button", { name: /^Not in the work ·/ }),
+  ).toHaveText(/^Not in the work · 1$/);
   await expect(waitingIdeas(page).getByRole("button")).toHaveCount(2);
 });
 
@@ -829,7 +829,7 @@ test("a section shows its scenes and its ideas as two groups", async ({
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page).toHaveURL(/\/write$/);
   const begun = await page
-    .getByRole("article", { name: "The book" })
+    .getByRole("article", { name: "The work" })
     .locator(".scene[data-scene]")
     .first()
     .getAttribute("data-scene");

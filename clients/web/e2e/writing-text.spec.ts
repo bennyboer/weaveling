@@ -219,7 +219,7 @@ test("italics begun by Ctrl+I go on as typed, and are kept", async ({
   await expect(scene(page, only)).toHaveText("A ship called Endurance sailed.");
 });
 
-test("a typed \" begins what is said and another ends it, drawn in the book's marks", async ({
+test("a typed \" begins what is said and another ends it, drawn in the work's marks", async ({
   page,
 }) => {
   // given: a scene of a book in german being written in
@@ -228,7 +228,7 @@ test("a typed \" begins what is said and another ends it, drawn in the book's ma
   // when: something said is typed between plain quotation marks
   await page.keyboard.type('"Komm her," sagte sie. ("Bitte.")');
 
-  // then: it is drawn in the book's marks
+  // then: it is drawn in the work's marks
   await expect
     .poll(() => shown(page, only))
     .toBe("»Komm her,« sagte sie. (»Bitte.«)");
@@ -505,7 +505,7 @@ test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({
   await page.keyboard.press("ControlOrMeta+Shift+2");
   await page.keyboard.type(" sagte sie.");
 
-  // then: it is drawn in the book's marks
+  // then: it is drawn in the work's marks
   await expect.poll(() => shown(page, only)).toBe("»Komm her,« sagte sie.");
   // and: they are quotation marks
   await expect(quotationMarks(page, only)).toHaveText(["»", "«"]);

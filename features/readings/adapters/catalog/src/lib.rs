@@ -4,7 +4,6 @@ mod memory;
 mod outline_memory;
 #[cfg(test)]
 mod outline_suite;
-mod sample;
 #[cfg(test)]
 mod suite;
 
@@ -24,7 +23,6 @@ mod sqlite_tests;
 
 pub use memory::InMemorySceneTextCatalog;
 pub use outline_memory::InMemoryOutlineCatalog;
-pub use sample::SampleBook;
 
 #[cfg(feature = "postgres")]
 pub use outline_postgres::PostgresOutlineCatalog;

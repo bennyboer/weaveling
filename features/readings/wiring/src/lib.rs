@@ -5,9 +5,12 @@ use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
-use readings_catalog::SampleBook;
+use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{OutlineCatalog, ReadingsCore, SceneTextCatalog};
-use readings_messaging::{RememberRolesListener, RememberTrashListener};
+use readings_messaging::{
+    KeepBookTitlesListener, KeepOutlinesListener, KeepSceneTextsListener, RememberRolesListener,
+    RememberTrashListener,
+};
 use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
 
@@ -17,23 +20,6 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
-}
-
-impl Ports {
-    fn kept_in(
-        transactions: Arc<dyn Transactions>,
-        access: KeptAccess,
-        inbox: Arc<dyn Inbox>,
-    ) -> Self {
-        // TODO: the outline kept from its messages, then both catalogs switched together with KeepSceneTextsListener registered, and in the databases
-        Self {
-            outlines: Arc::new(SampleBook),
-            texts: Arc::new(SampleBook),
-            transactions,
-            access,
-            inbox,
-        }
-    }
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -57,6 +43,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![
             Arc::new(hearing.inboxed(RememberRolesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(RememberTrashListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(KeepOutlinesListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(KeepBookTitlesListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(KeepSceneTextsListener::new(readings.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
@@ -83,20 +72,26 @@ impl Feature for ReadingsFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        Ports::kept_in(
-            Arc::new(InMemoryTransactions::new()),
-            KeptAccess::new(Arc::new(InMemoryAccess::new())),
-            Arc::new(InMemoryInbox::new(context.clock.clone())),
-        )
+        Ports {
+            outlines: Arc::new(InMemoryOutlineCatalog::new()),
+            texts: Arc::new(InMemorySceneTextCatalog::new()),
+            transactions: Arc::new(InMemoryTransactions::new()),
+            access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::kept_in(
-            Arc::new(transacting::PostgresTransactions::new(pool.clone())),
-            KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
-            Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
-        ))
+        Ok(Ports {
+            outlines: Arc::new(readings_catalog::PostgresOutlineCatalog::new(pool.clone())),
+            texts: Arc::new(readings_catalog::PostgresSceneTextCatalog::new(
+                pool.clone(),
+            )),
+            transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -110,11 +105,13 @@ impl Feature for ReadingsFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::kept_in(
-            Arc::new(transacting::SqliteTransactions::new(pool.clone())),
-            KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
-            Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
-        ))
+        Ok(Ports {
+            outlines: Arc::new(readings_catalog::SqliteOutlineCatalog::new(pool.clone())),
+            texts: Arc::new(readings_catalog::SqliteSceneTextCatalog::new(pool.clone())),
+            transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
+        })
     }
 
     #[cfg(feature = "sqlite")]

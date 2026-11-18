@@ -14,4 +14,7 @@ mod live_book_guarded;
 mod outlines_kept;
 
 #[cfg(test)]
+mod sample;
+
+#[cfg(test)]
 mod scene_texts_kept;

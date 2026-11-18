@@ -79,7 +79,7 @@ const sides = (page: Page) => page.getByRole("navigation", { name: "Sides of the
 test("a scene another author renames is renamed in the margin without asking again", async ({
   page,
 }) => {
-  // given: a scene in the book, open in the writing view
+  // given: a scene in the work, open in the writing view
   await aNewProject(page, "MarginLive");
   const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await titled(page, first, "The arrival");
@@ -137,7 +137,7 @@ test("a scene another author makes outside the book is offered on the other side
   await aLooseScene(page);
 
   // then: the other side offers it
-  await expect(sides(page).getByRole("link", { name: /Not in the book/ })).toContainText("1");
+  await expect(sides(page).getByRole("link", { name: /Not in the work/ })).toContainText("1");
 });
 
 test("an opening told for the scene being written here does not stand over it", async ({
@@ -388,7 +388,7 @@ test("scenes asked for again while my own rename is on its way do not undo it", 
 test("a scene another author renames is renamed in the outline without asking again", async ({
   page,
 }) => {
-  // given: a named scene in the book, open in the outline
+  // given: a named scene in the work, open in the outline
   await aNewProject(page, "OutlineSceneLive");
   const { outline, ids } = await aBookShaped(page, [{ title: "Part One" }]);
   const arrival = await aSceneMade(page);
@@ -420,7 +420,7 @@ test("a scene another author makes waits in the outline's tally", async ({ page 
   const asks = scenesAskedFor(page);
   await openTheOutline(page);
   await expect.poll(asks, { message: "followed, and asked once as it connects" }).toBe(1);
-  const waiting = page.getByRole("list", { name: "Scenes not in the book" });
+  const waiting = page.getByRole("list", { name: "Scenes not in the work" });
 
   // when: another author makes a scene outside the book
   await aLooseScene(page);

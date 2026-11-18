@@ -26,7 +26,7 @@ test("a view's code is fetched only once the view is opened", async ({
     .poll(() => fetched.filter((path) => path.includes("outline")))
     .toHaveLength(1);
   await expect(
-    page.getByText("Nothing in the book yet. Add a section to begin."),
+    page.getByText("Nothing in the work yet. Add a section to begin."),
   ).toBeVisible();
 });
 

@@ -61,7 +61,7 @@ test("going back to where the author left off finds the very letter, after movin
 test("when the scene left off in has left the book, Write lands at its start", async ({
   page,
 }) => {
-  // given: the scene written in last taken out of the book
+  // given: the scene written in last taken out of the work
   await aNewProject(page, "LeftOffGone");
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [first] = scenes["Part One"];
@@ -70,7 +70,7 @@ test("when the scene left off in has left the book, Write lands at its start", a
   await scene(page, later).click();
   await page.keyboard.type("Gone soon");
   await sceneActions(page, later).click();
-  await menuItem(page, "Take out of the book").click();
+  await menuItem(page, "Take out of the work").click();
   await expect(scene(page, later)).toHaveCount(0);
   await expect(saveState(page)).toHaveText("All saved");
 
@@ -312,7 +312,7 @@ test("Write opens at the start of the book, and offers the way back to where the
   await expect(scene(page, far)).toHaveText("AXlpha Beta");
 });
 
-test("putting the cursor in the book lets the offer go", async ({ page }) => {
+test("putting the cursor in the work lets the offer go", async ({ page }) => {
   // given: the way back offered to a scene far down
   await aNewProject(page, "OfferLetGo");
   const scenes = await aBookWithScenes(page, { "Part One": 14 });

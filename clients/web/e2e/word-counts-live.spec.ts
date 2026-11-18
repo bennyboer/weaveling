@@ -52,7 +52,7 @@ test("a scene written elsewhere, whose text is not here, counts as the server co
   const asks = countsAskedFor(page);
   await openTheWritingView(page);
   await wordCount(page).click();
-  await expect(wordCount(page)).toHaveText("0 words in the book");
+  await expect(wordCount(page)).toHaveText("0 words in the work");
   await expect.poll(asks, { message: "asked once, as it connects" }).toBe(1);
 
   // when: the scene is written in another window
@@ -63,7 +63,7 @@ test("a scene written elsewhere, whose text is not here, counts as the server co
   await expect(saveState(elsewhere)).toHaveText("All saved");
 
   // then: the count follows what was written there
-  await expect(wordCount(page)).toHaveText("3 words in the book", { timeout: 10_000 });
+  await expect(wordCount(page)).toHaveText("3 words in the work", { timeout: 10_000 });
   // and: the counts were not asked for again
   expect(asks(), "told, not asked for again").toBe(1);
 });
@@ -92,7 +92,7 @@ test("a count told for the scene being written here does not stand over it", asy
   await scene(page, first).click();
   await page.keyboard.type("one two");
   await wordCount(page).click();
-  await expect(wordCount(page)).toHaveText("2 words in the book");
+  await expect(wordCount(page)).toHaveText("2 words in the work");
 
   // when: counts are told for both scenes
   tell([
@@ -104,7 +104,7 @@ test("a count told for the scene being written here does not stand over it", asy
   await expect(
     wordCount(page),
     "the scene whose text is not here counts as told, the one written here as written",
-  ).toHaveText("7 words in the book");
+  ).toHaveText("7 words in the work");
 });
 
 test("counts answered after newer ones were told keep the newer ones and take in the rest", async ({
@@ -148,7 +148,7 @@ test("counts answered after newer ones were told keep the newer ones and take in
   // and: a newer count is told before the answer comes
   tell([{ scene: later, words: 5 }]);
   // then: the told count shows
-  await expect(wordCount(page)).toHaveText("5 words in the book");
+  await expect(wordCount(page)).toHaveText("5 words in the work");
   // when: the older answer arrives
   release();
   await page.waitForResponse(/\/api\/statistics\/word-counts\?project=/);
@@ -158,5 +158,5 @@ test("counts answered after newer ones were told keep the newer ones and take in
   await expect(
     wordCount(page),
     "the other scene counts as answered, the told one as told, since the answer was asked for before",
-  ).toHaveText("9 words in the book");
+  ).toHaveText("9 words in the work");
 });

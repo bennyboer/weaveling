@@ -145,7 +145,7 @@ test("Escape leaves a scene's title as it was", async ({ page }) => {
   );
 });
 
-test("a scene taken out of the book leaves the flow but is kept", async ({
+test("a scene taken out of the work leaves the flow but is kept", async ({
   page,
 }) => {
   // given: a book of two scenes open in the writing view
@@ -155,9 +155,9 @@ test("a scene taken out of the book leaves the flow but is kept", async ({
   await openTheWritingView(page);
   await expect(scene(page, first)).toBeVisible();
 
-  // when: the first is taken out of the book
+  // when: the first is taken out of the work
   await sceneActions(page, first).click();
-  await menuItem(page, "Take out of the book").click();
+  await menuItem(page, "Take out of the work").click();
 
   // then: it leaves the flow
   await expect(scene(page, first)).toHaveCount(0);
@@ -321,7 +321,7 @@ test("Shift+F10 opens the menu of the scene being written, and Escape goes back 
   await expect(menuItem(page, "Rename")).toBeFocused();
   // and: the arrows move through it
   await page.keyboard.press("ArrowDown");
-  await expect(menuItem(page, "Take out of the book")).toBeFocused();
+  await expect(menuItem(page, "Take out of the work")).toBeFocused();
   // when: Escape is pressed
   await page.keyboard.press("Escape");
 

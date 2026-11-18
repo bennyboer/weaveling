@@ -30,13 +30,13 @@ const sides = (page: Page) =>
 
 async function openTheLooseSide(page: Page) {
   await sides(page)
-    .getByRole("link", { name: /Not in the book/ })
+    .getByRole("link", { name: /Not in the work/ })
     .click();
   await expect(page).toHaveURL(/\/write\/loose$/);
 }
 
 const placingDialog = (page: Page) =>
-  page.getByRole("dialog", { name: "Bring into the book" });
+  page.getByRole("dialog", { name: "Bring into the work" });
 
 async function aSceneBegunHere(page: Page) {
   await beginning(page).click();
@@ -53,7 +53,7 @@ async function aSceneBegunHere(page: Page) {
 test("the switch shows the book on one side and the scenes outside it on the other", async ({
   page,
 }) => {
-  // given: a scene in the book and one outside it, the book open in the writing view
+  // given: a scene in the work and one outside it, the book open in the writing view
   await aNewProject(page, "Sides");
   const [placed] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   const loose = await aLooseScene(page);
@@ -63,7 +63,7 @@ test("the switch shows the book on one side and the scenes outside it on the oth
   await expect(scene(page, loose)).toHaveCount(0);
   // and: the switch counts one scene outside the book
   await expect(
-    sides(page).getByRole("link", { name: /Not in the book/ }),
+    sides(page).getByRole("link", { name: /Not in the work/ }),
   ).toContainText("1");
 
   // when: the other side is opened
@@ -74,10 +74,10 @@ test("the switch shows the book on one side and the scenes outside it on the oth
   await expect(scene(page, placed)).toHaveCount(0);
   // and: the switch marks the other side
   await expect(
-    sides(page).getByRole("link", { name: /Not in the book/ }),
+    sides(page).getByRole("link", { name: /Not in the work/ }),
   ).toHaveAttribute("aria-current", "page");
   await expect(
-    sides(page).getByRole("link", { name: "The book", exact: true }),
+    sides(page).getByRole("link", { name: "The work", exact: true }),
   ).not.toHaveAttribute("aria-current", "page");
 });
 
@@ -124,7 +124,7 @@ test("the arrow keys walk among the scenes outside the book", async ({
 });
 
 test("each side counts its own words", async ({ page }) => {
-  // given: a scene in the book with two words, and a scene outside it
+  // given: a scene in the work with two words, and a scene outside it
   await aNewProject(page, "LooseCount");
   const [placed] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   const loose = await aLooseScene(page);
@@ -140,12 +140,12 @@ test("each side counts its own words", async ({ page }) => {
 
   // then: its side counts its words
   await expect(statusNote(page).locator(".word-count")).toHaveText(
-    "3 words not in the book",
+    "3 words not in the work",
   );
   // when: the book is opened again
   await expect(saveState(page)).toHaveText("All saved");
   await sides(page)
-    .getByRole("link", { name: "The book", exact: true })
+    .getByRole("link", { name: "The work", exact: true })
     .click();
   // then: the book counts its own
   await expect(statusNote(page).locator(".word-count")).toContainText(
@@ -170,10 +170,10 @@ test("the tray names a scene outside the book", async ({ page }) => {
   await expect(inspectedSceneTitle(page)).toHaveValue("The cut scene");
 });
 
-test("with every scene in the book, the switch stays out of the way and the other side says so", async ({
+test("with every scene in the work, the switch stays out of the way and the other side says so", async ({
   page,
 }) => {
-  // given: every scene in the book, open in the writing view
+  // given: every scene in the work, open in the writing view
   await aBookInTheWritingView(page, "NoLoose", { "Part One": 1 });
   await expect(flow(page).locator(".scene")).toHaveCount(1);
   // then: no switch is shown
@@ -183,8 +183,8 @@ test("with every scene in the book, the switch stays out of the way and the othe
   await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
 
-  // then: it says every scene is in the book
-  await expect(flow(page)).toContainText("Every scene is in the book.");
+  // then: it says every scene is in the work
+  await expect(flow(page)).toContainText("Every scene is in the work.");
   await expect(flow(page).locator(".scene")).toHaveCount(0);
   // and: the switch leads back
   await expect(
@@ -215,8 +215,8 @@ test("a scene outside the book is offered its own ways, and Enter twice begins n
   // then: it offers what suits a scene outside the book
   await expect(
     flow(page).getByRole("menuitem"),
-    "taking out of the book means nothing for a scene not in it",
-  ).toHaveText(["Rename", "Bring into the book…", "Delete scene"]);
+    "taking out of the work means nothing for a scene not in it",
+  ).toHaveText(["Rename", "Bring into the work…", "Delete scene"]);
   // and: no scene was begun
   await expect(flow(page).locator(".scene")).toHaveCount(1);
   // and: the scene has two line breaks
@@ -226,7 +226,7 @@ test("a scene outside the book is offered its own ways, and Enter twice begins n
   ).toHaveText(["Alone.", "", "Still here."]);
 });
 
-test("writing outside the book leaves where you left off in the book alone", async ({
+test("writing outside the book leaves where you left off in the work alone", async ({
   page,
 }) => {
   // given: a scene far down the book written in last there
@@ -250,12 +250,12 @@ test("writing outside the book leaves where you left off in the book alone", asy
 
   // when: the book is opened again
   await sides(page)
-    .getByRole("link", { name: "The book", exact: true })
+    .getByRole("link", { name: "The work", exact: true })
     .click();
 
   // and: the author goes back to where she left off
   await backToWhereILeftOff(page);
-  // then: the cursor is in the book's scene
+  // then: the cursor is in the work's scene
   await expect(scene(page, second)).toBeFocused();
 });
 
@@ -281,7 +281,7 @@ test("a scene left empty where I left off is offered back as an empty scene", as
 
   // when: the book is opened again
   await sides(page)
-    .getByRole("link", { name: "The book", exact: true })
+    .getByRole("link", { name: "The work", exact: true })
     .click();
 
   // then: the way back names it as an empty scene
@@ -302,7 +302,7 @@ test("a scene outside the book is brought into the section chosen, and the curso
   await openTheLooseSide(page);
   // when: bringing it into the book is chosen
   await sceneActions(page, loose).click();
-  await menuItem(page, "Bring into the book…").click();
+  await menuItem(page, "Bring into the work…").click();
 
   // then: it asks which section
   await expect(placingDialog(page)).toContainText(
@@ -311,7 +311,7 @@ test("a scene outside the book is brought into the section chosen, and the curso
   // and: offers each
   await expect(
     placingDialog(page)
-      .getByRole("list", { name: "Sections of the book" })
+      .getByRole("list", { name: "Sections of the work" })
       .getByRole("button"),
   ).toHaveText(["Part One", "Part Two"]);
   // when: the second section is chosen
@@ -349,8 +349,8 @@ test("a scene outside the book is deleted after asking", async ({ page }) => {
 
   // then: it is gone
   await expect(scene(page, loose)).toHaveCount(0);
-  // and: the side says every scene is in the book
-  await expect(flow(page)).toContainText("Every scene is in the book.");
+  // and: the side says every scene is in the work
+  await expect(flow(page)).toContainText("Every scene is in the work.");
   // and: the switch still leads back
   await expect(sides(page)).toBeVisible();
   // and: the scene is gone for good
@@ -369,7 +369,7 @@ test("Escape in the section dialog leaves the scene outside the book", async ({
   await openTheWritingView(page);
   await openTheLooseSide(page);
   await sceneActions(page, loose).click();
-  await menuItem(page, "Bring into the book…").click();
+  await menuItem(page, "Bring into the work…").click();
   await expect(placingDialog(page)).toBeVisible();
 
   // when: Escape is pressed
@@ -401,10 +401,10 @@ test("a scene outside the book followed into the book's side opens the other sid
   await expect(scene(page, wanted)).toBeFocused();
 });
 
-test("a scene in the book followed into the other side goes back to the book", async ({
+test("a scene in the work followed into the other side goes back to the book", async ({
   page,
 }) => {
-  // given: a scene in the book and one outside it, the book open in the writing view
+  // given: a scene in the work and one outside it, the book open in the writing view
   await aNewProject(page, "FollowPlaced");
   const [, wanted] = (await aBookWithScenes(page, { "Part One": 2 }))[
     "Part One"
@@ -454,12 +454,12 @@ test("each side lands where you left off on it", async ({ page }) => {
   await expect(scene(page, loose)).toBeFocused();
   // when: the book is opened again
   await sides(page)
-    .getByRole("link", { name: "The book", exact: true })
+    .getByRole("link", { name: "The work", exact: true })
     .click();
 
   // and: the author goes back to where she left off
   await backToWhereILeftOff(page);
-  // then: the cursor is where she left off in the book
+  // then: the cursor is where she left off in the work
   await expect(scene(page, placed)).toBeFocused();
 });
 
@@ -480,21 +480,21 @@ test("the other side starts in its first scene when nothing was left off there",
   await expect(scene(page, first)).toBeFocused();
 });
 
-test("a scene begun in the view and taken out of the book shows up outside it at once", async ({
+test("a scene begun in the view and taken out of the work shows up outside it at once", async ({
   page,
 }) => {
-  // given: a scene begun in the view, all scenes in the book
+  // given: a scene begun in the view, all scenes in the work
   await aBookInTheWritingView(page, "TakenOutAtOnce", { "Part One": 0 });
   const begun = await aSceneBegunHere(page);
   await expect(sides(page)).toHaveCount(0);
 
-  // when: it is taken out of the book
+  // when: it is taken out of the work
   await sceneActions(page, begun).click();
-  await menuItem(page, "Take out of the book").click();
+  await menuItem(page, "Take out of the work").click();
 
   // then: the switch counts it at once
   await expect(
-    sides(page).getByRole("link", { name: /Not in the book/ }),
+    sides(page).getByRole("link", { name: /Not in the work/ }),
     "the view knows of the scene it began, though the listing it opened with does not",
   ).toContainText("1");
   // and: it is outside the book with its words
@@ -519,7 +519,7 @@ test("the scenes of a section removed from the book show up outside it at once",
 
   // then: the switch counts the scene at once
   await expect(
-    sides(page).getByRole("link", { name: /Not in the book/ }),
+    sides(page).getByRole("link", { name: /Not in the work/ }),
   ).toContainText("1");
   // and: it is outside the book
   await openTheLooseSide(page);

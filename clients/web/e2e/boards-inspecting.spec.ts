@@ -38,7 +38,7 @@ test("selecting a card inspects its idea", async ({ page }) => {
 
   // then: its idea is inspected
   await expect(nameField(page)).toHaveValue("The loom remembers");
-  await expect(inspector(page).getByText("Not in the book yet")).toBeVisible();
+  await expect(inspector(page).getByText("Not in the work yet")).toBeVisible();
 });
 
 test("the bare board puts the inspector away", async ({ page }) => {

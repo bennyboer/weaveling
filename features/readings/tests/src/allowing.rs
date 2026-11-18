@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::sample::SampleBook;
 use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use readings_catalog::SampleBook;
 use readings_core::ReadingsCore;
 use transacting::InMemoryTransactions;
 

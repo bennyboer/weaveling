@@ -35,7 +35,7 @@ async function namingTheNewSection(page: Page, title: string) {
 const headingAt = (page: Page, named: string, level: number) =>
   flow(page).getByRole("heading", { name: named, level });
 
-test("a scene taken out of the book can be brought back below another", async ({
+test("a scene taken out of the work can be brought back below another", async ({
   page,
 }) => {
   // given: a book of two named scenes open in the writing view
@@ -46,9 +46,9 @@ test("a scene taken out of the book can be brought back below another", async ({
   await titled(page, second, "The storm");
   await openTheWritingView(page);
 
-  // and: the first taken out of the book
+  // and: the first taken out of the work
   await sceneActions(page, first).click();
-  await menuItem(page, "Take out of the book").click();
+  await menuItem(page, "Take out of the work").click();
   await expect(scene(page, first)).toHaveCount(0);
 
   // when: bringing a scene back is chosen below the second
@@ -62,7 +62,7 @@ test("a scene taken out of the book can be brought back below another", async ({
   // when: it is chosen
   await bringingBack(page).getByRole("button", { name: "The arrival" }).click();
 
-  // then: it is back in the book below the second
+  // then: it is back in the work below the second
   await expect(bringingBack(page)).toHaveCount(0);
   await expect(scene(page, first)).toBeVisible();
   expect(await theBook(page)).toEqual([["Part One", [second, first]]]);
@@ -86,15 +86,15 @@ test("a heading's + brings a scene back to the start of its section", async ({
     .getByRole("button", { name: "The prologue" })
     .click();
 
-  // then: it is back in the book before the other
+  // then: it is back in the work before the other
   await expect(scene(page, loose)).toBeVisible();
   expect(await theBook(page)).toEqual([["Part One", [loose, placed]]]);
 });
 
-test("with every scene in the book there is nothing to bring back", async ({
+test("with every scene in the work there is nothing to bring back", async ({
   page,
 }) => {
-  // given: every scene in the book
+  // given: every scene in the work
   const scenes = await aBookInTheWritingView(page, "NothingBack", { "Part One": 1 });
 
   // when: bringing a scene back is chosen
@@ -102,7 +102,7 @@ test("with every scene in the book there is nothing to bring back", async ({
   await menuItem(page, "Bring back a scene…").click();
   // then: it says there is nothing to bring back
   await expect(bringingBack(page)).toContainText(
-    "Every scene is in the book already.",
+    "Every scene is in the work already.",
   );
   // when: it is cancelled
   await bringingBack(page).getByRole("button", { name: "Cancel" }).click();

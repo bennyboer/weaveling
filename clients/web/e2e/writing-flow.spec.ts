@@ -662,7 +662,7 @@ test("an empty book is written from its first heading into its first scene", asy
   const first = flow(page).getByRole("heading");
   await expect(first).toHaveAttribute(
     "data-placeholder",
-    "Your book's first section",
+    "Your work's first section",
   );
 
   // when: it is typed into
@@ -952,7 +952,7 @@ test("moving the cursor just as the scene goes away raises no error", async ({
       .click();
   });
   // then: the book is gone
-  await expect(page.getByRole("article", { name: "The book" })).toHaveCount(0);
+  await expect(page.getByRole("article", { name: "The work" })).toHaveCount(0);
   await page.evaluate(() => new Promise((settled) => setTimeout(settled, 100)));
 
   // and: no error was raised

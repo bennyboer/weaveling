@@ -108,7 +108,7 @@ test("an idea is renamed in place and keeps the name", async ({ page }) => {
   );
 });
 
-test("an idea in no section and no scene says it is not in the book", async ({
+test("an idea in no section and no scene says it is not in the work", async ({
   page,
 }) => {
   // given: an idea in no section and no scene
@@ -118,8 +118,8 @@ test("an idea in no section and no scene says it is not in the book", async ({
   // when: it is opened
   await inspect(page, idea);
 
-  // then: it says it is not in the book
-  await expect(page.getByText("Not in the book yet")).toBeVisible();
+  // then: it says it is not in the work
+  await expect(page.getByText("Not in the work yet")).toBeVisible();
   await expect(appearances(page)).toHaveCount(0);
 });
 
@@ -149,10 +149,10 @@ test("an idea shows the sections that note it and the scenes that draw on it", a
   ).toBeVisible();
 });
 
-test("a scene in the book the idea appears in opens in the writing view", async ({
+test("a scene in the work the idea appears in opens in the writing view", async ({
   page,
 }) => {
-  // given: an idea opened, drawn on by a scene in the book
+  // given: an idea opened, drawn on by a scene in the work
   await aNewProject(page, "FollowingIntoTheBook");
   const idea = await anIdea(page, "A girl in a wood");
   const scene = await linkFromAScene(page, idea, "The clearing");
@@ -187,10 +187,10 @@ test("a scene in the book the idea appears in opens in the writing view", async 
   ).toBeFocused();
 });
 
-test("a scene not in the book the idea appears in opens on the writing view's other side", async ({
+test("a scene not in the work the idea appears in opens on the writing view's other side", async ({
   page,
 }) => {
-  // given: an idea opened, drawn on by a scene not in the book
+  // given: an idea opened, drawn on by a scene not in the work
   await aNewProject(page, "Following");
   const idea = await anIdea(page, "A girl in a wood");
   const scene = await linkFromAScene(page, idea, "The clearing");
@@ -204,7 +204,7 @@ test("a scene not in the book the idea appears in opens on the writing view's ot
   // when: the scene is followed
   await appearances(page).getByRole("link", { name: "The clearing" }).click();
 
-  // then: it opens among the scenes not in the book, ready to write in
+  // then: it opens among the scenes not in the work, ready to write in
   await expect(page).toHaveURL(/\/write\/loose$/);
   await expect(
     page.locator(`[data-scene="${scene}"] .ProseMirror`),

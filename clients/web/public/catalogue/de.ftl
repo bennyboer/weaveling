@@ -50,14 +50,14 @@ trash-restore = Wiederherstellen
 new-project-cancel = Abbrechen
 
 details-title = Titel
-details-book-language = Sprache des Buchs
+details-book-language = Sprache des Werks
 details-book-language-unset = Nicht festgelegt
-details-book-language-hint = Die Sprache, in der dein Buch geschrieben ist. Silbentrennung und Anführungszeichen richten sich danach.
+details-book-language-hint = Die Sprache, in der dein Werk geschrieben ist. Silbentrennung und Anführungszeichen richten sich danach.
 details-quotation = Anführungszeichen
 details-quotation-as-the-language-has-it = Wie in der Sprache üblich, { $marks }
 details-quotation-hint = Die Zeichen, die um wörtliche Rede gesetzt werden, wenn du " tippst.
 details-description = Beschreibung
-details-description-placeholder = Worum es im Buch geht, in ein paar Zeilen. Optional.
+details-description-placeholder = Worum es im Werk geht, in ein paar Zeilen. Optional.
 
 book-language-de = Deutsch
 book-language-en = Englisch (English)
@@ -76,7 +76,7 @@ book-language-cs = Tschechisch (Čeština)
 project-details = Projektdetails
 project-details-cancel = Abbrechen
 project-details-save = Speichern
-project-details-changing-the-marks = Wechseln die Anführungszeichen von { $from } zu { $to }, werden sie in jeder Szene des Buchs neu gesetzt. In einem langen Buch dauert das eine Weile.
+project-details-changing-the-marks = Wechseln die Anführungszeichen von { $from } zu { $to }, werden sie in jeder Szene des Werks neu gesetzt. In einem langen Werk dauert das eine Weile.
 project-details-back = Zurück
 project-details-change-the-marks = Zeichen wechseln
 
@@ -100,6 +100,7 @@ problem-not-found =
         [refusal] Diese Meldung gibt es nicht mehr.
         [scene] Diese Szene gibt es nicht mehr.
         [word-counts] Diese Wortzahlen gibt es nicht mehr.
+        [work] Dieses Werk gibt es nicht mehr.
        *[other] Das gibt es nicht mehr.
     }
 problem-outdated =
@@ -158,7 +159,7 @@ refused-outline-discarded = Diese Gliederung wurde inzwischen verworfen.
 refused-scene-id-invalid = Das ist keine gültige Szenen-ID.
 refused-scene-title-control-character = Der Titel einer Szene darf keine Steuerzeichen enthalten.
 refused-scene-title-too-long = Der Titel einer Szene darf höchstens { $max } Zeichen lang sein, dieser hat { $actual }.
-refused-quotation-never-restyled = Die Anführungszeichen dieses Buchs wurden nie neu gesetzt.
+refused-quotation-never-restyled = Die Anführungszeichen dieses Werks wurden nie neu gesetzt.
 
 untitled = Ohne Titel
 board = Pinnwand
@@ -180,7 +181,7 @@ tray = Ablage
 inspector = Inspektor
 inspector-idea-name = Name der Idee
 inspector-appears-in = Kommt vor in
-inspector-appears-nowhere = Noch nicht im Buch. Kein Abschnitt und keine Szene verwendet sie.
+inspector-appears-nowhere = Noch nicht im Werk. Kein Abschnitt und keine Szene verwendet sie.
 board-resize =
     { $side ->
         [top] Größe von { $idea } oben ändern
@@ -209,9 +210,9 @@ drawer-resize =
 scene-empty = Leer
 outline-manuscript = Manuskript
 outline-the-manuscript = Das Manuskript
-outline-nothing-yet = Noch nichts im Buch. Leg einen Abschnitt an, um zu beginnen.
+outline-nothing-yet = Noch nichts im Werk. Leg einen Abschnitt an, um zu beginnen.
 outline-add-section = Abschnitt anlegen
-outline-not-in-the-book = Nicht im Buch · { $count }
+outline-not-in-the-book = Nicht im Werk · { $count }
 outline-scenes = Szenen
 outline-ideas = Ideen
 outline-fold = { $section } einklappen
@@ -224,12 +225,12 @@ outline-promote = { $section } eine Ebene höher
 outline-demote = { $section } eine Ebene tiefer
 outline-write-in = In { $section } schreiben
 outline-remove = { $section } entfernen
-outline-take-out = { $name } aus dem Buch nehmen
-outline-scenes-waiting = Szenen, die nicht im Buch stehen
-outline-every-scene-placed = Jede Szene hat ihren Platz im Buch.
-outline-ideas-waiting = Ideen, die nicht im Buch stehen
+outline-take-out = { $name } aus dem Werk nehmen
+outline-scenes-waiting = Szenen, die nicht im Werk stehen
+outline-every-scene-placed = Jede Szene hat ihren Platz im Werk.
+outline-ideas-waiting = Ideen, die nicht im Werk stehen
 outline-place = { $name } einordnen
-outline-how-to-place = Zieh sie auf einen Abschnitt, oder klick sie an und dann dorthin, wo sie hin soll. Eine Szene wird Teil des Buchs. Eine Idee wird zur Notiz daneben.
+outline-how-to-place = Zieh sie auf einen Abschnitt, oder klick sie an und dann dorthin, wo sie hin soll. Eine Szene wird Teil des Werks. Eine Idee wird zur Notiz daneben.
 renamed-meanwhile = Inzwischen umbenannt
 renamed-meanwhile-told = Während du diesen Titel bearbeitet hast, hat jemand anderes ihn in „{ $theirs }“ umbenannt. Deiner lautet „{ $mine }“.
 renamed-meanwhile-theirs = Ihren übernehmen
@@ -240,13 +241,13 @@ ideas-capture = Festhalten
 ideas-empty = Noch keine Ideen. Schieß eine Idee rein und schau, wohin sie führt.
 idea-opening = Wird geöffnet…
 
-book = Das Buch
+book = Das Werk
 writing-sides = Seiten des Werks
-writing-side-book = Das Buch
-writing-side-loose = Nicht im Buch
-writing-every-scene-placed = Jede Szene steht im Buch.
+writing-side-book = Das Werk
+writing-side-loose = Nicht im Werk
+writing-every-scene-placed = Jede Szene steht im Werk.
 heading-untitled = Abschnitt ohne Titel
-heading-first = Der erste Abschnitt deines Buchs
+heading-first = Der erste Abschnitt deines Werks
 heading-next = Ein neuer Abschnitt
 scene-invitation = Eine leere Szene. Fang an zu schreiben…
 scene-next = Eine neue Szene
@@ -254,7 +255,7 @@ scene-an-empty-one = Eine leere Szene
 status-focus = Fokusmodus
 status-focus-hint = Fokusmodus (Strg+Umschalt+F)
 writing-settings = Schreibeinstellungen
-count-whole-book = Das ganze Buch zählen
+count-whole-book = Das ganze Werk zählen
 count-section = Den Abschnitt zählen, in dem du schreibst
 digit-group = { "." }
 words =
@@ -262,8 +263,8 @@ words =
         [one] { $shown } Wort
        *[other] { $shown } Wörter
     }
-words-not-in-the-book = { $words } nicht im Buch
-words-in-the-book = { $words } im Buch
+words-not-in-the-book = { $words } nicht im Werk
+words-in-the-book = { $words } im Werk
 words-in-section = { $words } in „{ $section }“
 words-in-this-section = { $words } in diesem Abschnitt
 saving = Wird gespeichert…
@@ -271,7 +272,7 @@ all-saved = Alles gespeichert
 setting-spelling = Rechtschreibung prüfen
 setting-spelling-hint = Unterstreicht Wörter, die das Wörterbuch des Browsers nicht kennt.
 setting-justified = Blocksatz
-setting-justified-hint = Setzt die Zeilen auf beiden Seiten bündig wie eine gedruckte Seite und trennt Wörter in der Sprache des Buchs.
+setting-justified-hint = Setzt die Zeilen auf beiden Seiten bündig wie eine gedruckte Seite und trennt Wörter in der Sprache des Werks.
 setting-typewriter = Schreibmaschinenmodus
 setting-typewriter-hint = Hält die Zeile, in der du schreibst, in der Mitte des Fensters.
 settings-close = Schließen
@@ -282,17 +283,17 @@ path = Pfad
 path-home = Startseite
 path-invitation = Einladung
 path-missing = Nicht gefunden
-quiet-rearranged = Jemand anderes hat das Buch rund um „{ $section }“ umgestellt.
+quiet-rearranged = Jemand anderes hat das Werk rund um „{ $section }“ umgestellt.
 quiet-removed = Jemand anderes hat „{ $section }“ entfernt.
-quiet-overtaken = Jemand anderes hat das Buch inzwischen geändert, deshalb ging das nicht. Du siehst jetzt den aktuellen Stand.
+quiet-overtaken = Jemand anderes hat das Werk inzwischen geändert, deshalb ging das nicht. Du siehst jetzt den aktuellen Stand.
 going-back = Zurück zu der Stelle, an der du aufgehört hast
 
 move-scene = Szene verschieben
 drag-to-move = Zum Verschieben ziehen
 scene-actions = Szenenaktionen
 menu-rename = Umbenennen
-menu-take-out = Aus dem Buch nehmen
-menu-bring-in = Ins Buch holen…
+menu-take-out = Aus dem Werk nehmen
+menu-bring-in = Ins Werk holen…
 menu-delete-scene = Szene löschen
 section-actions = Abschnittsaktionen
 menu-nest = Unter den vorigen Abschnitt einrücken
@@ -314,21 +315,21 @@ answer-delete = Löschen
 answer-remove = Entfernen
 answer-show-it = Zeigen
 answer-discard = Verwerfen
-answer-put-at-end = Ans Ende des Buchs stellen
-answer-take-out = Aus dem Buch nehmen
+answer-put-at-end = Ans Ende des Werks stellen
+answer-take-out = Aus dem Werk nehmen
 answer-delete-for-good = Endgültig löschen
 asked-delete-scene = Diese Szene löschen?
 asked-delete-scene-told-unnamed = Diese Szene und alles, was darin steht, ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.
 asked-delete-scene-told = „{ $scene }“ und alles, was darin steht, ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.
 removed-meanwhile = Inzwischen entfernt
-removed-meanwhile-told-unnamed = Jemand anderes hat „{ $section }“ entfernt. Deine Szene findest du jetzt bei den Szenen, die nicht im Buch stehen.
-removed-meanwhile-told = Jemand anderes hat „{ $section }“ entfernt. Deine Szene „{ $scene }“ findest du jetzt bei den Szenen, die nicht im Buch stehen.
+removed-meanwhile-told-unnamed = Jemand anderes hat „{ $section }“ entfernt. Deine Szene findest du jetzt bei den Szenen, die nicht im Werk stehen.
+removed-meanwhile-told = Jemand anderes hat „{ $section }“ entfernt. Deine Szene „{ $scene }“ findest du jetzt bei den Szenen, die nicht im Werk stehen.
 place-gone = Ihr Platz ist weg
 place-gone-scene = Jemand anderes hat die Stelle entfernt, an die deine neue Szene kommen sollte. Sie beginnt mit „{ $begins }“.
 place-gone-section = Jemand anderes hat das Element entfernt, nach dem dein neuer Abschnitt „{ $section }“ kommen sollte.
 renamed-meanwhile-heading-told = Während du diese Überschrift bearbeitet hast, hat jemand anderes sie in „{ $theirs }“ umbenannt. Deine lautet „{ $mine }“.
 asked-remove-section = Diesen Abschnitt entfernen?
-asked-remove-section-told = Seine Szenen werden aus dem Buch genommen, aber nicht gelöscht. Du findest sie bei den Szenen, die nicht im Buch stehen. Die Abschnitte darin rücken eine Ebene nach oben.
+asked-remove-section-told = Seine Szenen werden aus dem Werk genommen, aber nicht gelöscht. Du findest sie bei den Szenen, die nicht im Werk stehen. Die Abschnitte darin rücken eine Ebene nach oben.
 asked-remove-chosen = Das Gewählte entfernen?
 chosen-scenes =
     { $scenes ->
@@ -349,16 +350,16 @@ chosen-both =
        *[other] { $sections } Abschnitte
     } sind gewählt.
 chosen-whole = Jeder Abschnitt wird zusammen mit den Abschnitten darin und all ihren Szenen entfernt.
-chosen-ways-book = Nimmst du sie aus dem Buch, kommen die Szenen zu denen, die nicht im Buch stehen. Löschst du sie, sind sie und alles, was darin steht, endgültig weg. Das lässt sich nicht rückgängig machen.
+chosen-ways-book = Nimmst du sie aus dem Werk, kommen die Szenen zu denen, die nicht im Werk stehen. Löschst du sie, sind sie und alles, was darin steht, endgültig weg. Das lässt sich nicht rückgängig machen.
 chosen-ways-loose = Löschst du sie, sind sie und alles, was darin steht, endgültig weg. Das lässt sich nicht rückgängig machen.
-placing = Ins Buch holen
+placing = Ins Werk holen
 placing-told-unnamed = Die Szene kommt ans Ende des Abschnitts, den du wählst.
 placing-told = „{ $scene }“ kommt ans Ende des Abschnitts, den du wählst.
-placing-sections = Abschnitte des Buchs
+placing-sections = Abschnitte des Werks
 bring-back = Szene zurückholen
 looking = Wird gesucht…
-bring-back-none = Jede Szene steht schon im Buch.
-bring-back-told = Diese Szenen stehen nicht im Buch. Die gewählte kommt dorthin, wo du geklickt hast.
+bring-back-none = Jede Szene steht schon im Werk.
+bring-back-told = Diese Szenen stehen nicht im Werk. Die gewählte kommt dorthin, wo du geklickt hast.
 bring-back-find = Szene suchen
 bring-back-no-match = Keine Szene passt.
 

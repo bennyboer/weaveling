@@ -7,7 +7,7 @@ use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
 
 const LIVE: &str = "/api/readings/live";
-const SUBJECT: &str = "book";
+const SUBJECT: &str = "work";
 
 pub async fn live_book(project: &ProjectId) -> Result<Book, ApiError> {
     let response = http::sent(Request::get(&format!("{LIVE}?project={project}"))).await?;

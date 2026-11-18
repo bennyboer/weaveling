@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use crate::sample::SampleBook;
 use access::{InMemoryAccess, KeptAccess};
 use eventsourcing::{AccountId, Agent};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::{RESTORED, TRASHED};
-use readings_catalog::SampleBook;
 use readings_core::{ReadingsCore, ReadingsError};
 use readings_messaging::{RememberRolesListener, RememberTrashListener};
 use serde_json::{Value, json};

@@ -77,7 +77,7 @@ test("a scene whose text has not arrived still counts, by what the server last c
   await wordCount(page).click();
 
   // then: the scene counts by what the server last counted
-  await expect(wordCount(page)).toHaveText("3 words in the book");
+  await expect(wordCount(page)).toHaveText("3 words in the work");
 });
 
 test("what the server last counted never stands over what is being written", async ({

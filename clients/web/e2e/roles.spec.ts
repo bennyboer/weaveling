@@ -116,7 +116,7 @@ test("a reader is shown no way to change the project, and no writing view", asyn
 
   // when: she turns to the outline
   await views(page).getByRole("link", { name: "Outline" }).click();
-  // then: nothing in the book can be added, renamed, moved or placed
+  // then: nothing in the work can be added, renamed, moved or placed
   await expect(page.getByRole("button", { name: "Add a section" })).toBeDisabled();
   const title = page.getByRole("textbox", { name: "Section Chapter One" });
   await expect(title).not.toBeEditable();
@@ -127,7 +127,7 @@ test("a reader is shown no way to change the project, and no writing view", asyn
   await expect(page.getByRole("button", { name: "Place A stray thought" })).toBeDisabled();
   await expect(page.getByRole("toolbar", { name: "Actions for Chapter One" })).toHaveCount(0);
   await expect(page.locator(".outline .grip")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Take .* out of the book$/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Take .* out of the work$/ })).toHaveCount(0);
 
   // when: she turns to the ideas
   await views(page).getByRole("link", { name: "Ideas" }).click();

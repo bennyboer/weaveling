@@ -4,7 +4,7 @@ import { aBookWithScenes } from "./book";
 import { aNewProject, API, sceneCatalogued, views } from "./shell";
 
 export const flow = (page: Page) =>
-  page.getByRole("article", { name: "The book" });
+  page.getByRole("article", { name: "The work" });
 
 export const scene = (page: Page, id: string) =>
   flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
@@ -127,7 +127,7 @@ export const bringingBack = (page: Page) =>
 
 export const offered = (page: Page) =>
   bringingBack(page)
-    .getByRole("list", { name: "Scenes not in the book" })
+    .getByRole("list", { name: "Scenes not in the work" })
     .getByRole("button");
 
 export const statusNote = (page: Page) => page.locator(".status-note");

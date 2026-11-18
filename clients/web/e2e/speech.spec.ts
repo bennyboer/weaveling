@@ -131,7 +131,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     const asked = page.getByRole("dialog", { name: "Neues Projekt" });
     await expect(asked.getByLabel("Titel")).toHaveValue("Der Webstuhl");
     // and: the book's languages are named in german
-    const language = asked.getByLabel("Sprache des Buchs");
+    const language = asked.getByLabel("Sprache des Werks");
     await expect(language).toHaveValue("de");
     await expect(
       language.getByRole("option", { name: "Deutsch", exact: true }),
@@ -145,7 +145,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     ).toHaveText("Wie in der Sprache üblich, »…«");
     await expect(asked.getByLabel("Beschreibung")).toHaveAttribute(
       "placeholder",
-      "Worum es im Buch geht, in ein paar Zeilen. Optional.",
+      "Worum es im Werk geht, in ein paar Zeilen. Optional.",
     );
     // when: the question is cancelled
     await asked.getByRole("button", { name: "Abbrechen" }).click();
@@ -181,7 +181,7 @@ test.describe("a browser asking for German, about a project's details", () => {
 
     // then: the rewriting is asked in german
     await expect(details).toContainText(
-      "Wechseln die Anführungszeichen von “…” zu »…«, werden sie in jeder Szene des Buchs neu gesetzt.",
+      "Wechseln die Anführungszeichen von “…” zu »…«, werden sie in jeder Szene des Werks neu gesetzt.",
     );
     // when: it is asked for
     await details.getByRole("button", { name: "Zeichen wechseln" }).click();
@@ -419,7 +419,7 @@ test("the board speaks the language chosen, at once", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Noch nicht im Buch. Kein Abschnitt und keine Szene verwendet sie.",
+      "Noch nicht im Werk. Kein Abschnitt und keine Szene verwendet sie.",
     ),
   ).toBeVisible();
   await expect(
@@ -448,17 +448,17 @@ test("the outline speaks the language chosen, at once", async ({ page }) => {
   );
   await expect(
     page.getByText(
-      "Noch nichts im Buch. Leg einen Abschnitt an, um zu beginnen.",
+      "Noch nichts im Werk. Leg einen Abschnitt an, um zu beginnen.",
     ),
   ).toBeVisible();
-  await expect(page.getByText("Nicht im Buch · 1").first()).toBeVisible();
+  await expect(page.getByText("Nicht im Werk · 1").first()).toBeVisible();
   await expect(
     page
-      .getByRole("list", { name: "Szenen, die nicht im Buch stehen" })
+      .getByRole("list", { name: "Szenen, die nicht im Werk stehen" })
       .getByRole("button", { name: "Leer einordnen" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("list", { name: "Ideen, die nicht im Buch stehen" }),
+    page.getByRole("list", { name: "Ideen, die nicht im Werk stehen" }),
   ).toHaveCount(1);
   // when: a section is added
   await page.getByRole("button", { name: "Abschnitt anlegen" }).click();
@@ -527,7 +527,7 @@ test("the ideas speak the language chosen, at once", async ({ page }) => {
 test("the writing view speaks the language chosen, at once", async ({
   page,
 }) => {
-  // given: a project with a scene in the book and one outside it
+  // given: a project with a scene in the work and one outside it
   await aNewProject(page, "Schreiben");
   const scenes = await aBookWithScenes(page, { "Part One": 1 });
   await aLooseScene(page);
@@ -540,7 +540,7 @@ test("the writing view speaks the language chosen, at once", async ({
   await picker(page, "Language").selectOption("de");
 
   // then: the book, its sides, the drawers and the status bar speak german
-  const book = page.getByRole("article", { name: "Das Buch" });
+  const book = page.getByRole("article", { name: "Das Werk" });
   await expect(book).toBeVisible();
   expect(
     await book.evaluate((shown) =>
@@ -553,8 +553,8 @@ test("the writing view speaks the language chosen, at once", async ({
   );
   const sides = page.getByRole("navigation", { name: "Seiten des Werks" });
   await expect(sides.getByRole("link")).toHaveText([
-    "Das Buch",
-    "Nicht im Buch1",
+    "Das Werk",
+    "Nicht im Werk1",
   ]);
   const toggles = page.locator(".drawer-toggles button");
   await expect(toggles.nth(0)).toHaveAttribute("aria-label", "Inhalt");
@@ -562,7 +562,7 @@ test("the writing view speaks the language chosen, at once", async ({
   await expect(page.getByText("3 Wörter in „Part One“")).toBeVisible();
   await expect(page.getByText("3 Wörter in „Part One“")).toHaveAttribute(
     "title",
-    "Das ganze Buch zählen",
+    "Das ganze Werk zählen",
   );
   await expect(page.getByText("Alles gespeichert")).toBeVisible();
   await expect(
@@ -605,7 +605,7 @@ test("the writing view's menus and questions speak the language chosen", async (
   await openTheWritingView(page);
   // and: german chosen
   await picker(page, "Language").selectOption("de");
-  const book = page.getByRole("article", { name: "Das Buch" });
+  const book = page.getByRole("article", { name: "Das Werk" });
   const written = (id: string) =>
     book.locator(`[data-scene="${id}"] .ProseMirror`);
 
@@ -622,7 +622,7 @@ test("the writing view's menus and questions speak the language chosen", async (
   // then: they speak german
   await expect(book.getByRole("menuitem")).toHaveText([
     "Umbenennen",
-    "Aus dem Buch nehmen",
+    "Aus dem Werk nehmen",
     "Szene löschen",
   ]);
   // when: deleting the scene is chosen
@@ -670,11 +670,11 @@ test("the writing view's menus and questions speak the language chosen", async (
     name: "Das Gewählte entfernen?",
   });
   await expect(removing).toContainText(
-    "2 Szenen sind gewählt. Nimmst du sie aus dem Buch, kommen die Szenen zu denen, die nicht im Buch stehen.",
+    "2 Szenen sind gewählt. Nimmst du sie aus dem Werk, kommen die Szenen zu denen, die nicht im Werk stehen.",
   );
   await expect(removing.getByRole("button")).toHaveText([
     "Abbrechen",
-    "Aus dem Buch nehmen",
+    "Aus dem Werk nehmen",
     "Endgültig löschen",
   ]);
   // when: it is cancelled
@@ -686,7 +686,7 @@ test("the writing view's menus and questions speak the language chosen", async (
 test("bringing a scene back and placing one speak the language chosen", async ({
   page,
 }) => {
-  // given: a project with a scene in the book and one outside it, in the writing view
+  // given: a project with a scene in the work and one outside it, in the writing view
   await aNewProject(page, "Zurück");
   const made = await aBookWithScenes(page, { "Part One": 1 });
   const [only] = made["Part One"];
@@ -694,7 +694,7 @@ test("bringing a scene back and placing one speak the language chosen", async ({
   await openTheWritingView(page);
   // and: german chosen
   await picker(page, "Language").selectOption("de");
-  const book = page.getByRole("article", { name: "Das Buch" });
+  const book = page.getByRole("article", { name: "Das Werk" });
 
   // when: inserting is begun after the scene
   await book
@@ -710,13 +710,13 @@ test("bringing a scene back and placing one speak the language chosen", async ({
   // then: the question speaks german
   const bringing = page.getByRole("dialog", { name: "Szene zurückholen" });
   await expect(bringing).toContainText(
-    "Diese Szenen stehen nicht im Buch. Die gewählte kommt dorthin, wo du geklickt hast.",
+    "Diese Szenen stehen nicht im Werk. Die gewählte kommt dorthin, wo du geklickt hast.",
   );
   await expect(
     bringing.getByRole("searchbox", { name: "Szene suchen" }),
   ).toBeVisible();
   await expect(
-    bringing.getByRole("list", { name: "Szenen, die nicht im Buch stehen" }),
+    bringing.getByRole("list", { name: "Szenen, die nicht im Werk stehen" }),
   ).toBeVisible();
   // when: no scene fits what is searched for
   await bringing
@@ -729,17 +729,17 @@ test("bringing a scene back and placing one speak the language chosen", async ({
 
   await page
     .getByRole("navigation", { name: "Seiten des Werks" })
-    .getByRole("link", { name: "Nicht im Buch" })
+    .getByRole("link", { name: "Nicht im Werk" })
     .click();
   await page.getByRole("button", { name: "Szenenaktionen" }).first().click();
-  await page.getByRole("menuitem", { name: "Ins Buch holen…" }).click();
+  await page.getByRole("menuitem", { name: "Ins Werk holen…" }).click();
   // then: placing it speaks german
-  const placing = page.getByRole("dialog", { name: "Ins Buch holen" });
+  const placing = page.getByRole("dialog", { name: "Ins Werk holen" });
   await expect(placing).toContainText(
     "Die Szene kommt ans Ende des Abschnitts, den du wählst.",
   );
   await expect(
-    placing.getByRole("list", { name: "Abschnitte des Buchs" }),
+    placing.getByRole("list", { name: "Abschnitte des Werks" }),
   ).toBeVisible();
 });
 
@@ -757,7 +757,7 @@ test("the contents and the tray speak the language chosen", async ({
   await openTheWritingView(page);
   // and: german chosen
   await picker(page, "Language").selectOption("de");
-  const book = page.getByRole("article", { name: "Das Buch" });
+  const book = page.getByRole("article", { name: "Das Werk" });
 
   // when: the contents are opened
   await page.getByRole("button", { name: "Inhalt", exact: true }).click();
@@ -1024,7 +1024,7 @@ test("the book keeps its own language, whatever the app speaks", async ({
     .click();
 
   // then: the book is in english
-  await expect(page.getByRole("article", { name: "Das Buch" })).toHaveAttribute(
+  await expect(page.getByRole("article", { name: "Das Werk" })).toHaveAttribute(
     "lang",
     "en",
   );

@@ -131,7 +131,7 @@ test("the browser back button leaves the project", async ({ page }) => {
   const title = await aNewProject(page, "Back");
   await page.getByRole("link", { name: "All projects" }).click();
   await page.getByRole("link", { name: title }).click();
-  await expect(page.getByRole("article", { name: "The book" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "The work" })).toBeVisible();
 
   // when: the browser goes back
   await page.goBack();
@@ -201,7 +201,7 @@ test("a project can be opened in a new tab", async ({ page, context }) => {
   await expect(tab).toHaveURL(
     /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}\/write$/,
   );
-  await expect(tab.getByRole("article", { name: "The book" })).toBeVisible();
+  await expect(tab.getByRole("article", { name: "The work" })).toBeVisible();
   // and: the workspace stays where it was
   await expect(page).toHaveURL(/\/$/);
   await tab.close();

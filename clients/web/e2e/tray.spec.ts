@@ -72,11 +72,11 @@ test("the tab tells what is still waiting, in each view's own words", async ({
   await aLooseScene(page);
   // when: the outline is opened
   await openTheOutline(page);
-  // then: the tab tells the scenes not in the book
+  // then: the tab tells the scenes not in the work
   await expect(
-    tab(page, "Not in the book"),
+    tab(page, "Not in the work"),
     "a shut tray's tab is the only thing saying what is waiting, and the two views wait for different things",
-  ).toHaveText(/^Not in the book · 2$/);
+  ).toHaveText(/^Not in the work · 2$/);
 });
 
 test("on a wide window the tray is open at first and takes its own room beside the board", async ({

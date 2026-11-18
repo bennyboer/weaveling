@@ -78,7 +78,7 @@ test("the toolbar is reached with Alt+F10, walked with the arrows, and left with
   await expect(toolbar(page)).toBeVisible();
 });
 
-test("the toolbar sets the selection in the book's quotation marks, and goes when nothing is selected", async ({
+test("the toolbar sets the selection in the work's quotation marks, and goes when nothing is selected", async ({
   page,
 }) => {
   // given: the first word of a scene's text selected

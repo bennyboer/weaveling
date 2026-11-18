@@ -51,7 +51,7 @@ test("the details open with what the project holds", async ({ page }) => {
   // then: they show what the project holds
   await expect(projectDetails(page).getByLabel("Title")).toHaveValue(title);
   await expect(
-    projectDetails(page).getByLabel("Language of the book"),
+    projectDetails(page).getByLabel("Language of the work"),
   ).toHaveValue("fr");
   await expect(projectDetails(page).getByLabel("Description")).toHaveValue(
     "Deux villes.",
@@ -69,7 +69,7 @@ test("a project's title, language and description can be changed from inside it"
   await openTheProjectDetails(page);
   await projectDetails(page).getByLabel("Title").fill(renamed);
   await projectDetails(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "Dutch (Nederlands)" });
   await projectDetails(page).getByLabel("Description").fill("Twee steden.");
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
@@ -133,13 +133,13 @@ test("the book takes its new language without leaving the writing view", async (
   await aNewProject(page, "Relanguaged");
   await aBookWithScenes(page, { "Part One": 1 });
   await views(page).getByRole("link", { name: "Write", exact: true }).click();
-  const book = page.getByRole("article", { name: "The book" });
+  const book = page.getByRole("article", { name: "The work" });
   await expect(book.locator(".scene .ProseMirror")).toHaveCount(1);
 
   // when: its language is changed in the details
   await openTheProjectDetails(page);
   await projectDetails(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "French (Français)" });
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
   await changeTheMarks(page).click();
@@ -305,7 +305,7 @@ test("the quotation marks follow the book's language until a style is chosen", a
   const marks = projectDetails(page).getByLabel(/^Quotation marks/);
   // when: german is chosen
   await projectDetails(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "German (Deutsch)" });
 
   // then: the quotation marks follow it
@@ -314,7 +314,7 @@ test("the quotation marks follow the book's language until a style is chosen", a
   );
   // when: english is chosen and saved
   await projectDetails(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "English" });
   // then: the quotation marks follow it
   await expect(marks.locator("option").first()).toHaveText(
@@ -367,7 +367,7 @@ test("new quotation marks are asked about first, and Back keeps the details open
 
   // then: the change is asked about first, nothing saved
   await expect(projectDetails(page)).toContainText(
-    "Changing the quotation marks from “…” to „…“ rewrites them in every scene of the book.",
+    "Changing the quotation marks from “…” to „…“ rewrites them in every scene of the work.",
   );
   expect(
     (await onServer(page)).quotation,
@@ -392,7 +392,7 @@ test("details that leave the marks as they look are saved without asking", async
   await openTheProjectDetails(page);
   // and: a language chosen that quotes alike
   await projectDetails(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "Danish (Dansk)" });
 
   // when: it is saved

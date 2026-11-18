@@ -6,7 +6,7 @@ use clock::FixedClock;
 use eventsourcing::Agent;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
-use readings_catalog::{InMemorySceneTextCatalog, SampleBook};
+use readings_catalog::InMemorySceneTextCatalog;
 use readings_core::{Block, Part, ReadingsCore, Run};
 use readings_messaging::KeepSceneTextsListener;
 use scenes_contract::{
@@ -14,6 +14,8 @@ use scenes_contract::{
 };
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
+
+use crate::sample::SampleBook;
 
 struct Wired {
     readings: ReadingsCore,

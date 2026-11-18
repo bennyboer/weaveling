@@ -204,9 +204,9 @@ test("a change to the book's shape is saving until the server has made it", asyn
     "**/api/outlines/*/attachments/**",
   );
 
-  // when: the first scene is taken out of the book
+  // when: the first scene is taken out of the work
   await sceneActions(page, first).click();
-  await menuItem(page, "Take out of the book").click();
+  await menuItem(page, "Take out of the work").click();
   // then: the note says saving
   await expect(saveState(page)).toHaveText("Saving…");
 
@@ -237,7 +237,7 @@ test("the word count follows the section being written in, and counts the book o
   // when: the count is clicked
   await wordCount(page).click();
   // then: it counts the whole book
-  await expect(wordCount(page)).toHaveText("5 words in the book");
+  await expect(wordCount(page)).toHaveText("5 words in the work");
   // when: it is clicked again
   await wordCount(page).click();
   // then: it counts the section again
@@ -293,7 +293,7 @@ test("a section's word count takes in the sections nested in it", async ({
   // when: the count is clicked
   await wordCount(page).click();
   // then: it counts the whole book
-  await expect(wordCount(page)).toHaveText("6 words in the book");
+  await expect(wordCount(page)).toHaveText("6 words in the work");
 });
 
 test("before the cursor is anywhere, the word count counts the first section", async ({

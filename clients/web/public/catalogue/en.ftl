@@ -50,14 +50,14 @@ trash-restore = Restore
 new-project-cancel = Cancel
 
 details-title = Title
-details-book-language = Language of the book
+details-book-language = Language of the work
 details-book-language-unset = Not set
-details-book-language-hint = The language your book is written in. Hyphenation and quotation marks follow it.
+details-book-language-hint = The language your work is written in. Hyphenation and quotation marks follow it.
 details-quotation = Quotation marks
 details-quotation-as-the-language-has-it = The language's default, { $marks }
 details-quotation-hint = The marks placed around dialogue when you type ".
 details-description = Description
-details-description-placeholder = What the book is about, in a few lines. Optional.
+details-description-placeholder = What the work is about, in a few lines. Optional.
 
 book-language-de = German (Deutsch)
 book-language-en = English
@@ -76,7 +76,7 @@ book-language-cs = Czech (Čeština)
 project-details = Project details
 project-details-cancel = Cancel
 project-details-save = Save
-project-details-changing-the-marks = Changing the quotation marks from { $from } to { $to } rewrites them in every scene of the book. In a long book that takes a while.
+project-details-changing-the-marks = Changing the quotation marks from { $from } to { $to } rewrites them in every scene of the work. In a long work that takes a while.
 project-details-back = Back
 project-details-change-the-marks = Change the marks
 
@@ -100,6 +100,7 @@ problem-not-found =
         [refusal] That refusal no longer exists.
         [scene] That scene no longer exists.
         [word-counts] Those word counts no longer exist.
+        [work] That work no longer exists.
        *[other] That no longer exists.
     }
 problem-outdated =
@@ -158,7 +159,7 @@ refused-outline-discarded = This outline has been discarded in the meantime.
 refused-scene-id-invalid = That is not a valid scene ID.
 refused-scene-title-control-character = A scene's title cannot hold control characters.
 refused-scene-title-too-long = A scene's title can be at most { $max } characters long; this one has { $actual }.
-refused-quotation-never-restyled = The quotation marks of this book were never rewritten.
+refused-quotation-never-restyled = The quotation marks of this work were never rewritten.
 
 untitled = Untitled
 board = Board
@@ -180,7 +181,7 @@ tray = Tray
 inspector = Inspector
 inspector-idea-name = Idea name
 inspector-appears-in = Appears in
-inspector-appears-nowhere = Not in the book yet. No section or scene uses it.
+inspector-appears-nowhere = Not in the work yet. No section or scene uses it.
 board-resize =
     { $side ->
         [top] Resize { $idea } from the top
@@ -209,9 +210,9 @@ drawer-resize =
 scene-empty = Empty
 outline-manuscript = Manuscript
 outline-the-manuscript = The manuscript
-outline-nothing-yet = Nothing in the book yet. Add a section to begin.
+outline-nothing-yet = Nothing in the work yet. Add a section to begin.
 outline-add-section = Add a section
-outline-not-in-the-book = Not in the book · { $count }
+outline-not-in-the-book = Not in the work · { $count }
 outline-scenes = Scenes
 outline-ideas = Ideas
 outline-fold = Fold { $section }
@@ -224,12 +225,12 @@ outline-promote = Promote { $section }
 outline-demote = Demote { $section }
 outline-write-in = Write in { $section }
 outline-remove = Remove { $section }
-outline-take-out = Take { $name } out of the book
-outline-scenes-waiting = Scenes not in the book
-outline-every-scene-placed = Every scene has a place in the book.
-outline-ideas-waiting = Ideas not in the book
+outline-take-out = Take { $name } out of the work
+outline-scenes-waiting = Scenes not in the work
+outline-every-scene-placed = Every scene has a place in the work.
+outline-ideas-waiting = Ideas not in the work
 outline-place = Place { $name }
-outline-how-to-place = Drag it onto a section, or click it and then click where it should go. A scene becomes part of the book. An idea becomes a note next to it.
+outline-how-to-place = Drag it onto a section, or click it and then click where it should go. A scene becomes part of the work. An idea becomes a note next to it.
 renamed-meanwhile = Renamed in the meantime
 renamed-meanwhile-told = While you were editing this title, someone else renamed it to “{ $theirs }”. Yours is “{ $mine }”.
 renamed-meanwhile-theirs = Take theirs
@@ -240,13 +241,13 @@ ideas-capture = Capture
 ideas-empty = No ideas yet. Shoot an idea in and see where it goes.
 idea-opening = Opening…
 
-book = The book
+book = The work
 writing-sides = Sides of the work
-writing-side-book = The book
-writing-side-loose = Not in the book
-writing-every-scene-placed = Every scene is in the book.
+writing-side-book = The work
+writing-side-loose = Not in the work
+writing-every-scene-placed = Every scene is in the work.
 heading-untitled = Untitled section
-heading-first = Your book's first section
+heading-first = Your work's first section
 heading-next = A new section
 scene-invitation = An empty scene. Start writing…
 scene-next = A new scene
@@ -254,7 +255,7 @@ scene-an-empty-one = An empty scene
 status-focus = Focus mode
 status-focus-hint = Focus mode (Ctrl+Shift+F)
 writing-settings = Writing settings
-count-whole-book = Count the whole book
+count-whole-book = Count the whole work
 count-section = Count the section being written
 digit-group = { "," }
 words =
@@ -262,8 +263,8 @@ words =
         [one] { $shown } word
        *[other] { $shown } words
     }
-words-not-in-the-book = { $words } not in the book
-words-in-the-book = { $words } in the book
+words-not-in-the-book = { $words } not in the work
+words-in-the-book = { $words } in the work
 words-in-section = { $words } in “{ $section }”
 words-in-this-section = { $words } in this section
 saving = Saving…
@@ -271,7 +272,7 @@ all-saved = All saved
 setting-spelling = Check spelling
 setting-spelling-hint = Underlines words the browser's dictionary does not know.
 setting-justified = Justified text
-setting-justified-hint = Sets lines flush on both sides like a printed page, hyphenating words in the book's language.
+setting-justified-hint = Sets lines flush on both sides like a printed page, hyphenating words in the work's language.
 setting-typewriter = Typewriter scrolling
 setting-typewriter-hint = Keeps the line you are writing in the middle of the window.
 settings-close = Close
@@ -282,17 +283,17 @@ path = Path
 path-home = Start
 path-invitation = Invitation
 path-missing = Not found
-quiet-rearranged = Someone else rearranged the book around “{ $section }”.
+quiet-rearranged = Someone else rearranged the work around “{ $section }”.
 quiet-removed = Someone else removed “{ $section }”.
-quiet-overtaken = Someone else changed the book in the meantime, so that could not be done. You now see the current version.
+quiet-overtaken = Someone else changed the work in the meantime, so that could not be done. You now see the current version.
 going-back = Back to where you left off
 
 move-scene = Move scene
 drag-to-move = Drag to move
 scene-actions = Scene actions
 menu-rename = Rename
-menu-take-out = Take out of the book
-menu-bring-in = Bring into the book…
+menu-take-out = Take out of the work
+menu-bring-in = Bring into the work…
 menu-delete-scene = Delete scene
 section-actions = Section actions
 menu-nest = Nest under the previous section
@@ -314,21 +315,21 @@ answer-delete = Delete
 answer-remove = Remove
 answer-show-it = Show it
 answer-discard = Discard
-answer-put-at-end = Put it at the end of the book
-answer-take-out = Take out of the book
+answer-put-at-end = Put it at the end of the work
+answer-take-out = Take out of the work
 answer-delete-for-good = Delete for good
 asked-delete-scene = Delete this scene?
 asked-delete-scene-told-unnamed = This scene and everything written in it will be gone for good. Deleting cannot be undone.
 asked-delete-scene-told = “{ $scene }” and everything written in it will be gone for good. Deleting cannot be undone.
 removed-meanwhile = Removed in the meantime
-removed-meanwhile-told-unnamed = Someone else removed “{ $section }”. Your scene is now among the scenes not in the book.
-removed-meanwhile-told = Someone else removed “{ $section }”. Your scene “{ $scene }” is now among the scenes not in the book.
+removed-meanwhile-told-unnamed = Someone else removed “{ $section }”. Your scene is now among the scenes not in the work.
+removed-meanwhile-told = Someone else removed “{ $section }”. Your scene “{ $scene }” is now among the scenes not in the work.
 place-gone = Its place is gone
 place-gone-scene = Someone else removed the place your new scene was going to. It begins “{ $begins }”.
 place-gone-section = Someone else removed the item your new section “{ $section }” was going to follow.
 renamed-meanwhile-heading-told = While you were editing this heading, someone else renamed it to “{ $theirs }”. Yours is “{ $mine }”.
 asked-remove-section = Remove this section?
-asked-remove-section-told = Its scenes are taken out of the book, but not deleted. You will find them among the scenes not in the book. Sections inside it move up a level.
+asked-remove-section-told = Its scenes are taken out of the work, but not deleted. You will find them among the scenes not in the work. Sections inside it move up a level.
 asked-remove-chosen = Remove what is chosen?
 chosen-scenes =
     { $scenes ->
@@ -349,16 +350,16 @@ chosen-both =
        *[other] { $sections } sections
     } are chosen.
 chosen-whole = Each section is removed together with the sections inside it and all their scenes.
-chosen-ways-book = If you take them out of the book, the scenes move to the scenes not in the book. If you delete them, they and everything written in them are gone for good. This cannot be undone.
+chosen-ways-book = If you take them out of the work, the scenes move to the scenes not in the work. If you delete them, they and everything written in them are gone for good. This cannot be undone.
 chosen-ways-loose = If you delete them, they and everything written in them are gone for good. This cannot be undone.
-placing = Bring into the book
+placing = Bring into the work
 placing-told-unnamed = The scene goes at the end of the section you choose.
 placing-told = “{ $scene }” goes at the end of the section you choose.
-placing-sections = Sections of the book
+placing-sections = Sections of the work
 bring-back = Bring back a scene
 looking = Looking…
-bring-back-none = Every scene is in the book already.
-bring-back-told = These scenes are not in the book. The one you choose goes in where you clicked.
+bring-back-none = Every scene is in the work already.
+bring-back-told = These scenes are not in the work. The one you choose goes in where you clicked.
 bring-back-find = Find a scene
 bring-back-no-match = No scene matches.
 

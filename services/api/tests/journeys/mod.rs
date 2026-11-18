@@ -652,6 +652,43 @@ pub async fn deleting_a_scene_takes_it_out_of_the_book<B: Backend>() {
     journey.end().await;
 }
 
+pub async fn a_book_is_read_as_its_project_and_its_outline_tell_it<B: Backend>() {
+    // given: a project with an outline
+    let journey = Journey::<B>::relayed().await;
+    let project = journey.project("The Loom").await;
+    let outline = journey.outline(&project).await;
+
+    // when: a chapter is added, and a part under it
+    let chapter = journey.section(&outline, "Morning").await;
+    let part = id_in(
+        &journey
+            .posted(
+                &format!("/api/outlines/{outline}/sections"),
+                json!({ "title": "The market", "under": chapter, "after": null }),
+                StatusCode::CREATED,
+            )
+            .await,
+        "section",
+    );
+
+    // then: the book is titled by the project and laid out as the outline is
+    let book = format!("/api/readings/live?project={project}");
+    let expected = json!({
+        "project": project,
+        "title": "The Loom",
+        "parts": [
+            { "kind": "section", "section": chapter, "depth": 0, "title": "Morning" },
+            { "kind": "section", "section": part, "depth": 1, "title": "The market" },
+        ],
+    });
+    assert!(
+        until(|| async { journey.read(&book).await == expected }).await,
+        "the readings keep their own book, from the project's name and the outline's state, on {:?}",
+        journey.read(&book).await
+    );
+    journey.end().await;
+}
+
 pub async fn linking_an_idea_is_announced_and_relayed<B: Backend>() {
     // given: a scene
     let journey = Journey::<B>::relayed().await;
@@ -1268,6 +1305,7 @@ macro_rules! journeys {
             deleting_a_project_sweeps_away_everything_it_held,
             discarding_an_idea_unlinks_it_from_every_scene,
             deleting_a_scene_takes_it_out_of_the_book,
+            a_book_is_read_as_its_project_and_its_outline_tell_it,
             linking_an_idea_is_announced_and_relayed,
             an_idea_appears_wherever_it_was_noted_or_linked_until_discarded,
             whoever_starts_a_project_owns_it,

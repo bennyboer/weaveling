@@ -50,7 +50,7 @@ test("a new project opens at once, and the list has it when coming back", async 
   await insideTheProject(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   await expect(
-    page.getByRole("article", { name: "The book" }),
+    page.getByRole("article", { name: "The work" }),
     "a project opens on the writing view",
   ).toBeVisible();
   await expect(page).toHaveURL(/\/write$/);
@@ -424,7 +424,7 @@ test("a new project is given its book's language and a description", async ({
 
   // when: it is created with a language and a description
   await newProject(page)
-    .getByLabel("Language of the book")
+    .getByLabel("Language of the work")
     .selectOption({ label: "German (Deutsch)" });
   await newProject(page)
     .getByLabel("Description")
@@ -457,7 +457,7 @@ test("the language offered at first is the browser's own", async ({ page }) => {
   await page.getByRole("button", { name: "Create", exact: true }).click();
 
   // then: the browser's language is offered
-  await expect(newProject(page).getByLabel("Language of the book")).toHaveValue(
+  await expect(newProject(page).getByLabel("Language of the work")).toHaveValue(
     "en",
   );
 });

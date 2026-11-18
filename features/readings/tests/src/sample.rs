@@ -8,7 +8,8 @@ use readings_core::{
 use time::OffsetDateTime;
 use transacting::Transaction;
 
-/// The same small book for every project, until the catalogs are kept from the outline's and the scenes' messages.
+/// The same small book for every project, for cases about something other than how the book is kept.
+/// It keeps nothing it is told.
 pub struct SampleBook;
 
 #[async_trait]
@@ -55,7 +56,6 @@ impl OutlineCatalog for SampleBook {
         &self,
         _project: &ProjectLink,
     ) -> Result<Option<BookOutline>, CatalogError> {
-        // TODO: kept from the outline's messages
         Ok(Some(BookOutline {
             title: "The Loom".to_owned(),
             sections: vec![
@@ -113,7 +113,6 @@ impl SceneTextCatalog for SampleBook {
         &self,
         scenes: &[SceneLink],
     ) -> Result<HashMap<SceneLink, Vec<Block>>, CatalogError> {
-        // TODO: kept from the scenes' messages
         Ok(scenes
             .iter()
             .filter_map(|scene| text_of(scene.as_str()).map(|text| (scene.clone(), text)))
