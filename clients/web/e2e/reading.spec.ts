@@ -414,11 +414,67 @@ const switcher = (page: Page) => page.locator(".reading-view .switcher");
 const whatToRead = (page: Page) =>
   page.getByRole("dialog", { name: "What to read" });
 
-/// A project's reading view, the work shaped but nothing written.
+const DAY = 86_400_000;
+
+const daysFromNow = (days: number) =>
+  new Date(Date.now() + days * DAY).toISOString();
+
+/// Makes a reading copy of the project, once the readings know as much of the work as it holds.
+async function aCopyMade(
+  page: Page,
+  copy: {
+    name: string;
+    shared: object;
+    open_until: string | null;
+    deleted_on: string | null;
+  },
+) {
+  await expect(async () => {
+    const made = await page.request.post(`${API}/readings/copies`, {
+      data: { project: projectOf(page), ...copy },
+    });
+    expect(made.status(), await made.text()).toBe(201);
+  }, "the readings learn of the outline from its messages").toPass();
+}
+
+/// Waits until the project's copies are listed under these names, newest first.
+/// The list is kept from the copies' messages, so it lags a moment behind a change.
+async function copiesListed(page: Page, names: string[]) {
+  await expect
+    .poll(
+      async () => {
+        const listed = await page.request.get(
+          `${API}/readings/copies?project=${projectOf(page)}`,
+        );
+
+        return listed.ok()
+          ? (await listed.json()).map((copy: { name: string }) => copy.name)
+          : [];
+      },
+      { message: "the readings list a copy once they hear it was made" },
+    )
+    .toEqual(names);
+}
+
+/// A project's reading view, the work shaped but nothing written, with two copies:
+/// an older one of its section, closed and kept for good, and a newer one of the whole work, open.
 async function aReadingView(page: Page, named: string) {
   const title = await aNewProject(page, named);
-  await aBookShaped(page, [{ title: "Morning" }]);
+  const { ids } = await aBookShaped(page, [{ title: "Morning" }]);
   await readable(page);
+  await aCopyMade(page, {
+    name: "First draft, part one",
+    shared: { kind: "sections", first: ids["Morning"], last: ids["Morning"] },
+    open_until: daysFromNow(-10),
+    deleted_on: null,
+  });
+  await aCopyMade(page, {
+    name: "Draft for Lena",
+    shared: { kind: "book" },
+    open_until: daysFromNow(28),
+    deleted_on: daysFromNow(88),
+  });
+  await copiesListed(page, ["Draft for Lena", "First draft, part one"]);
   await openTheReadingView(page);
 
   return title;
@@ -452,7 +508,7 @@ test("the switcher lists the live work and every reading copy, with when each cl
   ]);
   await expect(whatToRead(page).locator(".entry .meta")).toHaveText([
     "You · the whole work",
-    "Hedy · one section",
+    "You · one section",
   ]);
   // and: whether each is open, and when it is deleted
   await expect(entries.nth(1)).toContainText("Open until");
@@ -473,7 +529,7 @@ test("a copy chosen is read as it was frozen, and the live work is a choice away
     .click();
 
   // then: it is read, named in the switcher, with when it was frozen and how long it is open
-  await expect(page).toHaveURL(/\/read\/copy--project_\w+--book$/);
+  await expect(page).toHaveURL(/\/read\/copy_\w+$/);
   await expect(switcher(page)).toContainText("Draft for Lena");
   await expect(switcher(page).locator(".when")).toHaveText(
     /^Frozen .* · open until .* · deleted on .*$/,
@@ -583,7 +639,8 @@ test("an author shares the whole work as a reading copy, and is taken to it", as
   expect(Date.parse(made.open_until)).toBeLessThan(Date.parse(made.deleted_on));
   // and: the dialog is gone and the copy is read
   await expect(sharing(page)).toBeHidden();
-  await expect(page).toHaveURL(/\/read\/copy--project_\w+--book$/);
+  await expect(page).toHaveURL(/\/read\/copy_\w+$/);
+  await expect(switcher(page)).toContainText("For Lena");
 });
 
 test("sections in a row are shared from the first ticked to the last", async ({
@@ -749,6 +806,9 @@ test("whoever may change a copy renames it from its menu", async ({ page }) => {
   expect((await asked).postDataJSON()).toEqual({ name: "For Lena, again" });
   await expect(renaming).toBeHidden();
   await expect(switcher(page)).toContainText("For Lena, again");
+  // and: it is still named so when read again
+  await page.reload();
+  await expect(switcher(page)).toContainText("For Lena, again");
 });
 
 test("a copy deleted from its menu is gone, and the live work is read", async ({
@@ -768,9 +828,17 @@ test("a copy deleted from its menu is gone, and the live work is read", async ({
   await deleting.getByRole("button", { name: "Delete for good" }).click();
 
   // then: it is deleted, and the live work is read
-  expect((await asked).url()).toMatch(/\/api\/readings\/copies\/copy--/);
+  expect((await asked).url()).toMatch(/\/api\/readings\/copies\/copy_/);
   await expect(page).toHaveURL(/\/read$/);
   await expect(page.locator(".reading-view .chip.live")).toBeVisible();
+  // and: only the other copy is listed, even when the page is read again
+  await copiesListed(page, ["First draft, part one"]);
+  await page.reload();
+  await switcher(page).click();
+  await expect(whatToRead(page).locator(".entry .name")).toHaveText([
+    "The work as it is now",
+    "First draft, part one",
+  ]);
 });
 
 test("the copy's menu and the switcher's list close at a click beside them", async ({

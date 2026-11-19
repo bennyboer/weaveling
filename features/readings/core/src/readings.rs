@@ -4,15 +4,16 @@ use std::sync::Arc;
 use ::access::KeptAccess;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, EventSourcingService, EventStore};
 use time::OffsetDateTime;
 use transacting::Transactions;
 
-use crate::catalog::{BookOutline, OutlineCatalog, SceneTextCatalog};
+use crate::catalog::{BookOutline, OutlineCatalog, ReadingCopyCatalog, SceneTextCatalog};
 use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
 use crate::following::BookFollowers;
 use crate::link::{ProjectLink, SceneLink};
+use crate::reading_copy::{ReadingCopy, ReadingCopyEvent};
 
 mod access;
 mod outlines;
@@ -25,6 +26,8 @@ pub use outlines::ToldSection;
 pub struct ReadingsCore {
     outlines: Arc<dyn OutlineCatalog>,
     texts: Arc<dyn SceneTextCatalog>,
+    copies: Arc<dyn ReadingCopyCatalog>,
+    events: Arc<EventSourcingService<ReadingCopy>>,
     followers: Arc<dyn BookFollowers>,
     transactions: Arc<dyn Transactions>,
     access: KeptAccess,
@@ -33,9 +36,12 @@ pub struct ReadingsCore {
 }
 
 impl ReadingsCore {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         outlines: Arc<dyn OutlineCatalog>,
         texts: Arc<dyn SceneTextCatalog>,
+        copies: Arc<dyn ReadingCopyCatalog>,
+        events: Arc<dyn EventStore<ReadingCopyEvent>>,
         followers: Arc<dyn BookFollowers>,
         transactions: Arc<dyn Transactions>,
         access: KeptAccess,
@@ -45,6 +51,8 @@ impl ReadingsCore {
         Self {
             outlines,
             texts,
+            copies,
+            events: Arc::new(EventSourcingService::new(events, clock.clone())),
             followers,
             transactions,
             access,

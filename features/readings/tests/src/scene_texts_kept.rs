@@ -3,9 +3,10 @@ use std::sync::Arc;
 use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
+use readings_catalog::InMemoryReadingCopyCatalog;
 use readings_catalog::InMemorySceneTextCatalog;
 use readings_core::{Block, NobodyFollows, Part, ReadingsCore, Run};
 use readings_messaging::KeepSceneTextsListener;
@@ -27,6 +28,8 @@ fn a_workbench() -> Wired {
     let readings = ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(InMemorySceneTextCatalog::new()),
+        Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),

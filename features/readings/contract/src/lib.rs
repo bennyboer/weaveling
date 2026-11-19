@@ -192,6 +192,21 @@ pub struct MarksDTO {
 pub mod refused {
     pub const MOMENT_UNREADABLE: &str = "reading-copy-moment-unreadable";
     pub const NOT_YOURS: &str = "reading-copy-not-yours";
+    pub const NAME_BLANK: &str = "reading-copy-name-blank";
+    pub const NAME_CONTROL_CHARACTER: &str = "reading-copy-name-control-character";
+    pub const NAME_TOO_LONG: &str = "reading-copy-name-too-long";
+    pub const OUTSIDE_THE_WORK: &str = "reading-copy-outside-the-work";
+    pub const OPEN_BEYOND_DELETION: &str = "reading-copy-open-beyond-deletion";
+    pub const TIMES_EARLIER: &str = "reading-copy-times-earlier";
 
-    pub const EVERY: [&str; 2] = [MOMENT_UNREADABLE, NOT_YOURS];
+    pub const EVERY: [&str; 8] = [
+        MOMENT_UNREADABLE,
+        NOT_YOURS,
+        NAME_BLANK,
+        NAME_CONTROL_CHARACTER,
+        NAME_TOO_LONG,
+        OUTSIDE_THE_WORK,
+        OPEN_BEYOND_DELETION,
+        TIMES_EARLIER,
+    ];
 }

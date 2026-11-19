@@ -5,12 +5,13 @@ use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use clock::FixedClock;
-use eventsourcing::{Agent, AggregateContext};
+use eventsourcing::{Agent, AggregateContext, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed};
 use live::testing::Subscriber;
 use live::{Broadcaster, Topics};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::context::PROJECT;
+use readings_catalog::InMemoryReadingCopyCatalog;
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{
     Block, OutlineCatalog, ReadingsCore, Run, SceneLink, SceneTextCatalog, SectionLink, ToldSection,
@@ -38,6 +39,8 @@ async fn a_book_followed() -> Followed {
     let readings = ReadingsCore::new(
         outlines.clone(),
         texts.clone(),
+        Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(TellingFollowers::new(outlines, texts, broadcaster.clone())),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),

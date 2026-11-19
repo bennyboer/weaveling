@@ -8,6 +8,9 @@ mod allowing;
 mod copies_api;
 
 #[cfg(test)]
+mod copying;
+
+#[cfg(test)]
 mod live_book_api;
 
 #[cfg(test)]

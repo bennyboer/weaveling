@@ -5,18 +5,49 @@ use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, InMemoryEventStore};
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction};
 
 use crate::catalog::{
-    BookOutline, CatalogError, OutlineCatalog, OutlinedSection, SceneTextCatalog,
+    BookOutline, CatalogError, OutlineCatalog, OutlinedSection, ReadingCopyCatalog,
+    ReadingCopySummary, SceneTextCatalog,
 };
 use crate::contents::{Block, Part, Run};
 use crate::error::ReadingsError;
 use crate::following::NobodyFollows;
+use crate::id::ReadingCopyId;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
 use crate::readings::ReadingsCore;
+
+/// No reading copies, as these cases are about the live book.
+struct NoCopies;
+
+#[async_trait]
+impl ReadingCopyCatalog for NoCopies {
+    async fn remember(
+        &self,
+        _transaction: &mut Transaction,
+        _summary: &ReadingCopySummary,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget(
+        &self,
+        _transaction: &mut Transaction,
+        _copy: &ReadingCopyId,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn copies_of(
+        &self,
+        _project: &ProjectLink,
+    ) -> Result<Vec<ReadingCopySummary>, CatalogError> {
+        Ok(vec![])
+    }
+}
 
 struct Outlines(HashMap<ProjectLink, BookOutline>);
 
@@ -138,6 +169,8 @@ fn readings(sections: Vec<OutlinedSection>, texts: &[(&str, &str)]) -> ReadingsC
                 .map(|(scene, words)| (SceneLink::from(*scene), text(words)))
                 .collect(),
         )),
+        Arc::new(NoCopies),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),

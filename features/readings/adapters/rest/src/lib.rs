@@ -19,7 +19,10 @@ use readings_contract::{
     ContentsDTO, ExtendReadingCopyRequest, ListedReadingCopyDTO, MakeReadingCopyRequest,
     ReadingCopyDTO, RenameReadingCopyRequest, SharedDTO, refused,
 };
-use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SceneLink, SectionLink, Shared};
+use readings_core::{
+    InvalidReadingCopyName, ProjectLink, ReadingCopyError, ReadingsCore, ReadingsError, SceneLink,
+    SectionLink, Shared,
+};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -230,6 +233,26 @@ fn problem_of(refusal: ReadingsError) -> Problem {
             Problem::not_found(serving::NOT_FOUND, refusal)
         }
         ReadingsError::NotYours => Problem::forbidden(refused::NOT_YOURS, refusal),
+        ReadingsError::OutsideTheWork => Problem::unprocessable(refused::OUTSIDE_THE_WORK, refusal),
+        ReadingsError::InvalidName(reason) => match reason {
+            InvalidReadingCopyName::Blank => Problem::rejected(refused::NAME_BLANK, reason),
+            InvalidReadingCopyName::ControlCharacter => {
+                Problem::rejected(refused::NAME_CONTROL_CHARACTER, reason)
+            }
+            InvalidReadingCopyName::TooLong { max, actual } => {
+                Problem::rejected(refused::NAME_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
+            }
+        },
+        ReadingsError::Events(events) => Problem::of(&events, |refusal| match refusal {
+            ReadingCopyError::Deleted => Problem::not_found(serving::NOT_FOUND, refusal),
+            ReadingCopyError::OpenBeyondDeletion => {
+                Problem::unprocessable(refused::OPEN_BEYOND_DELETION, refusal)
+            }
+            ReadingCopyError::Earlier => Problem::unprocessable(refused::TIMES_EARLIER, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
+        }),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

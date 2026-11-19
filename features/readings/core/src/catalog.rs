@@ -11,7 +11,7 @@ use crate::contents::Block;
 use crate::id::ReadingCopyId;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
 use crate::reading_copies::Extent;
-use crate::reading_copy::Times;
+use crate::reading_copy::{ReadingCopy, Times};
 use crate::reading_copy_name::ReadingCopyName;
 
 #[derive(Debug, Error)]
@@ -131,7 +131,21 @@ pub struct ReadingCopySummary {
     pub times: Times,
 }
 
-/// The reading copies of each project, kept together with the copies' own events, in the same transaction.
+impl ReadingCopySummary {
+    pub fn of(copy: ReadingCopyId, standing: &ReadingCopy) -> Self {
+        Self {
+            copy,
+            project: standing.project().clone(),
+            name: standing.name().clone(),
+            made_by: standing.made_by().clone(),
+            made_at: standing.made_at(),
+            extent: standing.extent(),
+            times: standing.times(),
+        }
+    }
+}
+
+/// The reading copies of each project, kept by the readings feature from the copies' own events.
 #[async_trait]
 pub trait ReadingCopyCatalog: Send + Sync {
     /// Keeps a copy as it stands now, in place of what was kept of it before.

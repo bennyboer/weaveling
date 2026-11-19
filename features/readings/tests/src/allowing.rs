@@ -4,6 +4,8 @@ use crate::sample::SampleBook;
 use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::InMemoryEventStore;
+use readings_catalog::InMemoryReadingCopyCatalog;
 use readings_core::{NobodyFollows, ReadingsCore};
 use transacting::InMemoryTransactions;
 
@@ -13,6 +15,8 @@ pub fn everyone() -> ReadingsCore {
     ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(SampleBook),
+        Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),

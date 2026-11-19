@@ -3,11 +3,12 @@ use std::sync::Arc;
 use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::Agent;
+use eventsourcing::{Agent, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{AttachmentDTO, OutlineStateDTO, STATE_CHANGED, SectionStateDTO};
 use projects_contract::{DELETED, RENAMED, STARTED};
+use readings_catalog::InMemoryReadingCopyCatalog;
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{
     Block, Contents, NobodyFollows, Part, ProjectLink, ReadingsCore, ReadingsError, Run, SceneLink,
@@ -40,6 +41,8 @@ async fn a_workbench() -> Wired {
     let readings = ReadingsCore::new(
         Arc::new(InMemoryOutlineCatalog::new()),
         Arc::new(InMemorySceneTextCatalog::new()),
+        Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         KeptAccess::new(Arc::new(InMemoryAccess::new())),

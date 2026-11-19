@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use crate::sample::SampleBook;
 use access::{InMemoryAccess, KeptAccess};
-use eventsourcing::{AccountId, Agent};
+use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::{RESTORED, TRASHED};
+use readings_catalog::InMemoryReadingCopyCatalog;
 use readings_core::{NobodyFollows, ReadingsCore, ReadingsError};
 use readings_messaging::{RememberRolesListener, RememberTrashListener};
 use serde_json::{Value, json};
@@ -36,6 +37,8 @@ fn heard() -> Heard {
     let readings = ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(SampleBook),
+        Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
         access.clone(),

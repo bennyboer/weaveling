@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::sample::SampleBook;
+use crate::copying::Copying;
 use access::{AccessCatalog, AccessError, HearsAccess, InMemoryAccess, KeptAccess, Role};
 use async_trait::async_trait;
 use axum::Extension;
@@ -11,10 +11,10 @@ use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, Version};
 use live::testing::Subscriber;
 use live::{Broadcaster, Topics};
-use readings_core::{NobodyFollows, ReadingsCore};
+use readings_core::ReadingsCore;
 use serde_json::Value;
 use time::OffsetDateTime;
-use transacting::{InMemoryTransactions, Transaction};
+use transacting::Transaction;
 
 const PROJECT: &str = "project_loom";
 
@@ -141,6 +141,7 @@ impl AccessCatalog for Reachable {
 
 struct Guarded {
     access: Arc<Reachable>,
+    copying: Copying,
     readings: ReadingsCore,
     ada: TestServer,
     grace: TestServer,
@@ -149,15 +150,12 @@ struct Guarded {
 async fn a_project_only_ada_may_read() -> Guarded {
     let access = Arc::new(Reachable::default());
     let kept_access = KeptAccess::new(access.clone());
-    let readings = ReadingsCore::new(
-        Arc::new(SampleBook),
-        Arc::new(SampleBook),
-        Arc::new(NobodyFollows),
-        Arc::new(InMemoryTransactions::new()),
+    let copying = crate::copying::a_workbench(
         kept_access.clone(),
         Arc::new(kept_access),
         Arc::new(FixedClock::new(clock::at(1_700_000_000))),
     );
+    let readings = copying.readings.clone();
     readings
         .remember_role(
             None,
@@ -181,6 +179,7 @@ async fn a_project_only_ada_may_read() -> Guarded {
         ada: as_account("account_ada"),
         grace: as_account("account_grace"),
         access,
+        copying,
         readings,
     }
 }
@@ -227,20 +226,40 @@ async fn whoever_may_not_read_the_project_cannot_follow_its_book_as_if_it_were_n
     assert_eq!(grace.ended().await, "not-there");
 }
 
+/// Makes a copy of the whole work as an account, and answers its address.
+async fn copy_made_by(server: &TestServer, name: &str) -> String {
+    let made = server
+        .post("/readings/copies")
+        .json(&serde_json::json!({
+            "project": PROJECT,
+            "name": name,
+            "shared": { "kind": "book" },
+            "open_until": null,
+            "deleted_on": null,
+        }))
+        .await;
+    made.assert_status(StatusCode::CREATED);
+
+    format!(
+        "/readings/copies/{}",
+        made.json::<Value>()["id"]
+            .as_str()
+            .expect("a copy made has an id")
+    )
+}
+
 #[tokio::test]
 async fn a_project_s_copies_are_not_there_for_whoever_may_not_read_it() {
-    // given: a project only ada may read
+    // given: a project only ada may read, with a copy she made
     let guarded = a_project_only_ada_may_read().await;
+    let hers = copy_made_by(&guarded.ada, "Ada's copy").await;
 
-    // when: grace asks for its copies, and for one of them
+    // when: grace asks for its copies, and for that one
     let listed = guarded
         .grace
         .get(&format!("/readings/copies?project={PROJECT}"))
         .await;
-    let one = guarded
-        .grace
-        .get("/readings/copies/copy--project_loom--book")
-        .await;
+    let one = guarded.grace.get(&hers).await;
 
     // then: neither is there for her, as if the project were not
     listed.assert_status(StatusCode::NOT_FOUND);
@@ -271,11 +290,8 @@ async fn a_copy_is_made_by_any_member_and_by_nobody_else() {
 
 #[tokio::test]
 async fn a_copy_is_changed_by_whoever_made_it_or_an_owner_and_by_no_other_member() {
-    // given: a project ada may only read, with a copy she made and one Hedy made
+    // given: a project ada may only read, and otto owns
     let guarded = a_project_only_ada_may_read().await;
-    let hers = "/readings/copies/copy--project_loom--book";
-    let hedys = "/readings/copies/copy--project_loom--section";
-    // and: otto, who owns it
     guarded
         .readings
         .remember_role(
@@ -291,15 +307,26 @@ async fn a_copy_is_changed_by_whoever_made_it_or_an_owner_and_by_no_other_member
         readings_rest::router(guarded.readings.clone())
             .layer(Extension(Agent::Account(AccountId::from("account_otto")))),
     );
+    // and: a copy each of them made
+    let hers = copy_made_by(&guarded.ada, "Ada's copy").await;
+    let ottos = copy_made_by(&otto, "Otto's copy").await;
 
-    // expect: ada is told she may change her own copy and not Hedy's
-    let listed: Value = guarded
+    // expect: ada is told she may change her own copy and not otto's
+    guarded.copying.settle().await;
+    let listed: Vec<Value> = guarded
         .ada
         .get(&format!("/readings/copies?project={PROJECT}"))
         .await
         .json();
-    assert_eq!(listed[0]["may_change"], true);
-    assert_eq!(listed[1]["may_change"], false);
+    let may_change = |name: &str| {
+        listed
+            .iter()
+            .find(|copy| copy["name"] == name)
+            .expect("both copies are listed")["may_change"]
+            .clone()
+    };
+    assert_eq!(may_change("Ada's copy"), true);
+    assert_eq!(may_change("Otto's copy"), false);
     // and: she renames her own
     guarded
         .ada
@@ -307,39 +334,37 @@ async fn a_copy_is_changed_by_whoever_made_it_or_an_owner_and_by_no_other_member
         .json(&serde_json::json!({ "name": "Mine" }))
         .await
         .assert_status_ok();
-    // and: is refused renaming, deleting or extending Hedy's
+    // and: is refused renaming, deleting or extending otto's
     for refused in [
         guarded
             .ada
-            .put(&format!("{hedys}/name"))
+            .put(&format!("{ottos}/name"))
             .json(&serde_json::json!({ "name": "Not mine" }))
             .await,
-        guarded.ada.delete(hedys).await,
+        guarded.ada.delete(&ottos).await,
         guarded
             .ada
-            .put(&format!("{hedys}/times"))
+            .put(&format!("{ottos}/times"))
             .json(&serde_json::json!({ "open_until": null, "deleted_on": null }))
             .await,
     ] {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "reading-copy-not-yours");
     }
-    // and: otto, an owner, deletes Hedy's
-    otto.delete(hedys)
+    // and: otto, an owner, deletes hers
+    otto.delete(&hers)
         .await
         .assert_status(StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
 async fn a_copy_is_read_by_whoever_may_read_the_project_it_was_made_of() {
-    // given: a project only ada may read
+    // given: a project only ada may read, with a copy she made
     let guarded = a_project_only_ada_may_read().await;
+    let hers = copy_made_by(&guarded.ada, "Ada's copy").await;
 
-    // when: ada asks for one of its copies by the copy alone
-    let one = guarded
-        .ada
-        .get("/readings/copies/copy--project_loom--book")
-        .await;
+    // when: ada asks for it by the copy alone
+    let one = guarded.ada.get(&hers).await;
 
     // then: she is given it, the project it was made of found from the copy
     one.assert_status_ok();

@@ -1,190 +1,436 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
+use access::{InMemoryAccess, KeptAccess};
+use async_trait::async_trait;
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::TestServer;
-use eventsourcing::Agent;
+use axum_test::{TestResponse, TestServer};
+use clock::FixedClock;
+use eventsourcing::{AccountId, Agent};
 use readings_contract::{
     ExtentDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, PartDTO, ReadingCopyDTO, SharedDTO,
     refused,
 };
+use readings_core::ReadingCopyId;
+use serde_json::{Value, json};
+use time::{Duration, OffsetDateTime};
 
-fn server() -> TestServer {
-    TestServer::new(
-        readings_rest::router(crate::allowing::everyone()).layer(Extension(Agent::Local)),
-    )
+use crate::copying::Copying;
+
+const LOOM: &str = "project_loom";
+
+/// Hedy owns the loom and Ada reads it; nobody else is a member of anything.
+struct Members;
+
+#[async_trait]
+impl Authorizer for Members {
+    async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
+        Ok(project == LOOM
+            && match agent {
+                Agent::Account(account) if account.as_str() == "account_hedy" => true,
+                Agent::Account(account) if account.as_str() == "account_ada" => act == Act::Read,
+                _ => false,
+            })
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Only(BTreeSet::from([LOOM.to_owned()])))
+    }
+}
+
+struct Readings {
+    copying: Copying,
+    clock: Arc<FixedClock>,
+}
+
+fn started() -> OffsetDateTime {
+    clock::at(1_700_000_000)
+}
+
+fn readings() -> Readings {
+    let clock = Arc::new(FixedClock::new(started()));
+
+    Readings {
+        copying: crate::copying::a_workbench(
+            KeptAccess::new(Arc::new(InMemoryAccess::new())),
+            Arc::new(Members),
+            clock.clone(),
+        ),
+        clock,
+    }
+}
+
+fn account(named: &str) -> Agent {
+    Agent::Account(AccountId::from(named))
+}
+
+impl Readings {
+    fn as_(&self, agent: Agent) -> TestServer {
+        TestServer::new(
+            readings_rest::router(self.copying.readings.clone()).layer(Extension(agent)),
+        )
+    }
+
+    fn hedy(&self) -> TestServer {
+        self.as_(account("account_hedy"))
+    }
+
+    fn ada(&self) -> TestServer {
+        self.as_(account("account_ada"))
+    }
+
+    fn later(&self, by: Duration) {
+        self.clock.set(started() + by);
+    }
+
+    /// The project's copies as listed for whoever asks, once every change has reached the list.
+    async fn listed(&self, server: &TestServer) -> Vec<ListedReadingCopyDTO> {
+        self.copying.settle().await;
+        let response = server
+            .get(&format!("/readings/copies?project={LOOM}"))
+            .await;
+        response.assert_status_ok();
+
+        response.json::<Vec<ListedReadingCopyDTO>>()
+    }
+}
+
+fn asked_for(name: &str, shared: SharedDTO) -> MakeReadingCopyRequest {
+    MakeReadingCopyRequest {
+        project: LOOM.to_owned(),
+        name: name.to_owned(),
+        shared,
+        open_until: Some("2023-12-14T00:00:00Z".to_owned()),
+        deleted_on: Some("2024-02-14T00:00:00Z".to_owned()),
+    }
+}
+
+fn both_sections() -> SharedDTO {
+    SharedDTO::Sections {
+        first: "section_morning".to_owned(),
+        last: "section_market".to_owned(),
+    }
+}
+
+async fn made(server: &TestServer, name: &str) -> ListedReadingCopyDTO {
+    let response = server
+        .post("/readings/copies")
+        .json(&asked_for(name, both_sections()))
+        .await;
+    response.assert_status(StatusCode::CREATED);
+
+    response.json::<ListedReadingCopyDTO>()
+}
+
+fn refusal(response: &TestResponse) -> Value {
+    response.json::<Value>()["type"].clone()
+}
+
+#[tokio::test]
+async fn a_copy_made_is_listed_for_every_member_as_it_was_made() {
+    // given: the readings
+    let readings = readings();
+
+    // when: a reader makes a copy of both sections, open for a month and kept for three
+    let made = made(&readings.ada(), "For Lena").await;
+
+    // then: it answers as made by them, holding two sections, open, with its times
+    assert_eq!(made.name, "For Lena");
+    assert_eq!(made.extent, ExtentDTO::Sections { count: 2 });
+    assert_eq!(made.open_until.as_deref(), Some("2023-12-14T00:00:00Z"));
+    assert_eq!(made.deleted_on.as_deref(), Some("2024-02-14T00:00:00Z"));
+    assert!(made.open);
+    assert!(made.made_by_you);
+    assert!(made.may_change);
+    // and: they find it listed just so
+    assert_eq!(readings.listed(&readings.ada()).await, vec![made.clone()]);
+    // and: the owner finds it listed as made by someone else, though they may change it
+    let [for_the_owner] = readings
+        .listed(&readings.hedy())
+        .await
+        .try_into()
+        .expect("one copy");
+    assert_eq!(for_the_owner.id, made.id);
+    assert!(!for_the_owner.made_by_you);
+    assert!(for_the_owner.may_change);
 }
 
 #[tokio::test]
 async fn a_project_s_copies_are_listed_newest_first() {
-    // given: the readings
-    let server = server();
+    // given: three copies made a day apart
+    let readings = readings();
+    for (day, name) in ["First", "Second", "Third"].into_iter().enumerate() {
+        readings.later(Duration::days(day as i64));
+        made(&readings.hedy(), name).await;
+    }
 
-    // when: a project's copies are asked for
-    let listed = server
-        .get("/readings/copies?project=project_loom")
+    // when: the project's copies are asked for
+    let names: Vec<String> = readings
+        .listed(&readings.hedy())
         .await
-        .json::<Vec<ListedReadingCopyDTO>>();
+        .into_iter()
+        .map(|copy| copy.name)
+        .collect();
 
-    // then: they come newest first
-    let made: Vec<&str> = listed.iter().map(|copy| copy.made_at.as_str()).collect();
-    let mut newest_first = made.clone();
-    newest_first.sort_by(|one, other| other.cmp(one));
-    assert_eq!(made, newest_first);
-    // and: each says what it holds, who made it, and whether it is open
-    assert_eq!(listed[0].extent, ExtentDTO::Book);
-    assert!(listed[0].made_by_you);
-    assert!(listed[0].open);
-    assert!(!listed[1].made_by_you);
-    assert!(!listed[1].open);
+    // then: the newest comes first
+    assert_eq!(names, ["Third", "Second", "First"]);
+}
+
+#[tokio::test]
+async fn a_copy_closes_once_its_opening_has_passed() {
+    // given: a copy open for a month
+    let readings = readings();
+    made(&readings.hedy(), "For Lena").await;
+
+    // when: two months pass
+    readings.later(Duration::days(60));
+
+    // then: it is listed as closed
+    assert!(!readings.listed(&readings.hedy()).await[0].open);
 }
 
 #[tokio::test]
 async fn a_copy_answers_with_what_it_holds() {
-    // given: a copy of a project
-    let server = server();
-    let listed = server
-        .get("/readings/copies?project=project_loom")
-        .await
-        .json::<Vec<ListedReadingCopyDTO>>();
+    // given: a copy of the project
+    let readings = readings();
+    let made = made(&readings.hedy(), "For Lena").await;
 
     // when: it is asked for
-    let read = server
-        .get(&format!("/readings/copies/{}", listed[0].id))
+    let read = readings
+        .hedy()
+        .get(&format!("/readings/copies/{}", made.id))
         .await
         .json::<ReadingCopyDTO>();
 
-    // then: it is the copy listed, with its book
-    assert_eq!(read.copy, listed[0]);
-    assert_eq!(read.contents.project, "project_loom");
+    // then: it is the copy listed, with its work
+    assert_eq!(read.copy, made);
+    assert_eq!(read.contents.project, LOOM);
     assert!(matches!(read.contents.parts[0], PartDTO::Section { .. }));
 }
 
 #[tokio::test]
-async fn a_copy_that_is_not_there_is_not_found() {
-    // when: a copy nobody made is asked for
-    let response = server().get("/readings/copies/copy_nobody_made").await;
+async fn a_copy_nobody_made_is_not_there() {
+    // given: the readings
+    let readings = readings();
 
-    // then: it is not there
-    response.assert_status(StatusCode::NOT_FOUND);
-}
-
-fn asked_for(open_until: Option<&str>) -> MakeReadingCopyRequest {
-    MakeReadingCopyRequest {
-        project: "project_loom".to_owned(),
-        name: "Chapters 1–3 for Lena".to_owned(),
-        shared: SharedDTO::Sections {
-            first: "section_morning".to_owned(),
-            last: "section_market".to_owned(),
-        },
-        open_until: open_until.map(str::to_owned),
-        deleted_on: None,
+    // expect: a copy nobody made, or that could be no copy at all, is not there
+    for nobody_made in [
+        ReadingCopyId::generate(started()).to_string(),
+        "nonsense".to_owned(),
+    ] {
+        readings
+            .hedy()
+            .get(&format!("/readings/copies/{nobody_made}"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
     }
 }
 
 #[tokio::test]
-async fn a_copy_made_answers_as_it_is_listed() {
-    // when: a copy of two sections is made, open until a day
-    let response = server()
-        .post("/readings/copies")
-        .json(&asked_for(Some("2026-12-17T12:00:00Z")))
-        .await;
+async fn a_copy_of_scenes_in_a_row_counts_them_across_sections() {
+    // given: a copy asked for from the first scene of one section to the last of the next
+    let readings = readings();
+    let asked = asked_for(
+        "Harbour to stalls",
+        SharedDTO::Scenes {
+            first: "scene_harbour".to_owned(),
+            last: "scene_stalls".to_owned(),
+        },
+    );
 
-    // then: it is made, under its name, holding sections, open until that day and kept
+    // when: it is made
+    let response = readings.hedy().post("/readings/copies").json(&asked).await;
+
+    // then: it holds the three scenes
     response.assert_status(StatusCode::CREATED);
-    let made = response.json::<ListedReadingCopyDTO>();
-    assert_eq!(made.name, "Chapters 1–3 for Lena");
-    assert!(matches!(made.extent, ExtentDTO::Sections { .. }));
-    assert_eq!(made.open_until.as_deref(), Some("2026-12-17T12:00:00Z"));
-    assert_eq!(made.deleted_on, None);
-    assert!(made.made_by_you);
-}
-
-#[tokio::test]
-async fn a_moment_that_cannot_be_read_is_refused() {
-    // when: a copy is asked for with a moment that is none
-    let response = server()
-        .post("/readings/copies")
-        .json(&asked_for(Some("next tuesday")))
-        .await;
-
-    // then: it is refused as unreadable
-    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(
-        response.json::<serde_json::Value>()["type"],
-        refused::MOMENT_UNREADABLE
+        response.json::<ListedReadingCopyDTO>().extent,
+        ExtentDTO::Scenes { count: 3 }
     );
 }
 
 #[tokio::test]
-async fn a_copy_of_scenes_in_a_row_holds_scenes() {
-    // given: a copy asked for of a run of scenes
-    let mut asked = asked_for(None);
-    asked.shared = SharedDTO::Scenes {
-        first: "scene_harbour".to_owned(),
-        last: "scene_wall".to_owned(),
-    };
+async fn a_copy_of_what_is_not_in_the_work_is_refused() {
+    // given: the readings
+    let readings = readings();
 
-    // when: it is made
-    let response = server().post("/readings/copies").json(&asked).await;
-
-    // then: it holds scenes
-    response.assert_status(StatusCode::CREATED);
-    assert!(matches!(
-        response.json::<ListedReadingCopyDTO>().extent,
-        ExtentDTO::Scenes { .. }
-    ));
+    // expect: a section the work does not hold, or a run that ends before it begins, is refused
+    for shared in [
+        SharedDTO::Sections {
+            first: "section_morning".to_owned(),
+            last: "section_gone".to_owned(),
+        },
+        SharedDTO::Scenes {
+            first: "scene_wall".to_owned(),
+            last: "scene_harbour".to_owned(),
+        },
+    ] {
+        let response = readings
+            .hedy()
+            .post("/readings/copies")
+            .json(&asked_for("Nowhere", shared))
+            .await;
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(refusal(&response), refused::OUTSIDE_THE_WORK);
+    }
+    // and: no copy was made
+    assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
 }
 
 #[tokio::test]
-async fn a_copy_renamed_answers_under_its_new_name_and_one_deleted_is_gone() {
-    // given: a copy, which the one person without accounts may change
-    let server = server();
-    let listed = server
-        .get("/readings/copies?project=project_loom")
-        .await
-        .json::<Vec<ListedReadingCopyDTO>>();
-    assert!(listed.iter().all(|copy| copy.may_change));
+async fn a_copy_with_a_blank_name_or_open_beyond_its_deletion_is_refused() {
+    // given: the readings
+    let readings = readings();
+    let mut open_too_long = asked_for("For Lena", both_sections());
+    open_too_long.open_until = None;
 
-    // when: it is renamed, and deleted
-    let renamed = server
-        .put(&format!("/readings/copies/{}/name", listed[0].id))
-        .json(&serde_json::json!({ "name": "For Lena, again" }))
+    // expect: a blank name is refused
+    let blank = readings
+        .hedy()
+        .post("/readings/copies")
+        .json(&asked_for("   ", both_sections()))
         .await;
-    let deleted = server
-        .delete(&format!("/readings/copies/{}", listed[0].id))
+    blank.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&blank), refused::NAME_BLANK);
+    // and: a copy open with no end, though it is deleted, is refused
+    let beyond = readings
+        .hedy()
+        .post("/readings/copies")
+        .json(&open_too_long)
+        .await;
+    beyond.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(refusal(&beyond), refused::OPEN_BEYOND_DELETION);
+}
+
+#[tokio::test]
+async fn a_moment_that_cannot_be_read_is_refused() {
+    // given: a copy asked for with a moment that is none
+    let mut asked = asked_for("For Lena", both_sections());
+    asked.open_until = Some("next tuesday".to_owned());
+
+    // when: it is asked for
+    let response = readings()
+        .hedy()
+        .post("/readings/copies")
+        .json(&asked)
         .await;
 
-    // then: it answers under its new name, and then as deleted
+    // then: it is refused as unreadable
+    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(refusal(&response), refused::MOMENT_UNREADABLE);
+}
+
+#[tokio::test]
+async fn a_copy_renamed_is_listed_under_its_new_name() {
+    // given: a copy a reader made
+    let readings = readings();
+    let made = made(&readings.ada(), "For Lena").await;
+
+    // when: they rename it
+    let renamed = readings
+        .ada()
+        .put(&format!("/readings/copies/{}/name", made.id))
+        .json(&json!({ "name": "For Lena, again" }))
+        .await;
+
+    // then: it answers and is listed under its new name
     renamed.assert_status_ok();
     assert_eq!(
         renamed.json::<ListedReadingCopyDTO>().name,
         "For Lena, again"
     );
-    deleted.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(
+        readings.listed(&readings.hedy()).await[0].name,
+        "For Lena, again"
+    );
 }
 
 #[tokio::test]
-async fn a_copy_extended_answers_with_its_new_times() {
-    // given: a copy that has closed
-    let server = server();
-    let listed = server
-        .get("/readings/copies?project=project_loom")
-        .await
-        .json::<Vec<ListedReadingCopyDTO>>();
-    let closed = listed
-        .iter()
-        .find(|copy| !copy.open)
-        .expect("one sample copy has closed");
+async fn a_copy_s_times_move_later_and_never_earlier() {
+    // given: a copy open for a month and kept for three
+    let readings = readings();
+    let made = made(&readings.hedy(), "For Lena").await;
+    let times = format!("/readings/copies/{}/times", made.id);
 
-    // when: it is opened again until a later day, and kept for good
-    let extended = server
-        .put(&format!("/readings/copies/{}/times", closed.id))
-        .json(&serde_json::json!({ "open_until": "2099-01-01T00:00:00Z", "deleted_on": null }))
+    // when: it is opened until later, and kept for good
+    let extended = readings
+        .hedy()
+        .put(&times)
+        .json(&json!({ "open_until": "2024-01-14T00:00:00Z", "deleted_on": null }))
         .await;
 
-    // then: it is open until that day, and kept
+    // then: it answers with its new times
     extended.assert_status_ok();
     let extended = extended.json::<ListedReadingCopyDTO>();
-    assert_eq!(extended.open_until.as_deref(), Some("2099-01-01T00:00:00Z"));
+    assert_eq!(extended.open_until.as_deref(), Some("2024-01-14T00:00:00Z"));
     assert_eq!(extended.deleted_on, None);
-    assert!(extended.open);
+    // and: moving its opening earlier again is refused
+    let earlier = readings
+        .hedy()
+        .put(&times)
+        .json(&json!({ "open_until": "2023-12-14T00:00:00Z", "deleted_on": null }))
+        .await;
+    earlier.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(refusal(&earlier), refused::TIMES_EARLIER);
+}
+
+#[tokio::test]
+async fn a_copy_deleted_is_gone() {
+    // given: a copy
+    let readings = readings();
+    let made = made(&readings.hedy(), "For Lena").await;
+    let copy = format!("/readings/copies/{}", made.id);
+
+    // when: it is deleted
+    readings
+        .hedy()
+        .delete(&copy)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: it is neither listed nor there, and deleting it again finds nothing
+    assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
+    readings
+        .hedy()
+        .get(&copy)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    readings
+        .hedy()
+        .delete(&copy)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_late_message_about_a_copy_since_deleted_does_not_bring_it_back() {
+    // given: a copy made, listed, and deleted
+    let readings = readings();
+    let made = made(&readings.hedy(), "For Lena").await;
+    readings.listed(&readings.hedy()).await;
+    readings
+        .hedy()
+        .delete(&format!("/readings/copies/{}", made.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    readings.copying.settle().await;
+
+    // when: the message that it was made arrives once more
+    readings
+        .copying
+        .readings
+        .catalogue(
+            None,
+            &made
+                .id
+                .parse::<ReadingCopyId>()
+                .expect("a copy's id reads back"),
+        )
+        .await
+        .expect("cataloguing should succeed");
+
+    // then: it stays gone, as the list is kept from the copy as it stands
+    assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
 }

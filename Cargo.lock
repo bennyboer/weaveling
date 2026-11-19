@@ -6755,6 +6755,7 @@ dependencies = [
  "weaveling-live",
  "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
  "weaveling-readings-catalog",
@@ -6786,6 +6787,7 @@ dependencies = [
  "weaveling-readings-core",
  "weaveling-readings-messaging",
  "weaveling-readings-rest",
+ "weaveling-readings-store",
  "weaveling-transacting",
  "weaveling-wiring",
 ]

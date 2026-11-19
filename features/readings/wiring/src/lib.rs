@@ -3,24 +3,32 @@ use std::sync::Arc;
 use access::{InMemoryAccess, KeptAccess};
 use authorizing::{AllowingEverything, Authorizer};
 use chores::ForgetOldTombstones;
+use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::Outbox;
-use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
-use readings_core::{OutlineCatalog, ReadingsCore, SceneTextCatalog};
-use readings_messaging::{
-    KeepBookTitlesListener, KeepOutlinesListener, KeepSceneTextsListener, RememberRolesListener,
-    RememberTrashListener,
+use readings_catalog::{
+    InMemoryOutlineCatalog, InMemoryReadingCopyCatalog, InMemorySceneTextCatalog,
 };
-use transacting::{InMemoryTransactions, Transactions};
-use wiring::{Context, Feature, Wired};
+use readings_core::{
+    OutlineCatalog, ReadingCopyCatalog, ReadingCopyEvent, ReadingsCore, SceneTextCatalog,
+};
+use readings_messaging::{
+    CatalogueReadingCopiesListener, KeepBookTitlesListener, KeepOutlinesListener,
+    KeepSceneTextsListener, RememberRolesListener, RememberTrashListener,
+};
+use transacting::Transactions;
+use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
     pub outlines: Arc<dyn OutlineCatalog>,
     pub texts: Arc<dyn SceneTextCatalog>,
+    pub copies: Arc<dyn ReadingCopyCatalog>,
+    pub events: Arc<dyn EventStore<ReadingCopyEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
+    pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -35,6 +43,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let readings = ReadingsCore::new(
         ports.outlines.clone(),
         ports.texts.clone(),
+        ports.copies.clone(),
+        ports.events.clone(),
         Arc::new(readings_rest::TellingFollowers::new(
             ports.outlines.clone(),
             ports.texts.clone(),
@@ -54,6 +64,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(KeepOutlinesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepBookTitlesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepSceneTextsListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(CatalogueReadingCopiesListener::new(readings.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
@@ -80,31 +91,58 @@ impl Feature for ReadingsFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(readings_messaging::message_for, context);
+
         Ports {
             outlines: Arc::new(InMemoryOutlineCatalog::new()),
             texts: Arc::new(InMemorySceneTextCatalog::new()),
-            transactions: Arc::new(InMemoryTransactions::new()),
+            copies: Arc::new(InMemoryReadingCopyCatalog::new()),
+            events,
+            transactions,
             access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
+            outbox,
         }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
+            &pool,
+            readings_store::codec(),
+            readings_messaging::message_for,
+            context,
+        );
+
         Ok(Ports {
             outlines: Arc::new(readings_catalog::PostgresOutlineCatalog::new(pool.clone())),
             texts: Arc::new(readings_catalog::PostgresSceneTextCatalog::new(
                 pool.clone(),
             )),
-            transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
+            copies: Arc::new(readings_catalog::PostgresReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            events,
+            transactions,
             access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
+            outbox,
         })
     }
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
+            eventsourcing::postgres::migrations(),
+            outbox::postgres::migrations(),
             readings_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
             access::postgres::migrations(),
@@ -113,26 +151,44 @@ impl Feature for ReadingsFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
+            &pool,
+            readings_store::codec(),
+            readings_messaging::message_for,
+            context,
+        );
+
         Ok(Ports {
             outlines: Arc::new(readings_catalog::SqliteOutlineCatalog::new(pool.clone())),
             texts: Arc::new(readings_catalog::SqliteSceneTextCatalog::new(pool.clone())),
-            transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
+            copies: Arc::new(readings_catalog::SqliteReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            events,
+            transactions,
             access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
+            outbox,
         })
     }
 
     #[cfg(feature = "sqlite")]
     fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
+            eventsourcing::sqlite::migrations(),
+            outbox::sqlite::migrations(),
             readings_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
             access::sqlite::migrations(),
         ]
     }
 
-    fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {
-        None
+    fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        Some(ports.outbox.clone())
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
