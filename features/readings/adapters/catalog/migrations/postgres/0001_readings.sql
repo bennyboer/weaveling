@@ -25,3 +25,18 @@ CREATE TABLE book_tombstones (
 );
 
 CREATE INDEX gone_books_by_laid_at ON book_tombstones (laid_at);
+
+CREATE TABLE reading_copies (
+    copy          TEXT COLLATE "C" PRIMARY KEY,
+    project       TEXT COLLATE "C" NOT NULL,
+    name          TEXT             NOT NULL,
+    made_by_kind  TEXT             NOT NULL,
+    made_by       TEXT COLLATE "C",
+    made_at       TIMESTAMPTZ      NOT NULL,
+    extent        TEXT             NOT NULL,
+    extent_count  BIGINT,
+    open_until    TIMESTAMPTZ,
+    deleted_on    TIMESTAMPTZ
+);
+
+CREATE INDEX reading_copies_by_project_newest ON reading_copies (project, made_at DESC, copy DESC);

@@ -6655,6 +6655,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-readings-core",
  "weaveling-test-harness",
  "weaveling-transacting",

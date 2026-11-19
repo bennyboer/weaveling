@@ -14,7 +14,10 @@ mod reading_copy_tests;
 #[cfg(test)]
 mod readings_tests;
 
-pub use catalog::{BookOutline, CatalogError, OutlineCatalog, OutlinedSection, SceneTextCatalog};
+pub use catalog::{
+    BookOutline, CatalogError, OutlineCatalog, OutlinedSection, ReadingCopyCatalog,
+    ReadingCopySummary, SceneTextCatalog,
+};
 pub use contents::{Block, Contents, FigureSize, Marks, Part, Run};
 pub use error::ReadingsError;
 pub use following::{BookFollowers, NobodyFollows};

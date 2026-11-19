@@ -2,16 +2,21 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use async_trait::async_trait;
+use eventsourcing::Agent;
 use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::contents::Block;
+use crate::id::ReadingCopyId;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
+use crate::reading_copies::Extent;
+use crate::reading_copy::Times;
+use crate::reading_copy_name::ReadingCopyName;
 
 #[derive(Debug, Error)]
 pub enum CatalogError {
-    #[error("the catalog of the book could not be reached")]
+    #[error("what the readings feature keeps could not be reached")]
     Backend(#[source] Box<dyn Error + Send + Sync>),
 }
 
@@ -112,4 +117,40 @@ pub trait SceneTextCatalog: Send + Sync {
         &self,
         scenes: &[SceneLink],
     ) -> Result<HashMap<SceneLink, Vec<Block>>, CatalogError>;
+}
+
+/// A reading copy as the list of its project's copies keeps it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadingCopySummary {
+    pub copy: ReadingCopyId,
+    pub project: ProjectLink,
+    pub name: ReadingCopyName,
+    pub made_by: Agent,
+    pub made_at: OffsetDateTime,
+    pub extent: Extent,
+    pub times: Times,
+}
+
+/// The reading copies of each project, kept together with the copies' own events, in the same transaction.
+#[async_trait]
+pub trait ReadingCopyCatalog: Send + Sync {
+    /// Keeps a copy as it stands now, in place of what was kept of it before.
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &ReadingCopySummary,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets a deleted copy.
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyId,
+    ) -> Result<(), CatalogError>;
+
+    /// Every copy of a project, the newest first.
+    async fn copies_of(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Vec<ReadingCopySummary>, CatalogError>;
 }

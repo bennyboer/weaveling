@@ -93,3 +93,31 @@ mod outlines {
 
     crate::outline_suite::outline_conformance_tests!(OnSqlite<SqliteOutlineCatalog>);
 }
+
+mod copies {
+    use super::*;
+    use crate::copies_sqlite::SqliteReadingCopyCatalog;
+
+    #[async_trait]
+    impl Workbench for OnSqlite<SqliteReadingCopyCatalog> {
+        type Catalog = SqliteReadingCopyCatalog;
+
+        async fn setup() -> Self {
+            OnSqlite::over(SqliteReadingCopyCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnSqlite::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnSqlite::cleanup(self).await;
+        }
+    }
+
+    crate::copies_suite::copies_conformance_tests!(OnSqlite<SqliteReadingCopyCatalog>);
+}

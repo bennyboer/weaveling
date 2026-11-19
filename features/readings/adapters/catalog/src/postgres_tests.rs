@@ -93,3 +93,31 @@ mod outlines {
 
     crate::outline_suite::outline_conformance_tests!(OnPostgres<PostgresOutlineCatalog>);
 }
+
+mod copies {
+    use super::*;
+    use crate::copies_postgres::PostgresReadingCopyCatalog;
+
+    #[async_trait]
+    impl Workbench for OnPostgres<PostgresReadingCopyCatalog> {
+        type Catalog = PostgresReadingCopyCatalog;
+
+        async fn setup() -> Self {
+            OnPostgres::over(PostgresReadingCopyCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnPostgres::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnPostgres::cleanup(self).await;
+        }
+    }
+
+    crate::copies_suite::copies_conformance_tests!(OnPostgres<PostgresReadingCopyCatalog>);
+}

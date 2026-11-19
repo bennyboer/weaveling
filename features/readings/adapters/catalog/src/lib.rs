@@ -1,4 +1,9 @@
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
+mod copies_kept;
+mod copies_memory;
+#[cfg(test)]
+mod copies_suite;
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 mod kept;
 mod memory;
 mod outline_memory;
@@ -8,6 +13,8 @@ mod outline_suite;
 mod suite;
 
 #[cfg(feature = "postgres")]
+mod copies_postgres;
+#[cfg(feature = "postgres")]
 mod outline_postgres;
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -15,20 +22,27 @@ pub mod postgres;
 mod postgres_tests;
 
 #[cfg(feature = "sqlite")]
+mod copies_sqlite;
+#[cfg(feature = "sqlite")]
 mod outline_sqlite;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 #[cfg(all(test, feature = "sqlite"))]
 mod sqlite_tests;
 
+pub use copies_memory::InMemoryReadingCopyCatalog;
 pub use memory::InMemorySceneTextCatalog;
 pub use outline_memory::InMemoryOutlineCatalog;
 
+#[cfg(feature = "postgres")]
+pub use copies_postgres::PostgresReadingCopyCatalog;
 #[cfg(feature = "postgres")]
 pub use outline_postgres::PostgresOutlineCatalog;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresSceneTextCatalog;
 
+#[cfg(feature = "sqlite")]
+pub use copies_sqlite::SqliteReadingCopyCatalog;
 #[cfg(feature = "sqlite")]
 pub use outline_sqlite::SqliteOutlineCatalog;
 #[cfg(feature = "sqlite")]
