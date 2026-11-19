@@ -20,11 +20,10 @@ impl ReadingsCore {
         }
 
         // TODO: the copies kept in the store, rather than the same sample for every project
-        Ok(sample_copies(
-            &ProjectLink::from(project),
-            agent,
-            self.clock.now(),
-        ))
+        let mut listed = sample_copies(&ProjectLink::from(project), agent, self.clock.now());
+        self.mark_who_may_change(&mut listed, agent).await?;
+
+        Ok(listed)
     }
 
     /// Makes a reading copy of the work as it is now, for any member of the project.
@@ -45,7 +44,7 @@ impl ReadingsCore {
         // TODO: the copy made from the live work and kept, by the ReadingCopy aggregate's rules
         let now = self.clock.now();
         let [mut made, ..] = <[ListedReadingCopy; 2]>::try_from(sample_copies(
-            &ProjectLink::from(SAMPLE_PROJECT),
+            &ProjectLink::from(project),
             agent,
             now,
         ))
@@ -59,6 +58,7 @@ impl ReadingsCore {
         };
         made.open_until = open_until;
         made.deleted_on = deleted_on;
+        made.may_change = true;
 
         Ok(made)
     }
@@ -70,25 +70,105 @@ impl ReadingsCore {
         copy: &str,
         agent: &Agent,
     ) -> Result<(ListedReadingCopy, Contents), ReadingsError> {
-        // TODO: the copy and its contents kept in the store, rather than the samples of one fixed project
-        let listed = sample_copies(&ProjectLink::from(SAMPLE_PROJECT), agent, self.clock.now())
-            .into_iter()
-            .find(|listed| listed.copy.as_str() == copy)
-            .ok_or(ReadingsError::ReadingCopyNotThere)?;
-        if !self
-            .authorizer
-            .may(agent, Act::Read, listed.project.as_str())
-            .await?
-        {
-            return Err(ReadingsError::ReadingCopyNotThere);
-        }
+        let listed = self.readable_copy(copy, agent).await?;
         let contents = sample_contents(listed.project.clone());
 
         Ok((listed, contents))
     }
+
+    /// Renames a reading copy, for whoever made it or an owner of its project.
+    pub async fn rename_copy(
+        &self,
+        copy: &str,
+        name: &str,
+        agent: &Agent,
+    ) -> Result<ListedReadingCopy, ReadingsError> {
+        let mut renamed = self.changeable_copy(copy, agent).await?;
+
+        // TODO: renamed by the ReadingCopy aggregate and kept
+        renamed.name = name.to_owned();
+
+        Ok(renamed)
+    }
+
+    /// Deletes a reading copy for good, with its feedback, for whoever made it or an owner of its project.
+    pub async fn delete_copy(&self, copy: &str, agent: &Agent) -> Result<(), ReadingsError> {
+        self.changeable_copy(copy, agent).await?;
+
+        // TODO: deleted by the ReadingCopy aggregate, its contents and feedback with it
+        Ok(())
+    }
+
+    /// The copy as listed for an agent who may read its project; to anyone else it is not there.
+    async fn readable_copy(
+        &self,
+        copy: &str,
+        agent: &Agent,
+    ) -> Result<ListedReadingCopy, ReadingsError> {
+        // TODO: the copy kept in the store, rather than samples that carry their project in their id
+        let project = sample_project_of(copy).ok_or(ReadingsError::ReadingCopyNotThere)?;
+        let mut listed: Vec<ListedReadingCopy> = sample_copies(&project, agent, self.clock.now())
+            .into_iter()
+            .filter(|listed| listed.copy.as_str() == copy)
+            .collect();
+        if listed.is_empty()
+            || !self
+                .authorizer
+                .may(agent, Act::Read, project.as_str())
+                .await?
+        {
+            return Err(ReadingsError::ReadingCopyNotThere);
+        }
+        self.mark_who_may_change(&mut listed, agent).await?;
+
+        Ok(listed.remove(0))
+    }
+
+    /// The copy for an agent who may change it; a member who may not is refused.
+    async fn changeable_copy(
+        &self,
+        copy: &str,
+        agent: &Agent,
+    ) -> Result<ListedReadingCopy, ReadingsError> {
+        let listed = self.readable_copy(copy, agent).await?;
+        if !listed.may_change {
+            return Err(ReadingsError::NotYours);
+        }
+
+        Ok(listed)
+    }
+
+    /// Whoever made a copy may change it, and an owner of its project may change every copy of it.
+    async fn mark_who_may_change(
+        &self,
+        listed: &mut [ListedReadingCopy],
+        agent: &Agent,
+    ) -> Result<(), ReadingsError> {
+        let Some(project) = listed.first().map(|copy| copy.project.clone()) else {
+            return Ok(());
+        };
+        let owner = self
+            .authorizer
+            .may(agent, Act::Manage, project.as_str())
+            .await?;
+        for copy in listed {
+            copy.may_change = owner || &copy.made_by == agent;
+        }
+
+        Ok(())
+    }
 }
 
-const SAMPLE_PROJECT: &str = "project_loom";
+/// The project a sample copy's id names, as `copy--{project}--{what}`.
+fn sample_project_of(copy: &str) -> Option<ProjectLink> {
+    let (project, _) = copy.strip_prefix("copy--")?.rsplit_once("--")?;
+
+    Some(ProjectLink::from(project))
+}
+
+fn sample_id(project: &ProjectLink, what: &str) -> ReadingCopyLink {
+    ReadingCopyLink::from(format!("copy--{project}--{what}"))
+}
 
 /// Two copies of any project: one the asking agent made of the whole book, still open, and an older one of a section by Hedy, closed.
 fn sample_copies(
@@ -98,7 +178,7 @@ fn sample_copies(
 ) -> Vec<ListedReadingCopy> {
     vec![
         ListedReadingCopy {
-            copy: ReadingCopyLink::from("copy_sample_book"),
+            copy: sample_id(project, "book"),
             project: project.clone(),
             name: "Draft for Lena".to_owned(),
             made_by: agent.clone(),
@@ -108,9 +188,10 @@ fn sample_copies(
             open_until: Some(now + Duration::days(28)),
             deleted_on: Some(now + Duration::days(88)),
             open: true,
+            may_change: false,
         },
         ListedReadingCopy {
-            copy: ReadingCopyLink::from("copy_sample_section"),
+            copy: sample_id(project, "section"),
             project: project.clone(),
             name: "First draft, part one".to_owned(),
             made_by: Agent::Account(eventsourcing::AccountId::from("account_hedy")),
@@ -120,6 +201,7 @@ fn sample_copies(
             open_until: Some(now - Duration::days(10)),
             deleted_on: None,
             open: false,
+            may_change: false,
         },
     ]
 }

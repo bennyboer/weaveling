@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use live_contract::FrameDTO;
@@ -26,6 +28,8 @@ use crate::speech;
 
 const FIGURE_WIDTH: u32 = 1536;
 const CONTENTS: &str = "reading-contents";
+/// Where the contents lie over the text, as on a phone, they start closed.
+const LYING_OVER_THE_TEXT: &str = "(width <= 60rem)";
 
 /// What the book shows, in reading order: each section, and each scene with something written.
 /// A scene after another scene stands behind a scene break.
@@ -45,7 +49,12 @@ enum Shown {
 /// The work to read: the live book, or a reading copy of it.
 /// Above the text, the switcher chooses between them.
 pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
-    let rail = Drawer::as_last_left("weaveling.reading-contents", true);
+    let beside_the_text = window()
+        .match_media(LYING_OVER_THE_TEXT)
+        .ok()
+        .flatten()
+        .is_none_or(|query| !query.matches());
+    let rail = Drawer::as_last_left("weaveling.reading-contents", beside_the_text);
     let project = route::project_id(&slug);
     let book = RwSignal::new(None::<Book>);
     let failed = RwSignal::new(None::<ApiError>);
@@ -185,21 +194,62 @@ fn contents_toggle(rail: Drawer) -> impl IntoView {
     )
 }
 
+/// A section in the contents: how deep it lies, its title, whether sections lie under it, and whether those are folded away.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Listed {
+    section: SectionId,
+    depth: u8,
+    title: String,
+    nests: bool,
+    folded: bool,
+}
+
+/// The contents, as in the writing view: the sections only, each folding away the sections under it, and all of them folded or unfolded at once.
 fn contents(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
-    let sections = Memo::new(move |_| {
+    let folded = RwSignal::new(HashSet::<SectionId>::new());
+    let nesting = Memo::new(move |_| {
         book.with(|held| {
             held.iter()
-                .flat_map(|held| &held.sections)
-                .map(|outlined| {
-                    (
-                        outlined.section.clone(),
-                        outlined.depth,
-                        outlined.title.clone(),
-                    )
+                .flat_map(|held| {
+                    held.sections
+                        .windows(2)
+                        .filter(|pair| pair[1].depth > pair[0].depth)
+                        .map(|pair| pair[0].section.clone())
                 })
-                .collect::<Vec<_>>()
+                .collect::<HashSet<_>>()
         })
     });
+    let listed = Memo::new(move |_| {
+        let nesting = nesting.get();
+        folded.with(|folded| {
+            book.with(|held| {
+                let mut listed = Vec::new();
+                let mut folded_below: Option<u8> = None;
+                for outlined in held.iter().flat_map(|held| &held.sections) {
+                    if folded_below.is_some_and(|depth| outlined.depth > depth) {
+                        continue;
+                    }
+                    let nests = nesting.contains(&outlined.section);
+                    let shut = nests && folded.contains(&outlined.section);
+                    folded_below = shut.then_some(outlined.depth);
+                    listed.push(Listed {
+                        section: outlined.section.clone(),
+                        depth: outlined.depth,
+                        title: outlined.title.clone(),
+                        nests,
+                        folded: shut,
+                    });
+                }
+
+                listed
+            })
+        })
+    });
+    let all_unfolded = move || folded.with(HashSet::is_empty);
+    let all_folded = move || {
+        let nesting = nesting.get();
+        folded.with(|folded| nesting.iter().all(|section| folded.contains(section)))
+    };
 
     drawer::drawer(
         rail,
@@ -209,36 +259,98 @@ fn contents(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
             id: CONTENTS,
             named: speech::said("contents").into(),
             called: "contents",
-            head: html::p().class("tally").child(speech::said("contents")),
+            head: (
+                html::p().class("tally").child(speech::said("contents")),
+                html::button()
+                    .r#type("button")
+                    .class("fold-all")
+                    .attr("aria-label", speech::said("contents-unfold-all"))
+                    .attr("title", speech::said("contents-unfold-all"))
+                    .disabled(all_unfolded)
+                    .on(ev::click, move |_| folded.set(HashSet::new()))
+                    .child(icons::mark(Icon::UnfoldAll)),
+                html::button()
+                    .r#type("button")
+                    .class("fold-all")
+                    .attr("aria-label", speech::said("contents-fold-all"))
+                    .attr("title", speech::said("contents-fold-all"))
+                    .disabled(all_folded)
+                    .on(ev::click, move |_| folded.set(nesting.get_untracked()))
+                    .child(icons::mark(Icon::FoldAll)),
+            ),
             body: html::ol()
                 .class("rail-entries")
                 .child(For(ForProps::builder()
-                    .each(move || sections.get())
+                    .each(move || listed.get())
                     .key(Clone::clone)
-                    .children(|(section, depth, title)| entry(section, depth, title))
+                    .children(move |listed| entry(listed, folded, rail))
                     .build())),
         },
     )
 }
 
-fn entry(section: SectionId, depth: u8, title: String) -> impl IntoView {
+fn entry(listed: Listed, folded: RwSignal<HashSet<SectionId>>, rail: Drawer) -> impl IntoView {
+    let shown = match listed.title.trim() {
+        "" => speech::say("heading-untitled"),
+        _ => listed.title.clone(),
+    };
+    let turning = listed.section.clone();
+    let going = listed.section.clone();
+
     html::li()
         .class("rail-section")
-        .style(("--depth", depth.to_string()))
-        .child(
+        .style(("--depth", listed.depth.to_string()))
+        .child((
+            listed.nests.then(|| {
+                let unfolded = !listed.folded;
+
+                html::button()
+                    .r#type("button")
+                    .class("fold")
+                    .attr("aria-expanded", unfolded.to_string())
+                    .attr(
+                        "aria-label",
+                        if unfolded {
+                            speech::say_about("outline-fold", "section", &shown)
+                        } else {
+                            speech::say_about("contents-unfold", "section", &shown)
+                        },
+                    )
+                    .on(ev::click, move |_| {
+                        folded.update(|folded| {
+                            if !folded.remove(&turning) {
+                                folded.insert(turning.clone());
+                            }
+                        });
+                    })
+                    .child(icons::mark(if unfolded {
+                        Icon::Open
+                    } else {
+                        Icon::Closed
+                    }))
+            }),
             html::button()
                 .r#type("button")
                 .class("rail-entry")
-                .on(ev::click, move |_| go_to(&section))
-                .child(title),
-        )
+                .on(ev::click, move |_| go_to(&going, rail))
+                .child(shown),
+        ))
 }
 
-fn go_to(section: &SectionId) {
+/// Brings a section's heading to the top, and puts the contents away where they lie over the text.
+fn go_to(section: &SectionId, rail: Drawer) {
     if let Some(heading) = document().get_element_by_id(&heading_id(section)) {
         let at_the_top = ScrollIntoViewOptions::new();
         at_the_top.set_block(ScrollLogicalPosition::Start);
         heading.scroll_into_view_with_scroll_into_view_options(&at_the_top);
+    }
+    let narrow = window()
+        .match_media(LYING_OVER_THE_TEXT)
+        .ok()
+        .flatten()
+        .is_some_and(|query| query.matches());
+    if narrow {
+        rail.close();
     }
 }
 

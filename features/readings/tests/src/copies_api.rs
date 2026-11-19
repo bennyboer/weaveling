@@ -133,3 +133,31 @@ async fn a_copy_of_scenes_in_a_row_holds_scenes() {
         ExtentDTO::Scenes { .. }
     ));
 }
+
+#[tokio::test]
+async fn a_copy_renamed_answers_under_its_new_name_and_one_deleted_is_gone() {
+    // given: a copy, which the one person without accounts may change
+    let server = server();
+    let listed = server
+        .get("/readings/copies?project=project_loom")
+        .await
+        .json::<Vec<ListedReadingCopyDTO>>();
+    assert!(listed.iter().all(|copy| copy.may_change));
+
+    // when: it is renamed, and deleted
+    let renamed = server
+        .put(&format!("/readings/copies/{}/name", listed[0].id))
+        .json(&serde_json::json!({ "name": "For Lena, again" }))
+        .await;
+    let deleted = server
+        .delete(&format!("/readings/copies/{}", listed[0].id))
+        .await;
+
+    // then: it answers under its new name, and then as deleted
+    renamed.assert_status_ok();
+    assert_eq!(
+        renamed.json::<ListedReadingCopyDTO>().name,
+        "For Lena, again"
+    );
+    deleted.assert_status(StatusCode::NO_CONTENT);
+}

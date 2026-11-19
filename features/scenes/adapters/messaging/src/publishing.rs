@@ -387,8 +387,7 @@ mod tests {
         assert_eq!(told.routing.to_string(), TEXT_STATE_CHANGED);
         // and: reads back as the scene's blocks, with their version
         assert_eq!(
-            serde_json::from_value::<SceneTextStateDTO>(told.payload.clone())
-                .expect("reads back"),
+            serde_json::from_value::<SceneTextStateDTO>(told.payload.clone()).expect("reads back"),
             SceneTextStateDTO {
                 scene: scene.to_string(),
                 blocks: vec![

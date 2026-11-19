@@ -430,10 +430,8 @@ test("the switcher lists the live work and every reading copy, with when each cl
   // given: a project's reading view
   await aReadingView(page, "ReadingSwitcher");
 
-  // expect: the live work is marked live beside the switcher
-  await expect(
-    page.locator(".reading-view .what-is-read .chip.live"),
-  ).toHaveText("Live");
+  // expect: the switcher marks the live work as live
+  await expect(switcher(page).locator(".when")).toHaveText("Live");
 
   // when: the switcher is opened
   await switcher(page).click();
@@ -475,14 +473,11 @@ test("a copy chosen is read as it was frozen, and the live work is a choice away
     .click();
 
   // then: it is read, named in the switcher, with when it was frozen and how long it is open
-  await expect(page).toHaveURL(/\/read\/copy_sample_book$/);
+  await expect(page).toHaveURL(/\/read\/copy--project_\w+--book$/);
   await expect(switcher(page)).toContainText("Draft for Lena");
-  await expect(page.locator(".reading-view .chip.frozen")).toContainText(
-    "Frozen",
+  await expect(switcher(page).locator(".when")).toHaveText(
+    /^Frozen .* · open until .* · deleted on .*$/,
   );
-  const marks = page.locator(".reading-view .what-is-read .chip");
-  await expect(marks.nth(1)).toContainText("Open until");
-  await expect(marks.nth(2)).toContainText("Deleted");
   await expect(book(page)).toContainText("Hedy counted them from the wall.");
   // and: the path names it a reading copy
   await expect(page.getByRole("navigation", { name: "Path" })).toContainText(
@@ -519,7 +514,7 @@ test("Escape closes the switcher and hands the focus back to it", async ({
   await expect(switcher(page)).toHaveAttribute("aria-expanded", "false");
 });
 
-test("on a phone, the contents open from the status bar, with no tab over the text", async ({
+test("on a phone, the contents start closed and open from the status bar, with no tab over the text", async ({
   page,
 }) => {
   // given: a project's reading view on a phone
@@ -534,11 +529,11 @@ test("on a phone, the contents open from the status bar, with no tab over the te
   const seen = (await toggle.boundingBox())!;
   expect(seen.y, "it sits in the status bar").toBeGreaterThanOrEqual(bar.y);
 
-  // when: it is pressed until the contents show
-  if ((await toggle.getAttribute("aria-expanded")) === "true") {
-    await toggle.click();
-    await expect(contents(page)).toBeHidden();
-  }
+  // and: the contents start closed, as they would lie over the text
+  await expect(contents(page)).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  // when: it is pressed
   await toggle.click();
 
   // then: they show, and the button says so
@@ -588,7 +583,7 @@ test("an author shares the whole work as a reading copy, and is taken to it", as
   expect(Date.parse(made.open_until)).toBeLessThan(Date.parse(made.deleted_on));
   // and: the dialog is gone and the copy is read
   await expect(sharing(page)).toBeHidden();
-  await expect(page).toHaveURL(/\/read\/copy_sample_book$/);
+  await expect(page).toHaveURL(/\/read\/copy--project_\w+--book$/);
 });
 
 test("sections in a row are shared from the first ticked to the last", async ({
@@ -719,4 +714,140 @@ test("scenes in a row are shared from the first ticked to the last, across their
     first: harbour,
     last: stalls,
   });
+});
+
+const copyTools = (page: Page) =>
+  page.getByRole("button", { name: "More about this copy" });
+
+/// A project's reading view on its newest copy, which the one person without accounts may change.
+async function aCopyRead(page: Page, named: string) {
+  await aReadingView(page, named);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /Draft for Lena/ })
+    .click();
+  await expect(switcher(page)).toContainText("Draft for Lena");
+}
+
+test("whoever may change a copy renames it from its menu", async ({ page }) => {
+  // given: a copy being read
+  await aCopyRead(page, "ReadingRename");
+
+  // when: it is renamed from its menu
+  await copyTools(page).click();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  const renaming = page.getByRole("dialog", { name: "Rename the copy" });
+  const name = renaming.getByLabel("Name of the copy");
+  await expect(name).toHaveValue("Draft for Lena");
+  await name.fill("For Lena, again");
+  const asked = page.waitForRequest(
+    (sent) => sent.method() === "PUT" && sent.url().endsWith("/name"),
+  );
+  await renaming.getByRole("button", { name: "Rename", exact: true }).click();
+
+  // then: the new name is asked for, and the copy is read under it
+  expect((await asked).postDataJSON()).toEqual({ name: "For Lena, again" });
+  await expect(renaming).toBeHidden();
+  await expect(switcher(page)).toContainText("For Lena, again");
+});
+
+test("a copy deleted from its menu is gone, and the live work is read", async ({
+  page,
+}) => {
+  // given: a copy being read
+  await aCopyRead(page, "ReadingDelete");
+
+  // when: it is deleted from its menu, as the dialog warns
+  await copyTools(page).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  const deleting = page.getByRole("dialog", { name: "Delete the copy?" });
+  await expect(deleting).toContainText(
+    "“Draft for Lena” is deleted for good, with all its comments.",
+  );
+  const asked = page.waitForRequest((sent) => sent.method() === "DELETE");
+  await deleting.getByRole("button", { name: "Delete for good" }).click();
+
+  // then: it is deleted, and the live work is read
+  expect((await asked).url()).toMatch(/\/api\/readings\/copies\/copy--/);
+  await expect(page).toHaveURL(/\/read$/);
+  await expect(page.locator(".reading-view .chip.live")).toBeVisible();
+});
+
+test("the copy's menu and the switcher's list close at a click beside them", async ({
+  page,
+}) => {
+  // given: a copy being read, its menu open
+  await aCopyRead(page, "ReadingClickAway");
+  await copyTools(page).click();
+  await expect(page.getByRole("menu")).toBeVisible();
+
+  // when: the page beside it is clicked
+  await page.mouse.click(1200, 450);
+
+  // then: the menu is gone
+  await expect(page.getByRole("menu")).toBeHidden();
+  await expect(copyTools(page)).toHaveAttribute("aria-expanded", "false");
+
+  // when: the switcher's list is opened, and the page beside it clicked
+  await switcher(page).click();
+  await expect(whatToRead(page)).toBeVisible();
+  await page.mouse.click(1200, 450);
+
+  // then: the list is gone too
+  await expect(whatToRead(page)).toBeHidden();
+});
+
+test("the contents fold away the sections under a section, one by one or all at once", async ({
+  page,
+}) => {
+  // given: a work of a part with two chapters under it, and a part with none
+  await aNewProject(page, "ReadingFolding");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Threads", under: "Part One" },
+    { title: "The Market", under: "Part One", after: "Threads" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await readable(page);
+  await openTheReadingView(page);
+  const entries = contents(page).locator(".rail-entry");
+  const unfoldAll = contents(page).getByRole("button", {
+    name: "Unfold all",
+    exact: true,
+  });
+  const foldAll = contents(page).getByRole("button", {
+    name: "Fold all",
+    exact: true,
+  });
+
+  // expect: every section shows, and only a part with chapters under it can be folded
+  await expect(entries).toHaveText([
+    "Part One",
+    "Threads",
+    "The Market",
+    "Part Two",
+  ]);
+  await expect(contents(page).locator(".fold")).toHaveCount(1);
+  await expect(unfoldAll).toBeDisabled();
+
+  // when: everything is folded
+  await foldAll.click();
+
+  // then: the chapters are gone, and nothing more can be folded
+  await expect(entries).toHaveText(["Part One", "Part Two"]);
+  await expect(foldAll).toBeDisabled();
+
+  // when: the first part is unfolded by itself
+  await contents(page)
+    .getByRole("button", { name: /Part One/, expanded: false })
+    .click();
+
+  // then: its chapters show again
+  await expect(entries).toHaveText([
+    "Part One",
+    "Threads",
+    "The Market",
+    "Part Two",
+  ]);
+  await expect(unfoldAll).toBeDisabled();
 });

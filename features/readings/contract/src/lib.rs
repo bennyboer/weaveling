@@ -36,6 +36,8 @@ pub struct ListedReadingCopyDTO {
     /// When it is deleted for good, with its feedback; none to keep it.
     pub deleted_on: Option<String>,
     pub open: bool,
+    /// Whether whoever asked may rename, extend or delete it: its maker, or an owner of the project.
+    pub may_change: bool,
 }
 
 /// What a reading copy holds of the book.
@@ -66,6 +68,11 @@ pub enum SharedDTO {
     Book,
     Sections { first: String, last: String },
     Scenes { first: String, last: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RenameReadingCopyRequest {
+    pub name: String,
 }
 
 /// One reading copy with what it holds.
@@ -144,6 +151,7 @@ pub struct MarksDTO {
 
 pub mod refused {
     pub const MOMENT_UNREADABLE: &str = "reading-copy-moment-unreadable";
+    pub const NOT_YOURS: &str = "reading-copy-not-yours";
 
-    pub const EVERY: [&str; 1] = [MOMENT_UNREADABLE];
+    pub const EVERY: [&str; 2] = [MOMENT_UNREADABLE, NOT_YOURS];
 }

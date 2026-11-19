@@ -1,9 +1,12 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
+use wasm_bindgen::JsCast;
+use web_sys::Node;
 
 use crate::members::roles::Roles;
 use crate::moment;
+use crate::readings::copy_tools;
 use crate::readings::reading_copies::{Extent, ListedReadingCopy, ReadingCopyId};
 use crate::readings::share_dialog;
 use crate::route;
@@ -39,45 +42,52 @@ fn day(moment: time::OffsetDateTime) -> String {
     moment::human_day(moment)
 }
 
-/// The bar above the text: the switcher, and for a copy when it was frozen and how long it is open and kept.
+/// The bar above the text: the switcher, which says what is read and when, and the copy's menu for whoever may change it.
 pub fn reading_bar(
     slug: String,
     reading: Option<ReadingCopyId>,
     copies: LocalResource<Vec<ListedReadingCopy>>,
     chosen: RwSignal<Option<ListedReadingCopy>>,
 ) -> impl IntoView {
-    let reading_live = reading.is_none();
-    let marks = move || {
-        if reading_live {
-            Some(live_mark().into_any())
-        } else {
-            chosen.get().map(|copy| {
-                html::span()
-                    .class("chips")
-                    .child((
-                        html::span()
-                            .class("chip frozen")
-                            .child(said_with("copy-frozen", &[("day", day(copy.made_at))])),
-                        chips(&copy),
-                    ))
-                    .into_any()
-            })
-        }
-    };
-
     let sharing = RwSignal::new(false);
     let shared_from = slug.clone();
+    let changed_from = slug.clone();
+    let may_change =
+        Memo::new(move |_| chosen.with(|held| held.as_ref().is_some_and(|copy| copy.may_change)));
+    let tools = move || {
+        may_change
+            .get()
+            .then(|| copy_tools::copy_tools(changed_from.clone(), chosen, copies))
+    };
 
     html::div().class("reading-bar").child((
         html::div()
             .class("what-is-read")
-            .child((switcher(slug, reading, copies, chosen, sharing), marks)),
+            .child((switcher(slug, reading, copies, chosen, sharing), tools)),
         move || {
             sharing.get().then(|| {
                 share_dialog::share_dialog(shared_from.clone(), move || sharing.set(false))
             })
         },
     ))
+}
+
+/// Closes what `open` shows once a click lands anywhere outside `holder`.
+pub(crate) fn closed_when_clicked_away(holder: NodeRef<html::Div>, open: RwSignal<bool>) {
+    let clicking_away = window_event_listener(ev::click, move |event| {
+        let inside = holder
+            .get_untracked()
+            .zip(
+                event
+                    .target()
+                    .and_then(|target| target.dyn_into::<Node>().ok()),
+            )
+            .is_some_and(|(held, clicked)| held.contains(Some(&clicked)));
+        if !inside {
+            _ = open.try_set(false);
+        }
+    });
+    on_cleanup(move || clicking_away.remove());
 }
 
 /// The mark of the live work: a dot and the word, as it follows the authors' changes.
@@ -120,7 +130,10 @@ fn switcher(
         }
     };
 
-    html::div().class("switching").child((
+    let holder: NodeRef<html::Div> = NodeRef::new();
+    closed_when_clicked_away(holder, open);
+
+    html::div().class("switching").node_ref(holder).child((
         html::button()
             .node_ref(button)
             .r#type("button")
@@ -132,6 +145,13 @@ fn switcher(
             .child((
                 html::small().child(speech::said("reading-reading")),
                 html::b().child(name),
+                html::span().class("when").child(move || {
+                    if reading_live {
+                        Some(live_mark().into_any())
+                    } else {
+                        chosen.get().map(|copy| copy_line(&copy).into_any())
+                    }
+                }),
             )),
         move || {
             open.get().then(|| {
@@ -256,4 +276,23 @@ fn chips(copy: &ListedReadingCopy) -> Vec<impl IntoView + use<>> {
         html::span().class(open.0).child(open.1),
         html::span().class("chip").child(kept),
     ]
+}
+
+/// When a copy was frozen, until when it is open, and when it is deleted, in one quiet line.
+fn copy_line(copy: &ListedReadingCopy) -> String {
+    let frozen = said_with("copy-line-frozen", &[("day", day(copy.made_at))]);
+    let open = match (copy.open, copy.open_until) {
+        (true, Some(until)) => said_with("copy-line-open-until", &[("day", day(until))]),
+        (true, None) => speech::say("copy-line-open-no-end"),
+        (false, until) => said_with(
+            "copy-line-closed",
+            &[("day", until.map(day).unwrap_or_default())],
+        ),
+    };
+    let kept = match copy.deleted_on {
+        Some(on) => said_with("copy-line-deleted", &[("day", day(on))]),
+        None => speech::say("copy-line-kept"),
+    };
+
+    [frozen, open, kept].join(" · ")
 }

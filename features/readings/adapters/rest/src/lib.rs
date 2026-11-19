@@ -16,7 +16,8 @@ use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use readings_contract::{
-    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO, SharedDTO, refused,
+    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO,
+    RenameReadingCopyRequest, SharedDTO, refused,
 };
 use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SceneLink, SectionLink, Shared};
 use serde::Deserialize;
@@ -69,7 +70,11 @@ pub fn router(readings: ReadingsCore) -> Router {
     Router::new()
         .route("/readings/live", routing::get(live_book))
         .route("/readings/copies", routing::get(copies).post(make_copy))
-        .route("/readings/copies/{copy}", routing::get(copy))
+        .route(
+            "/readings/copies/{copy}",
+            routing::get(copy).delete(delete_copy),
+        )
+        .route("/readings/copies/{copy}/name", routing::put(rename_copy))
         .with_state(readings)
 }
 
@@ -155,6 +160,35 @@ async fn make_copy(
     ))
 }
 
+async fn rename_copy(
+    State(readings): State<ReadingsCore>,
+    Extension(agent): Extension<Agent>,
+    Path(copy): Path<String>,
+    Json(asked): Json<RenameReadingCopyRequest>,
+) -> Result<Json<ListedReadingCopyDTO>, Problem> {
+    let renamed = readings
+        .rename_copy(&copy, &asked.name, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(transformer::to_listed_reading_copy_dto(
+        &renamed, &agent,
+    )))
+}
+
+async fn delete_copy(
+    State(readings): State<ReadingsCore>,
+    Extension(agent): Extension<Agent>,
+    Path(copy): Path<String>,
+) -> Result<StatusCode, Problem> {
+    readings
+        .delete_copy(&copy, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn moment_in(written: Option<&str>) -> Result<Option<time::OffsetDateTime>, Problem> {
     written
         .map(|written| {
@@ -173,6 +207,7 @@ fn problem_of(refusal: ReadingsError) -> Problem {
         ReadingsError::ProjectNotThere | ReadingsError::ReadingCopyNotThere => {
             Problem::not_found(serving::NOT_FOUND, refusal)
         }
+        ReadingsError::NotYours => Problem::forbidden(refused::NOT_YOURS, refusal),
         beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

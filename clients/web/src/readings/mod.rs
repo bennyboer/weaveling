@@ -1,3 +1,4 @@
+mod copy_tools;
 pub mod model;
 pub mod reading_copies;
 pub mod service;

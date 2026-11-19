@@ -41,6 +41,7 @@ pub struct ListedReadingCopy {
     pub open_until: Option<OffsetDateTime>,
     pub deleted_on: Option<OffsetDateTime>,
     pub open: bool,
+    pub may_change: bool,
 }
 
 impl TryFrom<ListedReadingCopyDTO> for ListedReadingCopy {
@@ -61,6 +62,7 @@ impl TryFrom<ListedReadingCopyDTO> for ListedReadingCopy {
             open_until: dto.open_until.as_deref().map(moment).transpose()?,
             deleted_on: dto.deleted_on.as_deref().map(moment).transpose()?,
             open: dto.open,
+            may_change: dto.may_change,
         })
     }
 }

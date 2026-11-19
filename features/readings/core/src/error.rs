@@ -17,6 +17,8 @@ pub enum ReadingsError {
     ProjectNotThere,
     #[error("there is no such reading copy")]
     ReadingCopyNotThere,
+    #[error("only whoever made a reading copy, or an owner of its project, may change it")]
+    NotYours,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
 }

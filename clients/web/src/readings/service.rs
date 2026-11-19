@@ -1,6 +1,7 @@
 use gloo_net::http::Request;
 use readings_contract::{
-    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO, SharedDTO,
+    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO,
+    RenameReadingCopyRequest, SharedDTO,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -70,4 +71,25 @@ fn written(moment: OffsetDateTime) -> String {
     moment
         .format(&Rfc3339)
         .expect("a moment chosen in the dialog is always representable as RFC 3339")
+}
+
+/// Renames a reading copy.
+pub async fn rename_copy(copy: &ReadingCopyId, name: &str) -> Result<ListedReadingCopy, ApiError> {
+    let payload = RenameReadingCopyRequest {
+        name: name.to_owned(),
+    };
+    let response =
+        http::sent_with(Request::put(&format!("{COPIES}/{copy}/name")), &payload).await?;
+    let renamed: ListedReadingCopyDTO = http::parsed(response, COPY).await?;
+
+    ListedReadingCopy::try_from(renamed)
+}
+
+/// Deletes a reading copy for good, with its feedback.
+pub async fn delete_copy(copy: &ReadingCopyId) -> Result<(), ApiError> {
+    let response = http::sent(Request::delete(&format!("{COPIES}/{copy}"))).await?;
+
+    http::checked(response, COPY).await?;
+
+    Ok(())
 }

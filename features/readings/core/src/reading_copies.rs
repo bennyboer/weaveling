@@ -41,4 +41,6 @@ pub struct ListedReadingCopy {
     /// When it is deleted for good, with its feedback; none to keep it.
     pub deleted_on: Option<OffsetDateTime>,
     pub open: bool,
+    /// Whether the agent it was listed for may rename, extend or delete it: whoever made it, or an owner of the project.
+    pub may_change: bool,
 }

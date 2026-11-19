@@ -123,6 +123,7 @@ pub(crate) fn to_listed_reading_copy_dto(
         open_until: listed.open_until.map(text::serialize),
         deleted_on: listed.deleted_on.map(text::serialize),
         open: listed.open,
+        may_change: listed.may_change,
     }
 }
 
