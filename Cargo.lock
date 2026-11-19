@@ -6690,7 +6690,9 @@ name = "weaveling-readings-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "time",
  "weaveling-access",
+ "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-inbox",
@@ -6698,6 +6700,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
+ "weaveling-readings-contract",
  "weaveling-readings-core",
  "weaveling-scenes-contract",
  "weaveling-transacting",
@@ -6718,6 +6721,18 @@ dependencies = [
  "weaveling-readings-core",
  "weaveling-serving",
  "weaveling-transacting",
+]
+
+[[package]]
+name = "weaveling-readings-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-readings-core",
 ]
 
 [[package]]

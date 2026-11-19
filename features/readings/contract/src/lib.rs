@@ -21,6 +21,39 @@ pub enum PartDTO {
     },
 }
 
+pub const MADE: &str = "reading-copy.made";
+pub const RENAMED: &str = "reading-copy.renamed";
+pub const EXTENDED: &str = "reading-copy.extended";
+pub const DELETED: &str = "reading-copy.deleted";
+pub const EVERY_READING_COPY: &str = "reading-copy.#";
+
+/// What happened to a reading copy, as other features and its own listeners hear it.
+/// Its project is in the message's context.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "name")]
+pub enum ReadingCopyEventDTO {
+    #[serde(rename = "MADE")]
+    Made {
+        #[serde(rename = "copy_name")]
+        name: String,
+        extent: ExtentDTO,
+        open_until: Option<String>,
+        deleted_on: Option<String>,
+    },
+    #[serde(rename = "RENAMED")]
+    Renamed {
+        #[serde(rename = "copy_name")]
+        name: String,
+    },
+    #[serde(rename = "EXTENDED")]
+    Extended {
+        open_until: Option<String>,
+        deleted_on: Option<String>,
+    },
+    #[serde(rename = "DELETED")]
+    Deleted,
+}
+
 /// A reading copy as a project's members find it listed.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ListedReadingCopyDTO {

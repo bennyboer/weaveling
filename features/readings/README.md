@@ -26,4 +26,4 @@ The chore `forget-old-readings-tombstones` deletes the records of accounts that 
 
 **`Contents` is the core's, `ContentsDTO` the contract's.** The REST adapter turns one into the other. A section carries its depth, so the parts are one flat list in reading order. A scene keeps the id of the scene it came from. Runs carry only the marks a reader sees: emphasis, strong, code and links.
 
-**Crates:** `core` (`ReadingsCore`, `Contents`, the catalog ports, links to projects, sections, scenes and assets) · `contract` · `adapters/catalog` · `adapters/messaging` (the listeners) · `adapters/rest` · `wiring` · `tests`.
+**Crates:** `core` (`ReadingsCore`, `Contents`, the catalog ports, links to projects, sections, scenes and assets) · `contract` · `adapters/catalog` · `adapters/messaging` (the listeners, and the reading copies' events as messages) · `adapters/store` (the reading copies' events as the event store keeps them) · `adapters/rest` · `wiring` · `tests`.

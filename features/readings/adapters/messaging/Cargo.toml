@@ -7,12 +7,14 @@ edition.workspace = true
 async-trait = { workspace = true }
 
 access = { version = "0.1.0", path = "../../../../libraries/access", package = "weaveling-access" }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
+readings-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-readings-contract" }
 readings-core = { version = "0.1.0", path = "../../core", package = "weaveling-readings-core" }
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
@@ -21,3 +23,6 @@ members-contract = { version = "0.1.0", path = "../../../members/contract", pack
 outline-contract = { version = "0.1.0", path = "../../../outline/contract", package = "weaveling-outline-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 scenes-contract = { version = "0.1.0", path = "../../../scenes/contract", package = "weaveling-scenes-contract" }
+
+[dev-dependencies]
+time = { workspace = true }
