@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-feedback-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
+feedback-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-feedback-contract" }
+feedback-core = { version = "0.1.0", path = "../../core", package = "weaveling-feedback-core" }

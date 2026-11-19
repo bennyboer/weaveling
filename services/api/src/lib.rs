@@ -24,6 +24,7 @@ use axum::{Extension, Json, Router};
 use boards_wiring::BoardFeature;
 use clock::Clock;
 use eventsourcing::Agent;
+use feedback_wiring::FeedbackFeature;
 use ideas_wiring::IdeaFeature;
 use live::{Broadcaster, Topics};
 use mailing::{LoggingMailer, Mailer};
@@ -141,6 +142,7 @@ impl Adapters {
             wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
             wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
             wiring::assemble::<ReadingsFeature>(&storage, &context).await?,
+            wiring::assemble::<FeedbackFeature>(&storage, &context).await?,
             assets_wiring::assembled_assets(&storage, &context, assets).await?,
         ];
         if let Some(members) = members {

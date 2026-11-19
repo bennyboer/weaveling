@@ -1,0 +1,16 @@
+[package]
+name = "weaveling-feedback-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+time = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
+words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

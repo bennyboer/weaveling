@@ -1,0 +1,16 @@
+[package]
+name = "weaveling-feedback-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+feedback-contract = { version = "0.1.0", path = "../contract", package = "weaveling-feedback-contract" }
+feedback-core = { version = "0.1.0", path = "../core", package = "weaveling-feedback-core" }
+feedback-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-feedback-rest" }

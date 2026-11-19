@@ -1,0 +1,11 @@
+# feedback
+
+This feature keeps what readers say about something in the work. A piece of feedback is about a **subject**, for now a reading copy, and a **place** in it, typed for each kind of subject (`AboutDTO`): in a reading copy a passage, a scene, a section or the whole copy (`ReadingCopyPlaceDTO`). Who may see it follows from the subject. Feedback starts as a draft only its writer sees, and is submitted later. See M18, slice 2, in the [roadmap](../../ROADMAP.md).
+
+- `GET /feedback?kind=reading_copy&id=…` lists the feedback given on a subject, named by its kind as `AboutDTO` names it and its id; an unknown kind is refused as `feedback-subject-unknown`. It lists that the asker may see, oldest first. *For now, their own drafts only.*
+- `POST /feedback` drafts a piece of feedback about what `AboutDTO` says. A passage lies within one block: the scene, the path to the block in it (`block_path`: its place among the scene's blocks, then inside a quote or a list item its place there), a stretch of its text as offsets in characters, and the quoted text, so it can be shown without the copy. What it says is a **comment** of our own blocks, drawn as a reading copy's text is: paragraphs and lists, their runs in italics, in bold or linked, a line broken by a run of its own (`CommentBlockDTO`, `CommentRunDTO`). Never HTML, so nothing a reader writes runs in another's browser. A passage holding no character is refused as `feedback-passage-empty`; a comment saying nothing, longer than 10,000 characters over all its runs, with a control character in a run, or with a link anywhere but a page on the web or an address to mail, as `feedback-comment-blank`, `-too-long`, `-control-character` or `-link-unsafe`.
+- `PUT /feedback/{feedback}/comment` rewrites what it says and `DELETE /feedback/{feedback}` deletes it, for whoever wrote it. Someone else's draft is not there for anyone else; someone else's submitted feedback is refused as `feedback-not-yours`.
+
+*For now the routes run on a stub that keeps drafts in the server's memory, so the reading view can be built on them first; who may read the copy, whether it is open, and the `Feedback` aggregate come in step 5.*
+
+**Crates:** `core` (`FeedbackCore`, `About`, `Subject`, `ReadingCopyPlace`, `BlockPath`, `Comment`) · `contract` · `adapters/rest` · `wiring` · `tests`.

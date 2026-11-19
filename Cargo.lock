@@ -5565,6 +5565,7 @@ dependencies = [
  "weaveling-appearances-contract",
  "weaveling-assets-contract",
  "weaveling-boards-contract",
+ "weaveling-feedback-contract",
  "weaveling-ideas-contract",
  "weaveling-invitations-contract",
  "weaveling-live-contract",
@@ -5636,6 +5637,65 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-test-harness",
  "weaveling-transacting",
+]
+
+[[package]]
+name = "weaveling-feedback-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-feedback-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-words",
+]
+
+[[package]]
+name = "weaveling-feedback-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-feedback-contract",
+ "weaveling-feedback-core",
+ "weaveling-serving",
+]
+
+[[package]]
+name = "weaveling-feedback-tests"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-test",
+ "serde_json",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-feedback-contract",
+ "weaveling-feedback-core",
+ "weaveling-feedback-rest",
+]
+
+[[package]]
+name = "weaveling-feedback-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-feedback-core",
+ "weaveling-feedback-rest",
+ "weaveling-outbox",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -7026,6 +7086,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-ending",
  "weaveling-eventsourcing",
+ "weaveling-feedback-wiring",
  "weaveling-ideas-wiring",
  "weaveling-invitations-core",
  "weaveling-invitations-wiring",
