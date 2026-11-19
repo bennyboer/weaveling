@@ -59,8 +59,8 @@ pub enum ReadingCopyEventDTO {
 pub struct ListedReadingCopyDTO {
     pub id: String,
     pub name: String,
-    /// The name of whoever made it.
-    pub maker: String,
+    /// The name whoever made it signed up with; none once their account is deleted.
+    pub maker: Option<String>,
     pub made_by_you: bool,
     pub made_at: String,
     pub extent: ExtentDTO,

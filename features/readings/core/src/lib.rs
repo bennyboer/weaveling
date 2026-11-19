@@ -15,8 +15,8 @@ mod reading_copy_tests;
 mod readings_tests;
 
 pub use catalog::{
-    BookOutline, CatalogError, OutlineCatalog, OutlinedSection, ReadingCopyCatalog,
-    ReadingCopySummary, SceneTextCatalog,
+    AccountNameCatalog, BookOutline, CatalogError, OutlineCatalog, OutlinedSection,
+    ReadingCopyCatalog, ReadingCopySummary, SceneTextCatalog,
 };
 pub use contents::{Block, Contents, FigureSize, Marks, Part, Run};
 pub use error::ReadingsError;

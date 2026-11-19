@@ -8,14 +8,17 @@ use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use outbox::Outbox;
 use readings_catalog::{
-    InMemoryOutlineCatalog, InMemoryReadingCopyCatalog, InMemorySceneTextCatalog,
+    InMemoryAccountNameCatalog, InMemoryOutlineCatalog, InMemoryReadingCopyCatalog,
+    InMemorySceneTextCatalog,
 };
 use readings_core::{
-    OutlineCatalog, ReadingCopyCatalog, ReadingCopyEvent, ReadingsCore, SceneTextCatalog,
+    AccountNameCatalog, OutlineCatalog, ReadingCopyCatalog, ReadingCopyEvent, ReadingsCore,
+    SceneTextCatalog,
 };
 use readings_messaging::{
     CatalogueReadingCopiesListener, KeepBookTitlesListener, KeepOutlinesListener,
-    KeepSceneTextsListener, RememberRolesListener, RememberTrashListener,
+    KeepSceneTextsListener, RememberAccountNamesListener, RememberRolesListener,
+    RememberTrashListener,
 };
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -24,6 +27,7 @@ pub struct Ports {
     pub outlines: Arc<dyn OutlineCatalog>,
     pub texts: Arc<dyn SceneTextCatalog>,
     pub copies: Arc<dyn ReadingCopyCatalog>,
+    pub names: Arc<dyn AccountNameCatalog>,
     pub events: Arc<dyn EventStore<ReadingCopyEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub access: KeptAccess,
@@ -44,6 +48,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.outlines.clone(),
         ports.texts.clone(),
         ports.copies.clone(),
+        ports.names.clone(),
         ports.events.clone(),
         Arc::new(readings_rest::TellingFollowers::new(
             ports.outlines.clone(),
@@ -65,6 +70,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(KeepBookTitlesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepSceneTextsListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(CatalogueReadingCopiesListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(RememberAccountNamesListener::new(readings.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
@@ -101,6 +107,7 @@ impl Feature for ReadingsFeature {
             outlines: Arc::new(InMemoryOutlineCatalog::new()),
             texts: Arc::new(InMemorySceneTextCatalog::new()),
             copies: Arc::new(InMemoryReadingCopyCatalog::new()),
+            names: Arc::new(InMemoryAccountNameCatalog::new()),
             events,
             transactions,
             access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
@@ -128,6 +135,9 @@ impl Feature for ReadingsFeature {
                 pool.clone(),
             )),
             copies: Arc::new(readings_catalog::PostgresReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            names: Arc::new(readings_catalog::PostgresAccountNameCatalog::new(
                 pool.clone(),
             )),
             events,
@@ -166,6 +176,9 @@ impl Feature for ReadingsFeature {
             outlines: Arc::new(readings_catalog::SqliteOutlineCatalog::new(pool.clone())),
             texts: Arc::new(readings_catalog::SqliteSceneTextCatalog::new(pool.clone())),
             copies: Arc::new(readings_catalog::SqliteReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            names: Arc::new(readings_catalog::SqliteAccountNameCatalog::new(
                 pool.clone(),
             )),
             events,

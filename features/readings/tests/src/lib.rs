@@ -20,6 +20,9 @@ mod live_book_followed;
 mod live_book_guarded;
 
 #[cfg(test)]
+mod names_heard;
+
+#[cfg(test)]
 mod outlines_kept;
 
 #[cfg(test)]

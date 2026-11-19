@@ -143,7 +143,7 @@ refused-reading-copy-not-yours = Seule la personne qui a fait cette copie, ou un
 refused-reading-copy-name-blank = Une copie a besoin d’un nom.
 refused-reading-copy-name-control-character = Le nom d’une copie ne peut pas contenir de caractères de contrôle.
 refused-reading-copy-name-too-long = Le nom d’une copie peut compter au plus { $max } caractères ; celui-ci en a { $actual }.
-refused-reading-copy-outside-the-work = Ce que tu as choisi de partager n’est plus dans l’œuvre, ou finit avant de commencer.
+refused-reading-copy-outside-the-work = Ce que vous avez choisi de partager n’est plus dans l’œuvre, ou finit avant de commencer.
 refused-reading-copy-open-beyond-deletion = Une copie ne peut pas rester ouverte après sa suppression.
 refused-reading-copy-times-earlier = Les dates d’une copie ne peuvent qu’être repoussées.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
@@ -382,6 +382,7 @@ reading-copies = Copies de lecture · { $count }
 reading-no-copies = Aucune copie de lecture pour l’instant.
 reading-copy = Copie de lecture
 copy-by-you = Vous
+copy-by-a-former-member = Un ancien membre
 copy-extent-book = toute l’œuvre
 copy-extent-sections = { $count ->
         [one] une section

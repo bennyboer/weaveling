@@ -7,7 +7,7 @@ use eventsourcing::InMemoryEventStore;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
-use readings_catalog::InMemoryReadingCopyCatalog;
+use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
 use readings_core::{NobodyFollows, ReadingsCore};
 use readings_messaging::CatalogueReadingCopiesListener;
 use transacting::InMemoryTransactions;
@@ -34,6 +34,7 @@ pub fn a_workbench(
         Arc::new(SampleBook),
         Arc::new(SampleBook),
         Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryAccountNameCatalog::new()),
         Arc::new(InMemoryEventStore::enqueuing_to(
             outbox.clone(),
             readings_messaging::message_for,

@@ -121,3 +121,31 @@ mod copies {
 
     crate::copies_suite::copies_conformance_tests!(OnPostgres<PostgresReadingCopyCatalog>);
 }
+
+mod names {
+    use super::*;
+    use crate::names_postgres::PostgresAccountNameCatalog;
+
+    #[async_trait]
+    impl Workbench for OnPostgres<PostgresAccountNameCatalog> {
+        type Catalog = PostgresAccountNameCatalog;
+
+        async fn setup() -> Self {
+            OnPostgres::over(PostgresAccountNameCatalog::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnPostgres::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnPostgres::cleanup(self).await;
+        }
+    }
+
+    crate::names_suite::names_conformance_tests!(OnPostgres<PostgresAccountNameCatalog>);
+}

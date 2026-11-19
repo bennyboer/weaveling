@@ -11,7 +11,7 @@ use live::testing::Subscriber;
 use live::{Broadcaster, Topics};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::context::PROJECT;
-use readings_catalog::InMemoryReadingCopyCatalog;
+use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{
     Block, OutlineCatalog, ReadingsCore, Run, SceneLink, SceneTextCatalog, SectionLink, ToldSection,
@@ -40,6 +40,7 @@ async fn a_book_followed() -> Followed {
         outlines.clone(),
         texts.clone(),
         Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryAccountNameCatalog::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(TellingFollowers::new(outlines, texts, broadcaster.clone())),
         Arc::new(InMemoryTransactions::new()),

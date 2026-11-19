@@ -1,5 +1,5 @@
 use authorizing::Act;
-use eventsourcing::{Agent, AggregateId, ServiceError};
+use eventsourcing::{AccountId, Agent, AggregateId, ServiceError};
 use time::OffsetDateTime;
 use transacting::Transaction;
 
@@ -24,13 +24,9 @@ impl ReadingsCore {
             return Err(ReadingsError::ProjectNotThere);
         }
 
-        let mut listed: Vec<ListedReadingCopy> = self
-            .copies
-            .copies_of(&ProjectLink::from(project))
-            .await?
-            .into_iter()
-            .map(|summary| self.listed(summary))
-            .collect();
+        let mut listed = self
+            .listed(self.copies.copies_of(&ProjectLink::from(project)).await?)
+            .await?;
         self.mark_who_may_change(&mut listed, agent).await?;
 
         Ok(listed)
@@ -252,11 +248,10 @@ impl ReadingsCore {
         summary: ReadingCopySummary,
         agent: &Agent,
     ) -> Result<ListedReadingCopy, ReadingsError> {
-        let mut listed = [self.listed(summary)];
+        let mut listed = self.listed(vec![summary]).await?;
         self.mark_who_may_change(&mut listed, agent).await?;
-        let [listed] = listed;
 
-        Ok(listed)
+        Ok(listed.remove(0))
     }
 
     /// Whoever made a copy may change it, and an owner of its project may change every copy of it.
@@ -279,25 +274,40 @@ impl ReadingsCore {
         Ok(())
     }
 
-    /// A copy as its project's members find it listed, open until its opening has passed.
-    fn listed(&self, summary: ReadingCopySummary) -> ListedReadingCopy {
-        ListedReadingCopy {
-            copy: ReadingCopyLink::from(summary.copy.to_string()),
-            project: summary.project,
-            name: summary.name.to_string(),
-            made_by: summary.made_by,
-            // TODO: the maker's name as the project's members know it (9b3)
-            maker: String::new(),
-            made_at: summary.made_at,
-            extent: summary.extent,
-            open_until: summary.times.open_until,
-            deleted_on: summary.times.deleted_on,
-            open: summary
-                .times
-                .open_until
-                .is_none_or(|until| until > self.clock.now()),
-            may_change: false,
-        }
+    /// Copies as their project's members find them listed, each named for whoever made it and open until its opening has passed.
+    async fn listed(
+        &self,
+        summaries: Vec<ReadingCopySummary>,
+    ) -> Result<Vec<ListedReadingCopy>, ReadingsError> {
+        let makers: Vec<AccountId> = summaries
+            .iter()
+            .filter_map(|summary| match &summary.made_by {
+                Agent::Account(account) => Some(account.clone()),
+                _ => None,
+            })
+            .collect();
+        let names = self.names.names_of(&makers).await?;
+        let now = self.clock.now();
+
+        Ok(summaries
+            .into_iter()
+            .map(|summary| ListedReadingCopy {
+                copy: ReadingCopyLink::from(summary.copy.to_string()),
+                project: summary.project,
+                name: summary.name.to_string(),
+                maker: match &summary.made_by {
+                    Agent::Account(account) => names.get(account).cloned(),
+                    _ => None,
+                },
+                made_by: summary.made_by,
+                made_at: summary.made_at,
+                extent: summary.extent,
+                open_until: summary.times.open_until,
+                deleted_on: summary.times.deleted_on,
+                open: summary.times.open_until.is_none_or(|until| until > now),
+                may_change: false,
+            })
+            .collect())
     }
 
     /// How many sections or scenes of the work as it is now a copy is to hold, counted in reading order from the first to the last.

@@ -382,6 +382,7 @@ reading-copies = Copias de lectura · { $count }
 reading-no-copies = Todavía no hay copias de lectura.
 reading-copy = Copia de lectura
 copy-by-you = Tú
+copy-by-a-former-member = Un antiguo miembro
 copy-extent-book = toda la obra
 copy-extent-sections = { $count ->
         [one] una sección

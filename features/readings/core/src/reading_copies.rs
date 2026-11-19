@@ -32,8 +32,8 @@ pub struct ListedReadingCopy {
     pub project: ProjectLink,
     pub name: String,
     pub made_by: Agent,
-    /// The name of whoever made it, as the project's members know them.
-    pub maker: String,
+    /// The name whoever made it signed up with; none once their account is deleted.
+    pub maker: Option<String>,
     pub made_at: OffsetDateTime,
     pub extent: Extent,
     /// Until when its readers may read it and give feedback; none for no end.

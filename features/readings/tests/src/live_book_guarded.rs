@@ -443,3 +443,35 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     // then: it fails
     book.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+#[tokio::test]
+async fn a_maker_who_left_the_project_may_no_longer_change_their_copy() {
+    // given: a project ada may read, with a copy she made
+    let guarded = a_project_only_ada_may_read().await;
+    let hers = copy_made_by(&guarded.ada, "Ada's copy").await;
+
+    // when: she leaves the project
+    guarded
+        .readings
+        .remember_role(
+            None,
+            PROJECT,
+            &AccountId::from("account_ada"),
+            Version::of(3),
+            None,
+        )
+        .await
+        .expect("remembering should succeed");
+
+    // then: her copy is not there for her, to read or to change
+    guarded
+        .ada
+        .get(&hers)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    guarded
+        .ada
+        .delete(&hers)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

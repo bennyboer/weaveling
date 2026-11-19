@@ -40,3 +40,15 @@ CREATE TABLE reading_copies (
 );
 
 CREATE INDEX reading_copies_by_project_newest ON reading_copies (project, made_at DESC, copy DESC);
+
+CREATE TABLE account_names (
+    account  TEXT COLLATE "C" PRIMARY KEY,
+    name     TEXT             NOT NULL
+);
+
+CREATE TABLE account_name_tombstones (
+    account  TEXT COLLATE "C" PRIMARY KEY,
+    laid_at  BIGINT           NOT NULL
+);
+
+CREATE INDEX gone_account_names_by_laid_at ON account_name_tombstones (laid_at);

@@ -34,7 +34,7 @@ pub enum Extent {
 pub struct ListedReadingCopy {
     pub id: ReadingCopyId,
     pub name: String,
-    pub maker: String,
+    pub maker: Option<String>,
     pub made_by_you: bool,
     pub made_at: OffsetDateTime,
     pub extent: Extent,

@@ -8,7 +8,9 @@ use eventsourcing::{Agent, EventSourcingService, EventStore};
 use time::OffsetDateTime;
 use transacting::Transactions;
 
-use crate::catalog::{BookOutline, OutlineCatalog, ReadingCopyCatalog, SceneTextCatalog};
+use crate::catalog::{
+    AccountNameCatalog, BookOutline, OutlineCatalog, ReadingCopyCatalog, SceneTextCatalog,
+};
 use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
 use crate::following::BookFollowers;
@@ -16,6 +18,7 @@ use crate::link::{ProjectLink, SceneLink};
 use crate::reading_copy::{ReadingCopy, ReadingCopyEvent};
 
 mod access;
+mod names;
 mod outlines;
 mod reading_copies;
 mod texts;
@@ -27,6 +30,7 @@ pub struct ReadingsCore {
     outlines: Arc<dyn OutlineCatalog>,
     texts: Arc<dyn SceneTextCatalog>,
     copies: Arc<dyn ReadingCopyCatalog>,
+    names: Arc<dyn AccountNameCatalog>,
     events: Arc<EventSourcingService<ReadingCopy>>,
     followers: Arc<dyn BookFollowers>,
     transactions: Arc<dyn Transactions>,
@@ -41,6 +45,7 @@ impl ReadingsCore {
         outlines: Arc<dyn OutlineCatalog>,
         texts: Arc<dyn SceneTextCatalog>,
         copies: Arc<dyn ReadingCopyCatalog>,
+        names: Arc<dyn AccountNameCatalog>,
         events: Arc<dyn EventStore<ReadingCopyEvent>>,
         followers: Arc<dyn BookFollowers>,
         transactions: Arc<dyn Transactions>,
@@ -52,6 +57,7 @@ impl ReadingsCore {
             outlines,
             texts,
             copies,
+            names,
             events: Arc::new(EventSourcingService::new(events, clock.clone())),
             followers,
             transactions,
@@ -93,7 +99,7 @@ impl ReadingsCore {
     }
 
     /// Forgets, in batches, the tombstones laid long enough ago that no message about them can still arrive:
-    /// those of deleted scenes, those of deleted projects' books, and those of accounts that left a project.
+    /// those of deleted scenes, of deleted projects' books, of accounts that left a project, and of deleted accounts' names.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -112,8 +118,12 @@ impl ReadingsCore {
                 .access
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
+            let names = self
+                .names
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-            Ok(texts + books + access)
+            Ok(texts + books + access + names)
         })
     }
 }

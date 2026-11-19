@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use async_trait::async_trait;
-use eventsourcing::Agent;
+use eventsourcing::{AccountId, Agent};
 use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
@@ -167,4 +167,38 @@ pub trait ReadingCopyCatalog: Send + Sync {
         &self,
         project: &ProjectLink,
     ) -> Result<Vec<ReadingCopySummary>, CatalogError>;
+}
+
+/// The name each account signed up with, kept by the readings feature to name whoever made a copy.
+/// A deleted account's name is forgotten.
+#[async_trait]
+pub trait AccountNameCatalog: Send + Sync {
+    /// Keeps an account's name, unless the account was already deleted.
+    async fn remember_name(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        name: &str,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets a deleted account's name, and lays a tombstone so a late sign-up does not bring it back.
+    async fn forget_name(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
+
+    /// The names of those accounts whose name is kept.
+    async fn names_of(
+        &self,
+        accounts: &[AccountId],
+    ) -> Result<HashMap<AccountId, String>, CatalogError>;
 }

@@ -382,6 +382,7 @@ reading-copies = Reading copies · { $count }
 reading-no-copies = No reading copies yet.
 reading-copy = Reading copy
 copy-by-you = You
+copy-by-a-former-member = A former member
 copy-extent-book = the whole work
 copy-extent-sections = { $count ->
         [one] one section

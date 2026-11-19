@@ -5,13 +5,13 @@ use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::{Agent, InMemoryEventStore};
+use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use time::OffsetDateTime;
 use transacting::{InMemoryTransactions, Transaction};
 
 use crate::catalog::{
-    BookOutline, CatalogError, OutlineCatalog, OutlinedSection, ReadingCopyCatalog,
-    ReadingCopySummary, SceneTextCatalog,
+    AccountNameCatalog, BookOutline, CatalogError, OutlineCatalog, OutlinedSection,
+    ReadingCopyCatalog, ReadingCopySummary, SceneTextCatalog,
 };
 use crate::contents::{Block, Part, Run};
 use crate::error::ReadingsError;
@@ -46,6 +46,46 @@ impl ReadingCopyCatalog for NoCopies {
         _project: &ProjectLink,
     ) -> Result<Vec<ReadingCopySummary>, CatalogError> {
         Ok(vec![])
+    }
+}
+
+/// No names of accounts, as these cases are about the live book.
+struct NoNames;
+
+#[async_trait]
+impl AccountNameCatalog for NoNames {
+    async fn remember_name(
+        &self,
+        _transaction: &mut Transaction,
+        _account: &AccountId,
+        _name: &str,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget_name(
+        &self,
+        _transaction: &mut Transaction,
+        _account: &AccountId,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        _transaction: &mut Transaction,
+        _before: OffsetDateTime,
+        _at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(0)
+    }
+
+    async fn names_of(
+        &self,
+        _accounts: &[AccountId],
+    ) -> Result<HashMap<AccountId, String>, CatalogError> {
+        Ok(HashMap::new())
     }
 }
 
@@ -170,6 +210,7 @@ fn readings(sections: Vec<OutlinedSection>, texts: &[(&str, &str)]) -> ReadingsC
                 .collect(),
         )),
         Arc::new(NoCopies),
+        Arc::new(NoNames),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),

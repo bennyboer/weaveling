@@ -248,7 +248,9 @@ fn maker(copy: &ListedReadingCopy) -> String {
     if copy.made_by_you {
         speech::say("copy-by-you")
     } else {
-        copy.maker.clone()
+        copy.maker
+            .clone()
+            .unwrap_or_else(|| speech::say("copy-by-a-former-member"))
     }
 }
 
