@@ -13,7 +13,7 @@ use readings_contract::{
     ExtentDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, PartDTO, ReadingCopyDTO, SharedDTO,
     refused,
 };
-use readings_core::ReadingCopyId;
+use readings_core::{ReadingCopyContents, ReadingCopyId};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
@@ -191,23 +191,84 @@ async fn a_copy_closes_once_its_opening_has_passed() {
     assert!(!readings.listed(&readings.hedy()).await[0].open);
 }
 
+/// What each part of a copy is, as `section` or `scene` and its id.
+fn shape(read: &ReadingCopyDTO) -> Vec<String> {
+    read.contents
+        .parts
+        .iter()
+        .map(|part| match part {
+            PartDTO::Section { section, .. } => format!("section {section}"),
+            PartDTO::Scene { scene, .. } => format!("scene {scene}"),
+        })
+        .collect()
+}
+
+async fn read(readings: &Readings, made: &ListedReadingCopyDTO) -> ReadingCopyDTO {
+    readings
+        .hedy()
+        .get(&format!("/readings/copies/{}", made.id))
+        .await
+        .json::<ReadingCopyDTO>()
+}
+
 #[tokio::test]
 async fn a_copy_answers_with_what_it_holds() {
-    // given: a copy of the project
+    // given: a copy of both sections of the work
     let readings = readings();
     let made = made(&readings.hedy(), "For Lena").await;
 
     // when: it is asked for
-    let read = readings
-        .hedy()
-        .get(&format!("/readings/copies/{}", made.id))
-        .await
-        .json::<ReadingCopyDTO>();
+    let read = read(&readings, &made).await;
 
-    // then: it is the copy listed, with its work
+    // then: it is the copy listed, with the work's title and both sections with their scenes and words
     assert_eq!(read.copy, made);
     assert_eq!(read.contents.project, LOOM);
-    assert!(matches!(read.contents.parts[0], PartDTO::Section { .. }));
+    assert_eq!(read.contents.title, "The Loom");
+    assert_eq!(
+        shape(&read),
+        [
+            "section section_morning",
+            "scene scene_harbour",
+            "scene scene_wall",
+            "section section_market",
+            "scene scene_stalls",
+        ]
+    );
+    assert!(
+        serde_json::to_string(&read.contents)
+            .expect("contents are plain data")
+            .contains("she had stopped pretending she was counting at all.")
+    );
+}
+
+#[tokio::test]
+async fn a_copy_of_scenes_holds_the_sections_they_stand_in() {
+    // given: a copy of the work from its second scene to its last
+    let readings = readings();
+    let response = readings
+        .hedy()
+        .post("/readings/copies")
+        .json(&asked_for(
+            "Wall to stalls",
+            SharedDTO::Scenes {
+                first: "scene_wall".to_owned(),
+                last: "scene_stalls".to_owned(),
+            },
+        ))
+        .await;
+    response.assert_status(StatusCode::CREATED);
+    let made = response.json::<ListedReadingCopyDTO>();
+
+    // expect: it holds those scenes, under the section the first stands in and the one between
+    assert_eq!(
+        shape(&read(&readings, &made).await),
+        [
+            "section section_morning",
+            "scene scene_wall",
+            "section section_market",
+            "scene scene_stalls",
+        ]
+    );
 }
 
 #[tokio::test]
@@ -390,7 +451,21 @@ async fn a_copy_deleted_is_gone() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    // then: it is neither listed nor there, and deleting it again finds nothing
+    // then: what it held is gone with it
+    let id = made
+        .id
+        .parse::<ReadingCopyId>()
+        .expect("a copy's id reads back");
+    assert_eq!(
+        readings
+            .copying
+            .contents
+            .contents_of(&id)
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+    // and: it is neither listed nor there, and deleting it again finds nothing
     assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
     readings
         .hedy()

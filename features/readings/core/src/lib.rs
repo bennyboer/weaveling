@@ -1,5 +1,6 @@
 mod catalog;
 mod contents;
+mod cutting;
 mod error;
 mod following;
 mod id;

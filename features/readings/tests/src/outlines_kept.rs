@@ -8,7 +8,9 @@ use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{AttachmentDTO, OutlineStateDTO, STATE_CHANGED, SectionStateDTO};
 use projects_contract::{DELETED, RENAMED, STARTED};
-use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use readings_catalog::{
+    InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
+};
 use readings_catalog::{InMemoryOutlineCatalog, InMemorySceneTextCatalog};
 use readings_core::{
     Block, Contents, NobodyFollows, Part, ProjectLink, ReadingsCore, ReadingsError, Run, SceneLink,
@@ -43,6 +45,7 @@ async fn a_workbench() -> Wired {
         Arc::new(InMemorySceneTextCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        Arc::new(InMemoryReadingCopyContents::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),

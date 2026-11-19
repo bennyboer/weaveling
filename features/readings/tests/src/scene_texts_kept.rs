@@ -7,7 +7,9 @@ use eventsourcing::{Agent, InMemoryEventStore};
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use readings_catalog::InMemorySceneTextCatalog;
-use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use readings_catalog::{
+    InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
+};
 use readings_core::{Block, NobodyFollows, Part, ReadingsCore, Run};
 use readings_messaging::KeepSceneTextsListener;
 use scenes_contract::{
@@ -30,6 +32,7 @@ fn a_workbench() -> Wired {
         Arc::new(InMemorySceneTextCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        Arc::new(InMemoryReadingCopyContents::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),

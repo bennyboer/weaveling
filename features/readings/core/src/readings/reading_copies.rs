@@ -4,11 +4,12 @@ use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::catalog::ReadingCopySummary;
-use crate::contents::{Block, Contents, Marks, Part, Run};
+use crate::contents::Contents;
+use crate::cutting;
 use crate::error::ReadingsError;
 use crate::id::ReadingCopyId;
-use crate::link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
-use crate::reading_copies::{Extent, ListedReadingCopy, Shared};
+use crate::link::{ProjectLink, ReadingCopyLink};
+use crate::reading_copies::{ListedReadingCopy, Shared};
 use crate::reading_copy::{ReadingCopyCommand, Times};
 use crate::reading_copy_name::ReadingCopyName;
 use crate::readings::ReadingsCore;
@@ -48,13 +49,13 @@ impl ReadingsCore {
         }
         let project = ProjectLink::from(project);
         let name = ReadingCopyName::new(name)?;
-        let extent = self.extent_of(&project, shared).await?;
+        let (contents, extent) = cutting::cut(self.work_as_it_is(project.clone()).await?, shared)
+            .map_err(|_| ReadingsError::OutsideTheWork)?;
         let times = Times {
             open_until,
             deleted_on,
         };
 
-        // TODO: what the copy holds, taken from the live work and kept apart under its id (step 10)
         let copy = ReadingCopyId::generate(self.clock.now());
         let made = transacting::retrying!(&*self.transactions, |transaction| {
             self.events
@@ -69,6 +70,9 @@ impl ReadingsCore {
                     },
                     agent,
                 )
+                .await?;
+            self.reading_copy_contents
+                .keep(transaction, &copy, &contents)
                 .await?;
             self.standing_within(transaction, &copy).await
         })?;
@@ -101,14 +105,21 @@ impl ReadingsCore {
 
     /// One reading copy with what it holds, for whoever may read the project it was made of.
     /// To anyone else it is not there.
-    pub async fn copy(
+    pub async fn reading_copy(
         &self,
         copy: &str,
         agent: &Agent,
     ) -> Result<(ListedReadingCopy, Contents), ReadingsError> {
-        let (_, listed) = self.readable_copy(copy, agent).await?;
-        // TODO: what the copy holds, as it was kept when it was made (step 10)
-        let contents = sample_contents(listed.project.clone());
+        let (id, listed) = self.readable_copy(copy, agent).await?;
+        let contents = self
+            .reading_copy_contents
+            .contents_of(&id)
+            .await?
+            .unwrap_or_else(|| Contents {
+                project: listed.project.clone(),
+                title: String::new(),
+                parts: vec![],
+            });
 
         Ok((listed, contents))
     }
@@ -146,9 +157,9 @@ impl ReadingsCore {
         .await
     }
 
-    /// Deletes a reading copy for good, for whoever made it or an owner of its project.
+    /// Deletes a reading copy for good, with what it holds, for whoever made it or an owner of its project.
     pub async fn delete_copy(&self, copy: &str, agent: &Agent) -> Result<(), ReadingsError> {
-        // TODO: its contents and feedback deleted with it (steps 10 and 11)
+        // TODO: its feedback deleted with it (slice 2)
         self.changed(copy, ReadingCopyCommand::Delete, agent)
             .await?;
 
@@ -181,7 +192,12 @@ impl ReadingsCore {
             self.events
                 .execute(transaction, &AggregateId::from(&id), command.clone(), agent)
                 .await?;
-            self.standing_within(transaction, &id).await
+            let standing = self.standing_within(transaction, &id).await?;
+            if standing.is_none() {
+                self.reading_copy_contents.forget(transaction, &id).await?;
+            }
+
+            Ok(standing)
         })
     }
 
@@ -308,80 +324,5 @@ impl ReadingsCore {
                 may_change: false,
             })
             .collect())
-    }
-
-    /// How many sections or scenes of the work as it is now a copy is to hold, counted in reading order from the first to the last.
-    async fn extent_of(
-        &self,
-        project: &ProjectLink,
-        shared: &Shared,
-    ) -> Result<Extent, ReadingsError> {
-        let (first, last) = match shared {
-            Shared::Book => return Ok(Extent::Book),
-            Shared::Sections { first, last } => (first.as_str(), last.as_str()),
-            Shared::Scenes { first, last } => (first.as_str(), last.as_str()),
-        };
-        let Some(outline) = self.outlines.outline_of(project).await? else {
-            return Err(ReadingsError::ProjectNotThere);
-        };
-        let in_order: Vec<&str> = match shared {
-            Shared::Sections { .. } => outline
-                .sections
-                .iter()
-                .map(|section| section.section.as_str())
-                .collect(),
-            _ => outline
-                .sections
-                .iter()
-                .flat_map(|section| section.scenes.iter().map(SceneLink::as_str))
-                .collect(),
-        };
-        let from = in_order.iter().position(|one| *one == first);
-        let to = in_order.iter().position(|one| *one == last);
-        let count = match (from, to) {
-            (Some(from), Some(to)) if from <= to => {
-                u32::try_from(to - from + 1).map_err(|_| ReadingsError::OutsideTheWork)?
-            }
-            _ => return Err(ReadingsError::OutsideTheWork),
-        };
-
-        Ok(match shared {
-            Shared::Sections { .. } => Extent::Sections(count),
-            _ => Extent::Scenes(count),
-        })
-    }
-}
-
-fn sample_contents(project: ProjectLink) -> Contents {
-    Contents {
-        project,
-        title: "The Loom".to_owned(),
-        parts: vec![
-            Part::Section {
-                section: SectionLink::from("section_morning"),
-                depth: 0,
-                title: "Morning".to_owned(),
-            },
-            Part::Scene {
-                scene: SceneLink::from("scene_harbour"),
-                blocks: vec![Block::Paragraph(vec![
-                    Run::plain("The boats came in before the light did, "),
-                    Run::Text {
-                        text: "one by one".to_owned(),
-                        marks: Marks {
-                            emphasis: true,
-                            ..Marks::default()
-                        },
-                    },
-                    Run::plain("."),
-                ])],
-            },
-            Part::Scene {
-                scene: SceneLink::from("scene_wall"),
-                blocks: vec![Block::Paragraph(vec![Run::plain(
-                    "Hedy counted them from the wall.",
-                )])],
-            },
-        ],
     }
 }

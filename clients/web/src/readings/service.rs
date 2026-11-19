@@ -36,7 +36,7 @@ pub async fn copies(project: &ProjectId) -> Result<Vec<ListedReadingCopy>, ApiEr
 }
 
 /// One reading copy, with the work as it was frozen.
-pub async fn copy(copy: &ReadingCopyId) -> Result<(ListedReadingCopy, Book), ApiError> {
+pub async fn reading_copy(copy: &ReadingCopyId) -> Result<(ListedReadingCopy, Book), ApiError> {
     let response = http::sent(Request::get(&format!("{COPIES}/{copy}"))).await?;
     let read: ReadingCopyDTO = http::parsed(response, COPY).await?;
 

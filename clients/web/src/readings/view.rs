@@ -152,7 +152,7 @@ fn reading_a_copy(
     failed: RwSignal<Option<ApiError>>,
 ) {
     leptos::task::spawn_local(async move {
-        match service::copy(&copy).await {
+        match service::reading_copy(&copy).await {
             Ok((listed, read)) => {
                 _ = chosen.try_set(Some(listed));
                 _ = book.try_set(Some(read));

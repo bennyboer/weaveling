@@ -75,7 +75,7 @@ pub fn router(readings: ReadingsCore) -> Router {
         .route("/readings/copies", routing::get(copies).post(make_copy))
         .route(
             "/readings/copies/{copy}",
-            routing::get(copy).delete(delete_copy),
+            routing::get(reading_copy).delete(delete_copy),
         )
         .route("/readings/copies/{copy}/name", routing::put(rename_copy))
         .route("/readings/copies/{copy}/times", routing::put(extend_copy))
@@ -118,12 +118,15 @@ async fn copies(
     ))
 }
 
-async fn copy(
+async fn reading_copy(
     State(readings): State<ReadingsCore>,
     Extension(agent): Extension<Agent>,
     Path(copy): Path<String>,
 ) -> Result<Json<ReadingCopyDTO>, Problem> {
-    let (listed, contents) = readings.copy(&copy, &agent).await.map_err(problem_of)?;
+    let (listed, contents) = readings
+        .reading_copy(&copy, &agent)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(transformer::to_reading_copy_dto(
         &listed, &contents, &agent,

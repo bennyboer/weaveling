@@ -9,7 +9,8 @@ use time::OffsetDateTime;
 use transacting::Transactions;
 
 use crate::catalog::{
-    AccountNameCatalog, BookOutline, OutlineCatalog, ReadingCopyCatalog, SceneTextCatalog,
+    AccountNameCatalog, BookOutline, OutlineCatalog, ReadingCopyCatalog, ReadingCopyContents,
+    SceneTextCatalog,
 };
 use crate::contents::{Block, Contents, Part};
 use crate::error::ReadingsError;
@@ -31,6 +32,7 @@ pub struct ReadingsCore {
     texts: Arc<dyn SceneTextCatalog>,
     copies: Arc<dyn ReadingCopyCatalog>,
     names: Arc<dyn AccountNameCatalog>,
+    reading_copy_contents: Arc<dyn ReadingCopyContents>,
     events: Arc<EventSourcingService<ReadingCopy>>,
     followers: Arc<dyn BookFollowers>,
     transactions: Arc<dyn Transactions>,
@@ -46,6 +48,7 @@ impl ReadingsCore {
         texts: Arc<dyn SceneTextCatalog>,
         copies: Arc<dyn ReadingCopyCatalog>,
         names: Arc<dyn AccountNameCatalog>,
+        reading_copy_contents: Arc<dyn ReadingCopyContents>,
         events: Arc<dyn EventStore<ReadingCopyEvent>>,
         followers: Arc<dyn BookFollowers>,
         transactions: Arc<dyn Transactions>,
@@ -58,6 +61,7 @@ impl ReadingsCore {
             texts,
             copies,
             names,
+            reading_copy_contents,
             events: Arc::new(EventSourcingService::new(events, clock.clone())),
             followers,
             transactions,
@@ -73,7 +77,12 @@ impl ReadingsCore {
         if !self.authorizer.may(agent, Act::Read, project).await? {
             return Err(ReadingsError::ProjectNotThere);
         }
-        let project = ProjectLink::from(project);
+
+        self.work_as_it_is(ProjectLink::from(project)).await
+    }
+
+    /// The work as it is written now, for whoever already may read it.
+    async fn work_as_it_is(&self, project: ProjectLink) -> Result<Contents, ReadingsError> {
         let Some(outline) = self.outlines.outline_of(&project).await? else {
             return Err(ReadingsError::ProjectNotThere);
         };

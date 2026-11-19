@@ -5,7 +5,9 @@ use access::{InMemoryAccess, KeptAccess};
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::InMemoryEventStore;
-use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use readings_catalog::{
+    InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
+};
 use readings_core::{NobodyFollows, ReadingsCore};
 use transacting::InMemoryTransactions;
 
@@ -17,6 +19,7 @@ pub fn everyone() -> ReadingsCore {
         Arc::new(SampleBook),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        Arc::new(InMemoryReadingCopyContents::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),

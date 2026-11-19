@@ -9,11 +9,11 @@ use live::Broadcaster;
 use outbox::Outbox;
 use readings_catalog::{
     InMemoryAccountNameCatalog, InMemoryOutlineCatalog, InMemoryReadingCopyCatalog,
-    InMemorySceneTextCatalog,
+    InMemoryReadingCopyContents, InMemorySceneTextCatalog,
 };
 use readings_core::{
-    AccountNameCatalog, OutlineCatalog, ReadingCopyCatalog, ReadingCopyEvent, ReadingsCore,
-    SceneTextCatalog,
+    AccountNameCatalog, OutlineCatalog, ReadingCopyCatalog, ReadingCopyContents, ReadingCopyEvent,
+    ReadingsCore, SceneTextCatalog,
 };
 use readings_messaging::{
     CatalogueReadingCopiesListener, KeepBookTitlesListener, KeepOutlinesListener,
@@ -28,6 +28,7 @@ pub struct Ports {
     pub texts: Arc<dyn SceneTextCatalog>,
     pub copies: Arc<dyn ReadingCopyCatalog>,
     pub names: Arc<dyn AccountNameCatalog>,
+    pub reading_copy_contents: Arc<dyn ReadingCopyContents>,
     pub events: Arc<dyn EventStore<ReadingCopyEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub access: KeptAccess,
@@ -49,6 +50,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.texts.clone(),
         ports.copies.clone(),
         ports.names.clone(),
+        ports.reading_copy_contents.clone(),
         ports.events.clone(),
         Arc::new(readings_rest::TellingFollowers::new(
             ports.outlines.clone(),
@@ -108,6 +110,7 @@ impl Feature for ReadingsFeature {
             texts: Arc::new(InMemorySceneTextCatalog::new()),
             copies: Arc::new(InMemoryReadingCopyCatalog::new()),
             names: Arc::new(InMemoryAccountNameCatalog::new()),
+            reading_copy_contents: Arc::new(InMemoryReadingCopyContents::new()),
             events,
             transactions,
             access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
@@ -138,6 +141,9 @@ impl Feature for ReadingsFeature {
                 pool.clone(),
             )),
             names: Arc::new(readings_catalog::PostgresAccountNameCatalog::new(
+                pool.clone(),
+            )),
+            reading_copy_contents: Arc::new(readings_catalog::PostgresReadingCopyContents::new(
                 pool.clone(),
             )),
             events,
@@ -179,6 +185,9 @@ impl Feature for ReadingsFeature {
                 pool.clone(),
             )),
             names: Arc::new(readings_catalog::SqliteAccountNameCatalog::new(
+                pool.clone(),
+            )),
+            reading_copy_contents: Arc::new(readings_catalog::SqliteReadingCopyContents::new(
                 pool.clone(),
             )),
             events,

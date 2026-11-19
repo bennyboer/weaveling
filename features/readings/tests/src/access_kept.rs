@@ -7,7 +7,9 @@ use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::{RESTORED, TRASHED};
-use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use readings_catalog::{
+    InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
+};
 use readings_core::{NobodyFollows, ReadingsCore, ReadingsError};
 use readings_messaging::{RememberRolesListener, RememberTrashListener};
 use serde_json::{Value, json};
@@ -39,6 +41,7 @@ fn heard() -> Heard {
         Arc::new(SampleBook),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        Arc::new(InMemoryReadingCopyContents::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),

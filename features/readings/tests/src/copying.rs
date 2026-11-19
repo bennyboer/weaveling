@@ -7,7 +7,9 @@ use eventsourcing::InMemoryEventStore;
 use inbox::{InMemoryInbox, Inboxed};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
-use readings_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use readings_catalog::{
+    InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
+};
 use readings_core::{NobodyFollows, ReadingsCore};
 use readings_messaging::CatalogueReadingCopiesListener;
 use transacting::InMemoryTransactions;
@@ -17,6 +19,7 @@ use crate::sample::SampleBook;
 /// The core around the sample book, whose copies' events reach the list of copies once they are settled.
 pub struct Copying {
     pub readings: ReadingsCore,
+    pub contents: Arc<InMemoryReadingCopyContents>,
     outbox: Arc<InMemoryOutbox>,
     consuming: DeliveryConsumer,
 }
@@ -30,11 +33,13 @@ pub fn a_workbench(
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
     let transactions = Arc::new(InMemoryTransactions::new());
+    let contents = Arc::new(InMemoryReadingCopyContents::new());
     let readings = ReadingsCore::new(
         Arc::new(SampleBook),
         Arc::new(SampleBook),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        contents.clone(),
         Arc::new(InMemoryEventStore::enqueuing_to(
             outbox.clone(),
             readings_messaging::message_for,
@@ -53,6 +58,7 @@ pub fn a_workbench(
 
     Copying {
         readings,
+        contents,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher, deliveries, clock),
     }

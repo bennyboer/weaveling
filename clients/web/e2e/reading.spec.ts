@@ -519,8 +519,17 @@ test("the switcher lists the live work and every reading copy, with when each cl
 test("a copy chosen is read as it was frozen, and the live work is a choice away", async ({
   page,
 }) => {
-  // given: a project's reading view
+  // given: a project's reading view, its copies made of the work's one section
   const title = await aReadingView(page, "ReadingCopy");
+  // and: a section added to the work since
+  const outline = (await projectsOutline(page)).id;
+  const added = await page.request.post(`${API}/outlines/${outline}/sections`, {
+    data: { title: "Evening", under: null, after: null },
+  });
+  expect(added.status()).toBe(201);
+  await expect(
+    book(page).getByRole("heading", { level: 2, name: "Evening" }),
+  ).toBeVisible({ timeout: 15_000 });
 
   // when: a copy is chosen
   await switcher(page).click();
@@ -534,7 +543,13 @@ test("a copy chosen is read as it was frozen, and the live work is a choice away
   await expect(switcher(page).locator(".when")).toHaveText(
     /^Frozen .* · open until .* · deleted on .*$/,
   );
-  await expect(book(page)).toContainText("Hedy counted them from the wall.");
+  // and: it holds the work as it stood, without the section added since
+  await expect(
+    book(page).getByRole("heading", { level: 2, name: "Morning" }),
+  ).toBeVisible();
+  await expect(
+    book(page).getByRole("heading", { level: 2, name: "Evening" }),
+  ).toHaveCount(0);
   // and: the path names it a reading copy
   await expect(page.getByRole("navigation", { name: "Path" })).toContainText(
     "Reading copy",
@@ -546,10 +561,13 @@ test("a copy chosen is read as it was frozen, and the live work is a choice away
     .getByRole("link", { name: /The work as it is now/ })
     .click();
 
-  // then: the live work is read
+  // then: the live work is read, with the section added since
   await expect(page).toHaveURL(/\/read$/);
   await expect(
     book(page).getByRole("heading", { level: 1, name: title }),
+  ).toBeVisible();
+  await expect(
+    book(page).getByRole("heading", { level: 2, name: "Evening" }),
   ).toBeVisible();
 });
 

@@ -11,9 +11,9 @@ use transacting::{InMemoryTransactions, Transaction};
 
 use crate::catalog::{
     AccountNameCatalog, BookOutline, CatalogError, OutlineCatalog, OutlinedSection,
-    ReadingCopyCatalog, ReadingCopySummary, SceneTextCatalog,
+    ReadingCopyCatalog, ReadingCopyContents, ReadingCopySummary, SceneTextCatalog,
 };
-use crate::contents::{Block, Part, Run};
+use crate::contents::{Block, Contents, Part, Run};
 use crate::error::ReadingsError;
 use crate::following::NobodyFollows;
 use crate::id::ReadingCopyId;
@@ -86,6 +86,33 @@ impl AccountNameCatalog for NoNames {
         _accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, String>, CatalogError> {
         Ok(HashMap::new())
+    }
+}
+
+/// No reading copies' contents, as these cases are about the live book.
+struct NoContents;
+
+#[async_trait]
+impl ReadingCopyContents for NoContents {
+    async fn keep(
+        &self,
+        _transaction: &mut Transaction,
+        _copy: &ReadingCopyId,
+        _contents: &Contents,
+    ) -> Result<(), CatalogError> {
+        Ok(())
+    }
+
+    async fn contents_of(&self, _copy: &ReadingCopyId) -> Result<Option<Contents>, CatalogError> {
+        Ok(None)
+    }
+
+    async fn forget(
+        &self,
+        _transaction: &mut Transaction,
+        _copy: &ReadingCopyId,
+    ) -> Result<(), CatalogError> {
+        Ok(())
     }
 }
 
@@ -211,6 +238,7 @@ fn readings(sections: Vec<OutlinedSection>, texts: &[(&str, &str)]) -> ReadingsC
         )),
         Arc::new(NoCopies),
         Arc::new(NoNames),
+        Arc::new(NoContents),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(NobodyFollows),
         Arc::new(InMemoryTransactions::new()),
