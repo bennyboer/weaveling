@@ -12,7 +12,13 @@ access = { version = "0.1.0", path = "../../../libraries/access", package = "wea
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
+words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

@@ -6679,7 +6679,10 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-projects-contract",
  "weaveling-transacting",
+ "weaveling-words",
 ]
 
 [[package]]
