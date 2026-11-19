@@ -91,6 +91,24 @@ impl ReadingsCore {
         Ok(renamed)
     }
 
+    /// Moves a reading copy's times later, for whoever made it or an owner of its project.
+    pub async fn extend_copy(
+        &self,
+        copy: &str,
+        open_until: Option<OffsetDateTime>,
+        deleted_on: Option<OffsetDateTime>,
+        agent: &Agent,
+    ) -> Result<ListedReadingCopy, ReadingsError> {
+        let mut extended = self.changeable_copy(copy, agent).await?;
+
+        // TODO: extended by the ReadingCopy aggregate and kept, which refuses times earlier than they were, and an opening beyond the deletion
+        extended.open_until = open_until;
+        extended.deleted_on = deleted_on;
+        extended.open = open_until.is_none_or(|until| until > self.clock.now());
+
+        Ok(extended)
+    }
+
     /// Deletes a reading copy for good, with its feedback, for whoever made it or an owner of its project.
     pub async fn delete_copy(&self, copy: &str, agent: &Agent) -> Result<(), ReadingsError> {
         self.changeable_copy(copy, agent).await?;

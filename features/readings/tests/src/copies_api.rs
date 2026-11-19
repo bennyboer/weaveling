@@ -161,3 +161,30 @@ async fn a_copy_renamed_answers_under_its_new_name_and_one_deleted_is_gone() {
     );
     deleted.assert_status(StatusCode::NO_CONTENT);
 }
+
+#[tokio::test]
+async fn a_copy_extended_answers_with_its_new_times() {
+    // given: a copy that has closed
+    let server = server();
+    let listed = server
+        .get("/readings/copies?project=project_loom")
+        .await
+        .json::<Vec<ListedReadingCopyDTO>>();
+    let closed = listed
+        .iter()
+        .find(|copy| !copy.open)
+        .expect("one sample copy has closed");
+
+    // when: it is opened again until a later day, and kept for good
+    let extended = server
+        .put(&format!("/readings/copies/{}/times", closed.id))
+        .json(&serde_json::json!({ "open_until": "2099-01-01T00:00:00Z", "deleted_on": null }))
+        .await;
+
+    // then: it is open until that day, and kept
+    extended.assert_status_ok();
+    let extended = extended.json::<ListedReadingCopyDTO>();
+    assert_eq!(extended.open_until.as_deref(), Some("2099-01-01T00:00:00Z"));
+    assert_eq!(extended.deleted_on, None);
+    assert!(extended.open);
+}

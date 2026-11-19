@@ -16,8 +16,8 @@ use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use readings_contract::{
-    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO,
-    RenameReadingCopyRequest, SharedDTO, refused,
+    ContentsDTO, ExtendReadingCopyRequest, ListedReadingCopyDTO, MakeReadingCopyRequest,
+    ReadingCopyDTO, RenameReadingCopyRequest, SharedDTO, refused,
 };
 use readings_core::{ProjectLink, ReadingsCore, ReadingsError, SceneLink, SectionLink, Shared};
 use serde::Deserialize;
@@ -75,6 +75,7 @@ pub fn router(readings: ReadingsCore) -> Router {
             routing::get(copy).delete(delete_copy),
         )
         .route("/readings/copies/{copy}/name", routing::put(rename_copy))
+        .route("/readings/copies/{copy}/times", routing::put(extend_copy))
         .with_state(readings)
 }
 
@@ -173,6 +174,27 @@ async fn rename_copy(
 
     Ok(Json(transformer::to_listed_reading_copy_dto(
         &renamed, &agent,
+    )))
+}
+
+async fn extend_copy(
+    State(readings): State<ReadingsCore>,
+    Extension(agent): Extension<Agent>,
+    Path(copy): Path<String>,
+    Json(asked): Json<ExtendReadingCopyRequest>,
+) -> Result<Json<ListedReadingCopyDTO>, Problem> {
+    let extended = readings
+        .extend_copy(
+            &copy,
+            moment_in(asked.open_until.as_deref())?,
+            moment_in(asked.deleted_on.as_deref())?,
+            &agent,
+        )
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(transformer::to_listed_reading_copy_dto(
+        &extended, &agent,
     )))
 }
 

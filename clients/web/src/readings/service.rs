@@ -1,7 +1,7 @@
 use gloo_net::http::Request;
 use readings_contract::{
-    ContentsDTO, ListedReadingCopyDTO, MakeReadingCopyRequest, ReadingCopyDTO,
-    RenameReadingCopyRequest, SharedDTO,
+    ContentsDTO, ExtendReadingCopyRequest, ListedReadingCopyDTO, MakeReadingCopyRequest,
+    ReadingCopyDTO, RenameReadingCopyRequest, SharedDTO,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -92,4 +92,21 @@ pub async fn delete_copy(copy: &ReadingCopyId) -> Result<(), ApiError> {
     http::checked(response, COPY).await?;
 
     Ok(())
+}
+
+/// Moves a reading copy's times later.
+pub async fn extend_copy(
+    copy: &ReadingCopyId,
+    open_until: Option<OffsetDateTime>,
+    deleted_on: Option<OffsetDateTime>,
+) -> Result<ListedReadingCopy, ApiError> {
+    let payload = ExtendReadingCopyRequest {
+        open_until: open_until.map(written),
+        deleted_on: deleted_on.map(written),
+    };
+    let response =
+        http::sent_with(Request::put(&format!("{COPIES}/{copy}/times")), &payload).await?;
+    let extended: ListedReadingCopyDTO = http::parsed(response, COPY).await?;
+
+    ListedReadingCopy::try_from(extended)
 }

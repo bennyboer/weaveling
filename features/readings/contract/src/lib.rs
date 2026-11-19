@@ -75,6 +75,13 @@ pub struct RenameReadingCopyRequest {
     pub name: String,
 }
 
+/// A copy's times moved later: until when it is open, and when it is deleted; none for no end.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ExtendReadingCopyRequest {
+    pub open_until: Option<String>,
+    pub deleted_on: Option<String>,
+}
+
 /// One reading copy with what it holds.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ReadingCopyDTO {

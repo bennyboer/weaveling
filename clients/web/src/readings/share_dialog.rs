@@ -33,7 +33,7 @@ enum What {
     Scenes,
 }
 
-fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
+pub(crate) fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
     let mut told = FluentArgs::new();
     for (name, value) in args {
         told.set(*name, value.clone());
@@ -231,7 +231,7 @@ fn shared(
     }
 }
 
-fn chosen_among<T: Copy + PartialEq + Send + Sync + 'static>(
+pub(crate) fn chosen_among<T: Copy + PartialEq + Send + Sync + 'static>(
     named: &'static str,
     choice: RwSignal<T>,
     options: Vec<(&'static str, T)>,
@@ -340,7 +340,7 @@ fn sections_to_share(
     )
 }
 
-fn date_field(
+pub(crate) fn date_field(
     label: &'static str,
     shown: impl Fn() -> Option<Date> + Send + Sync + 'static,
     chosen: impl Fn(Date) + Copy + Send + Sync + 'static,

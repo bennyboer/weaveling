@@ -851,3 +851,66 @@ test("the contents fold away the sections under a section, one by one or all at 
   ]);
   await expect(unfoldAll).toBeDisabled();
 });
+
+test("whoever may change a copy extends its dates, which only move later", async ({
+  page,
+}) => {
+  // given: a copy being read, open for four more weeks and deleted in about three months
+  await aCopyRead(page, "ReadingExtend");
+
+  // when: its dates are to be extended
+  await copyTools(page).click();
+  await page.getByRole("menuitem", { name: "Extend dates…" }).click();
+  const extending = page.getByRole("dialog", { name: "Extend the dates" });
+  const extend = extending.getByRole("button", { name: "Extend", exact: true });
+
+  // then: nothing is changed until something is chosen
+  await expect(extend).toBeDisabled();
+
+  // when: it is opened 30 days more and kept a year more
+  await extending
+    .getByRole("group", { name: "Open for feedback" })
+    .getByRole("button", { name: "30 days more" })
+    .click();
+  await extending
+    .getByRole("group", { name: "Deleted with its comments" })
+    .getByRole("button", { name: "A year more" })
+    .click();
+  const asked = page.waitForRequest(
+    (sent) => sent.method() === "PUT" && sent.url().endsWith("/times"),
+  );
+  await extend.click();
+
+  // then: later times are asked for, closing before the copy is deleted
+  const times = (await asked).postDataJSON();
+  const days = (moment: string) =>
+    (Date.parse(moment) - Date.now()) / 86_400_000;
+  expect(days(times.open_until)).toBeGreaterThan(55);
+  expect(days(times.deleted_on)).toBeGreaterThan(450);
+  // and: the copy is read with them
+  await expect(extending).toBeHidden();
+  await expect(switcher(page).locator(".when")).toContainText("open until");
+});
+
+test("a copy kept for good offers no deletion to extend", async ({ page }) => {
+  // given: the older copy, closed and kept for good, being read
+  await aReadingView(page, "ReadingExtendKept");
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /First draft, part one/ })
+    .click();
+
+  // when: its dates are to be extended
+  await copyTools(page).click();
+  await page.getByRole("menuitem", { name: "Extend dates…" }).click();
+  const extending = page.getByRole("dialog", { name: "Extend the dates" });
+
+  // then: it may be opened again, but its deletion has nothing later to go to
+  await expect(
+    extending.getByRole("group", { name: "Open for feedback" }),
+  ).toBeVisible();
+  await expect(
+    extending.getByRole("group", { name: "Deleted with its comments" }),
+  ).toHaveCount(0);
+  await expect(extending).toContainText("Kept for good, with its comments.");
+});

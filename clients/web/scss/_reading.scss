@@ -549,3 +549,11 @@
     font: 300 0.95rem/1.4 var(--reading);
   }
 }
+
+.dialog.share-copy.copy-extend {
+  max-width: 38rem;
+
+  .field {
+    margin-bottom: 1.25rem;
+  }
+}

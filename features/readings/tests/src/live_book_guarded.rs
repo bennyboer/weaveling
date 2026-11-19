@@ -307,7 +307,7 @@ async fn a_copy_is_changed_by_whoever_made_it_or_an_owner_and_by_no_other_member
         .json(&serde_json::json!({ "name": "Mine" }))
         .await
         .assert_status_ok();
-    // and: is refused renaming or deleting Hedy's
+    // and: is refused renaming, deleting or extending Hedy's
     for refused in [
         guarded
             .ada
@@ -315,6 +315,11 @@ async fn a_copy_is_changed_by_whoever_made_it_or_an_owner_and_by_no_other_member
             .json(&serde_json::json!({ "name": "Not mine" }))
             .await,
         guarded.ada.delete(hedys).await,
+        guarded
+            .ada
+            .put(&format!("{hedys}/times"))
+            .json(&serde_json::json!({ "open_until": null, "deleted_on": null }))
+            .await,
     ] {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "reading-copy-not-yours");
