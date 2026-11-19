@@ -70,7 +70,7 @@ impl SceneTextCatalog for SqliteSceneTextCatalog {
         let kept = sqlx::query(KEEP)
             .bind(scene.as_str())
             .bind(i64::try_from(version).map_err(unreachable)?)
-            .bind(kept::blocks_to_json(blocks))
+            .bind(kept::scene_texts::to_json(blocks))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
@@ -131,7 +131,10 @@ impl SceneTextCatalog for SqliteSceneTextCatalog {
                 let scene: String = row.try_get("scene").map_err(unreachable)?;
                 let blocks: String = row.try_get("blocks").map_err(unreachable)?;
 
-                Ok((SceneLink::from(scene), kept::blocks_from_json(&blocks)?))
+                Ok((
+                    SceneLink::from(scene),
+                    kept::scene_texts::from_json(&blocks)?,
+                ))
             })
             .collect()
     }

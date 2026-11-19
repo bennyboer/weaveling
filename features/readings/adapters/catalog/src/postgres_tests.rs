@@ -149,3 +149,31 @@ mod names {
 
     crate::names_suite::names_conformance_tests!(OnPostgres<PostgresAccountNameCatalog>);
 }
+
+mod contents {
+    use super::*;
+    use crate::contents_postgres::PostgresReadingCopyContents;
+
+    #[async_trait]
+    impl Workbench for OnPostgres<PostgresReadingCopyContents> {
+        type Catalog = PostgresReadingCopyContents;
+
+        async fn setup() -> Self {
+            OnPostgres::over(PostgresReadingCopyContents::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnPostgres::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnPostgres::cleanup(self).await;
+        }
+    }
+
+    crate::contents_suite::contents_conformance_tests!(OnPostgres<PostgresReadingCopyContents>);
+}

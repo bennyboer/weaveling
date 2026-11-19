@@ -7,7 +7,8 @@ use sqlx::{PgPool, Row};
 use transacting::Transaction;
 use transacting::postgres::connection;
 
-use crate::copies_kept::{self, KeptReadingCopySummary};
+use crate::kept;
+use crate::kept::copies::KeptReadingCopySummary;
 use crate::postgres::unreachable;
 
 const REMEMBER: &str = "
@@ -67,8 +68,8 @@ impl ReadingCopyCatalog for PostgresReadingCopyCatalog {
         transaction: &mut Transaction,
         summary: &ReadingCopySummary,
     ) -> Result<(), CatalogError> {
-        let (made_by_kind, made_by) = copies_kept::maker_written(&summary.made_by);
-        let (extent, extent_count) = copies_kept::extent_written(summary.extent);
+        let (made_by_kind, made_by) = kept::copies::maker_written(&summary.made_by);
+        let (extent, extent_count) = kept::copies::extent_written(summary.extent);
         sqlx::query(REMEMBER)
             .bind(summary.copy.to_string())
             .bind(summary.project.as_str())

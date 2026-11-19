@@ -52,3 +52,11 @@ CREATE TABLE account_name_tombstones (
 );
 
 CREATE INDEX gone_account_names_by_laid_at ON account_name_tombstones (laid_at);
+
+CREATE TABLE reading_copy_contents (
+    copy      TEXT COLLATE "C" PRIMARY KEY,
+    project   TEXT COLLATE "C" NOT NULL,
+    contents  TEXT             NOT NULL
+);
+
+CREATE INDEX reading_copy_contents_by_project ON reading_copy_contents (project);

@@ -149,3 +149,31 @@ mod names {
 
     crate::names_suite::names_conformance_tests!(OnSqlite<SqliteAccountNameCatalog>);
 }
+
+mod contents {
+    use super::*;
+    use crate::contents_sqlite::SqliteReadingCopyContents;
+
+    #[async_trait]
+    impl Workbench for OnSqlite<SqliteReadingCopyContents> {
+        type Catalog = SqliteReadingCopyContents;
+
+        async fn setup() -> Self {
+            OnSqlite::over(SqliteReadingCopyContents::new).await
+        }
+
+        fn catalog(&self) -> &Self::Catalog {
+            &self.catalog
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            OnSqlite::transactions(self)
+        }
+
+        async fn cleanup(self) {
+            OnSqlite::cleanup(self).await;
+        }
+    }
+
+    crate::contents_suite::contents_conformance_tests!(OnSqlite<SqliteReadingCopyContents>);
+}

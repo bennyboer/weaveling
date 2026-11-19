@@ -7,7 +7,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
 
-use crate::contents::Block;
+use crate::contents::{Block, Contents};
 use crate::id::ReadingCopyId;
 use crate::link::{ProjectLink, SceneLink, SectionLink};
 use crate::reading_copies::Extent;
@@ -201,4 +201,24 @@ pub trait AccountNameCatalog: Send + Sync {
         &self,
         accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, String>, CatalogError>;
+}
+
+/// What each reading copy holds, kept as the work stood when the copy was made.
+/// It never changes, and goes once the copy is deleted.
+#[async_trait]
+pub trait ReadingCopyContents: Send + Sync {
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyId,
+        contents: &Contents,
+    ) -> Result<(), CatalogError>;
+
+    async fn contents_of(&self, copy: &ReadingCopyId) -> Result<Option<Contents>, CatalogError>;
+
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyId,
+    ) -> Result<(), CatalogError>;
 }

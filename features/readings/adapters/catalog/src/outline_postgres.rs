@@ -63,7 +63,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
     ) -> Result<bool, CatalogError> {
         let kept = sqlx::query(KEEP_OUTLINE)
             .bind(project.as_str())
-            .bind(kept::sections_to_json(sections))
+            .bind(kept::books::to_json(sections))
             .bind(i64::try_from(version).map_err(unreachable)?)
             .execute(connection(transaction).map_err(unreachable)?)
             .await
@@ -142,7 +142,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             title: title.unwrap_or_default(),
             sections: sections
                 .as_deref()
-                .map(kept::sections_from_json)
+                .map(kept::books::from_json)
                 .transpose()?
                 .unwrap_or_default(),
         }))
