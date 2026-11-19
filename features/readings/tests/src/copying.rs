@@ -5,22 +5,27 @@ use authorizing::Authorizer;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
 use inbox::{InMemoryInbox, Inboxed};
-use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
+use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Message, Publisher};
 use outbox::{InMemoryOutbox, Outbox};
 use readings_catalog::{
     InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
 };
 use readings_core::{NobodyFollows, ReadingsCore};
-use readings_messaging::CatalogueReadingCopiesListener;
+use readings_messaging::{
+    CatalogueReadingCopiesListener, DeleteCopiesOfDeletedProjectListener,
+    SweepCopiesOfDeletedProjectListener,
+};
 use transacting::InMemoryTransactions;
 
 use crate::sample::SampleBook;
 
-/// The core around the sample book, whose copies' events reach the list of copies once they are settled.
+/// The core around the sample book, whose copies' events reach the list of copies once they are settled,
+/// and which sweeps the copies of a project it is told was deleted.
 pub struct Copying {
     pub readings: ReadingsCore,
     pub contents: Arc<InMemoryReadingCopyContents>,
     outbox: Arc<InMemoryOutbox>,
+    dispatcher: Arc<InProcessDispatcher>,
     consuming: DeliveryConsumer,
 }
 
@@ -50,21 +55,40 @@ pub fn a_workbench(
         authorizer,
         clock.clone(),
     );
+    let inbox = Arc::new(InMemoryInbox::new(clock.clone()));
     dispatcher.listen(Arc::new(Inboxed::new(
         CatalogueReadingCopiesListener::new(readings.clone()),
+        transactions.clone(),
+        inbox.clone(),
+    )));
+    dispatcher.listen(Arc::new(Inboxed::new(
+        SweepCopiesOfDeletedProjectListener::new(outbox.clone(), clock.clone()),
         transactions,
-        Arc::new(InMemoryInbox::new(clock.clone())),
+        inbox,
+    )));
+    dispatcher.listen(Arc::new(DeleteCopiesOfDeletedProjectListener::new(
+        readings.clone(),
     )));
 
     Copying {
         readings,
         contents,
         outbox,
+        dispatcher: dispatcher.clone(),
         consuming: DeliveryConsumer::new(dispatcher, deliveries, clock),
     }
 }
 
 impl Copying {
+    /// Tells the readings a message from another feature, and settles what follows from it.
+    pub async fn told(&self, message: Message) {
+        self.dispatcher
+            .publish(message)
+            .await
+            .expect("telling should succeed");
+        self.settle().await;
+    }
+
     /// Delivers every message the copies told, until none is left.
     pub async fn settle(&self) {
         loop {

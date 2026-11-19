@@ -223,6 +223,9 @@ pub trait ReadingCopyContents: Send + Sync {
 
     async fn contents_of(&self, copy: &ReadingCopyId) -> Result<Option<Contents>, CatalogError>;
 
+    /// Every copy of a project that holds anything, as kept with the copy itself, so none is missed that the list has not heard of yet.
+    async fn copies_of(&self, project: &ProjectLink) -> Result<Vec<ReadingCopyId>, CatalogError>;
+
     async fn forget(
         &self,
         transaction: &mut Transaction,

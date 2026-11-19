@@ -186,6 +186,40 @@ pub async fn a_copy_s_contents_forgotten_are_gone(
     assert_eq!(contents_of(catalog, &staying).await, Some(the_loom()));
 }
 
+pub async fn a_project_s_copies_are_those_holding_its_work(
+    catalog: &Committing<'_, impl ReadingCopyContents>,
+) {
+    // given: two copies of the loom, one of another work, and a copy of the loom forgotten
+    let first = a_copy(10);
+    let second = a_copy(20);
+    let forgotten = a_copy(30);
+    kept(catalog, &first, &the_loom()).await;
+    kept(catalog, &second, &the_loom()).await;
+    kept(catalog, &a_copy(40), &another_work()).await;
+    kept(catalog, &forgotten, &the_loom()).await;
+    catalog
+        .forget_contents(&forgotten)
+        .await
+        .expect("forgetting should succeed");
+
+    // expect: the loom's copies are the two still holding it, by id
+    assert_eq!(
+        catalog
+            .copies_of(&ProjectLink::from("project_loom"))
+            .await
+            .expect("asking should succeed"),
+        vec![first, second]
+    );
+    // and: a project nobody made a copy of has none
+    assert_eq!(
+        catalog
+            .copies_of(&ProjectLink::from("project_untold"))
+            .await
+            .expect("asking should succeed"),
+        vec![]
+    );
+}
+
 macro_rules! contents_conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -216,6 +250,10 @@ macro_rules! contents_conformance_tests {
         $crate::contents_suite::contents_conformance_case!(
             $workbench,
             a_copy_s_contents_forgotten_are_gone
+        );
+        $crate::contents_suite::contents_conformance_case!(
+            $workbench,
+            a_project_s_copies_are_those_holding_its_work
         );
     };
 }

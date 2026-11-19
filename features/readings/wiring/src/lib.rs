@@ -19,9 +19,9 @@ use readings_core::{
     ReadingsCore, SceneTextCatalog,
 };
 use readings_messaging::{
-    CatalogueReadingCopiesListener, KeepBookTitlesListener, KeepOutlinesListener,
-    KeepSceneTextsListener, RememberAccountNamesListener, RememberRolesListener,
-    RememberTrashListener,
+    CatalogueReadingCopiesListener, DeleteCopiesOfDeletedProjectListener, KeepBookTitlesListener,
+    KeepOutlinesListener, KeepSceneTextsListener, RememberAccountNamesListener,
+    RememberRolesListener, RememberTrashListener, SweepCopiesOfDeletedProjectListener,
 };
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -110,6 +110,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(KeepSceneTextsListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(CatalogueReadingCopiesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(RememberAccountNamesListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(SweepCopiesOfDeletedProjectListener::new(
+                ports.outbox.clone(),
+                context.clock.clone(),
+            ))),
+            Arc::new(DeleteCopiesOfDeletedProjectListener::new(readings.clone())),
         ])
         .doing_chores(vec![
             Arc::new(DeleteDueCopies {

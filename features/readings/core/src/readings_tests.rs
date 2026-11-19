@@ -115,6 +115,10 @@ impl ReadingCopyContents for NoContents {
         Ok(None)
     }
 
+    async fn copies_of(&self, _project: &ProjectLink) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        Ok(vec![])
+    }
+
     async fn forget(
         &self,
         _transaction: &mut Transaction,

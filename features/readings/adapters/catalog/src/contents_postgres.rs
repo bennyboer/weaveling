@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use readings_core::{CatalogError, Contents, ReadingCopyContents, ReadingCopyId};
+use readings_core::{CatalogError, Contents, ProjectLink, ReadingCopyContents, ReadingCopyId};
 use sqlx::{PgPool, Row};
 use transacting::Transaction;
 use transacting::postgres::connection;
@@ -14,6 +14,8 @@ const KEEP: &str = "
 ";
 
 const CONTENTS_OF: &str = "SELECT project, contents FROM reading_copy_contents WHERE copy = $1";
+
+const COPIES_OF: &str = "SELECT copy FROM reading_copy_contents WHERE project = $1 ORDER BY copy";
 
 const FORGET: &str = "DELETE FROM reading_copy_contents WHERE copy = $1";
 
@@ -59,6 +61,22 @@ impl ReadingCopyContents for PostgresReadingCopyContents {
         let contents: String = row.try_get("contents").map_err(unreachable)?;
 
         Ok(Some(kept::contents::from_json(&project, &contents)?))
+    }
+
+    async fn copies_of(&self, project: &ProjectLink) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        sqlx::query(COPIES_OF)
+            .bind(project.as_str())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row| {
+                let copy: String = row.try_get("copy").map_err(unreachable)?;
+
+                copy.parse::<ReadingCopyId>()
+                    .map_err(|why| CatalogError::Backend(why.to_string().into()))
+            })
+            .collect()
     }
 
     async fn forget(

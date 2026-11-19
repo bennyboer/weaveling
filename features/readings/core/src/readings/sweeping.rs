@@ -2,6 +2,7 @@ use eventsourcing::{Agent, AggregateId, ServiceError};
 
 use crate::error::ReadingsError;
 use crate::id::ReadingCopyId;
+use crate::link::ProjectLink;
 use crate::reading_copy::{ReadingCopyCommand, ReadingCopyError};
 use crate::readings::ReadingsCore;
 
@@ -21,6 +22,20 @@ impl ReadingsCore {
         }
 
         Ok(deleted)
+    }
+
+    /// Deletes, as the system, every copy of a deleted project, with what each holds.
+    /// The copies are found by what they hold, kept with each copy as it was made, so even one the list has not heard of yet is found.
+    pub async fn sweep_project(&self, project: &str) -> Result<(), ReadingsError> {
+        for copy in self
+            .reading_copy_contents
+            .copies_of(&ProjectLink::from(project))
+            .await?
+        {
+            self.deleted_by_the_system(&copy).await?;
+        }
+
+        Ok(())
     }
 
     /// Deletes a copy as the system, with what it holds; whether it was there to delete.

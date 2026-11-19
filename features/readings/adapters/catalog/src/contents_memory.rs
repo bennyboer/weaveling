@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use readings_core::{CatalogError, Contents, ReadingCopyContents, ReadingCopyId};
+use readings_core::{CatalogError, Contents, ProjectLink, ReadingCopyContents, ReadingCopyId};
 use transacting::{Failure, Transaction};
 
 #[derive(Debug, Default)]
@@ -62,6 +62,18 @@ impl ReadingCopyContents for InMemoryReadingCopyContents {
 
     async fn contents_of(&self, copy: &ReadingCopyId) -> Result<Option<Contents>, CatalogError> {
         Ok(self.read().get(copy).cloned())
+    }
+
+    async fn copies_of(&self, project: &ProjectLink) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        let mut copies: Vec<ReadingCopyId> = self
+            .read()
+            .iter()
+            .filter(|(_, contents)| &contents.project == project)
+            .map(|(copy, _)| *copy)
+            .collect();
+        copies.sort();
+
+        Ok(copies)
     }
 
     async fn forget(

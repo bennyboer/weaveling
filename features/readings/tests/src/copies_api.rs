@@ -584,3 +584,51 @@ async fn copies_are_deleted_once_their_deletion_has_come_and_those_kept_for_good
         .collect();
     assert_eq!(names, ["Kept"]);
 }
+
+#[tokio::test]
+async fn every_copy_of_a_deleted_project_is_deleted_with_what_it_holds() {
+    // given: two copies of the project, made by different members
+    let readings = readings();
+    let hedys = made(&readings.hedy(), "For Lena").await;
+    readings.later(Duration::HOUR);
+    let adas = made(&readings.ada(), "Ada's").await;
+
+    // when: the project is deleted
+    readings
+        .copying
+        .told(eventpublishing::published(
+            projects_contract::DELETED,
+            "project",
+            LOOM,
+            9,
+            json!({ "version": 9, "name": "DELETED" }),
+            &Agent::System,
+            started(),
+        ))
+        .await;
+
+    // then: both are deleted, with what they held, and none is listed
+    for copy in [&hedys, &adas] {
+        let id = copy
+            .id
+            .parse::<ReadingCopyId>()
+            .expect("a copy's id reads back");
+        assert_eq!(
+            readings
+                .copying
+                .contents
+                .contents_of(&id)
+                .await
+                .expect("asking should succeed"),
+            None,
+            "{}",
+            copy.name
+        );
+        readings
+            .hedy()
+            .get(&format!("/readings/copies/{}", copy.id))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+    }
+    assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
+}
