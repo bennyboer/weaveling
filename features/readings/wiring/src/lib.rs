@@ -1,8 +1,11 @@
+use std::error::Error;
 use std::sync::Arc;
+use std::time::Duration;
 
 use access::{InMemoryAccess, KeptAccess};
+use async_trait::async_trait;
 use authorizing::{AllowingEverything, Authorizer};
-use chores::ForgetOldTombstones;
+use chores::{Chore, ForgetOldTombstones};
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -22,6 +25,40 @@ use readings_messaging::{
 };
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
+
+/// How many copies due for deletion are deleted together, before the chore asks for more.
+const DUE_EACH_BATCH: u64 = 100;
+
+/// Once an hour, deletes the reading copies whose deletion has come, with what they hold.
+/// The dates run on while a project lies in the trash, as its readers were told them.
+struct DeleteDueCopies {
+    readings: ReadingsCore,
+}
+
+#[async_trait]
+impl Chore for DeleteDueCopies {
+    fn named(&self) -> &'static str {
+        "delete-due-reading-copies"
+    }
+
+    fn every(&self) -> Duration {
+        Duration::from_secs(60 * 60)
+    }
+
+    /// Asks again while a whole batch was deleted.
+    /// Copies deleted already stay listed until their deletion is heard, so a batch of those ends it rather than asking for them again.
+    async fn carry_out(&self) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        let mut deleted = 0;
+
+        loop {
+            let batch = self.readings.delete_due_copies(DUE_EACH_BATCH).await?;
+            deleted += batch;
+            if batch < DUE_EACH_BATCH {
+                return Ok(deleted);
+            }
+        }
+    }
+}
 
 pub struct Ports {
     pub outlines: Arc<dyn OutlineCatalog>,
@@ -75,6 +112,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(RememberAccountNamesListener::new(readings.clone()))),
         ])
         .doing_chores(vec![
+            Arc::new(DeleteDueCopies {
+                readings: readings.clone(),
+            }),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-readings-tombstones",
                 chores::tombstones_by(move |before, at_most| {
@@ -233,7 +273,8 @@ mod tests {
     const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
     #[tokio::test]
-    async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
+    async fn the_feature_deletes_due_copies_and_forgets_its_old_tombstones_and_hearings_as_chores()
+    {
         // given: the feature wired
         let context = Context {
             with_accounts: false,
@@ -275,11 +316,12 @@ mod tests {
         }
 
         // when: its chores are looked at
-        let [tombstones, hearings] = wired.chores.as_slice() else {
-            panic!("the feature hands over two chores");
+        let [due, tombstones, hearings] = wired.chores.as_slice() else {
+            panic!("the feature hands over three chores");
         };
 
-        // then: one forgets the old records of who may read, and one old hearings
+        // then: one deletes the copies due for deletion, one forgets the old records of who may read, and one old hearings
+        assert_eq!(due.named(), "delete-due-reading-copies");
         assert_eq!(tombstones.named(), "forget-old-readings-tombstones");
         assert_eq!(hearings.named(), "forget-old-readings-hearings");
         // and: the tombstones chore forgets only the long gone account

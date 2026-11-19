@@ -167,6 +167,13 @@ pub trait ReadingCopyCatalog: Send + Sync {
         &self,
         project: &ProjectLink,
     ) -> Result<Vec<ReadingCopySummary>, CatalogError>;
+
+    /// At most so many copies whose deletion has come by the moment, the earliest due first.
+    async fn due_for_deletion(
+        &self,
+        at: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<Vec<ReadingCopyId>, CatalogError>;
 }
 
 /// The name each account signed up with, kept by the readings feature to name whoever made a copy.

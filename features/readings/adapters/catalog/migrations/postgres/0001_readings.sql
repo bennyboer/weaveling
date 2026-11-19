@@ -40,6 +40,7 @@ CREATE TABLE reading_copies (
 );
 
 CREATE INDEX reading_copies_by_project_newest ON reading_copies (project, made_at DESC, copy DESC);
+CREATE INDEX reading_copies_by_deletion ON reading_copies (deleted_on, copy);
 
 CREATE TABLE account_names (
     account  TEXT COLLATE "C" PRIMARY KEY,

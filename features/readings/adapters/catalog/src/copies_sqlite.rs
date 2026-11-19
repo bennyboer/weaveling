@@ -37,6 +37,13 @@ const COPIES_OF: &str = "
     ORDER BY made_at DESC, copy DESC
 ";
 
+const DUE_FOR_DELETION: &str = "
+    SELECT copy FROM reading_copies
+    WHERE deleted_on <= ?1
+    ORDER BY deleted_on, copy
+    LIMIT ?2
+";
+
 pub struct SqliteReadingCopyCatalog {
     pool: SqlitePool,
 }
@@ -125,6 +132,27 @@ impl ReadingCopyCatalog for SqliteReadingCopyCatalog {
             .map_err(unreachable)?
             .iter()
             .map(|row| kept_in(row)?.summary())
+            .collect()
+    }
+
+    async fn due_for_deletion(
+        &self,
+        at: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        sqlx::query(DUE_FOR_DELETION)
+            .bind(clock::text::written(at))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row| {
+                let copy: String = row.try_get("copy").map_err(unreachable)?;
+
+                copy.parse::<ReadingCopyId>()
+                    .map_err(|why| CatalogError::Backend(why.to_string().into()))
+            })
             .collect()
     }
 }

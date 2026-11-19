@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use readings_core::{
     CatalogError, ProjectLink, ReadingCopyCatalog, ReadingCopyId, ReadingCopySummary,
 };
+use time::OffsetDateTime;
 use transacting::{Failure, Transaction};
 
 #[derive(Debug, Default)]
@@ -84,6 +85,31 @@ impl ReadingCopyCatalog for InMemoryReadingCopyCatalog {
         copies.sort_by_key(|summary| Reverse((summary.made_at, summary.copy)));
 
         Ok(copies)
+    }
+
+    async fn due_for_deletion(
+        &self,
+        at: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        let mut due: Vec<(OffsetDateTime, ReadingCopyId)> = self
+            .read()
+            .values()
+            .filter_map(|summary| {
+                summary
+                    .times
+                    .deleted_on
+                    .filter(|deleted_on| *deleted_on <= at)
+                    .map(|deleted_on| (deleted_on, summary.copy))
+            })
+            .collect();
+        due.sort();
+
+        Ok(due
+            .into_iter()
+            .take(usize::try_from(at_most).unwrap_or(usize::MAX))
+            .map(|(_, copy)| copy)
+            .collect())
     }
 }
 

@@ -47,6 +47,14 @@ impl ReadingCopyCatalog for NoCopies {
     ) -> Result<Vec<ReadingCopySummary>, CatalogError> {
         Ok(vec![])
     }
+
+    async fn due_for_deletion(
+        &self,
+        _at: OffsetDateTime,
+        _at_most: u64,
+    ) -> Result<Vec<ReadingCopyId>, CatalogError> {
+        Ok(vec![])
+    }
 }
 
 /// No names of accounts, as these cases are about the live book.

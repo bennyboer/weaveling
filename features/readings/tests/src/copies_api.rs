@@ -509,3 +509,78 @@ async fn a_late_message_about_a_copy_since_deleted_does_not_bring_it_back() {
     // then: it stays gone, as the list is kept from the copy as it stands
     assert_eq!(readings.listed(&readings.hedy()).await, vec![]);
 }
+
+#[tokio::test]
+async fn copies_are_deleted_once_their_deletion_has_come_and_those_kept_for_good_stay() {
+    // given: a copy deleted after three months, and one kept for good
+    let readings = readings();
+    let due = made(&readings.hedy(), "For Lena").await;
+    let mut kept_for_good = asked_for("Kept", both_sections());
+    kept_for_good.deleted_on = None;
+    readings
+        .hedy()
+        .post("/readings/copies")
+        .json(&kept_for_good)
+        .await
+        .assert_status(StatusCode::CREATED);
+    readings.copying.settle().await;
+
+    // expect: none is deleted before its day
+    assert_eq!(
+        readings
+            .copying
+            .readings
+            .delete_due_copies(10)
+            .await
+            .expect("deleting should succeed"),
+        0
+    );
+
+    // when: the day it is deleted on has come
+    readings.later(Duration::days(92));
+    let deleted = readings
+        .copying
+        .readings
+        .delete_due_copies(10)
+        .await
+        .expect("deleting should succeed");
+
+    // then: that copy is deleted, with what it held
+    assert_eq!(deleted, 1);
+    readings
+        .hedy()
+        .get(&format!("/readings/copies/{}", due.id))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    let id = due
+        .id
+        .parse::<ReadingCopyId>()
+        .expect("a copy's id reads back");
+    assert_eq!(
+        readings
+            .copying
+            .contents
+            .contents_of(&id)
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+    // and: deleting again before the list has heard of it deletes nothing more
+    assert_eq!(
+        readings
+            .copying
+            .readings
+            .delete_due_copies(10)
+            .await
+            .expect("deleting should succeed"),
+        0
+    );
+    // and: only the copy kept for good is listed
+    let names: Vec<String> = readings
+        .listed(&readings.hedy())
+        .await
+        .into_iter()
+        .map(|copy| copy.name)
+        .collect();
+    assert_eq!(names, ["Kept"]);
+}

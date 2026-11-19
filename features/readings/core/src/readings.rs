@@ -22,6 +22,7 @@ mod access;
 mod names;
 mod outlines;
 mod reading_copies;
+mod sweeping;
 mod texts;
 
 pub use outlines::ToldSection;

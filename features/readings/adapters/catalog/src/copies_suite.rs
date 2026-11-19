@@ -211,6 +211,40 @@ pub async fn a_forgotten_copy_is_no_longer_listed(
     assert_eq!(copies_of(catalog, "project_loom").await, vec![staying]);
 }
 
+pub async fn copies_due_for_deletion_come_earliest_first_and_no_more_than_asked(
+    catalog: &Committing<'_, impl ReadingCopyCatalog>,
+) {
+    // given: copies deleted on different days, one kept for good, and one of another project
+    let deleted_on = |copy: ReadingCopySummary, day: Option<i64>| ReadingCopySummary {
+        times: Times {
+            open_until: None,
+            deleted_on: day.map(|day| at(0) + Duration::days(day)),
+        },
+        ..copy
+    };
+    let third = deleted_on(a_copy("project_loom", "Third", at(1)), Some(30));
+    let first = deleted_on(a_copy("project_loom", "First", at(2)), Some(10));
+    let second = deleted_on(a_copy("project_other", "Second", at(3)), Some(20));
+    let later = deleted_on(a_copy("project_loom", "Later", at(4)), Some(40));
+    let kept = deleted_on(a_copy("project_loom", "Kept", at(5)), None);
+    for summary in [&third, &first, &second, &later, &kept] {
+        remembered(catalog, summary).await;
+    }
+    let due = |day: i64, at_most: u64| async move {
+        catalog
+            .due_for_deletion(at(0) + Duration::days(day), at_most)
+            .await
+            .expect("asking should succeed")
+    };
+
+    // expect: by day 30, those due then or earlier, of every project, the earliest first
+    assert_eq!(due(30, 10).await, vec![first.copy, second.copy, third.copy]);
+    // and: no more than asked
+    assert_eq!(due(30, 2).await, vec![first.copy, second.copy]);
+    // and: none before the first is due
+    assert_eq!(due(9, 10).await, vec![]);
+}
+
 macro_rules! copies_conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -249,6 +283,10 @@ macro_rules! copies_conformance_tests {
         $crate::copies_suite::copies_conformance_case!(
             $workbench,
             a_forgotten_copy_is_no_longer_listed
+        );
+        $crate::copies_suite::copies_conformance_case!(
+            $workbench,
+            copies_due_for_deletion_come_earliest_first_and_no_more_than_asked
         );
     };
 }
