@@ -11,7 +11,7 @@ use readings_catalog::{
     InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog, InMemoryReadingCopyContents,
 };
 use readings_core::{NobodyFollows, ReadingsCore, ReadingsError};
-use readings_messaging::{RememberRolesListener, RememberTrashListener};
+use readings_messaging::{RememberRolesListener, RememberStandingListener};
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
@@ -20,7 +20,7 @@ const THE_LOOM: &str = "project_loom";
 struct Heard {
     readings: ReadingsCore,
     roles: Inboxed<RememberRolesListener>,
-    trash: Inboxed<RememberTrashListener>,
+    trash: Inboxed<RememberStandingListener>,
 }
 
 fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
@@ -52,7 +52,7 @@ fn heard() -> Heard {
 
     Heard {
         roles: inboxed(RememberRolesListener::new(readings.clone())),
-        trash: inboxed(RememberTrashListener::new(readings.clone())),
+        trash: inboxed(RememberStandingListener::new(readings.clone())),
         readings,
     }
 }

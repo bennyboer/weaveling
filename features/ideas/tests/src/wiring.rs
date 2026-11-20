@@ -24,10 +24,17 @@ pub struct Wired {
     pub projector: Arc<dyn Listener>,
 }
 
-/// Ideas without accounts, where everyone may do everything.
+/// Ideas without accounts, where everyone may do everything in the projects the tests work in, as they were started.
 pub fn a_workbench(clock: Arc<dyn Clock>) -> Wired {
-    a_workbench_keeping(clock, Arc::new(InMemoryAccess::new()), false)
+    a_workbench_keeping(
+        clock,
+        Arc::new(InMemoryAccess::having_heard_of(STARTED)),
+        false,
+    )
 }
+
+/// The projects the tests work in, heard of as started.
+pub const STARTED: &[&str] = &["project_1", "project_2", "project_loom"];
 
 /// Ideas with accounts, where who may do what is stored in the ideas' own access records.
 pub fn a_workbench_with_accounts(clock: Arc<dyn Clock>) -> Wired {

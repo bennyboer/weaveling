@@ -149,11 +149,8 @@ The authorizer also leaves a trashed project out of `readable_by`.
 Once the listener's work has committed, it reports `access_changed`, so open sockets ask again and lose access.
 
 *This is an accepted gap, not a bug. Decided on 2026-11-02: the user chose members receiving the trash messages over an authorizer that wraps every mode.*
-Without accounts, the authorizer is `AllowingEverything`, which receives no trash messages.
-There, a trashed project is still hidden by the projects core: it is not listed and cannot be opened.
-Only a stale tab's live socket, or a direct call to the API, can still write into it.
-Nothing is lost and nothing becomes inconsistent: what is written is restored or purged together with the project.
-And with one person on one machine, there is nobody to keep out.
+Without accounts, the features other than the projects answer through `KeptAccess::without_accounts`, which hears the trash from the projects' messages.
+So a trashed project is refused there as well, and a project that was never started or was deleted is refused too (fixed 2026-11-21).
 
 *And forgotten once deleted (2026-11-02, at the user's request):*
 the same listener receives `project.deleted` and forgets the project's row completely, `forget_trash`.

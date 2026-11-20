@@ -3,7 +3,7 @@ mod access;
 mod publishing;
 
 pub use abandoning::DeleteAbandonedProjectListener;
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 use async_trait::async_trait;
 use inbox::KeptHandler;
 use messaging::{Failure, Message};

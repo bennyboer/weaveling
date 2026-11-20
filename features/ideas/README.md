@@ -40,7 +40,7 @@ Every permission is asked there and nowhere else. The core hands on to `IdeaServ
 **Who may do what is kept by the feature itself,** through [`access`](../../libraries/access/README.md). This data is stored in the ideas' own database. Two listeners receive their messages through the inbox:
 
 - `ideas-remember-roles` receives the members' events (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`).
-- `ideas-remember-trash` receives when projects are put in the trash and restored.
+- `ideas-remember-standing` receives when projects are started, put in the trash, restored and deleted.
 
 `forget-old-idea-tombstones` deletes their old tombstones, together with the feature's own. If there are accounts, the core asks `KeptAccess`. After a change to a project's access is committed, `KeptAccess` tells everyone who follows that project live. Without accounts, everyone is allowed.
 

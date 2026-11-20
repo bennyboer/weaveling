@@ -114,6 +114,11 @@ impl AccessCatalog for Reachable {
         self.heard.is_in_the_trash(project).await
     }
 
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        self.reached()?;
+        self.heard.is_heard_of(project).await
+    }
+
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {
         self.reached()?;
         self.heard.projects_of(account).await

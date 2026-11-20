@@ -13,7 +13,7 @@ use projects_contract::{RESTORED, TRASHED};
 use serde_json::{Value, json};
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{StatisticsCore, StatisticsError};
-use statistics_messaging::{RememberRolesListener, RememberTrashListener};
+use statistics_messaging::{RememberRolesListener, RememberStandingListener};
 use transacting::InMemoryTransactions;
 
 const THE_LOOM: &str = "project_loom";
@@ -21,7 +21,7 @@ const THE_LOOM: &str = "project_loom";
 struct Heard {
     statistics: StatisticsCore,
     roles: Inboxed<RememberRolesListener>,
-    trash: Inboxed<RememberTrashListener>,
+    trash: Inboxed<RememberStandingListener>,
 }
 
 fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
@@ -47,7 +47,7 @@ fn heard() -> Heard {
 
     Heard {
         roles: inboxed(RememberRolesListener::new(statistics.clone())),
-        trash: inboxed(RememberTrashListener::new(statistics.clone())),
+        trash: inboxed(RememberStandingListener::new(statistics.clone())),
         statistics,
     }
 }

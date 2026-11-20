@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use belonging::{Belongings, InMemoryBelongings};
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -14,7 +14,7 @@ use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneStore, ScenesCore};
 use scenes_messaging::{
     CatalogueScenesListener, DeleteOnProjectDeletedListener, RememberProjectsOfIdeasListener,
-    RememberRolesListener, RememberTrashListener, RestyleOnQuotationChangedListener,
+    RememberRolesListener, RememberStandingListener, RestyleOnQuotationChangedListener,
     UnlinkOnDiscardListener,
 };
 use scenes_store::InMemorySceneStore;
@@ -51,7 +51,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
     let core = ScenesCore::new(
         ports.store.clone(),
@@ -74,7 +74,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
     let catalogue = hearing.inboxed(CatalogueScenesListener::new(core.clone()));
     let remember_roles = hearing.inboxed(RememberRolesListener::new(core.clone()));
-    let remember_trash = hearing.inboxed(RememberTrashListener::new(core.clone()));
+    let remember_standing = hearing.inboxed(RememberStandingListener::new(core.clone()));
     let live = LiveScenes::new(core.clone());
     let restyle = RestyleOnQuotationChangedListener::new(
         core.clone(),
@@ -99,7 +99,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(catalogue),
         Arc::new(restyle),
         Arc::new(remember_roles),
-        Arc::new(remember_trash),
+        Arc::new(remember_standing),
     ])
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live.clone()))])
     .doing_chores(vec![
@@ -301,7 +301,7 @@ mod tests {
         assert_eq!(tombstones.named(), "forget-old-scene-tombstones");
         assert_eq!(hearings.named(), "forget-old-scene-hearings");
         // and: who may do what is heard from the members and the projects
-        for listening in ["scenes-remember-roles", "scenes-remember-trash"] {
+        for listening in ["scenes-remember-roles", "scenes-remember-standing"] {
             assert!(
                 wired
                     .listeners

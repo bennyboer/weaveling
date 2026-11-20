@@ -244,7 +244,7 @@ An invitation has a scope:
 - a project, with the role it invites as: owner, author or reader. The project's owners issue it (`Manage`, asked of the `Authorizer`).
 
 The invitations feature keeps its own record of who owns what, through [`access`](../../libraries/access/README.md).
-`invitations-remember-roles` receives the members' messages, and `invitations-remember-trash` the projects' messages.
+`invitations-remember-roles` receives the members' messages, and `invitations-remember-standing` the projects' messages.
 Where there are accounts, the `KeptAccess` over that record is the feature's `Authorizer`.
 Where there are no accounts, everyone is allowed.
 `forget-old-invitation-tombstones` also forgets what has ended there, beside the feature's own tombstones.

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use access::{InMemoryAccess, KeptAccess};
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use belonging::{Belongings, InMemoryBelongings};
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -15,7 +15,7 @@ use outline_messaging::{
     CatalogueOutlinesListener, DetachEverywhereListener, DetachGoneAttachmentsListener,
     DetachOnDiscardListener, DetachOnSceneDeletedListener, DiscardOutlinesOnProjectDeletedListener,
     IndexAttachmentsListener, RememberDeletedProjectsListener,
-    RememberProjectsOfAttachmentsListener, RememberRolesListener, RememberTrashListener,
+    RememberProjectsOfAttachmentsListener, RememberRolesListener, RememberStandingListener,
     TellStateListener,
 };
 use registry::{InMemoryRegistry, Registry};
@@ -39,7 +39,7 @@ pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     OutlinesCore::new(
@@ -84,7 +84,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         hearing.inboxed(RememberProjectsOfAttachmentsListener::new(outlines.clone()));
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let remember_roles = hearing.inboxed(RememberRolesListener::new(outlines.clone()));
-    let remember_trash = hearing.inboxed(RememberTrashListener::new(outlines.clone()));
+    let remember_standing = hearing.inboxed(RememberStandingListener::new(outlines.clone()));
     let tell_state = hearing.inboxed(TellStateListener::new(
         outlines.clone(),
         ports.outbox.clone(),
@@ -113,7 +113,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(remember_projects_of_attachments),
             Arc::new(sweep),
             Arc::new(remember_roles),
-            Arc::new(remember_trash),
+            Arc::new(remember_standing),
             Arc::new(tell_state),
         ])
         .doing_chores(vec![

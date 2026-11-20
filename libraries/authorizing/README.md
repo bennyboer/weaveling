@@ -30,7 +30,7 @@ Which role may do which act is decided by the members feature.
 
 **What may someone read, as a whole?** `readable_by(agent)` returns either `Everything` or `Only` a set of projects. So a list of projects asks once, not once per project.
 
-**In local mode one person does everything.** So `AllowingEverything` answers yes to anyone. On a server with accounts, the members feature answers instead.
+**In local mode one person does everything.** `AllowingEverything` answers yes to anyone; the projects feature uses it without accounts, as it knows its own projects. The other features use `access::KeptAccess::without_accounts`, which also says yes to anything, but only in projects they heard were started and not deleted. On a server with accounts, the members feature answers instead.
 
 **A failed check is not an answer.** `may` returns an error rather than guessing. So a route reports that something went wrong. It neither lets anyone in nor locks the owner out.
 

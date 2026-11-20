@@ -154,7 +154,7 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
         listed(&wired).await.is_empty(),
         "the projector reads the project rather than trusting the message, so order cannot bite"
     );
-    // and: its tombstone was laid as it went and is forgotten once
+    // and: its tombstones, in the catalog and in who may do what, were laid as it went and are forgotten once
     assert_eq!(
         (
             wired
@@ -173,8 +173,8 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
                 .await
                 .expect("forgetting should succeed"),
         ),
-        (0, 1, 0),
-        "its tombstone was laid as it was catalogued gone, by the clock, and forgotten for good"
+        (0, 2, 0),
+        "its tombstones were laid as it was catalogued gone and heard deleted, by the clock, and forgotten for good"
     );
 }
 

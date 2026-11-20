@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use access::{InMemoryAccess, KeptAccess};
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -9,7 +9,7 @@ use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{StatisticsCore, WordCountCatalog};
 use statistics_messaging::{
-    ProjectWordCountsListener, RememberRolesListener, RememberTrashListener,
+    ProjectWordCountsListener, RememberRolesListener, RememberStandingListener,
 };
 use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
@@ -32,7 +32,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     let statistics = StatisticsCore::new(
@@ -51,7 +51,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![
             Arc::new(hearing.inboxed(ProjectWordCountsListener::new(statistics.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(statistics.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(statistics.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(statistics.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

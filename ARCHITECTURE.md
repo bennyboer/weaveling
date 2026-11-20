@@ -98,10 +98,10 @@ Live updates stay out of the core. The core only answers whether an agent may fo
 **Each feature knows itself who may do what.** While running, no feature asks another feature whether someone may read or change a project, or whether someone operates the instance. Instead, each feature keeps its own copy of the answer in its own database, using [`libraries/access`](./libraries/access/README.md). This copy holds:
 
 - the roles,
-- the projects that are disbanded or in the trash,
+- the projects that were started, and which of them are disbanded or in the trash,
 - the operators.
 
-The feature learns these from the events of the members, projects and accounts features. It receives them with listeners of its own. Its core then asks `KeptAccess`, which is the `Authorizer` built on this copy. When accounts are turned off, the wiring gives the core `AllowingEverything` instead (`Context::with_accounts`).
+The feature learns these from the events of the members, projects and accounts features. It receives them with listeners of its own. Its core then asks `KeptAccess`, which is the `Authorizer` built on this copy. When accounts are turned off, the wiring gives the core `KeptAccess::without_accounts` instead (`Context::with_accounts`): the one person working there may do everything an owner may, but only in projects the feature heard were started and not deleted, and only restore one in the trash. So nothing is written into a project that does not exist. The projects feature alone keeps `AllowingEverything` without accounts, since it knows its own projects.
 
 The members feature is where roles are decided. It keeps its own `MembersAuthorizer`, built on its own catalog.
 
@@ -110,7 +110,7 @@ A change reaches the other features some milliseconds after it is made. During t
 **The library knows no feature's contract.** The contracts that publish the events provide the listeners as macros:
 
 - `members_contract::access_roles_listener!`
-- `projects_contract::access_trash_listener!`
+- `projects_contract::access_standing_listener!`
 - `accounts_contract::access_operators_listener!`
 
 Each macro is used as one line in a feature's messaging crate. The listener passes what it receives to the feature's core through the traits `HearsAccess` and `HearsOperators`. The library declares these traits, and each core implements them.

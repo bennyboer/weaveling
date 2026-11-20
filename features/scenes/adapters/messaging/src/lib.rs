@@ -5,7 +5,7 @@ mod restyling;
 mod sweeping;
 mod unlinking;
 
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use cataloguing::CatalogueScenesListener;
 pub use publishing::message_for;
 pub use restyling::RestyleOnQuotationChangedListener;

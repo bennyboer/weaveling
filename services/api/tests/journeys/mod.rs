@@ -138,6 +138,23 @@ impl<B: Backend> Journey<B> {
         }
     }
 
+    /// A project started on a relayed server, which then relays no more once the given feature has heard of it,
+    /// so what is written in the project next waits to be announced.
+    /// Without accounts, a feature lets nothing be done in a project before it has heard it was started.
+    pub async fn unrelayed_in_a_project(named: &str, heard_by: &str) -> (Self, String) {
+        let mut journey = Self::relayed().await;
+        let project = journey.project(named).await;
+        assert!(
+            until(|| async { journey.backend.count(heard_by, HEARD_OF).await > 0 }).await,
+            "{heard_by} should hear the project was started"
+        );
+        if let Some(relays) = journey.relays.take() {
+            relays.stop().await;
+        }
+
+        (journey, project)
+    }
+
     pub async fn signed_in(named: &str) -> Self {
         let backend = B::setup().await;
         let drop = std::env::temp_dir().join(format!(
@@ -392,6 +409,7 @@ where
 }
 
 const WAITING: &str = "SELECT routing_key FROM outbox WHERE published_at IS NULL ORDER BY entry";
+const HEARD_OF: &str = "SELECT count(*) FROM access_trash";
 const RELAYED: &str =
     "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry";
 
@@ -418,9 +436,8 @@ pub async fn a_project_is_read_back_and_left_waiting_to_be_announced<B: Backend>
 }
 
 pub async fn a_captured_idea_is_read_back_and_left_waiting_to_be_announced<B: Backend>() {
-    // given: a project on a server with no relay running
-    let journey = Journey::<B>::unrelayed().await;
-    let project = journey.project("Capturing").await;
+    // given: a project on a server with no relay running any more
+    let (journey, project) = Journey::<B>::unrelayed_in_a_project("Capturing", "ideas").await;
 
     // when: an idea is captured in it
     let id = journey.idea(&project, "A girl in a wood").await;
@@ -470,8 +487,7 @@ pub async fn what_was_written_survives_a_second_api_built_on_the_same_databases<
 
 pub async fn every_feature_keeps_its_rows_where_it_was_told_to<B: Backend>() {
     // given: a project
-    let journey = Journey::<B>::unrelayed().await;
-    let project = journey.project("Apart").await;
+    let (journey, project) = Journey::<B>::unrelayed_in_a_project("Apart", "ideas").await;
 
     // when: an idea is captured in it
     journey.idea(&project, "A girl in a wood").await;
@@ -552,9 +568,16 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
         .await;
     journey.purge_the_trash().await;
 
-    // then: its ideas are gone
+    // then: its ideas are gone, as the project is no more to list them in
     assert!(
-        until(|| async { journey.listed(&ideas).await.is_empty() }).await,
+        until(|| async {
+            journey
+                .backend
+                .count("ideas", "SELECT count(*) FROM idea_summaries")
+                .await
+                == 0
+        })
+        .await,
         "a deleted project must not leave its ideas behind; with a durable store an orphan \
          outlives the session rather than dying with the process"
     );
@@ -1035,8 +1058,11 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
         .await,
         "the members hear the project deleted and let everyone go, so nobody invites into it"
     );
-    // and: its members are not found
-    server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
+    // and: its members are not found, once the members have heard it deleted too
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::NOT_FOUND }).await,
+        "the invitations may hear the deletion before the members do"
+    );
     journey.end().await;
 }
 
@@ -1294,6 +1320,51 @@ pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_int
     journey.end().await;
 }
 
+pub async fn without_accounts_nothing_is_written_in_a_project_never_started_or_in_the_trash<
+    B: Backend,
+>() {
+    // given: a project started on a server without accounts, its outline opened once heard of
+    let journey = Journey::<B>::relayed().await;
+    let project = journey.project("Standing").await;
+    journey.outline(&project).await;
+
+    // when: a project never started is written in
+    let never = "project_031VkO0hnpeQZUiAB7nDma";
+    for (path, body) in [
+        ("/api/outlines", json!({ "project": never })),
+        ("/api/boards", json!({ "project": never })),
+        ("/api/scenes", json!({ "project": never })),
+        ("/api/ideas", json!({ "project": never, "title": "Lost" })),
+    ] {
+        // then: each feature refuses it, rather than starting something there
+        journey
+            .server
+            .post(path)
+            .json(&body)
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+    }
+
+    // when: the project is put in the trash
+    journey.delete(&format!("/api/projects/{project}")).await;
+
+    // then: its outline is refused once the outline has heard it
+    assert!(
+        until(|| async {
+            journey
+                .server
+                .post("/api/outlines")
+                .json(&json!({ "project": project }))
+                .await
+                .status_code()
+                == StatusCode::NOT_FOUND
+        })
+        .await,
+        "a project in the trash may only be restored, with accounts or without"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -1302,6 +1373,7 @@ macro_rules! journeys {
             a_captured_idea_is_read_back_and_left_waiting_to_be_announced,
             what_was_written_survives_a_second_api_built_on_the_same_databases,
             every_feature_keeps_its_rows_where_it_was_told_to,
+            without_accounts_nothing_is_written_in_a_project_never_started_or_in_the_trash,
             a_relay_carries_what_was_captured_all_the_way_to_its_catalog,
             deleting_a_project_sweeps_away_everything_it_held,
             discarding_an_idea_unlinks_it_from_every_scene,

@@ -115,6 +115,11 @@ impl AccessCatalog for Faltering {
         self.kept.is_in_the_trash(project).await
     }
 
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.is_heard_of(project).await
+    }
+
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {
         self.reachable()?;
         self.kept.projects_of(account).await

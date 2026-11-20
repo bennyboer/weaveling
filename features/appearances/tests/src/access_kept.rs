@@ -5,7 +5,7 @@ use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
     AppearancesCore, AppearancesError, IdeaLink, Place, ProjectLink, SceneLink, Subject,
 };
-use appearances_messaging::{RememberRolesListener, RememberTrashListener};
+use appearances_messaging::{RememberRolesListener, RememberStandingListener};
 use eventsourcing::{AccountId, Agent};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
@@ -22,7 +22,7 @@ const AN_IDEA: &str = "idea_loom";
 struct Heard {
     appearances: AppearancesCore,
     roles: Inboxed<RememberRolesListener>,
-    trash: Inboxed<RememberTrashListener>,
+    trash: Inboxed<RememberStandingListener>,
 }
 
 fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
@@ -65,7 +65,7 @@ async fn heard() -> Heard {
 
     Heard {
         roles: inboxed(RememberRolesListener::new(appearances.clone())),
-        trash: inboxed(RememberTrashListener::new(appearances.clone())),
+        trash: inboxed(RememberStandingListener::new(appearances.clone())),
         appearances,
     }
 }

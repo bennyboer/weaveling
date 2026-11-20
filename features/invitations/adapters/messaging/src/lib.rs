@@ -9,7 +9,7 @@ mod remembering;
 mod sweeping;
 
 pub use accepting::AcceptTakenUpInvitationListener;
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use cataloguing::{
     CatalogueInvitationsListener, WITHDRAW_IF_PROJECT_GONE, WithdrawIfProjectGoneDTO,
     WithdrawIfProjectGoneListener,

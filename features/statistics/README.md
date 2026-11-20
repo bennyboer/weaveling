@@ -15,7 +15,7 @@ It owns no aggregate and takes no command. It is a read model only:
 **Who may read a project is kept by the feature itself,** through [`access`](../../libraries/access/README.md). This data is stored in the statistics' own database. Two listeners receive their messages through the inbox:
 
 - `statistics-remember-roles` receives the members' events (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`).
-- `statistics-remember-trash` receives when projects are put in the trash and restored.
+- `statistics-remember-standing` receives when projects are started, put in the trash, restored and deleted.
 
 The chore `forget-old-statistics-tombstones` deletes their old tombstones, together with the feature's own. If there are accounts, the core asks `KeptAccess`. If a follower leaves the project, its live connection is closed once that change is committed. Without accounts, everyone is allowed.
 

@@ -4,7 +4,7 @@ mod pinning;
 mod publishing;
 mod sweeping;
 
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use discarding::{
     LET_GO_EVERYWHERE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener,
     RememberProjectsOfIdeasListener, UnpinOnDiscardListener,

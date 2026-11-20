@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use access::{InMemoryAccess, KeptAccess};
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use belonging::{Belongings, InMemoryBelongings};
 use boards_catalog::InMemoryBoardCatalog;
 use boards_contract::EVERY_BOARD;
@@ -9,7 +9,7 @@ use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, LetGoOfDiscardedIdeaListener,
     LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, RememberDeletedProjectsListener,
-    RememberProjectsOfIdeasListener, RememberRolesListener, RememberTrashListener,
+    RememberProjectsOfIdeasListener, RememberRolesListener, RememberStandingListener,
     UnpinOnDiscardListener,
 };
 use chores::ForgetOldTombstones;
@@ -38,7 +38,7 @@ pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     BoardsCore::new(
@@ -77,7 +77,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     ));
     let remember_roles = hearing.inboxed(RememberRolesListener::new(boards.clone()));
-    let remember_trash = hearing.inboxed(RememberTrashListener::new(boards.clone()));
+    let remember_standing = hearing.inboxed(RememberStandingListener::new(boards.clone()));
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -100,7 +100,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(remember_projects_of_ideas),
             Arc::new(remember_deleted_projects),
             Arc::new(remember_roles),
-            Arc::new(remember_trash),
+            Arc::new(remember_standing),
             Arc::new(sweep),
         ])
         .doing_chores(vec![

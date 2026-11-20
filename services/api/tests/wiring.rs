@@ -49,6 +49,11 @@ async fn post_json(path: &str, body: &str) -> (StatusCode, String) {
     .await
 }
 
+/// Whether a feature itself answered, refusing a project it never heard was started, rather than no route at all.
+fn refused_by_the_feature(status: StatusCode, body: &str) -> bool {
+    status == StatusCode::NOT_FOUND && body.contains("there is no such project")
+}
+
 async fn reply(request: Request<Body>) -> (StatusCode, String) {
     let response = an_app()
         .await
@@ -438,12 +443,11 @@ async fn an_unknown_path_answers_404() {
 
 #[tokio::test]
 async fn the_scenes_feature_is_mounted_under_api() {
-    // when: a scene is started under api
+    // when: a scene is started under api, in a project never started
     let (status, body) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
-    // then: it is created
-    assert_eq!(status, StatusCode::CREATED, "body was {body}");
-    assert!(body.contains("scene_"), "body was {body}");
+    // then: the scenes themselves refuse it
+    assert!(refused_by_the_feature(status, &body), "{status}: {body}");
 }
 
 #[tokio::test]
@@ -497,50 +501,54 @@ async fn the_socket_is_found_under_the_feature_it_belongs_to() {
 
 #[tokio::test]
 async fn the_two_features_do_not_shadow_each_other() {
-    // when: the projects are listed and a scene started
+    // when: the projects are listed and a scene started in a project never started
     let (projects, _) = get("/api/projects").await;
-    let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
+    let (scenes, body) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
     // then: each answers
     assert_eq!(projects, StatusCode::OK);
-    assert_eq!(scenes, StatusCode::CREATED);
+    assert!(refused_by_the_feature(scenes, &body), "{scenes}: {body}");
 }
 
 #[tokio::test]
 async fn the_ideas_feature_is_mounted_under_api() {
-    // when: an idea is captured under api
+    // when: an idea is captured under api, in a project never started
     let (status, body) = post_json(
         "/api/ideas",
         r#"{"project":"project_1","title":"The Loom"}"#,
     )
     .await;
 
-    // then: it is created
-    assert_eq!(status, StatusCode::CREATED, "body was {body}");
-    assert!(body.contains("idea_"), "body was {body}");
+    // then: the ideas themselves refuse it
+    assert!(refused_by_the_feature(status, &body), "{status}: {body}");
 }
 
 #[tokio::test]
 async fn the_ideas_listing_is_mounted_under_api() {
-    // when: the ideas are listed under api
+    // when: the ideas of a project never started are listed under api
     let (status, body) = get("/api/ideas?project=project_1").await;
 
-    // then: an empty list is answered
-    assert_eq!(status, StatusCode::OK, "body was {body}");
-    assert_eq!(body, "[]");
+    // then: the ideas themselves refuse it
+    assert!(refused_by_the_feature(status, &body), "{status}: {body}");
 }
 
 #[tokio::test]
 async fn every_feature_answers_without_shadowing_the_others() {
-    // when: each feature is asked
+    // when: each feature is asked, about a project never started
     let (projects, _) = get("/api/projects").await;
-    let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
-    let (ideas, _) = get("/api/ideas?project=project_1").await;
+    let (scenes, told_by_scenes) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
+    let (ideas, told_by_ideas) = get("/api/ideas?project=project_1").await;
 
     // then: each answers
     assert_eq!(projects, StatusCode::OK);
-    assert_eq!(scenes, StatusCode::CREATED);
-    assert_eq!(ideas, StatusCode::OK);
+    assert!(
+        refused_by_the_feature(scenes, &told_by_scenes),
+        "{told_by_scenes}"
+    );
+    assert!(
+        refused_by_the_feature(ideas, &told_by_ideas),
+        "{told_by_ideas}"
+    );
 }
 
 #[tokio::test]
@@ -591,12 +599,20 @@ async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
         .expect("a project is made with an id")
         .to_owned();
 
-    // when: an idea is captured in it
-    server
-        .post("/api/ideas")
-        .json(&json!({ "project": project, "title": "A girl in a wood" }))
-        .await
-        .assert_status(StatusCode::CREATED);
+    // when: an idea is captured in it, once the ideas have heard it was started
+    let mut captured = StatusCode::NOT_FOUND;
+    for _ in 0..1_000 {
+        captured = server
+            .post("/api/ideas")
+            .json(&json!({ "project": project, "title": "A girl in a wood" }))
+            .await
+            .status_code();
+        if captured != StatusCode::NOT_FOUND {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(captured, StatusCode::CREATED);
 
     // then: it reaches the catalog of ideas
     let mut listed = Value::Null;

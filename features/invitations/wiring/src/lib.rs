@@ -14,7 +14,7 @@ use invitations_core::{
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
     ForgetDeletedAccountListener, MailIssuedInvitationListener, RememberProjectNamesListener,
-    RememberRolesListener, RememberTrashListener, RememberWhoSignedUpListener,
+    RememberRolesListener, RememberStandingListener, RememberWhoSignedUpListener,
     WithdrawIfProjectGoneListener, WithdrawInvitationsOfDeletedProjectListener,
 };
 use invitations_rest::{InvitationsTopic, TellingInvitations};
@@ -278,7 +278,7 @@ impl Feature for InvitationFeature {
                     invitations.clone(),
                 )),
                 Arc::new(hearing.inboxed(RememberRolesListener::new(invitations.clone()))),
-                Arc::new(hearing.inboxed(RememberTrashListener::new(invitations.clone()))),
+                Arc::new(hearing.inboxed(RememberStandingListener::new(invitations.clone()))),
             ])
             .doing_chores(vec![
                 Arc::new(RetireDueInvitations::new(invitations.clone())),
@@ -517,7 +517,7 @@ mod tests {
             "remember-project-names",
             "withdraw-invitations-of-deleted-project",
             "invitations-remember-roles",
-            "invitations-remember-trash",
+            "invitations-remember-standing",
         ] {
             assert!(
                 wired

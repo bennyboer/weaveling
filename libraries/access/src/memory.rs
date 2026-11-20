@@ -45,6 +45,22 @@ impl InMemoryAccess {
         Self::default()
     }
 
+    /// A catalog that has already heard these projects were started,
+    /// as an instance without accounts must have before anything may be done in them.
+    pub fn having_heard_of(projects: &[&str]) -> Self {
+        let kept = Kept {
+            trash: projects
+                .iter()
+                .map(|project| ((*project).to_owned(), (1, false)))
+                .collect(),
+            ..Kept::default()
+        };
+
+        Self {
+            kept: Arc::new(Mutex::new(kept)),
+        }
+    }
+
     fn kept(&self) -> MutexGuard<'_, Kept> {
         self.kept.lock().expect("who may do what is not poisoned")
     }
@@ -226,6 +242,12 @@ impl AccessCatalog for InMemoryAccess {
             .trash
             .get(project)
             .is_some_and(|(_, trashed)| *trashed))
+    }
+
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        let kept = self.kept();
+
+        Ok(kept.trash.contains_key(project) && !kept.disbanded.contains_key(project))
     }
 
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {

@@ -13,7 +13,7 @@ Unusually, the aggregate carries its own `created_at` and `updated_at`, because 
 The members feature says who is in which project. The projects feature stores this itself, through [`access`](../../libraries/access/README.md):
 
 - `projects-remember-roles` receives the members' events.
-- `projects-remember-trash` receives when the projects themselves are put in the trash and restored.
+- `projects-remember-standing` receives when the projects themselves are started, put in the trash, restored and deleted.
 - If there are accounts, the `KeptAccess` built on this data is the projects' `Authorizer`. Without accounts, everyone is allowed.
 - A project's founder can use the project once the founding message has been received. That is a few milliseconds after the start.
 - `forget-old-project-tombstones` deletes what ended, together with the feature's own tombstones.

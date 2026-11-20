@@ -524,7 +524,7 @@ async fn a_project_nobody_wrote_in_lists_nothing() {
     let server = a_server();
 
     // when: a project nobody wrote in is listed
-    let response = server.get("/ideas?project=project_empty").await;
+    let response = server.get("/ideas?project=project_2").await;
 
     // then: nothing is listed
     response.assert_status_ok();

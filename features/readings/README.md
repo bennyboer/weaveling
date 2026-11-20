@@ -14,7 +14,7 @@ This feature lets the book be read: the live book for members, and later reading
 **A project's book is there only for those in it.** `live_book` asks the [`Authorizer`](../../libraries/authorizing) for `Read`. Someone who may not read the project, or finds it in the trash, gets a 404, the same as for a project that is not there. If who may read it cannot be known, that is a failure, not a no. Who may read a project is kept by the feature itself, through [`access`](../../libraries/access/README.md), in its own database. Two listeners receive their messages through the feature's own inbox:
 
 - `readings-remember-roles` receives the members' events (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`).
-- `readings-remember-trash` receives when projects are put in the trash and restored.
+- `readings-remember-standing` receives when projects are started, put in the trash, restored and deleted.
 
 The chore `forget-old-readings-tombstones` deletes the records of accounts that left long ago, and `forget-old-readings-hearings` the old records of messages received. Without accounts, everyone is allowed.
 

@@ -44,6 +44,14 @@ const ROLE_OF: &str = "
 
 const IN_THE_TRASH: &str = "SELECT in_the_trash FROM access_trash WHERE project = $1";
 
+const HEARD_OF: &str = "
+    SELECT EXISTS (
+        SELECT 1 FROM access_trash
+        WHERE project = $1
+          AND NOT EXISTS (SELECT 1 FROM access_disbanded WHERE access_disbanded.project = access_trash.project)
+    )
+";
+
 const PROJECTS_OF: &str = "
     SELECT project FROM access_roles
     WHERE account = $1 AND role IS NOT NULL
@@ -315,6 +323,14 @@ impl AccessCatalog for PostgresAccess {
             .await
             .map_err(unreachable)?
             .unwrap_or(false))
+    }
+
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        sqlx::query_scalar::<_, bool>(HEARD_OF)
+            .bind(project)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {

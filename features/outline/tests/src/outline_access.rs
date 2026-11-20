@@ -113,7 +113,7 @@ async fn hear(wired: &Wired, message: Message) {
 
 async fn hear_of_the_trash(wired: &Wired, message: Message) {
     wired
-        .remembering_trash
+        .remembering_standing
         .handle(&message)
         .await
         .expect("a project put in the trash or restored is taken in");
@@ -179,7 +179,7 @@ async fn the_listeners_hear_who_joins_goes_and_changes_role_and_the_trash_but_no
     for routing in [TRASHED, RESTORED] {
         assert!(
             wired
-                .remembering_trash
+                .remembering_standing
                 .hears(&RoutingKey::parse(routing).expect("a declared key")),
             "{routing}"
         );

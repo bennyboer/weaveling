@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use assets_core::{AssetsError, Content};
-use assets_messaging::{RememberRolesListener, RememberTrashListener};
+use assets_messaging::{RememberRolesListener, RememberStandingListener};
 use eventsourcing::{Agent, ServiceError};
 use inbox::{InMemoryInbox, Inboxed};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
@@ -221,7 +221,7 @@ async fn a_project_in_the_trash_is_shared_by_nobody_until_restored() {
     the_members_heard(&heard_by(&wired)).await;
     let portrait = adas_portrait(&wired).await;
     let trash = Inboxed::new(
-        RememberTrashListener::new(wired.assets.clone()),
+        RememberStandingListener::new(wired.assets.clone()),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(clock::FixedClock::new(
             clock::at(1_700_000_000),

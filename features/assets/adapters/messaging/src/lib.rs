@@ -5,7 +5,7 @@ mod publishing;
 mod scene_images;
 mod sweeping;
 
-pub use access::{RememberOperatorsListener, RememberRolesListener, RememberTrashListener};
+pub use access::{RememberOperatorsListener, RememberRolesListener, RememberStandingListener};
 pub use naming::{RememberPeopleListener, RememberProjectNamesListener};
 pub use pictures::RememberPicturesListener;
 pub use publishing::message_for;

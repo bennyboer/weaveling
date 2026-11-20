@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use access::{InMemoryAccess, KeptAccess};
 use async_trait::async_trait;
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use chores::{Chore, ForgetOldTombstones};
 use eventsourcing::EventStore;
 use inbox::{Hearing, InMemoryInbox, Inbox};
@@ -21,7 +21,7 @@ use readings_core::{
 use readings_messaging::{
     CatalogueReadingCopiesListener, DeleteCopiesOfDeletedProjectListener, KeepBookTitlesListener,
     KeepOutlinesListener, KeepSceneTextsListener, RememberAccountNamesListener,
-    RememberRolesListener, RememberTrashListener, SweepCopiesOfDeletedProjectListener,
+    RememberRolesListener, RememberStandingListener, SweepCopiesOfDeletedProjectListener,
 };
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -78,7 +78,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     let broadcaster = Broadcaster::new();
@@ -104,7 +104,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .followed_live(vec![readings_rest::topic(readings.clone(), broadcaster)])
         .listening(vec![
             Arc::new(hearing.inboxed(RememberRolesListener::new(readings.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(readings.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepOutlinesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepBookTitlesListener::new(readings.clone()))),
             Arc::new(hearing.inboxed(KeepSceneTextsListener::new(readings.clone()))),

@@ -13,10 +13,14 @@ use crate::{AccessCatalog, AccessError, Role};
 /// It is the `Authorizer` backed by the feature's own `AccessCatalog`.
 /// Each update is written in the listener's transaction.
 /// Once that transaction has committed, everyone who follows the project live is told that its access changed.
+///
+/// On an instance without accounts, the one person working there may do everything an owner may,
+/// but only in projects the feature has heard were started and not deleted since.
 #[derive(Clone)]
 pub struct KeptAccess {
     catalog: Arc<dyn AccessCatalog>,
     changes: AccessChanges,
+    without_accounts: bool,
 }
 
 fn unreachable(failure: AccessError) -> AuthorizerError {
@@ -28,7 +32,26 @@ impl KeptAccess {
         Self {
             catalog,
             changes: AccessChanges::new(),
+            without_accounts: false,
         }
+    }
+
+    /// The same access, answering as an instance without accounts does.
+    pub fn without_accounts(self) -> Self {
+        Self {
+            without_accounts: true,
+            ..self
+        }
+    }
+
+    /// Whether an act is open in a project for whoever's role permits it: anything while it is out of the trash, only restoring while in it.
+    async fn open_for(&self, act: Act, project: &str) -> Result<bool, AuthorizerError> {
+        Ok(act == Act::Restore
+            || !self
+                .catalog
+                .is_in_the_trash(project)
+                .await
+                .map_err(unreachable)?)
     }
 
     fn changed_once_committed(&self, transaction: &mut Transaction, project: &str) {
@@ -126,31 +149,29 @@ impl KeptAccess {
 #[async_trait]
 impl Authorizer for KeptAccess {
     async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
-        let account = match agent {
+        let permitted = match agent {
             Agent::System => return Ok(true),
+            _ if self.without_accounts => self
+                .catalog
+                .is_heard_of(project)
+                .await
+                .map_err(unreachable)?,
             Agent::Local => return Ok(false),
-            Agent::Account(account) => account,
+            Agent::Account(account) => self
+                .catalog
+                .role_of(project, account)
+                .await
+                .map_err(unreachable)?
+                .is_some_and(|role| role.permits(act)),
         };
-        let permitted = self
-            .catalog
-            .role_of(project, account)
-            .await
-            .map_err(unreachable)?
-            .is_some_and(|role| role.permits(act));
-        if !permitted || act == Act::Restore {
-            return Ok(permitted);
-        }
 
-        Ok(!self
-            .catalog
-            .is_in_the_trash(project)
-            .await
-            .map_err(unreachable)?)
+        Ok(permitted && self.open_for(act, project).await?)
     }
 
     async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError> {
         match agent {
             Agent::System => Ok(Readable::Everything),
+            _ if self.without_accounts => Ok(Readable::Everything),
             Agent::Local => Ok(Readable::Only(Default::default())),
             Agent::Account(account) => Ok(Readable::Only(
                 self.catalog
@@ -166,6 +187,7 @@ impl Authorizer for KeptAccess {
     async fn operates(&self, agent: &Agent) -> Result<bool, AuthorizerError> {
         match agent {
             Agent::System => Ok(true),
+            _ if self.without_accounts => Ok(true),
             Agent::Local => Ok(false),
             Agent::Account(account) => self.catalog.operates(account).await.map_err(unreachable),
         }
@@ -236,6 +258,27 @@ mod tests {
                     role,
                     at(1_000),
                 )
+                .await
+                .expect("remembering should succeed");
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
+        }
+
+        fn without_accounts() -> Self {
+            let kept = Self::new();
+
+            Self {
+                access: kept.access.without_accounts(),
+                ..kept
+            }
+        }
+
+        async fn disbanded(&self, project: &str, version: u64) {
+            let mut transaction = self.begun().await;
+            self.access
+                .remember_disbanded(&mut transaction, project, Version::of(version), at(1_000))
                 .await
                 .expect("remembering should succeed");
             transaction
@@ -370,6 +413,47 @@ mod tests {
         assert!(
             !kept
                 .access
+                .operates(&Agent::Local)
+                .await
+                .expect("asking should succeed")
+        );
+    }
+
+    #[tokio::test]
+    async fn without_accounts_anything_may_be_done_in_a_project_started_and_only_restoring_in_the_trash()
+     {
+        // given: an instance without accounts, where the loom was started and the weft never
+        let kept = Kept::without_accounts();
+        kept.trash(THE_LOOM, 1, false).await;
+
+        // expect: everything may be done in the loom, and nothing in the weft
+        for act in [Act::Read, Act::Write, Act::Manage, Act::Restore] {
+            assert!(kept.may(&Agent::Local, act, THE_LOOM).await, "{act:?}");
+            assert!(!kept.may(&Agent::Local, act, THE_WEFT).await, "{act:?}");
+        }
+        // when: the loom is put in the trash
+        kept.trash(THE_LOOM, 2, true).await;
+        // then: it may only be restored
+        assert!(kept.may(&Agent::Local, Act::Restore, THE_LOOM).await);
+        for act in [Act::Read, Act::Write, Act::Manage] {
+            assert!(!kept.may(&Agent::Local, act, THE_LOOM).await, "{act:?}");
+        }
+        // when: it is deleted
+        kept.disbanded(THE_LOOM, 3).await;
+        // then: nothing may be done in it any more
+        for act in [Act::Read, Act::Write, Act::Manage, Act::Restore] {
+            assert!(!kept.may(&Agent::Local, act, THE_LOOM).await, "{act:?}");
+        }
+        // and: the one working there reads everything and runs the instance
+        assert_eq!(
+            kept.access
+                .readable_by(&Agent::Local)
+                .await
+                .expect("asking should succeed"),
+            Readable::Everything
+        );
+        assert!(
+            kept.access
                 .operates(&Agent::Local)
                 .await
                 .expect("asking should succeed")

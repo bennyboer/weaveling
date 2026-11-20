@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use eventsourcing::{AccountId, Agent};
 use ideas_core::{IdeasCore, IdeasError};
-use ideas_messaging::{RememberRolesListener, RememberTrashListener};
+use ideas_messaging::{RememberRolesListener, RememberStandingListener};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
@@ -45,8 +45,8 @@ fn roles_heard_by(ideas: &IdeasCore) -> Inboxed<RememberRolesListener> {
     inboxed(RememberRolesListener::new(ideas.clone()))
 }
 
-fn trash_heard_by(ideas: &IdeasCore) -> Inboxed<RememberTrashListener> {
-    inboxed(RememberTrashListener::new(ideas.clone()))
+fn trash_heard_by(ideas: &IdeasCore) -> Inboxed<RememberStandingListener> {
+    inboxed(RememberStandingListener::new(ideas.clone()))
 }
 
 fn told(routing: &str, version: u64, event: Value) -> Message {

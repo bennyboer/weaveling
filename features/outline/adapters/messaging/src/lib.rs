@@ -7,7 +7,7 @@ mod publishing;
 mod state;
 mod sweeping;
 
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use attaching::{
     DETACH_THE_GONE, DetachGoneAttachmentsListener, DetachTheGoneDTO, IndexAttachmentsListener,
 };

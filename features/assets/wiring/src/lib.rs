@@ -11,10 +11,10 @@ use assets_images::WebpImages;
 use assets_messaging::{
     RememberOperatorsListener, RememberPeopleListener, RememberPicturesListener,
     RememberProjectNamesListener, RememberRolesListener, RememberSceneImagesListener,
-    RememberTrashListener, SweepAssetsOfDeletedOwnerListener,
+    RememberStandingListener, SweepAssetsOfDeletedOwnerListener,
 };
 use async_trait::async_trait;
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use chores::{Chore, ForgetOldTombstones};
 use clock::Clock;
 use eventsourcing::EventStore;
@@ -81,7 +81,7 @@ pub fn core(ports: &Ports, context: &Context) -> AssetsCore {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     AssetsCore::new(
@@ -106,7 +106,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     Wired::serving(assets_rest::router(assets.clone()))
         .listening(vec![
             Arc::new(hearing.inboxed(RememberRolesListener::new(assets.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(assets.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberOperatorsListener::new(assets.clone()))),
             Arc::new(hearing.inboxed(RememberPeopleListener::new(
                 assets.clone(),

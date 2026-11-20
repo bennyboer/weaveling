@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use access::{InMemoryAccess, KeptAccess};
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeasCore};
 use ideas_messaging::{
     BroadcastIdeaChangesListener, CatalogueIdeasListener, DiscardOnProjectDeletedListener,
-    RememberRolesListener, RememberTrashListener,
+    RememberRolesListener, RememberStandingListener,
 };
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -29,7 +29,7 @@ pub fn core(ports: &Ports, context: &Context) -> IdeasCore {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     IdeasCore::new(
@@ -64,7 +64,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(broadcast),
             Arc::new(hearing.inboxed(CatalogueIdeasListener::new(ideas.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(ideas.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(ideas.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(ideas.clone()))),
             Arc::new(sweep),
         ])
         .doing_chores(vec![

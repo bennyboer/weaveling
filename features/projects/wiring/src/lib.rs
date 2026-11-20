@@ -14,7 +14,7 @@ use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
 use projects_messaging::{
     CatalogueProjectsListener, DeleteAbandonedProjectListener, RememberRolesListener,
-    RememberTrashListener,
+    RememberStandingListener,
 };
 use transacting::Transactions;
 use trash::{InMemoryTrash, PurgeTheTrash, Trash};
@@ -75,7 +75,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(CatalogueProjectsListener::new(projects.clone()))),
             Arc::new(hearing.inboxed(DeleteAbandonedProjectListener::new(projects.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(projects.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(projects.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(projects.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(PurgeTheTrash::new(

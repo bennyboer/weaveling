@@ -6,9 +6,9 @@ use appearances_core::{AppearanceCatalog, AppearancesCore};
 use appearances_messaging::{
     AssetAppearancesListener, ForgetDeletedProjectListener, ForgetDiscardedIdeaListener,
     ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
-    RememberIdeaProjectListener, RememberRolesListener, RememberTrashListener,
+    RememberIdeaProjectListener, RememberRolesListener, RememberStandingListener,
 };
-use authorizing::{AllowingEverything, Authorizer};
+use authorizing::Authorizer;
 use chores::ForgetOldTombstones;
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use live::Broadcaster;
@@ -33,7 +33,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
         Arc::new(ports.access.clone())
     } else {
-        Arc::new(AllowingEverything)
+        Arc::new(ports.access.clone().without_accounts())
     };
 
     let appearances = AppearancesCore::new(
@@ -57,7 +57,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(ForgetDeletedProjectListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(AssetAppearancesListener::new(appearances.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(appearances.clone()))),
-            Arc::new(hearing.inboxed(RememberTrashListener::new(appearances.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(appearances.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(

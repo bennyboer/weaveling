@@ -112,7 +112,7 @@ The chore `forget-old-appearance-hearings` forgets the old records of received m
 **Who may read a project is kept by the feature itself,**
 through [`access`](../../libraries/access/README.md), stored in the appearances' own database.
 `appearances-remember-roles` receives the members' messages (`founded`, `joined`, `role.changed`, `left`, `removed`, `disbanded`).
-`appearances-remember-trash` receives the messages about projects put in the trash and restored.
+`appearances-remember-standing` receives the messages about projects started, put in the trash, restored and deleted.
 Both run through the inbox.
 The chore `forget-old-appearance-tombstones` forgets their tombstones, beside the feature's own.
 Where there are accounts, the core asks `KeptAccess`. Without accounts, it allows everyone.

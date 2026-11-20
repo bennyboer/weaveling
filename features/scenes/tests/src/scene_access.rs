@@ -10,7 +10,7 @@ use messaging::{Listener, Message, RoutingKey};
 use projects_contract::{RESTORED, TRASHED};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{Access, Scene, ScenesCore};
-use scenes_messaging::{RememberRolesListener, RememberTrashListener};
+use scenes_messaging::{RememberRolesListener, RememberStandingListener};
 use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
@@ -23,7 +23,7 @@ const THE_WEFT: &str = "project_weft";
 struct Heard {
     scenes: ScenesCore,
     roles: Inboxed<RememberRolesListener>,
-    trash: Inboxed<RememberTrashListener>,
+    trash: Inboxed<RememberStandingListener>,
 }
 
 fn inboxed<L: KeptHandler>(listener: L) -> Inboxed<L> {
@@ -51,7 +51,7 @@ fn a_workbench() -> Heard {
 
     Heard {
         roles: inboxed(RememberRolesListener::new(scenes.clone())),
-        trash: inboxed(RememberTrashListener::new(scenes.clone())),
+        trash: inboxed(RememberStandingListener::new(scenes.clone())),
         scenes,
     }
 }

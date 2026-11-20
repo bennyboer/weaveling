@@ -44,10 +44,23 @@ pub struct Wired {
     told: AtomicU64,
 }
 
-/// Boards without accounts, where everyone may do everything.
+/// Boards without accounts, where everyone may do everything in the projects the tests work in, as they were started.
 pub fn a_workbench(clock: Arc<dyn Clock>) -> Wired {
-    a_workbench_keeping(clock, Arc::new(InMemoryAccess::new()), false)
+    a_workbench_keeping(
+        clock,
+        Arc::new(InMemoryAccess::having_heard_of(STARTED)),
+        false,
+    )
 }
+
+/// The projects the tests work in, heard of as started.
+pub const STARTED: &[&str] = &[
+    "project_1",
+    "project_2",
+    "project_mine",
+    "project_theirs",
+    "project_loom",
+];
 
 /// Boards with accounts, where who may do what is stored in the boards' own access records.
 pub fn a_workbench_with_accounts(clock: Arc<dyn Clock>) -> Wired {
@@ -253,6 +266,11 @@ impl AccessCatalog for Faltering {
     async fn is_in_the_trash(&self, project: &str) -> Result<bool, AccessError> {
         self.reachable()?;
         self.kept.is_in_the_trash(project).await
+    }
+
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.is_heard_of(project).await
     }
 
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {

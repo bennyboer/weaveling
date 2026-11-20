@@ -3,7 +3,7 @@ mod broadcasting;
 mod publishing;
 mod sweeping;
 
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use broadcasting::{BroadcastIdeaChangesListener, LIVE};
 pub use publishing::message_for;
 pub use sweeping::{AT_MOST, DiscardOnProjectDeletedListener};

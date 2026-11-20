@@ -5,9 +5,9 @@ use eventsourcing::{AccountId, Agent, ServiceError};
 use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use members_contract::{ABANDONED, DISBANDED, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED, role};
 use messaging::{Listener, Message, RoutingKey};
-use projects_contract::{RESTORED, STARTED, TRASHED};
+use projects_contract::{DELETED, RENAMED, RESTORED, STARTED, TRASHED};
 use projects_core::{ProjectError, ProjectsError, RawDetails};
-use projects_messaging::{RememberRolesListener, RememberTrashListener};
+use projects_messaging::{RememberRolesListener, RememberStandingListener};
 use serde_json::{Value, json};
 use transacting::InMemoryTransactions;
 
@@ -34,7 +34,7 @@ fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
 struct Bench {
     wired: Wired,
     roles: Inboxed<RememberRolesListener>,
-    trash: Inboxed<RememberTrashListener>,
+    standing: Inboxed<RememberStandingListener>,
 }
 
 fn bench() -> Bench {
@@ -42,7 +42,7 @@ fn bench() -> Bench {
 
     Bench {
         roles: inboxed(RememberRolesListener::new(wired.projects.clone())),
-        trash: inboxed(RememberTrashListener::new(wired.projects.clone())),
+        standing: inboxed(RememberStandingListener::new(wired.projects.clone())),
         wired,
     }
 }
@@ -66,7 +66,7 @@ impl Bench {
     }
 
     async fn hear_of_the_trash(&self, message: Message) {
-        self.trash
+        self.standing
             .handle(&message)
             .await
             .expect("a project trashed or restored is taken in");
@@ -188,7 +188,7 @@ fn key(routing: &str) -> RoutingKey {
 }
 
 #[tokio::test]
-async fn the_listeners_hear_who_is_a_member_and_what_is_in_the_trash_but_not_abandoning() {
+async fn the_listeners_hear_who_is_a_member_and_how_a_project_stands_but_not_abandoning() {
     // given: the listeners
     let bench = bench();
 
@@ -198,10 +198,11 @@ async fn the_listeners_hear_who_is_a_member_and_what_is_in_the_trash_but_not_aba
     }
     // and: not the abandoning that follows the last removal
     assert!(!bench.roles.hears(&key(ABANDONED)));
-    // and: the one on the trash hears a project trashed and restored, and no other change of it
-    assert!(bench.trash.hears(&key(TRASHED)));
-    assert!(bench.trash.hears(&key(RESTORED)));
-    assert!(!bench.trash.hears(&key(STARTED)));
+    // and: the one on how a project stands hears it started, trashed, restored and deleted, and no other change of it
+    for routing in [STARTED, TRASHED, RESTORED, DELETED] {
+        assert!(bench.standing.hears(&key(routing)), "{routing}");
+    }
+    assert!(!bench.standing.hears(&key(RENAMED)));
 }
 
 #[tokio::test]

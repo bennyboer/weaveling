@@ -8,7 +8,7 @@ mod sweeping;
 mod titles;
 mod transformer;
 
-pub use access::{RememberRolesListener, RememberTrashListener};
+pub use access::{RememberRolesListener, RememberStandingListener};
 pub use copies::CatalogueReadingCopiesListener;
 pub use names::RememberAccountNamesListener;
 pub use outlines::KeepOutlinesListener;

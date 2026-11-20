@@ -30,14 +30,31 @@ const DETACHING_EVERYWHERE: &str = "detach-everywhere";
 const DETACHING_THE_GONE: &str = "detach-gone-attachments";
 const REMEMBERING_PROJECTS: &str = "outline-remember-projects-of-attachments";
 const REMEMBERING_ROLES: &str = "outline-remember-roles";
-const REMEMBERING_TRASH: &str = "outline-remember-trash";
+const REMEMBERING_STANDING: &str = "outline-remember-standing";
 
-/// Who may do what, as the feature heard it.
+/// Who may do what, as the feature heard it, where the projects the tests work in were started.
 /// It fails while the list is down.
-#[derive(Default)]
 pub struct WhoMayDoWhat {
     kept: InMemoryAccess,
     pub down: AtomicBool,
+}
+
+/// The projects the tests work in, heard of as started.
+pub const STARTED: &[&str] = &[
+    "project_1",
+    "project_2",
+    "project_loom",
+    "project_weft",
+    "project_bench",
+];
+
+impl Default for WhoMayDoWhat {
+    fn default() -> Self {
+        Self {
+            kept: InMemoryAccess::having_heard_of(STARTED),
+            down: AtomicBool::default(),
+        }
+    }
 }
 
 impl WhoMayDoWhat {
@@ -128,6 +145,11 @@ impl AccessCatalog for WhoMayDoWhat {
         self.kept.is_in_the_trash(project).await
     }
 
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError> {
+        self.reachable()?;
+        self.kept.is_heard_of(project).await
+    }
+
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError> {
         self.reachable()?;
         self.kept.projects_of(account).await
@@ -207,7 +229,7 @@ pub struct Wired {
     pub detaching_the_gone: Arc<dyn Listener>,
     pub remembering_projects: Arc<dyn Listener>,
     pub remembering_roles: Arc<dyn Listener>,
-    pub remembering_trash: Arc<dyn Listener>,
+    pub remembering_standing: Arc<dyn Listener>,
     pub access: Arc<WhoMayDoWhat>,
     pub states: Arc<StatesTold>,
     pub clock: Arc<dyn Clock>,
@@ -316,7 +338,7 @@ fn a_workbench_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
     let detaching_the_gone = named(DETACHING_THE_GONE);
     let remembering_projects = named(REMEMBERING_PROJECTS);
     let remembering_roles = named(REMEMBERING_ROLES);
-    let remembering_trash = named(REMEMBERING_TRASH);
+    let remembering_standing = named(REMEMBERING_STANDING);
 
     Wired {
         outlines: outline_wiring::core(&ports, &context),
@@ -338,7 +360,7 @@ fn a_workbench_on(clock: Arc<dyn Clock>, with_accounts: bool) -> Wired {
         detaching_the_gone,
         remembering_projects,
         remembering_roles,
-        remembering_trash,
+        remembering_standing,
         access,
         states,
         clock: context.clock.clone(),

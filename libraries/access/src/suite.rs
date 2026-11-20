@@ -153,6 +153,14 @@ async fn trashed<W: Workbench>(bench: &W, project: &str) -> bool {
         .expect("asking should succeed")
 }
 
+async fn heard_of<W: Workbench>(bench: &W, project: &str) -> bool {
+    bench
+        .store()
+        .is_heard_of(project)
+        .await
+        .expect("asking should succeed")
+}
+
 async fn operates<W: Workbench>(bench: &W, account: &AccountId) -> bool {
     bench
         .store()
@@ -176,7 +184,36 @@ pub async fn nothing_heard_is_no_access<W: Workbench>(bench: &W) {
     assert!(projects(bench, &ada()).await.is_empty());
     assert!(!share(bench, &ada(), &bo()).await);
     assert!(!trashed(bench, THE_LOOM).await);
+    assert!(!heard_of(bench, THE_LOOM).await);
     assert!(!operates(bench, &ada()).await);
+}
+
+pub async fn a_project_is_heard_of_once_started_in_the_trash_or_out_and_no_more_once_disbanded<
+    W: Workbench,
+>(
+    bench: &W,
+) {
+    // given: the loom started, and the weft only ever given members
+    told(
+        bench,
+        vec![
+            Word::Trash(THE_LOOM, 1, false),
+            Word::Role(THE_WEFT, grace(), 1, Some(Role::Owner), 0),
+        ],
+    )
+    .await;
+
+    // then: the loom is heard of, the weft not, as nothing told of its starting
+    assert!(heard_of(bench, THE_LOOM).await);
+    assert!(!heard_of(bench, THE_WEFT).await);
+    // when: the loom is put in the trash
+    told(bench, vec![Word::Trash(THE_LOOM, 2, true)]).await;
+    // then: it is heard of still
+    assert!(heard_of(bench, THE_LOOM).await);
+    // when: it is disbanded
+    told(bench, vec![Word::Disbanded(THE_LOOM, 3, 1_000)]).await;
+    // then: it is heard of no more
+    assert!(!heard_of(bench, THE_LOOM).await);
 }
 
 pub async fn a_member_has_their_role_in_their_projects_alone<W: Workbench>(bench: &W) {
@@ -482,6 +519,10 @@ macro_rules! conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::conformance_case!($workbench, nothing_heard_is_no_access);
+        $crate::conformance_case!(
+            $workbench,
+            a_project_is_heard_of_once_started_in_the_trash_or_out_and_no_more_once_disbanded
+        );
         $crate::conformance_case!(
             $workbench,
             a_project_s_owners_are_its_members_holding_it_and_nobody_once_disbanded

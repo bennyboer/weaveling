@@ -84,6 +84,7 @@ pub trait AccessCatalog: Send + Sync {
     ) -> Result<(), AccessError>;
 
     /// Remembers whether a project is in the trash, as of a version of the project.
+    /// A project just started is remembered as out of the trash, so the catalog has heard of it from then on.
     async fn remember_trash(
         &self,
         transaction: &mut Transaction,
@@ -123,6 +124,10 @@ pub trait AccessCatalog: Send + Sync {
     ) -> Result<Option<Role>, AccessError>;
 
     async fn is_in_the_trash(&self, project: &str) -> Result<bool, AccessError>;
+
+    /// Whether the project was heard of, as started or put in the trash, and is not disbanded since.
+    /// Where there are no accounts, this alone says whether the project may be worked on.
+    async fn is_heard_of(&self, project: &str) -> Result<bool, AccessError>;
 
     /// The projects the account is a member of, neither disbanded nor in the trash.
     async fn projects_of(&self, account: &AccountId) -> Result<Vec<String>, AccessError>;
