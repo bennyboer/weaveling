@@ -94,6 +94,7 @@ problem-not-found =
         [account] Esa cuenta ya no existe.
         [appearances] Esas apariciones ya no existen.
         [board] Ese tablero ya no existe.
+        [comment] Ese comentario ya no existe.
         [idea] Esa idea ya no existe.
         [outline] Ese esquema ya no existe.
         [project] Ese proyecto ya no existe.
@@ -213,12 +214,14 @@ drawer-close =
     { $drawer ->
         [tray] Cerrar la bandeja
         [contents] Cerrar el índice
+        [feedback] Cerrar los comentarios
        *[other] Cerrar
     }
 drawer-resize =
     { $drawer ->
         [tray] Cambiar el ancho de la bandeja
         [contents] Cambiar el ancho del índice
+        [feedback] Cambiar el tamaño de los comentarios
        *[other] Cambiar el ancho
     }
 
@@ -390,6 +393,16 @@ reading-no-copies = Todavía no hay copias de lectura.
 reading-copy = Copia de lectura
 copy-by-you = Tú
 copy-by-a-former-member = Un antiguo miembro
+feedback = Comentarios
+feedback-nothing-yet = Aún no se ha dicho nada sobre esta copia.
+feedback-your-drafts = Tus borradores · { $count }
+feedback-your-drafts-named = Tus borradores
+feedback-drafts-only-you = solo tú los ves
+feedback-delete = Borrar
+feedback-delete-draft = Borrar este borrador
+feedback-on-section = Sobre «{ $section }»
+feedback-on-scene = Sobre una escena de «{ $section }»
+feedback-on-whole = Sobre toda la copia
 copy-extent-book = toda la obra
 copy-extent-sections = { $count ->
         [one] una sección

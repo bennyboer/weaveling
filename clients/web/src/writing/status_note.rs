@@ -73,19 +73,28 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
                 })
                 .into_any(),
         },
-        html::span().class("save-state").child(move || {
-            if shown_saving.get() {
-                (
-                    icons::mark(Icon::Saving),
-                    html::span().child(speech::said("saving")),
-                )
-            } else {
-                (
-                    icons::mark(Icon::Saved),
-                    html::span().child(speech::said("all-saved")),
-                )
-            }
-        }),
+        html::span()
+            .class("save-state")
+            .attr("title", move || {
+                speech::say(if shown_saving.get() {
+                    "saving"
+                } else {
+                    "all-saved"
+                })
+            })
+            .child(move || {
+                if shown_saving.get() {
+                    (
+                        icons::mark(Icon::Saving),
+                        html::span().class("said").child(speech::said("saving")),
+                    )
+                } else {
+                    (
+                        icons::mark(Icon::Saved),
+                        html::span().class("said").child(speech::said("all-saved")),
+                    )
+                }
+            }),
     ))
 }
 

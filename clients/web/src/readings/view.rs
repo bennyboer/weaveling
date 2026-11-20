@@ -10,6 +10,7 @@ use crate::asking::Asking;
 use crate::assets::service as assets;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
+use crate::feedback::column as feedback;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
@@ -30,6 +31,8 @@ const FIGURE_WIDTH: u32 = 1536;
 const CONTENTS: &str = "reading-contents";
 /// Where the contents lie over the text, as on a phone, they start closed.
 const LYING_OVER_THE_TEXT: &str = "(width <= 60rem)";
+/// Where the contents and a copy's feedback do not both fit beside the text, the feedback starts closed.
+const ROOM_FOR_BOTH: &str = "(width > 82.5rem)";
 
 /// What the book shows, in reading order: each section, and each scene with something written.
 /// A scene after another scene stands behind a scene break.
@@ -54,7 +57,16 @@ pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
         .ok()
         .flatten()
         .is_none_or(|query| !query.matches());
+    let room_for_both = window()
+        .match_media(ROOM_FOR_BOTH)
+        .ok()
+        .flatten()
+        .is_some_and(|query| query.matches());
     let rail = Drawer::as_last_left("weaveling.reading-contents", beside_the_text);
+    let said = Drawer::as_last_left("weaveling.reading-feedback", room_for_both);
+    if copy.is_some() {
+        drawer::keep_apart(rail, said);
+    }
     let project = route::project_id(&slug);
     let book = RwSignal::new(None::<Book>);
     let failed = RwSignal::new(None::<ApiError>);
@@ -80,8 +92,11 @@ pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
             Some(problem::problem(failure).into_any())
         } else if has_book.get() {
             let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
+            let feedback = copy
+                .clone()
+                .map(|copy| (feedback::on_reading_copy(copy, book, said), said));
 
-            Some(read(book, rail, bar.into_any()).into_any())
+            Some(read(book, rail, bar.into_any(), feedback).into_any())
         } else {
             None
         }
@@ -162,11 +177,22 @@ fn reading_a_copy(
     });
 }
 
-fn read(book: RwSignal<Option<Book>>, rail: Drawer, bar: AnyView) -> impl IntoView {
+/// The text between the contents on the left and, in a copy, its feedback on the right.
+fn read(
+    book: RwSignal<Option<Book>>,
+    rail: Drawer,
+    bar: AnyView,
+    feedback: Option<(impl IntoView + 'static, Drawer)>,
+) -> impl IntoView {
     let title = Memo::new(move |_| {
         book.with(|held| held.as_ref().map(|held| held.title.clone()))
             .unwrap_or_default()
     });
+
+    let (feedback, said) = match feedback {
+        Some((column, said)) => (Some(column), Some(said)),
+        None => (None, None),
+    };
 
     (
         contents(book, rail),
@@ -176,22 +202,33 @@ fn read(book: RwSignal<Option<Book>>, rail: Drawer, bar: AnyView) -> impl IntoVi
                 .class("book")
                 .child((html::h1().child(move || title.get()), parts(book))),
         )),
-        contents_toggle(rail),
+        feedback,
+        toggles(rail, said),
     )
 }
 
-/// On a phone the contents open from the status bar, as no tab may lie over the text.
-fn contents_toggle(rail: Drawer) -> impl IntoView {
-    html::div().class("drawer-toggles").child(
-        html::button()
-            .r#type("button")
-            .attr("aria-label", speech::said("contents"))
-            .attr("title", speech::said("contents"))
-            .attr("aria-controls", CONTENTS)
-            .attr("aria-expanded", move || rail.is_open().to_string())
-            .on(ev::click, move |_| rail.toggle())
-            .child(icons::mark(Icon::Section)),
-    )
+/// On a phone the contents, and a copy's feedback, open from the status bar, as no tab may lie over the text.
+fn toggles(rail: Drawer, said: Option<Drawer>) -> impl IntoView {
+    html::div().class("drawer-toggles").child((
+        toggle(rail, "contents", CONTENTS, Icon::Section),
+        said.map(|said| toggle(said, "feedback", feedback::FEEDBACK, Icon::Comment)),
+    ))
+}
+
+fn toggle(
+    drawer: Drawer,
+    named: &'static str,
+    controls: &'static str,
+    icon: Icon,
+) -> impl IntoView {
+    html::button()
+        .r#type("button")
+        .attr("aria-label", speech::said(named))
+        .attr("title", speech::said(named))
+        .attr("aria-controls", controls)
+        .attr("aria-expanded", move || drawer.is_open().to_string())
+        .on(ev::click, move |_| drawer.toggle())
+        .child(icons::mark(icon))
 }
 
 /// A section in the contents: how deep it lies, its title, whether sections lie under it, and whether those are folded away.
@@ -511,7 +548,7 @@ fn marked(text: String, marks: Marks) -> AnyView {
     }
 }
 
-fn safe_link(link: &str) -> bool {
+pub(crate) fn safe_link(link: &str) -> bool {
     let lowered = link.to_ascii_lowercase();
 
     ["https://", "http://", "mailto:"]

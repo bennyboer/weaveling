@@ -1000,3 +1000,120 @@ test("a copy kept for good offers no deletion to extend", async ({ page }) => {
   ).toHaveCount(0);
   await expect(extending).toContainText("Kept for good, with its comments.");
 });
+
+const feedback = (page: Page) =>
+  page.getByRole("complementary", { name: "Feedback" });
+
+const feedbackTab = (page: Page) =>
+  page.locator('.drawer-tab[aria-controls="reading-feedback"]');
+
+/// A draft written through the API on the copy being read, saying one plain sentence.
+async function aDraftOn(page: Page, place: object, saying: string) {
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const drafted = await page.request.post(`${API}/feedback`, {
+    data: {
+      about: { kind: "reading_copy", reading_copy: copy, place },
+      comment: [
+        { kind: "paragraph", runs: [{ kind: "text", text: saying }] },
+      ],
+    },
+  });
+  expect(drafted.status(), await drafted.text()).toBe(201);
+}
+
+/// The first section of the copy being read, as it was frozen.
+async function aSectionOfTheCopy(page: Page) {
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const read = await (await page.request.get(`${API}/readings/copies/${copy}`)).json();
+
+  return read.contents.parts.find(
+    (part: { kind: string }) => part.kind === "section",
+  ).section as string;
+}
+
+test("a copy's feedback lists your drafts, each with what it is about, and one deleted is gone", async ({
+  page,
+}) => {
+  // given: a copy being read, its feedback closed where it and the contents do not both fit beside the text
+  await aCopyRead(page, "ReadingDrafts");
+  await expect(feedbackTab(page)).toHaveAttribute("aria-expanded", "false");
+
+  // when: the feedback is opened
+  await feedbackTab(page).click();
+
+  // then: nothing is said about the copy yet
+  await expect(feedback(page)).toContainText("Nothing said about this copy yet.");
+
+  // when: drafts are written on the whole copy and on its section
+  await aDraftOn(page, { kind: "whole" }, "The ending lands.");
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Morning drags a little.",
+  );
+  await page.reload();
+
+  // then: they are listed as your drafts, which only you see, each saying what it is about
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  await expect(drafts).toContainText("Your drafts · 2");
+  await expect(drafts).toContainText("only you see these");
+  await expect(drafts.locator(".note")).toHaveCount(2);
+  await expect(drafts.locator(".note").first()).toContainText("On the whole copy");
+  await expect(drafts.locator(".note").first()).toContainText("The ending lands.");
+  await expect(drafts.locator(".note").nth(1)).toContainText("On “Morning”");
+
+  // when: the first is deleted
+  await drafts
+    .locator(".note")
+    .first()
+    .getByRole("button", { name: "Delete this draft" })
+    .click();
+
+  // then: only the other is left, even when the page is read again
+  await expect(drafts.locator(".note")).toHaveCount(1);
+  await page.reload();
+  await expect(
+    feedback(page).getByRole("region", { name: "Your drafts" }),
+  ).toContainText("Morning drags a little.");
+});
+
+test("the live work has no feedback column, as feedback is given on a copy", async ({
+  page,
+}) => {
+  // given: a project's live work being read
+  await aReadingView(page, "ReadingLiveNoFeedback");
+
+  // expect: no feedback beside it, nor a tab to open it
+  await expect(feedbackTab(page)).toHaveCount(0);
+});
+
+test("a copy's contents and its feedback never lie over each other, however wide either is drawn", async ({
+  page,
+}) => {
+  // given: a copy being read on a wide window, with its contents and its feedback open
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await aCopyRead(page, "ReadingDrawersApart");
+  const contentsPane = page.getByRole("complementary", { name: "Contents" });
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await expect(contentsPane).toBeVisible();
+  await expect(feedback(page)).toBeVisible();
+
+  // when: the feedback is drawn far over to the left
+  const handle = page.getByRole("separator", { name: "Resize the feedback" });
+  const at = (await handle.boundingBox())!;
+  const y = at.y + Math.min(at.height / 2, 200);
+  await page.mouse.move(at.x + at.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(at.x - 400, y, { steps: 4 });
+  await page.mouse.move(at.x - 900, y, { steps: 4 });
+  await page.mouse.up();
+
+  // then: it stops short of the contents, leaving some of the page in sight between them
+  const left = (await contentsPane.boundingBox())!;
+  const right = (await feedback(page).boundingBox())!;
+  expect(left.x + left.width, "the drawers never overlap").toBeLessThanOrEqual(
+    right.x - 160,
+  );
+});

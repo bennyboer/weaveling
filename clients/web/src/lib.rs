@@ -10,6 +10,7 @@ mod boards;
 mod copy_button;
 mod dialog;
 mod drawer;
+mod feedback;
 mod http;
 mod icons;
 mod ideas;

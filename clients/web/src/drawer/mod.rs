@@ -1,5 +1,8 @@
+mod apart;
 mod handle;
 pub mod width;
+
+pub use apart::keep_apart;
 
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};

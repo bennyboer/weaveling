@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task;
 use statistics_contract::WordCountDTO;
 
+use crate::drawer;
 use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::quiet_note::QuietNote;
@@ -13,7 +14,6 @@ use crate::writing::beginnings::Beginnings;
 use crate::writing::book_rail::BookRail;
 use crate::writing::choosing::Choosing;
 use crate::writing::copying::Copying;
-use crate::writing::drawers;
 use crate::writing::editors::Editors;
 use crate::writing::focus::Focus;
 use crate::writing::formatting::Formatting;
@@ -111,7 +111,7 @@ impl WriteViewState {
             connection: StoredValue::new_local(SyncConnection::new()),
             quiet_note: expect_context::<QuietNote>(),
         };
-        drawers::keep_apart(state.book_rail.drawer(), state.inspector.drawer());
+        drawer::keep_apart(state.book_rail.drawer(), state.inspector.drawer());
         Effect::new(move |_| {
             let told = state.presence.people_told();
             state

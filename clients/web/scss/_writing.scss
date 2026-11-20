@@ -432,6 +432,30 @@ body:has(.alarm) .status-note {
   right: 2.5rem;
 }
 
+/* On a phone the note starts after the drawer toggles, its count shrinks, and whether all is saved is told by its mark alone. */
+@media (width <= 46rem) {
+  .status-note {
+    left: 4.5rem;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    min-width: 0;
+
+    .word-count {
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+
+    .save-state .said {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+}
+
 .writing .side-switch {
   display: flex;
   gap: 1.5rem;

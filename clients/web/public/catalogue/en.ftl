@@ -94,6 +94,7 @@ problem-not-found =
         [account] That account no longer exists.
         [appearances] Those appearances no longer exist.
         [board] That board no longer exists.
+        [comment] That comment no longer exists.
         [idea] That idea no longer exists.
         [outline] That outline no longer exists.
         [project] That project no longer exists.
@@ -213,12 +214,14 @@ drawer-close =
     { $drawer ->
         [tray] Close the tray
         [contents] Close the contents
+        [feedback] Close the feedback
        *[other] Close
     }
 drawer-resize =
     { $drawer ->
         [tray] Resize the tray
         [contents] Resize the contents
+        [feedback] Resize the feedback
        *[other] Resize
     }
 
@@ -390,6 +393,16 @@ reading-no-copies = No reading copies yet.
 reading-copy = Reading copy
 copy-by-you = You
 copy-by-a-former-member = A former member
+feedback = Feedback
+feedback-nothing-yet = Nothing said about this copy yet.
+feedback-your-drafts = Your drafts · { $count }
+feedback-your-drafts-named = Your drafts
+feedback-drafts-only-you = only you see these
+feedback-delete = Delete
+feedback-delete-draft = Delete this draft
+feedback-on-section = On “{ $section }”
+feedback-on-scene = On a scene in “{ $section }”
+feedback-on-whole = On the whole copy
 copy-extent-book = the whole work
 copy-extent-sections = { $count ->
         [one] one section

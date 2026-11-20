@@ -94,6 +94,7 @@ problem-not-found =
         [account] Ce compte n’existe plus.
         [appearances] Ces apparitions n’existent plus.
         [board] Ce tableau n’existe plus.
+        [comment] Ce commentaire n’existe plus.
         [idea] Cette idée n’existe plus.
         [outline] Ce plan n’existe plus.
         [project] Ce projet n’existe plus.
@@ -213,12 +214,14 @@ drawer-close =
     { $drawer ->
         [tray] Fermer le volet
         [contents] Fermer la table des matières
+        [feedback] Fermer les retours
        *[other] Fermer
     }
 drawer-resize =
     { $drawer ->
         [tray] Redimensionner le volet
         [contents] Redimensionner la table des matières
+        [feedback] Redimensionner les retours
        *[other] Redimensionner
     }
 
@@ -390,6 +393,16 @@ reading-no-copies = Aucune copie de lecture pour l’instant.
 reading-copy = Copie de lecture
 copy-by-you = Vous
 copy-by-a-former-member = Un ancien membre
+feedback = Retours
+feedback-nothing-yet = Rien n’a encore été dit sur cette copie.
+feedback-your-drafts = Vos brouillons · { $count }
+feedback-your-drafts-named = Vos brouillons
+feedback-drafts-only-you = vous seul les voyez
+feedback-delete = Supprimer
+feedback-delete-draft = Supprimer ce brouillon
+feedback-on-section = Sur « { $section } »
+feedback-on-scene = Sur une scène de « { $section } »
+feedback-on-whole = Sur toute la copie
 copy-extent-book = toute l’œuvre
 copy-extent-sections = { $count ->
         [one] une section

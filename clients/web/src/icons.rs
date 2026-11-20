@@ -43,6 +43,7 @@ pub enum Icon {
     Quote,
     ClearFormatting,
     Link,
+    Comment,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -95,6 +96,7 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::Link => {
             "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
         }
+        Icon::Comment => "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z",
         Icon::SignOut => "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
         Icon::UnfoldAll => "m7 15 5 5 5-5M7 9l5-5 5 5",
         Icon::FoldAll => "m7 20 5-5 5 5M7 4l5 5 5-5",
