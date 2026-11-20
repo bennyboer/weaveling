@@ -26,6 +26,33 @@ enum Writing {
     Changed(FeedbackId),
 }
 
+/// Begins comments on places in a reading copy, from wherever in the reading view a place is offered:
+/// it opens the feedback and starts a draft there about the place.
+#[derive(Clone, Copy)]
+pub struct Commenting {
+    copy: StoredValue<ReadingCopyId>,
+    writing: RwSignal<Option<Writing>>,
+    drawer: Drawer,
+}
+
+impl Commenting {
+    pub fn new(copy: ReadingCopyId, drawer: Drawer) -> Self {
+        Self {
+            copy: StoredValue::new(copy),
+            writing: RwSignal::new(None),
+            drawer,
+        }
+    }
+
+    pub fn begin(self, place: ReadingCopyPlace) {
+        self.drawer.open();
+        self.writing.set(Some(Writing::New(About::ReadingCopy {
+            reading_copy: self.copy.get_value(),
+            place,
+        })));
+    }
+}
+
 /// The feedback on a reading copy as the column holds it, what is being written in it, and what last failed.
 #[derive(Clone, Copy)]
 struct Column {
@@ -37,17 +64,19 @@ struct Column {
 
 /// The feedback on a reading copy, in a drawer on the right: for now your drafts, which only you see,
 /// and a comment on the whole copy started there.
-pub fn on_reading_copy(
-    copy: ReadingCopyId,
-    book: RwSignal<Option<Book>>,
-    drawer: Drawer,
-) -> impl IntoView {
+pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> impl IntoView {
     let column = Column {
         feedback: RwSignal::new(Vec::new()),
-        writing: RwSignal::new(None),
+        writing: commenting.writing,
         failed: RwSignal::new(None),
         book,
     };
+    Effect::new(move |_| {
+        if column.writing.with(Option::is_some) {
+            column.failed.set(None);
+        }
+    });
+    let copy = commenting.copy.get_value();
     {
         let copy = copy.clone();
         leptos::task::spawn_local(async move {
@@ -72,7 +101,7 @@ pub fn on_reading_copy(
     };
 
     drawer::drawer(
-        drawer,
+        commenting.drawer,
         Edge::Right,
         || speech::say("feedback"),
         Inside {
@@ -90,7 +119,6 @@ pub fn on_reading_copy(
                             .r#type("button")
                             .class("comment-on")
                             .on(ev::click, move |_| {
-                                column.failed.set(None);
                                 column.writing.set(Some(Writing::New(whole.clone())));
                             })
                             .child((
@@ -242,7 +270,6 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
                                 .r#type("button")
                                 .attr("aria-label", speech::said("feedback-change-draft"))
                                 .on(ev::click, move |_| {
-                                    column.failed.set(None);
                                     column.writing.set(Some(Writing::Changed(id.clone())));
                                 })
                                 .child(speech::said("feedback-change")),

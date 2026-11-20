@@ -53,6 +53,10 @@ impl Drawer {
         self.keep_open(!self.open.get_untracked());
     }
 
+    pub fn open(self) {
+        self.keep_open(true);
+    }
+
     pub fn close(self) {
         self.keep_open(false);
     }

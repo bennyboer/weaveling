@@ -1378,3 +1378,84 @@ test("a comment holds lists begun as they are typed, broken lines, and undoes wh
     },
   ]);
 });
+
+/// A copy of a written book being read, its section and scenes there to be commented on.
+async function aCopyOfABookWritten(page: Page, named: string) {
+  await aBookWritten(page, named);
+  await aCopyMade(page, {
+    name: "As written",
+    shared: { kind: "book" },
+    open_until: null,
+    deleted_on: null,
+  });
+  await copiesListed(page, ["As written"]);
+  await openTheReadingView(page);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /As written/ })
+    .click();
+  await expect(switcher(page)).toContainText("As written");
+}
+
+test("a section or a scene of a copy is commented on from the text, the feedback opening for it", async ({
+  page,
+}) => {
+  // given: a copy of a written book, its feedback closed
+  await aCopyOfABookWritten(page, "ReadingCommentHere");
+  await expect(feedbackTab(page)).toHaveAttribute("aria-expanded", "false");
+
+  // when: its first section is commented on from beside its heading
+  const morning = book(page).locator(".section-head", {
+    has: page.getByRole("heading", { name: "Morning", exact: true }),
+  });
+  await morning.hover();
+  await morning.getByRole("button", { name: "Comment on “Morning”" }).click();
+
+  // then: the feedback opens on a new draft about that section
+  const drafting = feedback(page).getByRole("region", { name: "A new draft" });
+  await expect(drafting).toContainText("On “Morning”");
+  await page.keyboard.type("The opening drags.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // when: the first scene is commented on from beside it
+  const firstScene = book(page).locator(".scene").first();
+  await firstScene.hover();
+  await firstScene
+    .getByRole("button", { name: "Comment on this scene" })
+    .click();
+  await expect(drafting).toContainText("On a scene in “Morning”");
+  await page.keyboard.type("Lovely boats.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // then: both are your drafts, each about what it was begun on
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  await expect(drafts.locator(".note .on")).toHaveText([
+    "On “Morning”",
+    "On a scene in “Morning”",
+  ]);
+  const kept = await draftsKept(page);
+  expect(kept.map((draft) => draft.about)).toEqual([
+    {
+      kind: "reading_copy",
+      reading_copy: expect.any(String),
+      place: { kind: "section", section: expect.any(String) },
+    },
+    {
+      kind: "reading_copy",
+      reading_copy: expect.any(String),
+      place: { kind: "scene", scene: expect.any(String) },
+    },
+  ]);
+});
+
+test("the live work offers nothing to comment on from the text", async ({
+  page,
+}) => {
+  // given: a written book's live work being read
+  await aBookWritten(page, "ReadingLiveNoCommentHere");
+  await openTheReadingView(page);
+  await expect(book(page)).toContainText("Hedy counted them from the wall.");
+
+  // expect: no section or scene offers a comment
+  await expect(book(page).locator(".comment-here")).toHaveCount(0);
+});

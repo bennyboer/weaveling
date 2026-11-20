@@ -11,6 +11,8 @@ use crate::assets::service as assets;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::column as feedback;
+use crate::feedback::column::Commenting;
+use crate::feedback::model::ReadingCopyPlace;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
@@ -86,17 +88,17 @@ pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
         }
     });
     let has_book = Memo::new(move |_| book.with(Option::is_some));
+    let commenting = copy.clone().map(|copy| Commenting::new(copy, said));
 
     move || {
         if let Some(failure) = failed.get() {
             Some(problem::problem(failure).into_any())
         } else if has_book.get() {
             let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
-            let feedback = copy
-                .clone()
-                .map(|copy| (feedback::on_reading_copy(copy, book, said), said));
+            let feedback =
+                commenting.map(|commenting| (feedback::on_reading_copy(commenting, book), said));
 
-            Some(read(book, rail, bar.into_any(), feedback).into_any())
+            Some(read(book, rail, bar.into_any(), feedback, commenting).into_any())
         } else {
             None
         }
@@ -183,6 +185,7 @@ fn read(
     rail: Drawer,
     bar: AnyView,
     feedback: Option<(impl IntoView + 'static, Drawer)>,
+    commenting: Option<Commenting>,
 ) -> impl IntoView {
     let title = Memo::new(move |_| {
         book.with(|held| held.as_ref().map(|held| held.title.clone()))
@@ -198,9 +201,10 @@ fn read(
         contents(book, rail),
         html::div().class("reading-view").child((
             bar,
-            html::article()
-                .class("book")
-                .child((html::h1().child(move || title.get()), parts(book))),
+            html::article().class("book").child((
+                html::h1().child(move || title.get()),
+                parts(book, commenting),
+            )),
         )),
         feedback,
         toggles(rail, said),
@@ -418,7 +422,8 @@ fn shown(book: &Book) -> Vec<Shown> {
     shown
 }
 
-fn parts(book: RwSignal<Option<Book>>) -> impl IntoView {
+/// The book's parts in reading order; in a copy, each section and scene offers to be commented on.
+fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl IntoView {
     let shown = Memo::new(move |_| book.with(|held| held.as_ref().map(shown).unwrap_or_default()));
 
     For(ForProps::builder()
@@ -429,7 +434,25 @@ fn parts(book: RwSignal<Option<Book>>) -> impl IntoView {
                 section,
                 depth,
                 title,
-            } => section_heading(&section, depth, title).into_any(),
+            } => {
+                let heading = section_heading(&section, depth, title.clone());
+                let commented = section.clone();
+
+                html::div()
+                    .class("section-head")
+                    .child((
+                        heading,
+                        commenting.map(move |commenting| {
+                            comment_here(
+                                speech::say_about("feedback-comment-on-section", "section", &title),
+                                move || {
+                                    commenting.begin(ReadingCopyPlace::Section(commented.clone()))
+                                },
+                            )
+                        }),
+                    ))
+                    .into_any()
+            }
             Shown::Scene {
                 scene,
                 after_a_scene,
@@ -447,12 +470,35 @@ fn parts(book: RwSignal<Option<Book>>) -> impl IntoView {
                     html::section()
                         .class("scene")
                         .attr("data-scene", scene.to_string())
-                        .child(move || text.get().map(|told| blocks_of(told.blocks().to_vec()))),
+                        .child((
+                            commenting.map(|commenting| {
+                                let scene = scene.clone();
+
+                                comment_here(
+                                    speech::say("feedback-comment-on-this-scene"),
+                                    move || {
+                                        commenting.begin(ReadingCopyPlace::Scene(scene.clone()))
+                                    },
+                                )
+                            }),
+                            move || text.get().map(|told| blocks_of(told.blocks().to_vec())),
+                        )),
                 )
                     .into_any()
             }
         })
         .build())
+}
+
+/// A quiet button beside a section or a scene that begins a comment on it.
+fn comment_here(named: String, begin: impl Fn() + 'static) -> impl IntoView {
+    html::button()
+        .r#type("button")
+        .class("comment-here")
+        .attr("aria-label", named.clone())
+        .attr("title", named)
+        .on(ev::click, move |_| begin())
+        .child(icons::mark(Icon::Comment))
 }
 
 fn section_heading(section: &SectionId, depth: u8, title: String) -> impl IntoView {

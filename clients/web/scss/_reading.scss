@@ -833,3 +833,120 @@
     }
   }
 }
+
+.reading-view .book {
+  .section-head,
+  .scene {
+    position: relative;
+  }
+
+  /* In the margin left of the text, beside its first line, as the writing view keeps its menus, so it never covers a word.
+     The text keeps that margin free in a copy, so the contents never lie over the buttons. */
+  .comment-here {
+    position: absolute;
+    top: calc(0.5lh - 1rem);
+    left: -2.75rem;
+    translate: 0 calc((1ex - 1cap) / 2);
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: none;
+    color: var(--muted);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.15s;
+
+    svg {
+      width: 1rem;
+      height: 1rem;
+    }
+
+    &:hover,
+    &:focus-visible {
+      border-color: color-mix(in srgb, var(--muted) 70%, transparent);
+      color: var(--ink);
+    }
+  }
+
+  /* A section's block takes its heading's margins, so the button sits by the heading's first line. */
+  .section-head {
+    margin: 2rem 0 1rem;
+
+    &:has(> h2) {
+      margin: 3rem 0 1.5rem;
+    }
+
+    &:has(> h3) {
+      margin: 2.5rem 0 1.25rem;
+    }
+
+    > h2,
+    > h3,
+    > h4 {
+      margin: 0;
+    }
+
+    /* Measured in its heading's own font, so it centres on the heading's first line as the writing view's menus do. */
+    > .comment-here {
+      font-family: var(--heading);
+      font-weight: 500;
+    }
+
+    > h2 + .comment-here {
+      font-size: 2.1rem;
+      line-height: 1.15;
+    }
+
+    > h3 + .comment-here {
+      font-size: 1.5rem;
+      line-height: 1.2;
+    }
+
+    > h4 + .comment-here {
+      font-size: 1.25rem;
+      line-height: 1.25;
+    }
+  }
+
+  .section-head:hover > .comment-here,
+  .scene:hover > .comment-here,
+  .comment-here:hover,
+  .comment-here:focus-visible {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .comment-here {
+      opacity: 0.6;
+    }
+  }
+
+  @media (width <= 46rem) {
+    .comment-here {
+      top: calc(0.5lh - 0.875rem);
+      left: -2.375rem;
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+  }
+}
+
+/* The text alone keeps the margin, so the switcher above it keeps its width. */
+.reading-view .book:has(.comment-here) {
+  padding-left: 1.75rem;
+
+  @media (width <= 46rem) {
+    padding-left: 1.5rem;
+  }
+}
+
+/* With the contents open, their tab hangs at the text's left edge, so the margin makes room for it too. */
+@media (width > 46rem) {
+  body:has(#reading-contents:not([hidden])) .reading-view .book:has(.comment-here) {
+    padding-left: 4.75rem;
+  }
+}

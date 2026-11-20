@@ -55,7 +55,8 @@
     line-height: 1.25;
   }
 
-  .in-flow:first-of-type .heading,
+  /* Only the book's first heading starts without room above it; a new section begun inside the first one keeps its room. */
+  .in-flow:first-of-type > .heading-row > .heading,
   > .heading:first-child {
     margin-top: 0;
   }

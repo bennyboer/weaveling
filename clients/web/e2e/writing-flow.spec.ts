@@ -1066,3 +1066,26 @@ test("Ctrl+Shift+Up selects back to the start of the paragraph, then of each one
     )
     .toEqual([first, second]);
 });
+
+test("a section begun below the first one stays where it is as its first letter is typed", async ({
+  page,
+}) => {
+  // given: a book of one empty section, a new section begun below it from its empty scene
+  await aNewProject(page, "SectionNoJump");
+  await aBookShaped(page, [{ title: "Einleitung" }]);
+  await openTheWritingView(page);
+  await page.locator(".writing .opening").first().click();
+  await page.keyboard.press("Enter");
+  const begun = page.locator(".writing .heading").nth(1);
+  await expect(begun).toBeFocused();
+  const before = (await begun.boundingBox())!.y;
+
+  // when: its first letter is typed, which makes it a section of its own
+  await page.keyboard.type("K");
+  await expect(page.locator(".writing .heading.new")).toHaveCount(0);
+
+  // then: it has not moved
+  expect((await page.locator(".writing .heading").nth(1).boundingBox())!.y).toBe(
+    before,
+  );
+});
