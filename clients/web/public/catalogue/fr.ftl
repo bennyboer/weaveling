@@ -403,6 +403,13 @@ feedback-delete-draft = Supprimer ce brouillon
 feedback-on-section = Sur « { $section } »
 feedback-on-scene = Sur une scène de « { $section } »
 feedback-on-whole = Sur toute la copie
+feedback-comment-on-whole = Commenter toute la copie
+feedback-new-draft = Un nouveau brouillon
+feedback-your-comment = Votre commentaire
+feedback-your-comment-placeholder = Qu’en pensez-vous ?
+feedback-save-draft = Enregistrer le brouillon
+feedback-change = Modifier
+feedback-change-draft = Modifier ce brouillon
 copy-extent-book = toute l’œuvre
 copy-extent-sections = { $count ->
         [one] une section

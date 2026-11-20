@@ -4,6 +4,7 @@ import { join } from "node:path";
 const OFFERED_IN = {
   SyncConnection: "sync.js",
   ProseEditor: join("editor", "editor.js"),
+  CommentEditor: join("comment", "comment.js"),
 };
 
 function asked(bridge) {

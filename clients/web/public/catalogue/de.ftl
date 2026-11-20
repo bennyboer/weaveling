@@ -403,6 +403,13 @@ feedback-delete-draft = Diesen Entwurf löschen
 feedback-on-section = Zu „{ $section }“
 feedback-on-scene = Zu einer Szene in „{ $section }“
 feedback-on-whole = Zur ganzen Kopie
+feedback-comment-on-whole = Die ganze Kopie kommentieren
+feedback-new-draft = Ein neuer Entwurf
+feedback-your-comment = Dein Kommentar
+feedback-your-comment-placeholder = Was denkst du?
+feedback-save-draft = Entwurf speichern
+feedback-change = Ändern
+feedback-change-draft = Diesen Entwurf ändern
 copy-extent-book = das ganze Werk
 copy-extent-sections = { $count ->
         [one] ein Abschnitt

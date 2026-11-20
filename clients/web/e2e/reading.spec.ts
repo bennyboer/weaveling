@@ -1013,9 +1013,7 @@ async function aDraftOn(page: Page, place: object, saying: string) {
   const drafted = await page.request.post(`${API}/feedback`, {
     data: {
       about: { kind: "reading_copy", reading_copy: copy, place },
-      comment: [
-        { kind: "paragraph", runs: [{ kind: "text", text: saying }] },
-      ],
+      comment: [{ kind: "paragraph", runs: [{ kind: "text", text: saying }] }],
     },
   });
   expect(drafted.status(), await drafted.text()).toBe(201);
@@ -1024,7 +1022,9 @@ async function aDraftOn(page: Page, place: object, saying: string) {
 /// The first section of the copy being read, as it was frozen.
 async function aSectionOfTheCopy(page: Page) {
   const copy = new URL(page.url()).pathname.split("/").pop()!;
-  const read = await (await page.request.get(`${API}/readings/copies/${copy}`)).json();
+  const read = await (
+    await page.request.get(`${API}/readings/copies/${copy}`)
+  ).json();
 
   return read.contents.parts.find(
     (part: { kind: string }) => part.kind === "section",
@@ -1042,7 +1042,9 @@ test("a copy's feedback lists your drafts, each with what it is about, and one d
   await feedbackTab(page).click();
 
   // then: nothing is said about the copy yet
-  await expect(feedback(page)).toContainText("Nothing said about this copy yet.");
+  await expect(feedback(page)).toContainText(
+    "Nothing said about this copy yet.",
+  );
 
   // when: drafts are written on the whole copy and on its section
   await aDraftOn(page, { kind: "whole" }, "The ending lands.");
@@ -1058,8 +1060,12 @@ test("a copy's feedback lists your drafts, each with what it is about, and one d
   await expect(drafts).toContainText("Your drafts · 2");
   await expect(drafts).toContainText("only you see these");
   await expect(drafts.locator(".note")).toHaveCount(2);
-  await expect(drafts.locator(".note").first()).toContainText("On the whole copy");
-  await expect(drafts.locator(".note").first()).toContainText("The ending lands.");
+  await expect(drafts.locator(".note").first()).toContainText(
+    "On the whole copy",
+  );
+  await expect(drafts.locator(".note").first()).toContainText(
+    "The ending lands.",
+  );
   await expect(drafts.locator(".note").nth(1)).toContainText("On “Morning”");
 
   // when: the first is deleted
@@ -1116,4 +1122,259 @@ test("a copy's contents and its feedback never lie over each other, however wide
   expect(left.x + left.width, "the drawers never overlap").toBeLessThanOrEqual(
     right.x - 160,
   );
+});
+
+/// A copy being read, its feedback open.
+async function aCopysFeedback(page: Page, named: string) {
+  await aCopyRead(page, named);
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await expect(feedback(page)).toBeVisible();
+}
+
+const commentField = (page: Page) =>
+  feedback(page).getByRole("textbox", { name: "Your comment" });
+
+/// Your drafts on the copy being read, as the server keeps them.
+async function draftsKept(page: Page) {
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const listed = await page.request.get(
+    `${API}/feedback?kind=reading_copy&id=${copy}`,
+  );
+  expect(listed.ok(), await listed.text()).toBe(true);
+
+  return (await listed.json()) as { comment: unknown; about: unknown }[];
+}
+
+test("a comment on the whole copy is written with bold, italics and paragraphs, and kept as a draft", async ({
+  page,
+}) => {
+  // given: a copy's feedback, a comment begun on the whole copy
+  await aCopysFeedback(page, "ReadingCommentWhole");
+  await feedback(page)
+    .getByRole("button", { name: "Comment on the whole copy" })
+    .click();
+  await expect(
+    feedback(page).getByRole("region", { name: "A new draft" }),
+  ).toContainText("On the whole copy");
+  const save = feedback(page).getByRole("button", { name: "Save the draft" });
+
+  // expect: nothing said cannot be saved
+  await expect(save).toBeDisabled();
+
+  // when: a sentence is written with a word in bold and one in italics, and a second paragraph
+  await commentField(page).click();
+  await page.keyboard.type("The ending ");
+  await page.keyboard.press("ControlOrMeta+B");
+  await page.keyboard.type("lands");
+  await page.keyboard.press("ControlOrMeta+B");
+  await page.keyboard.type(", ");
+  await feedback(page).getByRole("button", { name: "Italic" }).click();
+  await page.keyboard.type("truly");
+  await feedback(page).getByRole("button", { name: "Italic" }).click();
+  await page.keyboard.type(".");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Keep it.");
+  await save.click();
+
+  // then: it is listed as your draft, drawn as written
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  await expect(drafts.locator(".note")).toHaveCount(1);
+  await expect(drafts.locator(".note strong")).toHaveText("lands");
+  await expect(drafts.locator(".note em")).toHaveText("truly");
+  await expect(drafts.locator(".note .comment p")).toHaveText([
+    "The ending lands, truly.",
+    "Keep it.",
+  ]);
+  // and: kept on the server as blocks and runs, about the whole copy
+  const [kept] = await draftsKept(page);
+  expect(kept.about).toMatchObject({
+    kind: "reading_copy",
+    place: { kind: "whole" },
+  });
+  expect(kept.comment).toEqual([
+    {
+      kind: "paragraph",
+      runs: [
+        { kind: "text", text: "The ending " },
+        { kind: "text", text: "lands", strong: true },
+        { kind: "text", text: ", " },
+        { kind: "text", text: "truly", emphasis: true },
+        { kind: "text", text: "." },
+      ],
+    },
+    { kind: "paragraph", runs: [{ kind: "text", text: "Keep it." }] },
+  ]);
+});
+
+test("a link is set on what is selected, and an address that leads nowhere safe is refused", async ({
+  page,
+}) => {
+  // given: a comment begun with a word to link
+  await aCopysFeedback(page, "ReadingCommentLink");
+  await feedback(page)
+    .getByRole("button", { name: "Comment on the whole copy" })
+    .click();
+  await commentField(page).click();
+  await page.keyboard.type("See here");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("Shift+ArrowLeft");
+  await page.keyboard.press("Shift+ArrowLeft");
+
+  // when: a script is given as the address
+  await feedback(page).getByRole("button", { name: "Link" }).click();
+  const address = feedback(page).getByRole("textbox", {
+    name: "Address of the link",
+  });
+  await address.fill("javascript:alert(1)");
+  await address.press("Enter");
+
+  // then: it is refused
+  await expect(feedback(page).getByRole("alert")).toHaveText(
+    "Only web addresses and email addresses can be links.",
+  );
+
+  // when: a web address is given without its scheme
+  await address.fill("example.org/notes");
+  await address.press("Enter");
+  await feedback(page).getByRole("button", { name: "Save the draft" }).click();
+
+  // then: the word links to it as a web address
+  await expect(
+    feedback(page).locator(".drafts .note a", { hasText: "here" }),
+  ).toHaveAttribute("href", "https://example.org/notes");
+  const [kept] = await draftsKept(page);
+  expect(kept.comment).toEqual([
+    {
+      kind: "paragraph",
+      runs: [
+        { kind: "text", text: "See " },
+        { kind: "text", text: "here", link: "https://example.org/notes" },
+      ],
+    },
+  ]);
+});
+
+test("a draft is changed in place, its formatting kept, and Escape leaves it as it was", async ({
+  page,
+}) => {
+  // given: a draft with a word in bold
+  await aCopysFeedback(page, "ReadingCommentChange");
+  await aDraftOn(page, { kind: "whole" }, "First thought.");
+  await page.reload();
+  const note = feedback(page).locator(".drafts .note");
+  await expect(note).toContainText("First thought.");
+
+  // when: it is changed, and Escape pressed
+  await note.getByRole("button", { name: "Change this draft" }).click();
+  await expect(commentField(page)).toHaveText("First thought.");
+  await commentField(page).press("End");
+  await page.keyboard.type(" Not this.");
+  await page.keyboard.press("Escape");
+
+  // then: it is as it was
+  await expect(note.locator(".comment")).toHaveText("First thought.");
+
+  // when: it is changed again and saved
+  await note.getByRole("button", { name: "Change this draft" }).click();
+  await commentField(page).press("End");
+  await page.keyboard.type(" Second thought.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // then: it says the new words, even when the page is read again
+  await expect(note.locator(".comment")).toHaveText(
+    "First thought. Second thought.",
+  );
+  await page.reload();
+  await expect(feedback(page).locator(".drafts .note .comment")).toHaveText(
+    "First thought. Second thought.",
+  );
+});
+
+test("what is pasted into a comment keeps only what a comment can hold", async ({
+  page,
+}) => {
+  // given: a comment begun
+  await aCopysFeedback(page, "ReadingCommentPaste");
+  await feedback(page)
+    .getByRole("button", { name: "Comment on the whole copy" })
+    .click();
+  await commentField(page).click();
+
+  // when: markup is pasted, a heading, words in bold, a script's link and an image among it
+  await commentField(page).evaluate((field) => {
+    const data = new DataTransfer();
+    data.setData(
+      "text/html",
+      '<h1>Loud</h1><p>Very <b>bold</b> <a href="javascript:alert(1)">trap</a></p><img src=x onerror=alert(1)>',
+    );
+    data.setData("text/plain", "Loud Very bold trap");
+    field.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: data,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+
+  // then: the heading is a paragraph of its words, the bold is kept, and neither the script's link nor the image is
+  await expect(commentField(page).locator("p")).toHaveText([
+    "Loud",
+    "Very bold trap",
+  ]);
+  await expect(commentField(page).locator("strong")).toHaveText("bold");
+  await expect(commentField(page).locator("h1, img, a")).toHaveCount(0);
+});
+
+test("a comment holds lists begun as they are typed, broken lines, and undoes what was typed", async ({
+  page,
+}) => {
+  // given: a comment begun
+  await aCopysFeedback(page, "ReadingCommentLists");
+  await feedback(page)
+    .getByRole("button", { name: "Comment on the whole copy" })
+    .click();
+  await commentField(page).click();
+
+  // when: a list is typed as one, left by an empty item, a numbered one after it, and a line broken
+  await page.keyboard.type("- first");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("second");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("1. one");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Line");
+  await page.keyboard.press("Shift+Enter");
+  // and: after a pause, more typed and undone, as typing close together is undone together
+  await page.waitForTimeout(700);
+  await page.keyboard.type("broken, oops");
+  await page.keyboard.press("ControlOrMeta+Z");
+  await feedback(page).getByRole("button", { name: "Save the draft" }).click();
+
+  // then: it is kept as two lists and a paragraph with its line broken, without what was undone
+  await expect(feedback(page).locator(".drafts .note ul li")).toHaveText([
+    "first",
+    "second",
+  ]);
+  const [kept] = await draftsKept(page);
+  expect(kept.comment).toEqual([
+    {
+      kind: "list",
+      ordered: false,
+      items: [
+        [{ kind: "text", text: "first" }],
+        [{ kind: "text", text: "second" }],
+      ],
+    },
+    { kind: "list", ordered: true, items: [[{ kind: "text", text: "one" }]] },
+    {
+      kind: "paragraph",
+      runs: [{ kind: "text", text: "Line" }, { kind: "break" }],
+    },
+  ]);
 });

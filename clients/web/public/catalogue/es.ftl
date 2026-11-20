@@ -403,6 +403,13 @@ feedback-delete-draft = Borrar este borrador
 feedback-on-section = Sobre «{ $section }»
 feedback-on-scene = Sobre una escena de «{ $section }»
 feedback-on-whole = Sobre toda la copia
+feedback-comment-on-whole = Comentar toda la copia
+feedback-new-draft = Un borrador nuevo
+feedback-your-comment = Tu comentario
+feedback-your-comment-placeholder = ¿Qué te parece?
+feedback-save-draft = Guardar el borrador
+feedback-change = Cambiar
+feedback-change-draft = Cambiar este borrador
 copy-extent-book = toda la obra
 copy-extent-sections = { $count ->
         [one] una sección

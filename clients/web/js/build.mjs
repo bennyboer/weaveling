@@ -15,10 +15,10 @@ import { missingFromTheBridge } from "./bridge.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, "..", "public", "js");
 
-const missing = missingFromTheBridge(
-  here,
+const missing = [
   join(here, "..", "src", "scenes", "prose.rs"),
-);
+  join(here, "..", "src", "feedback", "composer.rs"),
+].flatMap((bridge) => missingFromTheBridge(here, bridge));
 if (missing.length > 0) {
   console.error(
     `Methods Rust calls that the scripts do not offer:\n  ${missing.join("\n  ")}`,
@@ -30,6 +30,7 @@ const result = await build({
   entryPoints: {
     shell: join(here, "shell.src.js"),
     prose: join(here, "prose.src.js"),
+    comment: join(here, "comment.src.js"),
   },
   bundle: true,
   splitting: true,

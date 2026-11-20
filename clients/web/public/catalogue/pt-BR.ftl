@@ -403,6 +403,13 @@ feedback-delete-draft = Apagar este rascunho
 feedback-on-section = Sobre “{ $section }”
 feedback-on-scene = Sobre uma cena de “{ $section }”
 feedback-on-whole = Sobre a cópia inteira
+feedback-comment-on-whole = Comentar a cópia inteira
+feedback-new-draft = Um rascunho novo
+feedback-your-comment = Seu comentário
+feedback-your-comment-placeholder = O que você achou?
+feedback-save-draft = Salvar o rascunho
+feedback-change = Alterar
+feedback-change-draft = Alterar este rascunho
 copy-extent-book = a obra toda
 copy-extent-sections = { $count ->
         [one] uma seção

@@ -48,6 +48,7 @@ web-sys = { workspace = true, features = [
     "Location",
     "MediaQueryList",
     "Navigator",
+    "Node",
     "NodeList",
     "PointerEvent",
     "ProgressEvent",

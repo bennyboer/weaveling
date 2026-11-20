@@ -403,6 +403,13 @@ feedback-delete-draft = Delete this draft
 feedback-on-section = On “{ $section }”
 feedback-on-scene = On a scene in “{ $section }”
 feedback-on-whole = On the whole copy
+feedback-comment-on-whole = Comment on the whole copy
+feedback-new-draft = A new draft
+feedback-your-comment = Your comment
+feedback-your-comment-placeholder = What do you think?
+feedback-save-draft = Save the draft
+feedback-change = Change
+feedback-change-draft = Change this draft
 copy-extent-book = the whole work
 copy-extent-sections = { $count ->
         [one] one section
