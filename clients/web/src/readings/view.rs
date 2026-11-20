@@ -501,7 +501,8 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
 }
 
 /// A quiet button beside a section or a scene that begins a comment on it,
-/// shown at all times and filled while you have a draft about it, since such a draft is not marked in the text.
+/// shown at all times and filled while you have a draft about it, since such a draft is not marked in the text;
+/// then it leads to that draft instead.
 fn comment_here(named: String, commenting: Commenting, place: ReadingCopyPlace) -> impl IntoView {
     let drafted = {
         let place = place.clone();

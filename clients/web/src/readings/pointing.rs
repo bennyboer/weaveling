@@ -54,12 +54,23 @@ pub(crate) fn point_at(place: &ReadingCopyPlace) {
             .is_some_and(|words| highlighted(POINTED_AT, std::slice::from_ref(&words))),
         _ => false,
     };
+    pulsing(found, if painted { POINTING } else { POINTED_AT });
+}
+
+/// Brings an element into sight, as little scrolled as it can be, and makes it pulse a moment, ending the pulse before it.
+pub(crate) fn pulse(found: Element) {
+    stop_pulsing();
+    let nearby = ScrollIntoViewOptions::new();
+    nearby.set_block(ScrollLogicalPosition::Nearest);
+    found.scroll_into_view_with_scroll_into_view_options(&nearby);
+    pulsing(found, POINTED_AT);
+}
+
+fn pulsing(found: Element, class: &str) {
     if let Some(shown) = found.dyn_ref::<HtmlElement>() {
         _ = shown.offset_width();
     }
-    _ = found
-        .class_list()
-        .add_1(if painted { POINTING } else { POINTED_AT });
+    _ = found.class_list().add_1(class);
     let timer = set_timeout(stop_pulsing, POINTED_AT_FOR).ok();
     PULSING.with_borrow_mut(|pulsing| *pulsing = Some(Pulsing { found, timer }));
 }

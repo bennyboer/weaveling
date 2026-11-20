@@ -1762,7 +1762,7 @@ test("your drafts' passages are marked in the copy's text, and no more once dele
   await expect.poll(marked).toEqual([]);
 });
 
-test("a section or scene you have a draft about keeps its comment button marked, and no more once the draft is deleted", async ({
+test("a section or scene you have a draft about keeps its comment button marked, leading to that draft, and no more once the draft is deleted", async ({
   page,
 }) => {
   // given: a copy of a written book, with a draft on its first scene
@@ -1784,6 +1784,19 @@ test("a section or scene you have a draft about keeps its comment button marked,
   await expect(
     book(page).locator(`.scene[data-scene="${scenes[0]}"] > .comment-here`),
   ).toHaveClass(/drafted/);
+
+  // when: the marked button is clicked
+  await book(page)
+    .locator(`.scene[data-scene="${scenes[0]}"] > .comment-here`)
+    .click();
+
+  // then: the draft there is opened to be changed and pointed at, and no new one begun
+  await expect(commentField(page)).toHaveText("Lovely opening.");
+  await expect(feedback(page).locator(".composer")).toHaveCount(1);
+  await expect(
+    feedback(page).locator(".drafts .note", { hasText: "Lovely opening." }),
+  ).toHaveClass(/pointed-at/);
+  await page.keyboard.press("Escape");
 
   // when: the draft is deleted
   if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {

@@ -1062,7 +1062,8 @@
   }
 }
 
-.reading-view .book {
+.reading-view .book,
+#reading-feedback {
   .pointed-at,
   .pointing {
     animation: pointed 1.8s ease-in-out;
@@ -1091,4 +1092,9 @@
   text-decoration: underline dotted color-mix(in srgb, var(--accent) 45%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.3em;
+}
+
+/* A note pointed at in the column keeps its own ground beneath the pulse. */
+#reading-feedback .note.pointed-at {
+  background: color-mix(in srgb, var(--accent) var(--pointed), var(--raised));
 }

@@ -47,23 +47,48 @@ impl Commenting {
         }
     }
 
+    /// Where you have a draft about the place already, that draft is opened to be changed and pointed at in the column instead,
+    /// so one place gathers what you say about it.
     pub fn begin(self, place: ReadingCopyPlace) {
         self.drawer.open();
-        self.writing.set(Some(Writing::New(About::ReadingCopy {
-            reading_copy: self.copy.get_value(),
-            place,
-        })));
+        match self.draft_on(&place) {
+            Some(draft) => {
+                self.writing.set(Some(Writing::Changed(draft.clone())));
+                _ = request_animation_frame(move || pointed_at_in_the_column(&draft));
+            }
+            None => self.writing.set(Some(Writing::New(About::ReadingCopy {
+                reading_copy: self.copy.get_value(),
+                place,
+            }))),
+        }
     }
 
     /// Whether you have a draft about this very place, so what offers to comment on it can say so.
     pub fn drafted_on(self, place: &ReadingCopyPlace) -> bool {
-        self.feedback.with(|feedback| {
-            feedback.iter().any(|piece| {
-                let About::ReadingCopy { place: about, .. } = &piece.about;
+        self.draft_on(place).is_some()
+    }
 
-                piece.draft && piece.by_you && about == place
-            })
+    /// Your first draft about this very place, if any.
+    fn draft_on(self, place: &ReadingCopyPlace) -> Option<FeedbackId> {
+        self.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .find(|piece| {
+                    let About::ReadingCopy { place: about, .. } = &piece.about;
+
+                    piece.draft && piece.by_you && about == place
+                })
+                .map(|piece| piece.id.clone())
         })
+    }
+}
+
+/// Brings a piece of feedback in the column into sight and makes it pulse a moment, as places in the text do.
+fn pointed_at_in_the_column(feedback: &FeedbackId) {
+    if let Ok(Some(found)) =
+        document().query_selector(&format!("#{FEEDBACK} [data-feedback=\"{feedback}\"]"))
+    {
+        readings::pointing::pulse(found);
     }
 }
 
@@ -299,6 +324,7 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
 
     html::article()
         .class("note draft")
+        .attr("data-feedback", id.to_string())
         .child((
             about_shown(&draft.about, column),
             move || match being_changed.get() {
