@@ -447,7 +447,7 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
                 title,
             } => {
                 let heading = section_heading(&section, depth, title.clone());
-                let commented = section.clone();
+                let commented = ReadingCopyPlace::Section(section.clone());
 
                 html::div()
                     .class("section-head")
@@ -456,9 +456,8 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
                         commenting.map(move |commenting| {
                             comment_here(
                                 speech::say_about("feedback-comment-on-section", "section", &title),
-                                move || {
-                                    commenting.begin(ReadingCopyPlace::Section(commented.clone()))
-                                },
+                                commenting,
+                                commented,
                             )
                         }),
                     ))
@@ -483,13 +482,10 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
                         .attr("data-scene", scene.to_string())
                         .child((
                             commenting.map(|commenting| {
-                                let scene = scene.clone();
-
                                 comment_here(
                                     speech::say("feedback-comment-on-this-scene"),
-                                    move || {
-                                        commenting.begin(ReadingCopyPlace::Scene(scene.clone()))
-                                    },
+                                    commenting,
+                                    ReadingCopyPlace::Scene(scene.clone()),
                                 )
                             }),
                             move || {
@@ -504,14 +500,22 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
         .build())
 }
 
-/// A quiet button beside a section or a scene that begins a comment on it.
-fn comment_here(named: String, begin: impl Fn() + 'static) -> impl IntoView {
+/// A quiet button beside a section or a scene that begins a comment on it,
+/// shown at all times and filled while you have a draft about it, since such a draft is not marked in the text.
+fn comment_here(named: String, commenting: Commenting, place: ReadingCopyPlace) -> impl IntoView {
+    let drafted = {
+        let place = place.clone();
+
+        move || commenting.drafted_on(&place)
+    };
+
     html::button()
         .r#type("button")
         .class("comment-here")
+        .class(("drafted", drafted))
         .attr("aria-label", named.clone())
         .attr("title", named)
-        .on(ev::click, move |_| begin())
+        .on(ev::click, move |_| commenting.begin(place.clone()))
         .child(icons::mark(Icon::Comment))
 }
 

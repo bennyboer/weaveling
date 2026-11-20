@@ -925,6 +925,16 @@
     }
   }
 
+  /* A section or scene you have a draft about keeps its button in sight, tinted, as its draft is not marked in the text. */
+  .comment-here.drafted {
+    opacity: 1;
+    color: color-mix(in srgb, var(--accent) 70%, transparent);
+
+    svg {
+      fill: color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+  }
+
   @media (width <= 46rem) {
     .comment-here {
       top: calc(0.5lh - 0.875rem);
@@ -1074,4 +1084,11 @@
 
 ::highlight(pointed-at) {
   background-color: color-mix(in srgb, var(--accent) var(--pointed), transparent);
+}
+
+/* Your drafts' passages, marked in the text with a faint dotted line, as only you see them. */
+::highlight(feedback-draft) {
+  text-decoration: underline dotted color-mix(in srgb, var(--accent) 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.3em;
 }

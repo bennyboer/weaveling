@@ -32,6 +32,7 @@ enum Writing {
 #[derive(Clone, Copy)]
 pub struct Commenting {
     copy: StoredValue<ReadingCopyId>,
+    feedback: RwSignal<Vec<Feedback>>,
     writing: RwSignal<Option<Writing>>,
     drawer: Drawer,
 }
@@ -40,6 +41,7 @@ impl Commenting {
     pub fn new(copy: ReadingCopyId, drawer: Drawer) -> Self {
         Self {
             copy: StoredValue::new(copy),
+            feedback: RwSignal::new(Vec::new()),
             writing: RwSignal::new(None),
             drawer,
         }
@@ -51,6 +53,17 @@ impl Commenting {
             reading_copy: self.copy.get_value(),
             place,
         })));
+    }
+
+    /// Whether you have a draft about this very place, so what offers to comment on it can say so.
+    pub fn drafted_on(self, place: &ReadingCopyPlace) -> bool {
+        self.feedback.with(|feedback| {
+            feedback.iter().any(|piece| {
+                let About::ReadingCopy { place: about, .. } = &piece.about;
+
+                piece.draft && piece.by_you && about == place
+            })
+        })
     }
 }
 
@@ -68,7 +81,7 @@ struct Column {
 /// and a comment on the whole copy started there.
 pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> impl IntoView {
     let column = Column {
-        feedback: RwSignal::new(Vec::new()),
+        feedback: commenting.feedback,
         writing: commenting.writing,
         failed: RwSignal::new(None),
         book,
@@ -98,6 +111,7 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
                 .collect::<Vec<_>>()
         })
     });
+    marked_in_the_text(drafts, book);
     let whole = About::ReadingCopy {
         reading_copy: copy,
         place: ReadingCopyPlace::Whole,
@@ -165,6 +179,38 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
             ),
         },
     )
+}
+
+/// The name the drafts' passages are painted under in the text, as `::highlight(feedback-draft)` styles them.
+const DRAFTS_IN_THE_TEXT: &str = "feedback-draft";
+
+/// Marks the passages of your drafts in the copy's text, whenever the drafts or the text change, and no more once the copy is left.
+/// They are painted, not wrapped, so nothing of the text as it is drawn is touched.
+fn marked_in_the_text(drafts: Memo<Vec<Feedback>>, book: RwSignal<Option<Book>>) {
+    Effect::new(move |_| {
+        let places: Vec<ReadingCopyPlace> = drafts.with(|drafts| {
+            drafts
+                .iter()
+                .map(|draft| {
+                    let About::ReadingCopy { place, .. } = &draft.about;
+                    place.clone()
+                })
+                .collect()
+        });
+        book.track();
+        _ = request_animation_frame(move || {
+            let words: Vec<_> = places
+                .iter()
+                .filter_map(readings::pointing::words_of)
+                .collect();
+            if words.is_empty() {
+                readings::pointing::unhighlighted(DRAFTS_IN_THE_TEXT);
+            } else {
+                readings::pointing::highlighted(DRAFTS_IN_THE_TEXT, &words);
+            }
+        });
+    });
+    on_cleanup(|| readings::pointing::unhighlighted(DRAFTS_IN_THE_TEXT));
 }
 
 /// A draft being started, about what it says above the field.

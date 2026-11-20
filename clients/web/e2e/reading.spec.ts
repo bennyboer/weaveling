@@ -1683,3 +1683,117 @@ test("a draft leads to the place in the copy it is about", async ({ page }) => {
   await expect(heading).toHaveClass(/pointed-at/);
   await expect(heading).not.toHaveClass(/pointed-at/, { timeout: 2_000 });
 });
+
+test("your drafts' passages are marked in the copy's text, and no more once deleted or the copy is left", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with drafts on two passages and one on a section
+  await aCopyOfABookWritten(page, "ReadingDraftsMarked");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[scenes.length - 1],
+      block_path: [0],
+      from: 0,
+      to: 9,
+      quote: "Everybody",
+    },
+    "Who is everybody?",
+  );
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Slow start.",
+  );
+
+  // when: the copy is read again
+  await page.reload();
+  await expect(book(page)).toContainText("Everybody bought the fish.");
+
+  // then: the two passages are marked, and nothing for the section
+  const marked = () =>
+    page.evaluate(() => {
+      const highlight = (
+        CSS as unknown as { highlights: Map<string, Set<Range>> }
+      ).highlights.get("feedback-draft");
+
+      return highlight ? [...highlight].map((words) => words.toString()) : [];
+    });
+  await expect.poll(marked).toEqual(["boats", "Everybody"]);
+
+  // when: one of them is deleted
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await feedback(page)
+    .locator(".drafts .note", { hasText: "Which boats?" })
+    .getByRole("button", { name: "Delete this draft" })
+    .click();
+
+  // then: only the other is marked
+  await expect.poll(marked).toEqual(["Everybody"]);
+
+  // when: the live work is read instead
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /The work as it is now/ })
+    .click();
+  await expect(page).toHaveURL(/\/read$/);
+
+  // then: nothing is marked
+  await expect.poll(marked).toEqual([]);
+});
+
+test("a section or scene you have a draft about keeps its comment button marked, and no more once the draft is deleted", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with a draft on its first scene
+  await aCopyOfABookWritten(page, "ReadingDraftButtons");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(page, { kind: "scene", scene: scenes[0] }, "Lovely opening.");
+
+  // when: the copy is read again
+  await page.reload();
+  await expect(book(page)).toContainText("Everybody bought the fish.");
+
+  // then: only that scene's button is marked
+  const marked = book(page).locator(".comment-here.drafted");
+  await expect(marked).toHaveCount(1);
+  await expect(
+    book(page).locator(`.scene[data-scene="${scenes[0]}"] > .comment-here`),
+  ).toHaveClass(/drafted/);
+
+  // when: the draft is deleted
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await feedback(page)
+    .locator(".drafts .note", { hasText: "Lovely opening." })
+    .getByRole("button", { name: "Delete this draft" })
+    .click();
+
+  // then: no button is marked any more
+  await expect(marked).toHaveCount(0);
+});

@@ -50,9 +50,8 @@ pub(crate) fn point_at(place: &ReadingCopyPlace) {
     found.scroll_into_view_with_scroll_into_view_options(&in_the_middle);
 
     let painted = match place {
-        ReadingCopyPlace::Passage { from, to, .. } => {
-            stretch_in(&found, *from, *to).is_some_and(|words| highlighted(POINTED_AT, &words))
-        }
+        ReadingCopyPlace::Passage { from, to, .. } => stretch_in(&found, *from, *to)
+            .is_some_and(|words| highlighted(POINTED_AT, std::slice::from_ref(&words))),
         _ => false,
     };
     if let Some(shown) = found.dyn_ref::<HtmlElement>() {
@@ -84,6 +83,15 @@ fn element_of(place: &ReadingCopyPlace) -> Option<Element> {
         ReadingCopyPlace::Section(section) => page.get_element_by_id(&view::heading_id(section)),
         ReadingCopyPlace::Whole => page.query_selector(".reading-view .book h1").ok().flatten(),
     }
+}
+
+/// A passage's own words in the text, if they are drawn.
+pub(crate) fn words_of(place: &ReadingCopyPlace) -> Option<Range> {
+    let ReadingCopyPlace::Passage { from, to, .. } = place else {
+        return None;
+    };
+
+    stretch_in(&element_of(place)?, *from, *to)
 }
 
 /// The stretch of a block's text from one character to another, counted as a passage counts them.
@@ -136,15 +144,16 @@ fn highlights() -> Option<JsValue> {
     (!held.is_undefined()).then_some(held)
 }
 
-/// Paints these words under the name given, as `::highlight(name)` styles them; whether the browser could.
-pub(crate) fn highlighted(name: &str, words: &Range) -> bool {
+/// Paints these stretches of words under the name given, as `::highlight(name)` styles them; whether the browser could.
+pub(crate) fn highlighted(name: &str, words: &[Range]) -> bool {
     let painted = || -> Option<()> {
         let registry = highlights()?;
         let making = Reflect::get(&window(), &JsValue::from_str("Highlight"))
             .ok()?
             .dyn_into::<Function>()
             .ok()?;
-        let highlight = Reflect::construct(&making, &Array::of1(words)).ok()?;
+        let stretches: Array = words.iter().collect();
+        let highlight = Reflect::construct(&making, &stretches).ok()?;
         let set = Reflect::get(&registry, &JsValue::from_str("set"))
             .ok()?
             .dyn_into::<Function>()
