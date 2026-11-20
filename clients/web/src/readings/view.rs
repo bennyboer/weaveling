@@ -21,6 +21,7 @@ use crate::outline::model::SectionId;
 use crate::problem;
 use crate::projects::model::ProjectId;
 use crate::readings::model::{Applied, Block, Book, Change, Marks, Run};
+use crate::readings::passage;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
 use crate::readings::service;
 use crate::readings::switcher;
@@ -204,6 +205,7 @@ fn read(
             html::article().class("book").child((
                 html::h1().child(move || title.get()),
                 parts(book, commenting),
+                commenting.map(passage::offered),
             )),
         )),
         feedback,
@@ -395,8 +397,17 @@ fn go_to(section: &SectionId, rail: Drawer) {
     }
 }
 
-fn heading_id(section: &SectionId) -> String {
+pub(crate) fn heading_id(section: &SectionId) -> String {
     format!("section-{section}")
+}
+
+/// Whether the drawers lie over the text, as on a phone.
+pub(crate) fn lying_over_the_text() -> bool {
+    window()
+        .match_media(LYING_OVER_THE_TEXT)
+        .ok()
+        .flatten()
+        .is_some_and(|query| query.matches())
 }
 
 fn shown(book: &Book) -> Vec<Shown> {
@@ -481,7 +492,10 @@ fn parts(book: RwSignal<Option<Book>>, commenting: Option<Commenting>) -> impl I
                                     },
                                 )
                             }),
-                            move || text.get().map(|told| blocks_of(told.blocks().to_vec())),
+                            move || {
+                                text.get()
+                                    .map(|told| blocks_of(told.blocks().to_vec(), &[]))
+                            },
                         )),
                 )
                     .into_any()
@@ -518,23 +532,60 @@ fn scene_break() -> impl IntoView {
         .child(scene_break::diamonds())
 }
 
-fn blocks_of(blocks: Vec<Block>) -> Vec<AnyView> {
-    blocks.into_iter().map(block).collect()
+/// The blocks of a scene, or of a quote or a list item in it, each block that holds text marked with its path from the scene,
+/// so a passage selected in it can say where it lies.
+fn blocks_of(blocks: Vec<Block>, path: &[u32]) -> Vec<AnyView> {
+    blocks
+        .into_iter()
+        .enumerate()
+        .map(|(nth, held)| {
+            let mut at = path.to_vec();
+            at.push(u32::try_from(nth).unwrap_or(u32::MAX));
+            block(held, at)
+        })
+        .collect()
 }
 
-fn block(block: Block) -> AnyView {
+pub(crate) fn path_written(path: &[u32]) -> String {
+    path.iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn block(block: Block, path: Vec<u32>) -> AnyView {
+    let written = path_written(&path);
     match block {
-        Block::Paragraph(runs) => html::p().child(runs_of(runs)).into_any(),
+        Block::Paragraph(runs) => html::p()
+            .attr("data-block", written)
+            .child(runs_of(runs))
+            .into_any(),
         Block::Heading { level, runs } => match level {
-            1 => html::h4().child(runs_of(runs)).into_any(),
-            2 => html::h5().child(runs_of(runs)).into_any(),
-            _ => html::h6().child(runs_of(runs)).into_any(),
+            1 => html::h4()
+                .attr("data-block", written)
+                .child(runs_of(runs))
+                .into_any(),
+            2 => html::h5()
+                .attr("data-block", written)
+                .child(runs_of(runs))
+                .into_any(),
+            _ => html::h6()
+                .attr("data-block", written)
+                .child(runs_of(runs))
+                .into_any(),
         },
-        Block::Quote(blocks) => html::blockquote().child(blocks_of(blocks)).into_any(),
+        Block::Quote(blocks) => html::blockquote()
+            .child(blocks_of(blocks, &path))
+            .into_any(),
         Block::List { ordered, items } => {
             let items = items
                 .into_iter()
-                .map(|item| html::li().child(blocks_of(item)))
+                .enumerate()
+                .map(|(nth, item)| {
+                    let mut at = path.clone();
+                    at.push(u32::try_from(nth).unwrap_or(u32::MAX));
+                    html::li().child(blocks_of(item, &at))
+                })
                 .collect::<Vec<_>>();
 
             if ordered {
@@ -543,7 +594,10 @@ fn block(block: Block) -> AnyView {
                 html::ul().child(items).into_any()
             }
         }
-        Block::Code(text) => html::pre().child(html::code().child(text)).into_any(),
+        Block::Code(text) => html::pre()
+            .attr("data-block", written)
+            .child(html::code().child(text))
+            .into_any(),
         Block::Rule => scene_break().into_any(),
         Block::Figure {
             asset,

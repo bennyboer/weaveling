@@ -1,5 +1,7 @@
 mod copy_tools;
 pub mod model;
+mod passage;
+pub mod pointing;
 pub mod reading_copies;
 pub mod service;
 mod share_dialog;

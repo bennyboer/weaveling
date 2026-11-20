@@ -1459,3 +1459,227 @@ test("the live work offers nothing to comment on from the text", async ({
   // expect: no section or scene offers a comment
   await expect(book(page).locator(".comment-here")).toHaveCount(0);
 });
+
+/// Selects the words given in the copy's text, from where the first begins to where the last ends, as a reader would with the mouse.
+async function selecting(page: Page, from: string, to: string, letGo = true) {
+  await book(page).evaluate(
+    (text, [from, to, letGo]) => {
+      const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+      const found: { node: Text; at: number }[] = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const words of [from, to]) {
+          const at = node.textContent!.indexOf(words);
+          if (
+            at >= 0 &&
+            found.length < 2 &&
+            (found.length === 0 ? words === from : words === to)
+          ) {
+            found.push({
+              node: node as Text,
+              at: words === to ? at + words.length : at,
+            });
+          }
+        }
+      }
+      const range = document.createRange();
+      range.setStart(found[0].node, found[0].at);
+      range.setEnd(found[1].node, found[1].at);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      if (letGo) {
+        window.dispatchEvent(new PointerEvent("pointerup"));
+      }
+    },
+    [from, to, letGo] as const,
+  );
+}
+
+test("a passage selected in a copy is commented on from the offer beside it", async ({
+  page,
+}) => {
+  // given: a copy of a written book
+  await aCopyOfABookWritten(page, "ReadingCommentPassage");
+
+  // when: a word is chosen by double-clicking it
+  await book(page).getByText("The boats came in").dblclick();
+
+  // then: commenting on it is offered
+  const offer = book(page).getByRole("button", {
+    name: "Comment",
+    exact: true,
+  });
+  await expect(offer).toBeVisible();
+
+  // when: the chosen word is clicked again, which lets the selection go
+  const word = await page.evaluate(() => {
+    const box = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
+
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await page.mouse.click(word.x, word.y);
+
+  // then: the offer goes with it
+  await expect(offer).toHaveCount(0);
+
+  // when: a stretch is selected and commented on
+  await selecting(page, "came in", "one by one");
+  await offer.click();
+
+  // then: the feedback opens on a draft about that passage, quoting it
+  const drafting = feedback(page).getByRole("region", { name: "A new draft" });
+  await expect(drafting.locator(".quote")).toHaveText("“came in one by one”");
+  await page.keyboard.type("Lovely rhythm.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(feedback(page).locator(".drafts .note .quote")).toHaveText(
+    "“came in one by one”",
+  );
+  // and: it is kept as a stretch of the scene's first block, counted in characters
+  const [kept] = await draftsKept(page);
+  expect(kept.about).toEqual({
+    kind: "reading_copy",
+    reading_copy: expect.any(String),
+    place: {
+      kind: "passage",
+      scene: expect.any(String),
+      block_path: [0],
+      from: 10,
+      to: 28,
+      quote: "came in one by one",
+    },
+  });
+  // and: nothing is offered once the selection is gone
+  await expect(offer).toHaveCount(0);
+
+  // when: german is chosen
+  await page.getByRole("combobox", { name: "Language" }).selectOption("de");
+
+  // then: the passage is quoted as german quotes it
+  await expect(
+    page.locator(".reading-feedback .drafts .note .quote"),
+  ).toHaveText("„came in one by one“");
+});
+
+test("a passage selected across blocks is cut at the end of its first block", async ({
+  page,
+}) => {
+  // given: a copy of a written book
+  await aCopyOfABookWritten(page, "ReadingCommentAcross");
+
+  // when: a stretch from one scene into the next is selected and commented on
+  await selecting(page, "their lamps", "Hedy counted");
+  await book(page)
+    .getByRole("button", { name: "Comment", exact: true })
+    .click();
+
+  // then: the passage ends where its first block ends
+  await expect(
+    feedback(page)
+      .getByRole("region", { name: "A new draft" })
+      .locator(".quote"),
+  ).toHaveText("“their lamps swinging.”");
+});
+
+test("the live work offers no passage to comment on", async ({ page }) => {
+  // given: a written book's live work being read
+  await aBookWritten(page, "ReadingLiveNoPassage");
+  await openTheReadingView(page);
+
+  // when: a word is chosen
+  await book(page).getByText("The boats came in").dblclick();
+
+  // then: nothing is offered
+  await expect(book(page).locator(".comment-passage")).toHaveCount(0);
+});
+
+test("a passage selected by touch is offered once the selection rests", async ({
+  page,
+}) => {
+  // given: a copy of a written book
+  await aCopyOfABookWritten(page, "ReadingCommentTouch");
+
+  // when: a stretch is selected as touch selects it, letting go of nothing the page hears
+  await selecting(page, "came in", "one by one", false);
+
+  // then: commenting on it is offered once the selection rests
+  await expect(
+    book(page).getByRole("button", { name: "Comment", exact: true }),
+  ).toBeVisible();
+});
+
+test("a draft leads to the place in the copy it is about", async ({ page }) => {
+  // given: a copy of a written book, with a draft on its last scene's first paragraph, and one on its first section
+  await aCopyOfABookWritten(page, "ReadingPointAt");
+  const lastScene = await book(page)
+    .locator(".scene")
+    .last()
+    .getAttribute("data-scene");
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: lastScene,
+      block_path: [0],
+      from: 0,
+      to: 9,
+      quote: "Everybody",
+    },
+    "Who is everybody?",
+  );
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Slow start.",
+  );
+  await page.setViewportSize({ width: 1400, height: 360 });
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  const passage = book(page).locator(
+    `.scene[data-scene="${lastScene}"] [data-block="0"]`,
+  );
+  await expect(passage).not.toBeInViewport();
+
+  // when: the passage's quote is followed
+  await feedback(page).getByRole("button", { name: "“Everybody”" }).click();
+
+  // then: its block comes into sight, and its own words are painted a moment, as they pulse
+  await expect(passage).toBeInViewport();
+  const painted = () =>
+    page.evaluate(() => {
+      const highlight = (
+        CSS as unknown as { highlights: Map<string, Set<Range>> }
+      ).highlights.get("pointed-at");
+
+      return highlight ? [...highlight].map((words) => words.toString()) : [];
+    });
+  await expect.poll(painted).toEqual(["Everybody"]);
+  await expect(passage).toHaveClass(/pointing/);
+  // and: the paint goes once the pulse is over
+  await expect.poll(painted, { timeout: 4_000 }).toEqual([]);
+  await expect(passage).not.toHaveClass(/pointing/);
+
+  // when: the section's draft is followed
+  await feedback(page).getByRole("button", { name: "On “Morning”" }).click();
+
+  // then: the section's heading comes into sight, pulsing as a whole
+  const heading = book(page).getByRole("heading", {
+    name: "Morning",
+    exact: true,
+  });
+  await expect(heading).toBeInViewport();
+  await expect(heading).toHaveClass(/pointed-at/);
+
+  // when: the passage is followed, and the section again a second after, while the passage still pulses
+  await feedback(page).getByRole("button", { name: "“Everybody”" }).click();
+  await expect.poll(painted).toEqual(["Everybody"]);
+  await page.waitForTimeout(1_000);
+  await feedback(page).getByRole("button", { name: "On “Morning”" }).click();
+
+  // then: the passage stops at once, and the section pulses its whole time, not cut short by the passage's end
+  expect(await painted()).toEqual([]);
+  await page.waitForTimeout(1_200);
+  await expect(heading).toHaveClass(/pointed-at/);
+  await expect(heading).not.toHaveClass(/pointed-at/, { timeout: 2_000 });
+});

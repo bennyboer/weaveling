@@ -12,6 +12,7 @@ use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
 use crate::problem;
+use crate::readings;
 use crate::readings::model::Book;
 use crate::readings::reading_copies::ReadingCopyId;
 use crate::readings::view::safe_link;
@@ -60,6 +61,7 @@ struct Column {
     writing: RwSignal<Option<Writing>>,
     failed: RwSignal<Option<ApiError>>,
     book: RwSignal<Option<Book>>,
+    drawer: Drawer,
 }
 
 /// The feedback on a reading copy, in a drawer on the right: for now your drafts, which only you see,
@@ -70,6 +72,7 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
         writing: commenting.writing,
         failed: RwSignal::new(None),
         book,
+        drawer: commenting.drawer,
     };
     Effect::new(move |_| {
         if column.writing.with(Option::is_some) {
@@ -190,7 +193,7 @@ fn a_new_draft(about: About, column: Column) -> impl IntoView {
         .class("note draft writing")
         .attr("aria-label", speech::said("feedback-new-draft"))
         .child((
-            about_shown(&about, column.book),
+            about_shown(&about, column),
             composer::composer(
                 Vec::new(),
                 drafting.pending().into(),
@@ -251,7 +254,7 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
     html::article()
         .class("note draft")
         .child((
-            about_shown(&draft.about, column.book),
+            about_shown(&draft.about, column),
             move || match being_changed.get() {
                 true => composer::composer(
                     held.clone(),
@@ -288,13 +291,39 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
 }
 
 /// What a piece of feedback is about: the passage it quotes, or the scene, section or whole copy it is on.
-fn about_shown(about: &About, book: RwSignal<Option<Book>>) -> AnyView {
+/// What a piece of feedback is about, as a link to that place in the copy.
+/// Where the feedback lies over the text, it is put away so the place can be seen.
+fn about_shown(about: &About, column: Column) -> impl IntoView + use<> {
     let About::ReadingCopy { place, .. } = about;
+    let pointed = place.clone();
+
+    html::button()
+        .r#type("button")
+        .class("about")
+        .attr("title", speech::said("feedback-show-in-the-text"))
+        .on(ev::click, move |_| {
+            if readings::view::lying_over_the_text() {
+                column.drawer.close();
+            }
+            readings::pointing::point_at(&pointed);
+        })
+        .child(what_about(place, column.book))
+}
+
+fn what_about(place: &ReadingCopyPlace, book: RwSignal<Option<Book>>) -> AnyView {
     match place {
-        ReadingCopyPlace::Passage { quote, .. } => html::blockquote()
-            .class("quote")
-            .child(format!("\u{201c}{quote}\u{201d}"))
-            .into_any(),
+        ReadingCopyPlace::Passage { quote, .. } => {
+            let whole = quote.clone();
+            let shortened = shortened(quote);
+
+            html::span()
+                .class("quote")
+                .attr("title", move || {
+                    speech::say_about("feedback-quote", "quote", &whole)
+                })
+                .child(move || speech::say_about("feedback-quote", "quote", &shortened))
+                .into_any()
+        }
         ReadingCopyPlace::Section(section) => {
             let section = section.clone();
             let title = move || {
@@ -307,7 +336,7 @@ fn about_shown(about: &About, book: RwSignal<Option<Book>>) -> AnyView {
                 .unwrap_or_default()
             };
 
-            html::p()
+            html::span()
                 .class("on")
                 .child(move || speech::say_about("feedback-on-section", "section", &title()))
                 .into_any()
@@ -324,16 +353,42 @@ fn about_shown(about: &About, book: RwSignal<Option<Book>>) -> AnyView {
                 .unwrap_or_default()
             };
 
-            html::p()
+            html::span()
                 .class("on")
                 .child(move || speech::say_about("feedback-on-scene", "section", &title()))
                 .into_any()
         }
-        ReadingCopyPlace::Whole => html::p()
+        ReadingCopyPlace::Whole => html::span()
             .class("on")
             .child(speech::said("feedback-on-whole"))
             .into_any(),
     }
+}
+
+/// How long a quoted passage may be before it is shortened to its beginning and its end.
+const QUOTED_WHOLE_UP_TO: usize = 160;
+const QUOTED_FROM_ITS_START: usize = 100;
+const QUOTED_FROM_ITS_END: usize = 40;
+
+/// A passage as its feedback quotes it: whole if it is short, else its beginning and its end with an ellipsis between,
+/// each cut at a word, so it still says where it begins and where it ends.
+fn shortened(quote: &str) -> String {
+    let chars: Vec<char> = quote.chars().collect();
+    if chars.len() <= QUOTED_WHOLE_UP_TO {
+        return quote.to_owned();
+    }
+    let start: String = chars[..QUOTED_FROM_ITS_START].iter().collect();
+    let end: String = chars[chars.len() - QUOTED_FROM_ITS_END..].iter().collect();
+    let start = start
+        .rsplit_once(char::is_whitespace)
+        .map_or(start.as_str(), |(words, _)| words)
+        .trim_end();
+    let end = end
+        .split_once(char::is_whitespace)
+        .map_or(end.as_str(), |(_, words)| words)
+        .trim_start();
+
+    format!("{start} \u{2026} {end}")
 }
 
 /// What a comment says, drawn as a reading copy's text is: never as markup it brought along.
@@ -387,4 +442,34 @@ fn runs_of(runs: &[CommentRun]) -> Vec<AnyView> {
             CommentRun::Break => html::br().into_any(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_short_passage_is_quoted_whole() {
+        // expect: a passage of a few words is quoted as it is
+        assert_eq!(shortened("The boats came in"), "The boats came in");
+    }
+
+    #[test]
+    fn a_long_passage_is_quoted_by_its_beginning_and_its_end_cut_at_words() {
+        // given: a passage far longer than is quoted whole
+        let passage = "word ".repeat(60) + "and the last words here.";
+
+        // when: it is quoted
+        let quoted = shortened(passage.trim());
+
+        // then: it keeps its beginning and its end, whole words only, an ellipsis between
+        assert!(quoted.starts_with("word word"), "{quoted}");
+        assert!(quoted.ends_with("and the last words here."), "{quoted}");
+        assert!(quoted.contains(" \u{2026} "), "{quoted}");
+        assert!(
+            !quoted.contains("wor \u{2026}") && !quoted.contains("\u{2026} ord"),
+            "{quoted}"
+        );
+        assert!(quoted.chars().count() < 150, "{quoted}");
+    }
 }
