@@ -768,7 +768,8 @@
   }
 }
 
-.drawer.reading-feedback {
+.drawer.reading-feedback,
+.dialog.comment-on-live {
   .comment-on {
     display: flex;
     align-items: center;
@@ -1239,5 +1240,84 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+/* Commenting on the live work: the copy the comment goes into is made in a dialog, its dates told, the comment written below. */
+.dialog.comment-on-live {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 34rem;
+
+  > p {
+    margin: 0;
+    font: 300 0.95rem/1.55 var(--reading);
+  }
+
+  .about .quote {
+    display: block;
+    padding: 0.625rem 0.875rem;
+    border-left: 3px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    border-radius: 0 0.375rem 0.375rem 0;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    font: italic 400 1rem/1.5 var(--heading);
+  }
+
+  .about .on {
+    font: 400 0.85rem/1.4 var(--reading);
+    color: var(--muted);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+
+    .label {
+      font: 500 0.8rem/1 var(--reading);
+    }
+
+    input {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 2.625rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      background: var(--raised);
+      color: var(--ink);
+      font: 300 0.95rem/1.4 var(--reading);
+    }
+  }
+
+  .times {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0.625rem;
+  }
+
+  .time {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+
+    b {
+      display: block;
+      margin-bottom: 0.25rem;
+      font: 500 0.7rem/1.3 var(--reading);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    span {
+      font: 400 0.875rem/1.4 var(--reading);
+    }
+  }
+
+  .hint {
+    font: 400 0.8rem/1.5 var(--reading);
+    color: var(--muted);
   }
 }

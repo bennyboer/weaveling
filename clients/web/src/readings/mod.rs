@@ -1,3 +1,4 @@
+mod comment_on_live;
 mod copy_tools;
 pub mod model;
 mod passage;

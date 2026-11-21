@@ -445,6 +445,16 @@ feedback-a-member = A member
 feedback-edited = edited
 feedback-change-comment = Change this comment
 feedback-delete-comment = Delete this comment
+comment-on-live = Your comment goes into a reading copy
+comment-on-live-why = The live work keeps changing, so comments are kept in a reading copy: the whole work, frozen as it is right now. Everyone in the project finds it among the copies, and you move into it. Your comment starts as a draft only you see; submit it, with any others, when you are ready.
+comment-on-live-name = Name of the copy
+comment-on-live-open = Open for feedback
+comment-on-live-open-until = 30 days, until { $day }
+comment-on-live-deleted = Deleted with its comments
+comment-on-live-deleted-on = after 90 days, on { $day }
+comment-on-live-later = You can rename the copy and extend both dates later.
+comment-on-live-make = Make the copy and keep the draft
+comment-on-live-passage-changed = The scene changed before the copy was made, so your draft is about the whole scene. Select the passage again to comment on it.
 copy-extent-book = the whole work
 copy-extent-sections = { $count ->
         [one] one section

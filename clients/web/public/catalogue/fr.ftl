@@ -445,6 +445,16 @@ feedback-a-member = Un membre
 feedback-edited = modifié
 feedback-change-comment = Modifier ce commentaire
 feedback-delete-comment = Supprimer ce commentaire
+comment-on-live = Votre commentaire va dans une copie de lecture
+comment-on-live-why = L’œuvre change sans cesse, alors les commentaires sont gardés dans une copie de lecture : l’œuvre entière, figée telle qu’elle est maintenant. Tout le monde dans le projet la trouve parmi les copies, et vous y passez. Votre commentaire commence comme un brouillon que vous seul voyez ; envoyez-le, avec d’autres, quand vous êtes prêt.
+comment-on-live-name = Nom de la copie
+comment-on-live-open = Ouverte aux retours
+comment-on-live-open-until = 30 jours, jusqu’au { $day }
+comment-on-live-deleted = Supprimée avec ses commentaires
+comment-on-live-deleted-on = après 90 jours, le { $day }
+comment-on-live-later = Vous pourrez renommer la copie et prolonger les deux dates plus tard.
+comment-on-live-make = Faire la copie et garder le brouillon
+comment-on-live-passage-changed = La scène a changé avant que la copie soit faite, alors votre brouillon porte sur toute la scène. Sélectionnez à nouveau le passage pour le commenter.
 copy-extent-book = toute l’œuvre
 copy-extent-sections = { $count ->
         [one] une section

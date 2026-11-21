@@ -445,6 +445,16 @@ feedback-a-member = Um membro
 feedback-edited = editado
 feedback-change-comment = Alterar este comentário
 feedback-delete-comment = Apagar este comentário
+comment-on-live = Seu comentário vai para uma cópia de leitura
+comment-on-live-why = A obra continua mudando, então os comentários ficam numa cópia de leitura: a obra inteira, congelada como está agora. Todos no projeto a encontram entre as cópias, e você passa para ela. Seu comentário começa como um rascunho que só você vê; envie-o, com outros, quando estiver pronto.
+comment-on-live-name = Nome da cópia
+comment-on-live-open = Aberta a comentários
+comment-on-live-open-until = 30 dias, até { $day }
+comment-on-live-deleted = Apagada com seus comentários
+comment-on-live-deleted-on = depois de 90 dias, em { $day }
+comment-on-live-later = Você pode renomear a cópia e estender as duas datas depois.
+comment-on-live-make = Fazer a cópia e manter o rascunho
+comment-on-live-passage-changed = A cena mudou antes de a cópia ser feita, então seu rascunho é sobre a cena inteira. Selecione o trecho de novo para comentá-lo.
 copy-extent-book = a obra toda
 copy-extent-sections = { $count ->
         [one] uma seção

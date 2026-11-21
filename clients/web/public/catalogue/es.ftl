@@ -445,6 +445,16 @@ feedback-a-member = Un miembro
 feedback-edited = editado
 feedback-change-comment = Cambiar este comentario
 feedback-delete-comment = Borrar este comentario
+comment-on-live = Tu comentario va a una copia de lectura
+comment-on-live-why = La obra sigue cambiando, así que los comentarios se guardan en una copia de lectura: la obra entera, congelada tal como está ahora. Todos en el proyecto la encuentran entre las copias, y tú pasas a ella. Tu comentario empieza como un borrador que solo tú ves; envíalo, con otros, cuando estés listo.
+comment-on-live-name = Nombre de la copia
+comment-on-live-open = Abierta a comentarios
+comment-on-live-open-until = 30 días, hasta el { $day }
+comment-on-live-deleted = Se borra con sus comentarios
+comment-on-live-deleted-on = tras 90 días, el { $day }
+comment-on-live-later = Puedes cambiar el nombre de la copia y ampliar ambas fechas más tarde.
+comment-on-live-make = Hacer la copia y guardar el borrador
+comment-on-live-passage-changed = La escena cambió antes de hacer la copia, así que tu borrador trata de la escena entera. Vuelve a seleccionar el pasaje para comentarlo.
 copy-extent-book = toda la obra
 copy-extent-sections = { $count ->
         [one] una sección

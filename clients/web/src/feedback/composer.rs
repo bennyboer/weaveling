@@ -64,6 +64,7 @@ struct Held {
 /// What is written is handed over as blocks, never as markup.
 pub fn composer(
     held: Vec<CommentBlock>,
+    saved_as: &'static str,
     saving: Signal<bool>,
     save: impl Fn(Vec<CommentBlock>) + Copy + Send + Sync + 'static,
     cancel: impl Fn() + Copy + Send + Sync + 'static,
@@ -152,7 +153,7 @@ pub fn composer(
                     .class("primary")
                     .disabled(move || !ready.get() || blank.get() || saving.get())
                     .on(ev::click, move |_| saved())
-                    .child(speech::said("feedback-save-draft")),
+                    .child(speech::said(saved_as)),
                 html::button()
                     .r#type("button")
                     .on(ev::click, move |_| cancel())

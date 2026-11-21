@@ -445,6 +445,16 @@ feedback-a-member = Ein Mitglied
 feedback-edited = bearbeitet
 feedback-change-comment = Diesen Kommentar ändern
 feedback-delete-comment = Diesen Kommentar löschen
+comment-on-live = Dein Kommentar kommt in eine Lesekopie
+comment-on-live-why = Das Werk ändert sich laufend, deshalb werden Kommentare in einer Lesekopie gesammelt: dem ganzen Werk, eingefroren, wie es gerade ist. Alle im Projekt finden sie bei den Kopien, und du wechselst hinein. Dein Kommentar beginnt als Entwurf, den nur du siehst; schick ihn mit anderen ab, wenn du so weit bist.
+comment-on-live-name = Name der Kopie
+comment-on-live-open = Offen für Feedback
+comment-on-live-open-until = 30 Tage, bis { $day }
+comment-on-live-deleted = Gelöscht mit ihren Kommentaren
+comment-on-live-deleted-on = nach 90 Tagen, am { $day }
+comment-on-live-later = Du kannst die Kopie später umbenennen und beide Daten verlängern.
+comment-on-live-make = Kopie erstellen und Entwurf behalten
+comment-on-live-passage-changed = Die Szene hat sich geändert, bevor die Kopie erstellt wurde, deshalb gilt dein Entwurf der ganzen Szene. Markiere die Stelle erneut, um sie zu kommentieren.
 copy-extent-book = das ganze Werk
 copy-extent-sections = { $count ->
         [one] ein Abschnitt

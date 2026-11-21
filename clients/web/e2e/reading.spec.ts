@@ -1448,16 +1448,39 @@ test("a section or a scene of a copy is commented on from the text, the feedback
   ]);
 });
 
-test("the live work offers nothing to comment on from the text", async ({
+const madeForTheComment = (page: Page) =>
+  page.getByRole("dialog", { name: "Your comment goes into a reading copy" });
+
+test("on the live work a scene offers a comment, which first asks to make a copy for it, and nothing is made when put off", async ({
   page,
 }) => {
   // given: a written book's live work being read
-  await aBookWritten(page, "ReadingLiveNoCommentHere");
+  await aBookWritten(page, "ReadingLiveCommentHere");
   await openTheReadingView(page);
   await expect(book(page)).toContainText("Hedy counted them from the wall.");
 
-  // expect: no section or scene offers a comment
-  await expect(book(page).locator(".comment-here")).toHaveCount(0);
+  // when: a scene is commented on
+  await book(page)
+    .getByRole("button", { name: "Comment on this scene" })
+    .first()
+    .click();
+
+  // then: it asks first to make a copy of the whole work, open 30 days and deleted after 90
+  const asked = madeForTheComment(page);
+  await expect(asked).toContainText("On a scene in");
+  await expect(
+    asked.getByRole("textbox", { name: "Name of the copy" }),
+  ).toHaveValue(/^Reading copy, /);
+  await expect(asked).toContainText("30 days, until");
+  await expect(asked).toContainText("after 90 days, on");
+
+  // when: it is put off
+  await asked.getByRole("button", { name: "Cancel" }).click();
+
+  // then: nothing is made
+  await expect(asked).toHaveCount(0);
+  await copiesListed(page, []);
+  await expect(page).toHaveURL(/\/read$/);
 });
 
 /// Selects the words given in the copy's text, from where the first begins to where the last ends, as a reader would with the mouse.
@@ -1580,16 +1603,77 @@ test("a passage selected across blocks is cut at the end of its first block", as
   ).toHaveText("“their lamps swinging.”");
 });
 
-test("the live work offers no passage to comment on", async ({ page }) => {
+test("a passage commented on in the live work goes into a copy made for it, the draft kept there", async ({
+  page,
+}) => {
   // given: a written book's live work being read
-  await aBookWritten(page, "ReadingLiveNoPassage");
+  await aBookWritten(page, "ReadingLivePassage");
   await openTheReadingView(page);
+  await expect(book(page)).toContainText("The boats came in");
 
-  // when: a word is chosen
-  await book(page).getByText("The boats came in").dblclick();
+  // when: a passage is selected and commented on
+  await selecting(page, "boats", "came");
+  await book(page)
+    .getByRole("button", { name: "Comment", exact: true })
+    .click();
+  const asked = madeForTheComment(page);
+  await expect(asked.locator(".quote")).toHaveText("“boats came”");
+  await asked
+    .getByRole("textbox", { name: "Name of the copy" })
+    .fill("For Lena");
+  await asked.getByRole("textbox", { name: "Your comment" }).click();
+  await page.keyboard.type("Which boats?");
+  await asked
+    .getByRole("button", { name: "Make the copy and keep the draft" })
+    .click();
 
-  // then: nothing is offered
-  await expect(book(page).locator(".comment-passage")).toHaveCount(0);
+  // then: the copy is made and read, the draft kept in it about the passage
+  await expect(page).toHaveURL(/\/read\/[^/]+$/);
+  await expect(switcher(page)).toContainText("For Lena");
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  await expect(drafts.locator(".note")).toHaveCount(1);
+  await expect(drafts.locator(".note .quote")).toHaveText("“boats came”");
+  await expect(drafts.locator(".note .comment")).toHaveText("Which boats?");
+});
+
+test("a passage whose scene changed before its copy was made is kept on the scene, and said so", async ({
+  page,
+}) => {
+  // given: a written book's live work being read, a passage in its first scene asked to be commented on
+  const { placed } = await aBookWritten(page, "ReadingLiveChanged");
+  await openTheReadingView(page);
+  await expect(book(page)).toContainText("The boats came in");
+  await selecting(page, "boats", "came");
+  await book(page)
+    .getByRole("button", { name: "Comment", exact: true })
+    .click();
+  const asked = madeForTheComment(page);
+  await asked.getByRole("textbox", { name: "Your comment" }).click();
+  await page.keyboard.type("Which boats?");
+
+  // when: an author changes that scene meanwhile
+  const writer = await page.context().newPage();
+  await writer.goto(page.url().replace(/\/read$/, "/write"));
+  await scene(writer, placed.harbour).click();
+  await writer.keyboard.press("ControlOrMeta+Home");
+  await writer.keyboard.type("At dusk ");
+  await expect(book(page)).toContainText("At dusk The boats came in");
+  await writer.close();
+  // and: the copy is made
+  await asked
+    .getByRole("button", { name: "Make the copy and keep the draft" })
+    .click();
+
+  // then: the draft is about the whole scene, and it is said why
+  await expect(page).toHaveURL(/\/read\/[^/]+$/);
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "The scene changed before the copy was made" }),
+  ).toBeVisible();
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  await expect(drafts.locator(".note")).toContainText("On a scene in");
+  await expect(drafts.locator(".note .comment")).toHaveText("Which boats?");
 });
 
 test("a passage selected by touch is offered once the selection rests", async ({

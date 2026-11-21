@@ -40,6 +40,11 @@ impl Text {
     pub fn blocks(&self) -> &[Block] {
         &self.0
     }
+
+    /// Whether two texts say the same, word for word, whether or not they are one telling.
+    pub fn says_as(&self, other: &Text) -> bool {
+        self.0 == other.0
+    }
 }
 
 /// One piece of the book, as it changed.
@@ -79,6 +84,18 @@ impl Book {
         } else {
             Applied::LackingText
         }
+    }
+
+    /// The book read again, holding on to each scene's text that says what it said before,
+    /// so a scene whose words did not change is not drawn again, nor a selection in it lost.
+    pub fn keeping_unchanged(mut self, before: &Book) -> Self {
+        for (scene, text) in &mut self.texts {
+            if let Some(held) = before.texts.get(scene).filter(|held| held.says_as(text)) {
+                *text = held.clone();
+            }
+        }
+
+        self
     }
 
     /// A scene's text, if it says anything.
@@ -362,6 +379,43 @@ mod tests {
             Some(said("Hedy counted them."))
         );
         assert_eq!(book.text_of(&scene("harbour")), before);
+    }
+
+    #[test]
+    fn a_book_read_again_keeps_the_telling_of_each_scene_that_says_the_same() {
+        // given: a book, and the same book read again with its second scene written meanwhile
+        let before = a_book();
+        let mut read = a_book();
+        read.apply(Change::Text {
+            scene: scene("wall"),
+            blocks: said("Hedy counted them."),
+        });
+
+        // when: the book read again keeps what did not change
+        let kept = read.keeping_unchanged(&before);
+
+        // then: the first scene is the same telling as before, so it is not drawn again
+        assert_eq!(
+            kept.text_of(&scene("harbour")),
+            before.text_of(&scene("harbour"))
+        );
+        // and: the second says what it says now
+        assert_eq!(
+            kept.text_of(&scene("wall"))
+                .map(|text| text.blocks().to_vec()),
+            Some(said("Hedy counted them."))
+        );
+    }
+
+    #[test]
+    fn two_tellings_of_the_same_words_say_the_same_though_they_are_not_one() {
+        // given: one scene read twice
+        let once = a_book().text_of(&scene("harbour")).expect("it is written");
+        let twice = a_book().text_of(&scene("harbour")).expect("it is written");
+
+        // expect: they say the same, though each is a telling of its own
+        assert!(once.says_as(&twice));
+        assert_ne!(once, twice);
     }
 
     #[test]

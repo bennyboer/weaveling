@@ -21,6 +21,7 @@ use crate::live::Subscription;
 use crate::outline::model::SectionId;
 use crate::problem;
 use crate::projects::model::ProjectId;
+use crate::readings::comment_on_live;
 use crate::readings::model::{Applied, Block, Book, Change, Marks, Run};
 use crate::readings::passage;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
@@ -33,6 +34,8 @@ use crate::speech;
 
 const FIGURE_WIDTH: u32 = 1536;
 const CONTENTS: &str = "reading-contents";
+/// Where whether a copy's feedback was left open is kept.
+pub(crate) const FEEDBACK_KEPT: &str = "weaveling.reading-feedback";
 /// Where the contents lie over the text, as on a phone, they start closed.
 const LYING_OVER_THE_TEXT: &str = "(width <= 60rem)";
 /// Where the contents and a copy's feedback do not both fit beside the text, the feedback starts closed.
@@ -71,7 +74,7 @@ pub fn reading_view(
         .flatten()
         .is_some_and(|query| query.matches());
     let rail = Drawer::as_last_left("weaveling.reading-contents", beside_the_text);
-    let said = Drawer::as_last_left("weaveling.reading-feedback", room_for_both);
+    let said = Drawer::as_last_left(FEEDBACK_KEPT, room_for_both);
     if copy.is_some() {
         drawer::keep_apart(rail, said);
     }
@@ -94,17 +97,33 @@ pub fn reading_view(
         }
     });
     let has_book = Memo::new(move |_| book.with(Option::is_some));
-    let commenting = copy.clone().map(|copy| Commenting::new(copy, said));
+    let commenting = match &copy {
+        Some(copy) => Commenting::in_copy(copy.clone(), said),
+        None => Commenting::on_the_live_work(),
+    };
 
     move || {
         if let Some(failure) = failed.get() {
             Some(problem::problem(failure).into_any())
         } else if has_book.get() {
             let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
-            let feedback =
-                commenting.map(|commenting| (feedback::on_reading_copy(commenting, book), said));
+            let feedback = copy.clone().map(|copy| {
+                (
+                    feedback::on_reading_copy(copy, commenting, said, book),
+                    said,
+                )
+            });
+            let on_the_live_work = copy
+                .is_none()
+                .then(|| comment_on_live::asked(slug.clone(), commenting, book));
 
-            Some(read(book, rail, bar.into_any(), feedback, commenting).into_any())
+            Some(
+                (
+                    read(book, rail, bar.into_any(), feedback, Some(commenting)),
+                    on_the_live_work,
+                )
+                    .into_any(),
+            )
         } else {
             None
         }
@@ -131,7 +150,13 @@ fn following_live(
                 match read {
                     Ok(read) => {
                         failed.set(None);
-                        book.set(Some(read));
+                        book.update(|held| {
+                            let read = match held.as_ref() {
+                                Some(before) => read.keeping_unchanged(before),
+                                None => read,
+                            };
+                            *held = Some(read);
+                        });
                     }
                     Err(failure) => failed.set(Some(failure)),
                 }

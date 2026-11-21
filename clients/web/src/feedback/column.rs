@@ -35,37 +35,54 @@ enum Writing {
     Changed(FeedbackId),
 }
 
-/// Begins comments on places in a reading copy, from wherever in the reading view a place is offered:
-/// it opens the feedback and starts a draft there about the place.
+/// Begins comments on places in the reading view, from wherever a place is offered.
+/// In a reading copy it opens the feedback and starts a draft there about the place.
+/// On the live work, which keeps changing, it asks first to make a copy the comment goes into.
 #[derive(Clone, Copy)]
 pub struct Commenting {
-    copy: StoredValue<ReadingCopyId>,
+    copy: StoredValue<Option<(ReadingCopyId, Drawer)>>,
     feedback: RwSignal<Vec<Feedback>>,
     writing: RwSignal<Option<Writing>>,
-    drawer: Drawer,
+    on_the_live_work: RwSignal<Option<ReadingCopyPlace>>,
 }
 
 impl Commenting {
-    pub fn new(copy: ReadingCopyId, drawer: Drawer) -> Self {
+    pub fn in_copy(copy: ReadingCopyId, drawer: Drawer) -> Self {
         Self {
-            copy: StoredValue::new(copy),
+            copy: StoredValue::new(Some((copy, drawer))),
+            ..Self::on_the_live_work()
+        }
+    }
+
+    pub fn on_the_live_work() -> Self {
+        Self {
+            copy: StoredValue::new(None),
             feedback: RwSignal::new(Vec::new()),
             writing: RwSignal::new(None),
-            drawer,
+            on_the_live_work: RwSignal::new(None),
         }
+    }
+
+    /// The place a comment on the live work was begun about, while it waits for a copy to be made for it.
+    pub fn begun_on_the_live_work(self) -> RwSignal<Option<ReadingCopyPlace>> {
+        self.on_the_live_work
     }
 
     /// Where you have a draft about the place already, that draft is opened to be changed and pointed at in the column instead,
     /// so one place gathers what you say about it.
     pub fn begin(self, place: ReadingCopyPlace) {
-        self.drawer.open();
+        let Some((copy, drawer)) = self.copy.get_value() else {
+            self.on_the_live_work.set(Some(place));
+            return;
+        };
+        drawer.open();
         match self.draft_on(&place) {
             Some(draft) => {
                 self.writing.set(Some(Writing::Changed(draft.clone())));
                 _ = request_animation_frame(move || pointed_at_in_the_column(&draft));
             }
             None => self.writing.set(Some(Writing::New(About::ReadingCopy {
-                reading_copy: self.copy.get_value(),
+                reading_copy: copy,
                 place,
             }))),
         }
@@ -144,20 +161,24 @@ struct Column {
 
 /// The feedback on a reading copy, in a drawer on the right: your drafts, which only you see until you submit them,
 /// the feedback everyone submitted, and a comment on the whole copy started there.
-pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> impl IntoView {
+pub fn on_reading_copy(
+    copy: ReadingCopyId,
+    commenting: Commenting,
+    drawer: Drawer,
+    book: RwSignal<Option<Book>>,
+) -> impl IntoView {
     let column = Column {
         feedback: commenting.feedback,
         writing: commenting.writing,
         failed: RwSignal::new(None),
         book,
-        drawer: commenting.drawer,
+        drawer,
     };
     Effect::new(move |_| {
         if column.writing.with(Option::is_some) {
             column.failed.set(None);
         }
     });
-    let copy = commenting.copy.get_value();
     {
         let copy = copy.clone();
         leptos::task::spawn_local(async move {
@@ -236,7 +257,7 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
     };
 
     drawer::drawer(
-        commenting.drawer,
+        drawer,
         Edge::Right,
         || speech::say("feedback"),
         Inside {
@@ -580,6 +601,7 @@ fn a_new_draft(about: About, column: Column) -> impl IntoView {
             about_shown(&about, column),
             composer::composer(
                 Vec::new(),
+                "feedback-save-draft",
                 drafting.pending().into(),
                 move |comment| _ = drafting.dispatch(comment),
                 move || column.writing.set(None),
@@ -652,6 +674,7 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
             move || match being_changed.get() {
                 true => composer::composer(
                     held.clone(),
+                    "feedback-save-draft",
                     rewriting.pending().into(),
                     move |comment| _ = rewriting.dispatch(comment),
                     move || column.writing.set(None),
@@ -725,7 +748,7 @@ fn about_shown(about: &About, column: Column) -> impl IntoView + use<> {
         .child(what_about(place, column.book))
 }
 
-fn what_about(place: &ReadingCopyPlace, book: RwSignal<Option<Book>>) -> AnyView {
+pub(crate) fn what_about(place: &ReadingCopyPlace, book: RwSignal<Option<Book>>) -> AnyView {
     match place {
         ReadingCopyPlace::Passage { quote, .. } => {
             let whole = quote.clone();
