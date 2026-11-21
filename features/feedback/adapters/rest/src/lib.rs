@@ -6,21 +6,22 @@ use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use feedback_contract::{
-    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, RewriteFeedbackRequest, kind,
-    refused,
+    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, RewriteFeedbackRequest,
+    refused, status,
 };
 use feedback_core::{
-    FeedbackCore, FeedbackError, InvalidComment, ReadingCopyLink, SceneLink, SectionLink, Subject,
+    FeedbackCore, FeedbackError, InvalidComment, On, ReadingCopyLink, Status, Subject,
 };
 use serde::Deserialize;
 use serving::Problem;
 
 pub fn router(feedback: FeedbackCore) -> Router {
     Router::new()
-        .route("/feedback", routing::get(feedback_on).post(draft))
+        .route("/feedback", routing::post(draft))
+        .route("/feedback/drafts", routing::get(drafts_on))
         .route("/feedback/submitted", routing::post(submit_on))
         .route("/feedback/counts", routing::get(counted_on))
-        .route("/feedback/on", routing::get(given_on))
+        .route("/feedback/on", routing::get(submitted_on))
         .route("/feedback/pending", routing::get(pending_in))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
@@ -31,60 +32,83 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .with_state(feedback)
 }
 
-/// The subject whose feedback is asked for: its kind, as `AboutDTO` names it, and its id.
+/// Where feedback is asked for: some reading copies; or, in every copy, a project, some scenes or some sections;
+/// the ids parted by commas, one of them; and, if asked, only what is pending or done.
 #[derive(Deserialize)]
-struct OnSubject {
-    kind: String,
-    id: String,
+struct OnPlaces {
+    reading_copies: Option<String>,
+    project: Option<String>,
+    scenes: Option<String>,
+    sections: Option<String>,
+    status: Option<String>,
 }
 
-impl OnSubject {
-    fn subject(self) -> Result<Subject, Problem> {
-        subject_of(&self.kind, self.id)
-    }
-}
-
-fn subject_of(kind: &str, id: String) -> Result<Subject, Problem> {
-    match kind {
-        kind::READING_COPY => Ok(Subject::ReadingCopy(ReadingCopyLink::from(id))),
-        unknown => Err(Problem::rejected(
-            refused::SUBJECT_UNKNOWN,
-            format!("feedback is given on no subject of the kind {unknown}"),
-        )),
-    }
-}
-
-/// The place in the work whose feedback is asked for, in every copy: a scene or a section, one of them.
-#[derive(Deserialize)]
-struct OnPlace {
-    scene: Option<String>,
-    section: Option<String>,
-}
-
-async fn given_on(
-    State(feedback): State<FeedbackCore>,
-    Extension(agent): Extension<Agent>,
-    Query(asked): Query<OnPlace>,
-) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
-    let found = match (asked.scene, asked.section) {
-        (Some(scene), None) => {
-            feedback
-                .given_on_scene(&SceneLink::from(scene), &agent)
-                .await
-        }
-        (None, Some(section)) => {
-            feedback
-                .given_on_section(&SectionLink::from(section), &agent)
-                .await
-        }
-        _ => {
-            return Err(Problem::rejected(
+impl OnPlaces {
+    fn on(&self) -> Result<On, Problem> {
+        match (
+            &self.reading_copies,
+            &self.project,
+            &self.scenes,
+            &self.sections,
+        ) {
+            (Some(copies), None, None, None) => Ok(On::Subjects(
+                listed::<ReadingCopyLink>(copies)
+                    .into_iter()
+                    .map(Subject::ReadingCopy)
+                    .collect(),
+            )),
+            (None, Some(project), None, None) => Ok(On::Project(project.clone())),
+            (None, None, Some(scenes), None) => Ok(On::Scenes(listed(scenes))),
+            (None, None, None, Some(sections)) => Ok(On::Sections(listed(sections))),
+            _ => Err(Problem::rejected(
                 refused::PLACE_UNNAMED,
-                "feedback is asked for on a scene or on a section, one of them",
+                "feedback is asked for on reading copies, in a project, on scenes or on sections, one of them",
+            )),
+        }
+    }
+
+    /// Where drafts are asked for or submitted: the places alone, as a draft is neither pending nor done.
+    fn drafts_on(&self) -> Result<On, Problem> {
+        if self.status.is_some() {
+            return Err(Problem::rejected(
+                refused::STATUS_UNKNOWN,
+                "a draft is neither pending nor done before it is submitted",
             ));
         }
+
+        self.on()
     }
-    .map_err(problem_of)?;
+
+    fn status(&self) -> Result<Option<Status>, Problem> {
+        match self.status.as_deref() {
+            None => Ok(None),
+            Some(status::PENDING) => Ok(Some(Status::Pending)),
+            Some(status::DONE) => Ok(Some(Status::Done)),
+            Some(unknown) => Err(Problem::rejected(
+                refused::STATUS_UNKNOWN,
+                format!("feedback is pending or done, never {unknown}"),
+            )),
+        }
+    }
+}
+
+/// Ids parted by commas, each as what it names.
+fn listed<T: for<'a> From<&'a str>>(ids: &str) -> Vec<T> {
+    ids.split(',')
+        .filter(|id| !id.is_empty())
+        .map(T::from)
+        .collect()
+}
+
+async fn submitted_on(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<OnPlaces>,
+) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
+    let found = feedback
+        .submitted(&asked.on()?, asked.status()?, &agent)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(
         found
@@ -113,24 +137,21 @@ async fn pending_in(
     Ok(Json(transformer::to_pending_dto(&pending)))
 }
 
-/// The subjects whose feedback is counted: their kind, and their ids parted by commas.
+/// The reading copies whose feedback is counted, their ids parted by commas.
 #[derive(Deserialize)]
-struct OnSubjects {
-    kind: String,
-    ids: String,
+struct OnReadingCopies {
+    reading_copies: String,
 }
 
 async fn counted_on(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Query(asked): Query<OnSubjects>,
+    Query(asked): Query<OnReadingCopies>,
 ) -> Result<Json<Vec<FeedbackCountDTO>>, Problem> {
-    let subjects = asked
-        .ids
-        .split(',')
-        .filter(|id| !id.is_empty())
-        .map(|id| subject_of(&asked.kind, id.to_owned()))
-        .collect::<Result<Vec<_>, _>>()?;
+    let subjects = listed::<ReadingCopyLink>(&asked.reading_copies)
+        .into_iter()
+        .map(Subject::ReadingCopy)
+        .collect();
     let counted = feedback
         .counted_on(subjects, &agent)
         .await
@@ -141,13 +162,13 @@ async fn counted_on(
     ))
 }
 
-async fn feedback_on(
+async fn drafts_on(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Query(asked): Query<OnSubject>,
+    Query(asked): Query<OnPlaces>,
 ) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
     let found = feedback
-        .feedback_on(&asked.subject()?, &agent)
+        .drafts(&asked.drafts_on()?, &agent)
         .await
         .map_err(problem_of)?;
 
@@ -162,10 +183,10 @@ async fn feedback_on(
 async fn submit_on(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Query(asked): Query<OnSubject>,
+    Query(asked): Query<OnPlaces>,
 ) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
     let submitted = feedback
-        .submit_on(&asked.subject()?, &agent)
+        .submit(&asked.drafts_on()?, &agent)
         .await
         .map_err(problem_of)?;
 

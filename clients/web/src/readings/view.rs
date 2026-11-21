@@ -13,6 +13,7 @@ use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::column as feedback;
 use crate::feedback::column::Commenting;
+use crate::feedback::marks as feedback_marks;
 use crate::feedback::model::ReadingCopyPlace;
 use crate::http::ApiError;
 use crate::icons;
@@ -98,6 +99,9 @@ pub fn reading_view(
         }
     });
     let has_book = Memo::new(move |_| book.with(Option::is_some));
+    let marks = copy
+        .is_some()
+        .then(|| feedback_marks::marks_shown(feedback_marks::KEPT_WHILE_READING));
     let marking = {
         let roles = expect_context::<Roles>();
         let slug = slug.clone();
@@ -128,6 +132,11 @@ pub fn reading_view(
                 (
                     read(book, rail, bar.into_any(), feedback, Some(commenting)),
                     on_the_live_work,
+                    marks.map(|marks| {
+                        html::div()
+                            .class("status-note")
+                            .child(feedback_marks::marks_switch(marks))
+                    }),
                 )
                     .into_any(),
             )

@@ -50,6 +50,53 @@ pub struct Pending {
     pub sections: BTreeMap<SectionLink, usize>,
 }
 
+/// Where feedback is looked for: some subjects it is given on, as some reading copies;
+/// or, in every copy, a project, some scenes, on them or passages in them, or some sections themselves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum On {
+    Subjects(Vec<Subject>),
+    Project(String),
+    Scenes(Vec<SceneLink>),
+    Sections(Vec<SectionLink>),
+}
+
+impl On {
+    /// How many places are looked on at once; a project counts as none.
+    fn places(&self) -> usize {
+        match self {
+            Self::Project(_) => 0,
+            Self::Subjects(subjects) => subjects.len(),
+            Self::Scenes(scenes) => scenes.len(),
+            Self::Sections(sections) => sections.len(),
+        }
+    }
+
+    fn holds(&self, about: &About) -> bool {
+        match self {
+            // TODO: only the project's copies (step 5); its scenes' and sections' ids are its own meanwhile
+            Self::Project(_) => true,
+            Self::Subjects(subjects) => subjects.contains(&about.subject()),
+            Self::Scenes(scenes) => about.in_scene().is_some_and(|scene| scenes.contains(scene)),
+            Self::Sections(sections) => about
+                .on_section()
+                .is_some_and(|section| sections.contains(section)),
+        }
+    }
+}
+
+/// Whether feedback given is still to be worked through, or done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Pending,
+    Done,
+}
+
+impl Status {
+    fn holds(self, feedback: &Feedback) -> bool {
+        feedback.done == (self == Self::Done)
+    }
+}
+
 /// The most subjects counted at once, so one question stays small however many subjects there are.
 pub const COUNTED_AT_ONCE: usize = 100;
 
@@ -73,20 +120,18 @@ impl FeedbackCore {
         self.kept.lock().expect("feedback lock poisoned")
     }
 
-    /// The feedback given on a subject that the agent may see, oldest first:
-    /// what everyone submitted, and their own drafts.
-    pub async fn feedback_on(
-        &self,
-        subject: &Subject,
-        agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
-        // TODO: only for whoever may read the subject's project (step 5)
+    /// The agent's own drafts where asked, oldest first, which only they see until they submit them.
+    /// At most `COUNTED_AT_ONCE` places are looked on at once.
+    pub async fn drafts(&self, on: &On, agent: &Agent) -> Result<Vec<Feedback>, FeedbackError> {
+        if on.places() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
+
         Ok(self
             .kept()
             .iter()
             .filter(|feedback| {
-                &feedback.about.subject() == subject
-                    && (!feedback.is_draft() || &feedback.written_by == agent)
+                feedback.is_draft() && &feedback.written_by == agent && on.holds(&feedback.about)
             })
             .cloned()
             .collect())
@@ -127,33 +172,28 @@ impl FeedbackCore {
             .collect())
     }
 
-    /// The feedback given on a scene, in every copy that holds it, oldest first:
-    /// on the scene itself, or on a passage in it. Drafts are left out, as only their writers see them.
-    pub async fn given_on_scene(
+    /// The feedback submitted where asked, in every copy, oldest first, and if asked only what is pending or done.
+    /// Drafts are left out, as only their writers see them. At most `COUNTED_AT_ONCE` scenes or sections are looked on at once,
+    /// so the writing view asks only for those in sight.
+    pub async fn submitted(
         &self,
-        scene: &SceneLink,
+        on: &On,
+        status: Option<Status>,
         _agent: &Agent,
     ) -> Result<Vec<Feedback>, FeedbackError> {
         // TODO: only in copies of a project the agent may read (step 5)
-        Ok(self
-            .kept()
-            .iter()
-            .filter(|feedback| !feedback.is_draft() && feedback.about.in_scene() == Some(scene))
-            .cloned()
-            .collect())
-    }
+        if on.places() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
 
-    /// The feedback given on a section itself, in every copy that holds it, oldest first; drafts are left out.
-    pub async fn given_on_section(
-        &self,
-        section: &SectionLink,
-        _agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
-        // TODO: only in copies of a project the agent may read (step 5)
         Ok(self
             .kept()
             .iter()
-            .filter(|feedback| !feedback.is_draft() && feedback.about.on_section() == Some(section))
+            .filter(|feedback| {
+                !feedback.is_draft()
+                    && on.holds(&feedback.about)
+                    && status.is_none_or(|status| status.holds(feedback))
+            })
             .cloned()
             .collect())
     }
@@ -182,21 +222,18 @@ impl FeedbackCore {
         Ok(pending)
     }
 
-    /// Submits the agent's drafts on a subject together, so everyone who may see the subject's feedback sees them.
+    /// Submits the agent's drafts where asked together, so everyone who may see the subject's feedback sees them.
     /// It answers with what was submitted, oldest first; with no drafts, nothing.
-    pub async fn submit_on(
-        &self,
-        subject: &Subject,
-        agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
+    pub async fn submit(&self, on: &On, agent: &Agent) -> Result<Vec<Feedback>, FeedbackError> {
         // TODO: only while the subject is open, for whoever may read its project (step 5)
+        if on.places() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
         let now = self.clock.now();
         let mut kept = self.kept();
         let mut submitted = Vec::new();
         for feedback in kept.iter_mut().filter(|feedback| {
-            feedback.is_draft()
-                && &feedback.about.subject() == subject
-                && &feedback.written_by == agent
+            feedback.is_draft() && &feedback.written_by == agent && on.holds(&feedback.about)
         }) {
             feedback.submitted_at = Some(now);
             submitted.push(feedback.clone());

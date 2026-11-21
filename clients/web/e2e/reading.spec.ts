@@ -1138,15 +1138,19 @@ async function aCopysFeedback(page: Page, named: string) {
 const commentField = (page: Page) =>
   feedback(page).getByRole("textbox", { name: "Your comment" });
 
-/// Your drafts on the copy being read, as the server keeps them.
+/// The feedback on the copy being read, as the server keeps it: what was submitted, then your drafts.
 async function draftsKept(page: Page) {
   const copy = new URL(page.url()).pathname.split("/").pop()!;
-  const listed = await page.request.get(
-    `${API}/feedback?kind=reading_copy&id=${copy}`,
-  );
-  expect(listed.ok(), await listed.text()).toBe(true);
+  const kept: { comment: unknown; about: unknown }[] = [];
+  for (const route of ["on", "drafts"]) {
+    const listed = await page.request.get(
+      `${API}/feedback/${route}?reading_copies=${copy}`,
+    );
+    expect(listed.ok(), await listed.text()).toBe(true);
+    kept.push(...(await listed.json()));
+  }
 
-  return (await listed.json()) as { comment: unknown; about: unknown }[];
+  return kept;
 }
 
 test("a comment on the whole copy is written with bold, italics and paragraphs, and kept as a draft", async ({
@@ -2061,7 +2065,7 @@ test("feedback given is marked in the text with a line of its own, and counted i
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+    `${API}/feedback/submitted?reading_copies=${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await aDraftOn(
@@ -2121,7 +2125,7 @@ test("the switcher shows how much of each copy's feedback is not done, and your 
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+    `${API}/feedback/submitted?reading_copies=${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await aDraftOn(page, { kind: "whole" }, "One more thought.");
@@ -2165,7 +2169,7 @@ test("feedback given is marked done and not done again, its mark in the text and
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+    `${API}/feedback/submitted?reading_copies=${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await page.reload();
@@ -2247,7 +2251,7 @@ test("a scene's feedback is in its inspector in the writing view, grouped by cop
   await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Slow start.");
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+    `${API}/feedback/submitted?reading_copies=${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
@@ -2373,7 +2377,7 @@ test("a section's own feedback is in its inspector, and the writing view's conte
   await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Lovely.");
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+    `${API}/feedback/submitted?reading_copies=${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
@@ -2393,12 +2397,18 @@ test("a section's own feedback is in its inspector, and the writing view's conte
   await rail(page).getByRole("button", { name: "Unfold all" }).click();
   await expect(rail(page).locator(".rail-scene .not-done")).toHaveText(["1"]);
 
-  // when: the section is looked at in the inspector
-  await heading(page, "Morning").click();
-  const inspectorTab = page.locator('.drawer-tab[aria-controls="inspector"]');
-  if ((await inspectorTab.getAttribute("aria-expanded")) === "false") {
-    await inspectorTab.click();
-  }
+  // when: the contents are put away again
+  await contentsTab.click();
+
+  // and: the section's heading is flagged with its own comment, its scene with its own
+  const sectionFlag = page.getByRole("button", {
+    name: "1 comment not done on this section",
+  });
+  await expect(sectionFlag).toBeVisible();
+  await expect(page.locator(".feedback-flag")).toHaveCount(2);
+
+  // when: the section's flag is followed
+  await sectionFlag.click();
 
   // then: its own feedback is there, and not the scene's
   const given = page
@@ -2407,4 +2417,141 @@ test("a section's own feedback is in its inspector, and the writing view's conte
   await expect(given.locator(".note")).toHaveCount(1);
   await expect(given.locator(".note")).toContainText("On the whole section");
   await expect(given.locator(".note")).toContainText("Slow start.");
+});
+
+/// The words a highlight paints, as the page holds them.
+const painted = (page: Page, name: string) => () =>
+  page.evaluate((name) => {
+    const highlight = (
+      CSS as unknown as { highlights: Map<string, Set<Range>> }
+    ).highlights.get(name);
+
+    return highlight ? [...highlight].map((words) => words.toString()) : [];
+  }, name);
+
+test("feedback pending is marked in the writing view's text by its words, which it follows as they move, until switched off", async ({
+  page,
+}) => {
+  // given: a copy of a written book, a passage of its first scene commented on
+  const { placed } = await aBookWritten(page, "WritingMarked");
+  await aCopyMade(page, {
+    name: "As written",
+    shared: { kind: "book" },
+    open_until: null,
+    deleted_on: null,
+  });
+  await copiesListed(page, ["As written"]);
+  await openTheReadingView(page);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /As written/ })
+    .click();
+  await expect(switcher(page)).toContainText("As written");
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: placed.harbour,
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?reading_copies=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+
+  // when: the writing view is opened
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/feedback/")) asked.push(request.url());
+  });
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+
+  // then: the passage's words are marked
+  await expect.poll(painted(page, "feedback-given")).toEqual(["boats"]);
+  // and: only the feedback pending on the scenes drawn was asked for, never the whole project's
+  const passages = asked.filter((url) => url.includes("/feedback/on?scenes="));
+  expect(passages.length).toBeGreaterThan(0);
+  expect(decodeURIComponent(passages[0])).toContain(placed.harbour);
+  expect(asked.some((url) => url.includes("/feedback/on?project="))).toBe(false);
+
+  // when: words are written before them
+  await scene(page, placed.harbour).click();
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.type("At dusk ");
+
+  // then: the same words are marked, where they are now
+  await expect(scene(page, placed.harbour)).toContainText("At dusk The boats");
+  await expect.poll(painted(page, "feedback-given")).toEqual(["boats"]);
+
+  // when: the marks are switched off
+  const marks = page.getByRole("button", { name: "Feedback in the text" });
+  await expect(marks).toHaveAttribute("aria-pressed", "true");
+  await marks.click();
+
+  // then: they are out of sight, and stay so when the view is opened again
+  await expect(page.locator("body")).toHaveClass(/feedback-marks-off/);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Feedback in the text" }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("body")).toHaveClass(/feedback-marks-off/);
+});
+
+test("a reader switches feedback's marks off in a copy, and they stay off there", async ({
+  page,
+}) => {
+  // given: a copy of a written book, a passage commented on
+  await aCopyOfABookWritten(page, "ReadingMarksOff");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await page.reload();
+  await expect.poll(painted(page, "feedback-draft")).toEqual(["boats"]);
+
+  // when: the marks are switched off
+  const switched = page.getByRole("button", { name: "Feedback in the text" });
+  const status = (await page
+    .getByRole("contentinfo", { name: "Status" })
+    .boundingBox())!;
+  expect(
+    (await switched.boundingBox())!.y,
+    "it sits in the status bar, as in the writing view",
+  ).toBeGreaterThanOrEqual(status.y);
+  await switched.click();
+
+  // then: they are out of sight, and stay so when the copy is read again
+  await expect(page.locator("body")).toHaveClass(/feedback-marks-off/);
+  await page.reload();
+  await expect(book(page)).toContainText("Everybody bought the fish.");
+  await expect(page.locator("body")).toHaveClass(/feedback-marks-off/);
+
+  // when: the live work is read
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /The work as it is now/ })
+    .click();
+
+  // then: nothing is put out of sight there, as it offers no switch
+  await expect(page).toHaveURL(/\/read$/);
+  await expect(page.locator("body")).not.toHaveClass(/feedback-marks-off/);
 });

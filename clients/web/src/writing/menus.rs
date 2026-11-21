@@ -21,23 +21,33 @@ use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
-/// A flag beside a scene with comments not done yet on it, counting them; it opens the scene's feedback in its inspector.
-fn feedback_flag(scene: SceneId, state: WriteViewState) -> impl IntoView {
+/// A flag beside a scene, or a section's heading, with comments not done yet on it, counting them;
+/// it opens its feedback in the inspector. A section counts its own alone, as its scenes are flagged on their own.
+fn feedback_flag(inspected: Inspected, state: WriteViewState) -> impl IntoView {
     let not_done = use_context::<PendingHere>();
     let counted = {
-        let scene = scene.clone();
+        let inspected = inspected.clone();
 
-        Memo::new(move |_| not_done.map_or(0, |not_done| not_done.on_scene(&scene)))
+        Memo::new(move |_| {
+            not_done.map_or(0, |not_done| match &inspected {
+                Inspected::Scene(scene) => not_done.on_scene(scene),
+                Inspected::Section(section) => not_done.on_section(section),
+            })
+        })
+    };
+    let told = match inspected {
+        Inspected::Scene(_) => "feedback-flag",
+        Inspected::Section(_) => "feedback-flag-section",
     };
 
     move || {
         let count = counted.get();
-        let scene = scene.clone();
+        let inspected = inspected.clone();
 
         (count > 0).then(|| {
             let mut args = FluentArgs::new();
             args.set("count", count);
-            let said = speech::say_with("feedback-flag", &args);
+            let said = speech::say_with(told, &args);
 
             html::button()
                 .r#type("button")
@@ -45,7 +55,7 @@ fn feedback_flag(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 .attr("aria-label", said.clone())
                 .attr("title", said)
                 .on(ev::click, move |_| {
-                    state.inspector.follow(Inspected::Scene(scene.clone()));
+                    state.inspector.follow(inspected.clone());
                     state.inspector.drawer().open();
                 })
                 .child((
@@ -88,7 +98,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 scene_label(scene.clone(), state).into_any()
             }
         },
-        feedback_flag(flagged, state),
+        feedback_flag(Inspected::Scene(flagged), state),
         margin_menu(
             "scene-actions",
             Face::Icon(Icon::More),
@@ -132,47 +142,51 @@ pub fn section_margin(
     state: WriteViewState,
 ) -> impl IntoView {
     let marked = Marked::Section(section.clone());
+    let flagged = section.clone();
 
     html::div()
         .class(move || format!("heading-margin level-{}", heading::level_of(depth.get())))
-        .child((margin_menu(
-            "section-actions",
-            Face::Icon(Icon::More),
-            (marked, Menu::Changing),
-            state,
-            move || {
-                let nested = section.clone();
-                let lifted = section.clone();
-                let removed = section.clone();
+        .child((
+            feedback_flag(Inspected::Section(flagged), state),
+            margin_menu(
+                "section-actions",
+                Face::Icon(Icon::More),
+                (marked, Menu::Changing),
+                state,
+                move || {
+                    let nested = section.clone();
+                    let lifted = section.clone();
+                    let removed = section.clone();
 
-                (
-                    state.structure.can_nest(&section).then(|| {
-                        keyed_item("menu-nest", ("Tab", "keys-tab"), move || {
-                            state.margin.close();
-                            heading::nest(nested.clone(), state);
-                        })
-                    }),
-                    state.structure.can_lift(&section).then(|| {
-                        keyed_item("menu-lift", ("Shift+Tab", "keys-shift-tab"), move || {
-                            state.margin.close();
-                            heading::lift(lifted.clone(), state);
-                        })
-                    }),
-                    item("menu-remove-section", false, move || {
-                        let holds_scenes =
-                            untrack(|| !state.structure.scenes_of(&removed).is_empty());
+                    (
+                        state.structure.can_nest(&section).then(|| {
+                            keyed_item("menu-nest", ("Tab", "keys-tab"), move || {
+                                state.margin.close();
+                                heading::nest(nested.clone(), state);
+                            })
+                        }),
+                        state.structure.can_lift(&section).then(|| {
+                            keyed_item("menu-lift", ("Shift+Tab", "keys-shift-tab"), move || {
+                                state.margin.close();
+                                heading::lift(lifted.clone(), state);
+                            })
+                        }),
+                        item("menu-remove-section", false, move || {
+                            let holds_scenes =
+                                untrack(|| !state.structure.scenes_of(&removed).is_empty());
 
-                        if holds_scenes {
-                            state.margin.ask(Question::RemoveSection(removed.clone()));
-                        } else {
-                            state.margin.close();
-                            state.structure.remove(removed.clone());
-                        }
-                    }),
-                )
-                    .into_any()
-            },
-        ),))
+                            if holds_scenes {
+                                state.margin.ask(Question::RemoveSection(removed.clone()));
+                            } else {
+                                state.margin.close();
+                                state.structure.remove(removed.clone());
+                            }
+                        }),
+                    )
+                        .into_any()
+                },
+            ),
+        ))
 }
 
 pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {

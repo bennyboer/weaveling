@@ -5,6 +5,7 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 
+use crate::feedback::pending::PendingHere;
 use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
@@ -42,6 +43,11 @@ pub fn waiting_scene(scene: SceneId, state: WriteViewState) -> impl IntoView {
 
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
+    if let Some(pending) = use_context::<PendingHere>() {
+        pending.watch(scene.clone());
+        let watched = scene.clone();
+        on_cleanup(move || pending.let_go_of(&watched));
+    }
     let open_project = expect_context::<OpenProject>();
     let speaking = expect_context::<Speech>();
     let marks = Memo::new(move |_| open_project.quotation_marks());

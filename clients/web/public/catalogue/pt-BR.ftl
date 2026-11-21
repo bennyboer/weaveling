@@ -154,9 +154,9 @@ refused-feedback-comment-too-long = Um comentário pode ter no máximo { $max } 
 refused-feedback-comment-link-unsafe = Um link só pode levar a uma página da web ou a um endereço de e-mail.
 refused-feedback-passage-empty = Selecione pelo menos um caractere do texto para comentar.
 refused-feedback-not-yours = Só quem escreveu este comentário pode alterá-lo.
-refused-feedback-too-many-counted = No máximo { $max } cópias são contadas de uma vez.
-refused-feedback-place-unnamed = Os comentários são pedidos sobre uma cena ou sobre uma seção, apenas uma delas.
-refused-feedback-subject-unknown = Não é possível dar retorno sobre isso.
+refused-feedback-too-many-counted = No máximo { $max } são pedidos de uma vez.
+refused-feedback-place-unnamed = Os comentários são pedidos sobre cópias de leitura, num projeto, sobre cenas ou sobre seções, apenas um deles.
+refused-feedback-status-unknown = Os comentários estão pendentes ou feitos; nada mais é pedido.
 refused-board-id-invalid = Isso não é um ID de quadro válido.
 refused-idea-already-pinned = Esta ideia já está no quadro.
 refused-idea-not-pinned = Esta ideia não está no quadro.
@@ -454,6 +454,13 @@ feedback-flag = { $count ->
         [one] 1 comentário pendente sobre esta cena
        *[other] { $count } comentários pendentes sobre esta cena
     }
+feedback-flag-section = { $count ->
+        [one] 1 comentário pendente sobre esta seção
+       *[other] { $count } comentários pendentes sobre esta seção
+    }
+feedback-marks = Comentários no texto
+feedback-marks-hide = Ocultar os comentários no texto
+feedback-marks-show = Mostrar os comentários no texto
 feedback-open-in-copy = Abrir na cópia
 feedback-show-done = Mostrar feitos · { $count }
 feedback-hide-done = Ocultar feitos

@@ -154,9 +154,9 @@ refused-feedback-comment-too-long = Un commentaire peut compter au plus { $max }
 refused-feedback-comment-link-unsafe = Un lien ne peut mener qu’à une page web ou à une adresse e-mail.
 refused-feedback-passage-empty = Sélectionnez au moins un caractère du texte pour le commenter.
 refused-feedback-not-yours = Seule la personne qui a écrit ce commentaire peut le modifier.
-refused-feedback-too-many-counted = Au plus { $max } copies sont comptées à la fois.
-refused-feedback-place-unnamed = Les retours se demandent sur une scène ou sur une section, l’une des deux.
-refused-feedback-subject-unknown = Impossible de donner un retour là-dessus.
+refused-feedback-too-many-counted = Au plus { $max } sont demandés à la fois.
+refused-feedback-place-unnamed = Les retours se demandent sur des copies de lecture, dans un projet, sur des scènes ou sur des sections, l’un d’eux.
+refused-feedback-status-unknown = Les retours sont à traiter ou traités ; rien d’autre ne se demande.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
 refused-idea-not-pinned = Cette idée n’est pas sur le tableau.
@@ -454,6 +454,13 @@ feedback-flag = { $count ->
         [one] 1 commentaire à traiter sur cette scène
        *[other] { $count } commentaires à traiter sur cette scène
     }
+feedback-flag-section = { $count ->
+        [one] 1 commentaire à traiter sur cette section
+       *[other] { $count } commentaires à traiter sur cette section
+    }
+feedback-marks = Retours dans le texte
+feedback-marks-hide = Masquer les retours dans le texte
+feedback-marks-show = Afficher les retours dans le texte
 feedback-open-in-copy = Ouvrir dans la copie
 feedback-show-done = Afficher les traités · { $count }
 feedback-hide-done = Masquer les traités

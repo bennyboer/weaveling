@@ -12,9 +12,6 @@ pub enum FeedbackError {
     FeedbackNotThere,
     #[error("only whoever wrote a piece of feedback may change it")]
     NotYours,
-    #[error(
-        "at most {} subjects are counted at once",
-        crate::feedback::COUNTED_AT_ONCE
-    )]
+    #[error("at most {} are asked for at once", crate::feedback::COUNTED_AT_ONCE)]
     TooManyCounted,
 }

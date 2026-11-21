@@ -1,3 +1,5 @@
+use std::slice;
+
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
@@ -40,8 +42,12 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
         let inspected = inspected.clone();
         leptos::task::spawn_local(async move {
             let found = match &inspected {
-                Inspected::Scene(scene) => service::given_on_scene(scene).await,
-                Inspected::Section(section) => service::given_on_section(section).await,
+                Inspected::Scene(scene) => {
+                    service::submitted(service::On::Scenes(slice::from_ref(scene)), None).await
+                }
+                Inspected::Section(section) => {
+                    service::submitted(service::On::Sections(slice::from_ref(section)), None).await
+                }
             };
             if let Ok(found) = found {
                 _ = given.try_set(found);

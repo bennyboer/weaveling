@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use feedback_contract::{
     AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, DraftFeedbackRequest, FeedbackCountDTO,
-    FeedbackDTO, PendingDTO, RewriteFeedbackRequest, kind,
+    FeedbackDTO, PendingDTO, RewriteFeedbackRequest,
 };
 use gloo_net::http::Request;
 
@@ -17,23 +17,10 @@ use crate::scenes::model::SceneId;
 const FEEDBACK: &str = "/api/feedback";
 const SUBJECT: &str = "comment";
 
-/// The feedback given on a reading copy that you may see, oldest first.
-pub async fn on_reading_copy(copy: &ReadingCopyId) -> Result<Vec<Feedback>, ApiError> {
-    let response = http::sent(Request::get(&format!(
-        "{FEEDBACK}?kind={}&id={copy}",
-        kind::READING_COPY
-    )))
-    .await?;
-    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
-
-    found.into_iter().map(Feedback::try_from).collect()
-}
-
 /// Submits your drafts on a reading copy together, so everyone in its project sees them; answers with what was submitted.
 pub async fn submit_on_reading_copy(copy: &ReadingCopyId) -> Result<Vec<Feedback>, ApiError> {
     let response = http::sent(Request::post(&format!(
-        "{FEEDBACK}/submitted?kind={}&id={copy}",
-        kind::READING_COPY
+        "{FEEDBACK}/submitted?reading_copies={copy}"
     )))
     .await?;
     let submitted: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
@@ -54,8 +41,7 @@ pub async fn counted_on_reading_copies(
             .collect::<Vec<_>>()
             .join(",");
         let response = http::sent(Request::get(&format!(
-            "{FEEDBACK}/counts?kind={}&ids={ids}",
-            kind::READING_COPY
+            "{FEEDBACK}/counts?reading_copies={ids}"
         )))
         .await?;
         let told: Vec<FeedbackCountDTO> = http::parsed(response, SUBJECT).await?;
@@ -73,20 +59,64 @@ pub async fn counted_on_reading_copies(
     Ok(counted)
 }
 
-/// The feedback given on a scene, in every copy of it, oldest first.
-pub async fn given_on_scene(scene: &SceneId) -> Result<Vec<Feedback>, ApiError> {
-    let response = http::sent(Request::get(&format!("{FEEDBACK}/on?scene={scene}"))).await?;
-    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
-
-    found.into_iter().map(Feedback::try_from).collect()
+/// Where feedback is asked for: some reading copies; or, in every copy, some scenes, on them or passages in them,
+/// or some sections themselves.
+pub enum On<'a> {
+    ReadingCopies(&'a [ReadingCopyId]),
+    Scenes(&'a [SceneId]),
+    Sections(&'a [SectionId]),
 }
 
-/// The feedback given on a section itself, in every copy of it, oldest first.
-pub async fn given_on_section(section: &SectionId) -> Result<Vec<Feedback>, ApiError> {
-    let response = http::sent(Request::get(&format!("{FEEDBACK}/on?section={section}"))).await?;
-    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+impl On<'_> {
+    /// The places' name in the query, and their ids.
+    fn asked(&self) -> (&'static str, Vec<String>) {
+        fn ids<T: ToString>(listed: &[T]) -> Vec<String> {
+            listed.iter().map(ToString::to_string).collect()
+        }
 
-    found.into_iter().map(Feedback::try_from).collect()
+        match self {
+            Self::ReadingCopies(copies) => ("reading_copies", ids(copies)),
+            Self::Scenes(scenes) => ("scenes", ids(scenes)),
+            Self::Sections(sections) => ("sections", ids(sections)),
+        }
+    }
+}
+
+/// What the feedback answers on these places, asked in as many questions as it looks on places at once.
+async fn listed(route: &str, on: &On<'_>, only: &str) -> Result<Vec<Feedback>, ApiError> {
+    let (named, ids) = on.asked();
+    let mut found = Vec::new();
+    for batch in ids.chunks(COUNTED_AT_ONCE) {
+        let response = http::sent(Request::get(&format!(
+            "{FEEDBACK}/{route}?{named}={}{only}",
+            batch.join(",")
+        )))
+        .await?;
+        let told: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+        for piece in told {
+            found.push(Feedback::try_from(piece)?);
+        }
+    }
+
+    Ok(found)
+}
+
+/// Your own drafts where asked, oldest first, which only you see until you submit them.
+pub async fn drafts(on: On<'_>) -> Result<Vec<Feedback>, ApiError> {
+    listed("drafts", &on, "").await
+}
+
+/// The feedback submitted where asked, in every copy, oldest first, and if asked only what is pending or done (`status`);
+/// as many scenes or sections to a question as the feedback looks on at once.
+pub async fn submitted(
+    on: On<'_>,
+    status: Option<&'static str>,
+) -> Result<Vec<Feedback>, ApiError> {
+    let only = status
+        .map(|status| format!("&status={status}"))
+        .unwrap_or_default();
+
+    listed("on", &on, &only).await
 }
 
 /// How much feedback given is not done yet in a project, in every copy: on each scene, and on each section itself.

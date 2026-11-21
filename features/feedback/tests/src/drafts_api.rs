@@ -183,13 +183,20 @@ async fn a_blank_draft_an_unsafe_link_or_a_passage_holding_nothing_is_refused() 
 }
 
 #[tokio::test]
-async fn feedback_is_asked_for_on_a_kind_of_subject_it_knows() {
-    // when: the feedback on a kind of subject nobody gives feedback on is asked for
-    let response = as_(&feedback(), "account_ada")
-        .get("/feedback?kind=grocery_list&id=list_1")
-        .await;
+async fn drafts_are_asked_for_by_where_they_lie_and_are_neither_pending_nor_done() {
+    // given: a draft of ada's on the copy
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let draft = drafted(&ada, a_passage(), saying("Mine.")).await;
 
-    // then: it is refused as unknown
-    response.assert_status(StatusCode::BAD_REQUEST);
-    assert_eq!(refusal(&response), refused::SUBJECT_UNKNOWN);
+    // expect: she finds it on its scene as on its copy
+    let on_scene = ada.get("/feedback/drafts?scenes=scene_harbour").await;
+    on_scene.assert_status_ok();
+    assert_eq!(on_scene.json::<Vec<FeedbackDTO>>(), vec![draft]);
+    // and: drafts asked for by status are refused, as they have none
+    let by_status = ada
+        .get("/feedback/drafts?scenes=scene_harbour&status=pending")
+        .await;
+    by_status.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&by_status), refused::STATUS_UNKNOWN);
 }

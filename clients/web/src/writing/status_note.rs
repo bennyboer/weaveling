@@ -4,6 +4,8 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use crate::feedback::marks;
+use crate::feedback::marks::MarksWhileWriting;
 use crate::icons;
 use crate::icons::Icon;
 use crate::speech;
@@ -46,6 +48,8 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
             .attr("aria-pressed", move || state.focus.is_on().to_string())
             .on(ev::click, move |_| state.focus.toggle())
             .child(icons::mark(Icon::Focus)),
+        use_context::<MarksWhileWriting>()
+            .map(|MarksWhileWriting(shown)| marks::marks_switch(shown)),
         html::button()
             .r#type("button")
             .class("open-settings")

@@ -68,13 +68,19 @@ pub async fn drafted(
     response.json::<FeedbackDTO>()
 }
 
+/// What one sees on the copy: everyone's feedback submitted, then one's own drafts, as the reading view asks for both.
 pub async fn on_the_copy(server: &TestServer) -> Vec<FeedbackDTO> {
-    let response = server
-        .get(&format!("/feedback?kind=reading_copy&id={READING_COPY}"))
-        .await;
-    response.assert_status_ok();
+    let mut seen = Vec::new();
+    for asked in [
+        format!("/feedback/on?reading_copies={READING_COPY}"),
+        format!("/feedback/drafts?reading_copies={READING_COPY}"),
+    ] {
+        let response = server.get(&asked).await;
+        response.assert_status_ok();
+        seen.extend(response.json::<Vec<FeedbackDTO>>());
+    }
 
-    response.json::<Vec<FeedbackDTO>>()
+    seen
 }
 
 pub fn refusal(response: &TestResponse) -> Value {

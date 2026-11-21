@@ -96,6 +96,34 @@ impl From<PendingDTO> for Pending {
     }
 }
 
+/// A passage feedback is pending on, as its copy froze it: the scene, the path to its block, and the words it quotes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingPassage {
+    pub scene: SceneId,
+    pub block_path: Vec<u32>,
+    pub quote: String,
+}
+
+impl PendingPassage {
+    /// The passage a piece of feedback is about; none for one about a scene, a section or the whole.
+    pub fn of(piece: &Feedback) -> Option<Self> {
+        let About::ReadingCopy { place, .. } = &piece.about;
+        match place {
+            ReadingCopyPlace::Passage {
+                scene,
+                block_path,
+                quote,
+                ..
+            } => Some(Self {
+                scene: scene.clone(),
+                block_path: block_path.clone(),
+                quote: quote.clone(),
+            }),
+            _ => None,
+        }
+    }
+}
+
 /// How much feedback one subject holds, as you count it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct FeedbackCount {

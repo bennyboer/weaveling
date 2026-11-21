@@ -13,9 +13,10 @@ pub enum AboutDTO {
     },
 }
 
-/// The kinds of subject feedback is given on, as `AboutDTO` and the listing name them.
-pub mod kind {
-    pub const READING_COPY: &str = "reading_copy";
+/// What feedback given is, as `GET /feedback/on?status=` asks for it.
+pub mod status {
+    pub const PENDING: &str = "pending";
+    pub const DONE: &str = "done";
 }
 
 /// Where in a reading copy a piece of feedback is.
@@ -117,7 +118,7 @@ pub struct PendingDTO {
     pub sections: BTreeMap<String, u32>,
 }
 
-/// The most subjects `GET /feedback/counts` counts at once.
+/// The most subjects `GET /feedback/counts` counts, and the most scenes `GET /feedback/on` looks on, at once.
 pub const COUNTED_AT_ONCE: usize = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -138,9 +139,9 @@ pub mod refused {
     pub const COMMENT_LINK_UNSAFE: &str = "feedback-comment-link-unsafe";
     pub const PASSAGE_EMPTY: &str = "feedback-passage-empty";
     pub const NOT_YOURS: &str = "feedback-not-yours";
-    pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
     pub const TOO_MANY_COUNTED: &str = "feedback-too-many-counted";
     pub const PLACE_UNNAMED: &str = "feedback-place-unnamed";
+    pub const STATUS_UNKNOWN: &str = "feedback-status-unknown";
 
     pub const EVERY: [&str; 9] = [
         COMMENT_BLANK,
@@ -149,8 +150,8 @@ pub mod refused {
         COMMENT_LINK_UNSAFE,
         PASSAGE_EMPTY,
         NOT_YOURS,
-        SUBJECT_UNKNOWN,
         TOO_MANY_COUNTED,
         PLACE_UNNAMED,
+        STATUS_UNKNOWN,
     ];
 }

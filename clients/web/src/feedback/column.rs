@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::slice;
 use std::time::Duration;
 
 use fluent_bundle::FluentArgs;
@@ -198,7 +199,15 @@ pub fn on_reading_copy(
     {
         let copy = copy.clone();
         leptos::task::spawn_local(async move {
-            match service::on_reading_copy(&copy).await {
+            let on = || service::On::ReadingCopies(slice::from_ref(&copy));
+            let found = match service::submitted(on(), None).await {
+                Ok(mut found) => service::drafts(on()).await.map(|drafts| {
+                    found.extend(drafts);
+                    found
+                }),
+                Err(failure) => Err(failure),
+            };
+            match found {
                 Ok(found) => _ = column.feedback.try_set(found),
                 Err(failure) => _ = column.failed.try_set(Some(failure)),
             }
