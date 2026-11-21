@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use fluent_bundle::FluentArgs;
 use leptos::portal::Portal;
 use leptos::prelude::*;
@@ -15,11 +17,13 @@ use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
 use crate::moment;
+use crate::outline::model::SectionId;
 use crate::problem;
 use crate::readings;
 use crate::readings::model::Book;
 use crate::readings::reading_copies::ReadingCopyId;
 use crate::readings::view::safe_link;
+use crate::scenes::model::SceneId;
 use crate::speech;
 
 pub const FEEDBACK: &str = "reading-feedback";
@@ -70,6 +74,38 @@ impl Commenting {
     /// Whether you have a draft about this very place, so what offers to comment on it can say so.
     pub fn drafted_on(self, place: &ReadingCopyPlace) -> bool {
         self.draft_on(place).is_some()
+    }
+
+    /// How many comments not done yet lie in each section of the book: on the section itself, or on a scene of it or a passage in one.
+    pub fn not_done_by_section(self, book: &Book) -> HashMap<SectionId, usize> {
+        let section_of: HashMap<&SceneId, &SectionId> = book
+            .sections
+            .iter()
+            .flat_map(|outlined| {
+                outlined
+                    .scenes
+                    .iter()
+                    .map(move |scene| (scene, &outlined.section))
+            })
+            .collect();
+        let mut counted = HashMap::new();
+        self.feedback.with(|feedback| {
+            for piece in feedback.iter().filter(|piece| !piece.draft && !piece.done) {
+                let About::ReadingCopy { place, .. } = &piece.about;
+                let section = match place {
+                    ReadingCopyPlace::Section(section) => Some(section),
+                    ReadingCopyPlace::Scene(scene) | ReadingCopyPlace::Passage { scene, .. } => {
+                        section_of.get(scene).copied()
+                    }
+                    ReadingCopyPlace::Whole => None,
+                };
+                if let Some(section) = section {
+                    *counted.entry(section.clone()).or_insert(0) += 1;
+                }
+            }
+        });
+
+        counted
     }
 
     /// Your first draft about this very place, if any.
@@ -140,7 +176,27 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
                 .collect::<Vec<_>>()
         })
     });
-    marked_in_the_text(drafts, book);
+    marked_in_the_text(DRAFTS_IN_THE_TEXT, drafts, book);
+    let given_not_done = Memo::new(move |_| {
+        column.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .filter(|piece| !piece.draft && !piece.done)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
+    let given_done = Memo::new(move |_| {
+        column.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .filter(|piece| !piece.draft && piece.done)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
+    marked_in_the_text(GIVEN_IN_THE_TEXT, given_not_done, book);
+    marked_in_the_text(DONE_IN_THE_TEXT, given_done, book);
     let given = Memo::new(move |_| {
         column.feedback.with(|feedback| {
             feedback
@@ -455,15 +511,23 @@ fn by_reader(given: Memo<Vec<Feedback>>, column: Column) -> impl IntoView {
         .build())
 }
 
-/// The name the drafts' passages are painted under in the text, as `::highlight(feedback-draft)` styles them.
+/// The names the passages of feedback are painted under in the text, as `::highlight(name)` styles them:
+/// your drafts, the feedback given and not done yet, and what is done.
 const DRAFTS_IN_THE_TEXT: &str = "feedback-draft";
+const GIVEN_IN_THE_TEXT: &str = "feedback-given";
+const DONE_IN_THE_TEXT: &str = "feedback-done";
 
-/// Marks the passages of your drafts in the copy's text, whenever the drafts or the text change, and no more once the copy is left.
+/// Marks the passages of some feedback in the copy's text under a name, whenever that feedback or the text change,
+/// and no more once the copy is left.
 /// They are painted, not wrapped, so nothing of the text as it is drawn is touched.
-fn marked_in_the_text(drafts: Memo<Vec<Feedback>>, book: RwSignal<Option<Book>>) {
+fn marked_in_the_text(
+    name: &'static str,
+    pieces: Memo<Vec<Feedback>>,
+    book: RwSignal<Option<Book>>,
+) {
     Effect::new(move |_| {
-        let places: Vec<ReadingCopyPlace> = drafts.with(|drafts| {
-            drafts
+        let places: Vec<ReadingCopyPlace> = pieces.with(|pieces| {
+            pieces
                 .iter()
                 .map(|draft| {
                     let About::ReadingCopy { place, .. } = &draft.about;
@@ -478,13 +542,13 @@ fn marked_in_the_text(drafts: Memo<Vec<Feedback>>, book: RwSignal<Option<Book>>)
                 .filter_map(readings::pointing::words_of)
                 .collect();
             if words.is_empty() {
-                readings::pointing::unhighlighted(DRAFTS_IN_THE_TEXT);
+                readings::pointing::unhighlighted(name);
             } else {
-                readings::pointing::highlighted(DRAFTS_IN_THE_TEXT, &words);
+                readings::pointing::highlighted(name, &words);
             }
         });
     });
-    on_cleanup(|| readings::pointing::unhighlighted(DRAFTS_IN_THE_TEXT));
+    on_cleanup(move || readings::pointing::unhighlighted(name));
 }
 
 /// A draft being started, about what it says above the field.

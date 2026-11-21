@@ -384,6 +384,10 @@ bring-back-no-match = Ninguna escena coincide.
 
 contents-unfold-all = Desplegar todo
 contents-fold-all = Plegar todo
+contents-not-done = { $count ->
+        [one] 1 comentario pendiente
+       *[other] { $count } comentarios pendientes
+    }
 contents-unfold = Desplegar { $section }
 reading-reading = Leyendo
 reading-live = La obra tal como está ahora

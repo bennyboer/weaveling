@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use live_contract::FrameDTO;
@@ -205,7 +206,7 @@ fn read(
     };
 
     (
-        contents(book, rail),
+        contents(book, rail, commenting),
         html::div().class("reading-view").child((
             bar,
             html::article().class("book").child((
@@ -243,7 +244,8 @@ fn toggle(
         .child(icons::mark(icon))
 }
 
-/// A section in the contents: how deep it lies, its title, whether sections lie under it, and whether those are folded away.
+/// A section in the contents: how deep it lies, its title, whether sections lie under it, and whether those are folded away;
+/// in a copy, how many comments in it are not done yet, those under it too while it is folded.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Listed {
     section: SectionId,
@@ -251,10 +253,16 @@ struct Listed {
     title: String,
     nests: bool,
     folded: bool,
+    not_done: usize,
 }
 
-/// The contents, as in the writing view: the sections only, each folding away the sections under it, and all of them folded or unfolded at once.
-fn contents(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
+/// The contents, as in the writing view: the sections only, each folding away the sections under it, and all of them folded or unfolded at once;
+/// in a copy, each counts the comments in it not done yet.
+fn contents(
+    book: RwSignal<Option<Book>>,
+    rail: Drawer,
+    commenting: Option<Commenting>,
+) -> impl IntoView {
     let folded = RwSignal::new(HashSet::<SectionId>::new());
     let nesting = Memo::new(move |_| {
         book.with(|held| {
@@ -268,29 +276,42 @@ fn contents(book: RwSignal<Option<Book>>, rail: Drawer) -> impl IntoView {
                 .collect::<HashSet<_>>()
         })
     });
+    let not_done = Memo::new(move |_| {
+        commenting
+            .zip(book.get())
+            .map(|(commenting, book)| commenting.not_done_by_section(&book))
+            .unwrap_or_default()
+    });
     let listed = Memo::new(move |_| {
         let nesting = nesting.get();
-        folded.with(|folded| {
-            book.with(|held| {
-                let mut listed = Vec::new();
-                let mut folded_below: Option<u8> = None;
-                for outlined in held.iter().flat_map(|held| &held.sections) {
-                    if folded_below.is_some_and(|depth| outlined.depth > depth) {
-                        continue;
+        not_done.with(|not_done| {
+            folded.with(|folded| {
+                book.with(|held| {
+                    let mut listed: Vec<Listed> = Vec::new();
+                    let mut folded_below: Option<u8> = None;
+                    for outlined in held.iter().flat_map(|held| &held.sections) {
+                        let counted = not_done.get(&outlined.section).copied().unwrap_or(0);
+                        if folded_below.is_some_and(|depth| outlined.depth > depth) {
+                            if let Some(shut) = listed.last_mut() {
+                                shut.not_done += counted;
+                            }
+                            continue;
+                        }
+                        let nests = nesting.contains(&outlined.section);
+                        let shut = nests && folded.contains(&outlined.section);
+                        folded_below = shut.then_some(outlined.depth);
+                        listed.push(Listed {
+                            section: outlined.section.clone(),
+                            depth: outlined.depth,
+                            title: outlined.title.clone(),
+                            nests,
+                            folded: shut,
+                            not_done: counted,
+                        });
                     }
-                    let nests = nesting.contains(&outlined.section);
-                    let shut = nests && folded.contains(&outlined.section);
-                    folded_below = shut.then_some(outlined.depth);
-                    listed.push(Listed {
-                        section: outlined.section.clone(),
-                        depth: outlined.depth,
-                        title: outlined.title.clone(),
-                        nests,
-                        folded: shut,
-                    });
-                }
 
-                listed
+                    listed
+                })
             })
         })
     });
@@ -382,7 +403,19 @@ fn entry(listed: Listed, folded: RwSignal<HashSet<SectionId>>, rail: Drawer) -> 
                 .r#type("button")
                 .class("rail-entry")
                 .on(ev::click, move |_| go_to(&going, rail))
-                .child(shown),
+                .child((
+                    html::span().class("title").child(shown),
+                    (listed.not_done > 0).then(|| {
+                        let mut args = FluentArgs::new();
+                        args.set("count", listed.not_done);
+
+                        html::span()
+                            .class("not-done")
+                            .attr("aria-label", speech::say_with("contents-not-done", &args))
+                            .attr("title", speech::say_with("contents-not-done", &args))
+                            .child(listed.not_done.to_string())
+                    }),
+                )),
         ))
 }
 

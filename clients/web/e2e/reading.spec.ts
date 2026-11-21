@@ -1933,3 +1933,91 @@ test("your drafts are submitted together, then shown as feedback given, not done
     given.getByRole("heading", { name: "Feedback · 1" }),
   ).toBeVisible();
 });
+
+test("feedback given is marked in the text with a line of its own, and counted in the contents by section", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with feedback given on two passages and a section, and a draft
+  await aCopyOfABookWritten(page, "ReadingGivenMarked");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[scenes.length - 1],
+      block_path: [0],
+      from: 0,
+      to: 9,
+      quote: "Everybody",
+    },
+    "Who is everybody?",
+  );
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Slow start.",
+  );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 10,
+      to: 14,
+      quote: "came",
+    },
+    "Still a draft.",
+  );
+
+  // when: the copy is read again
+  await page.reload();
+  await expect(book(page)).toContainText("Everybody bought the fish.");
+
+  // then: the passages given are marked as given, and the draft as a draft
+  const marked = (name: string) => () =>
+    page.evaluate((name) => {
+      const highlight = (
+        CSS as unknown as { highlights: Map<string, Set<Range>> }
+      ).highlights.get(name);
+
+      return highlight ? [...highlight].map((words) => words.toString()) : [];
+    }, name);
+  await expect.poll(marked("feedback-given")).toEqual(["boats", "Everybody"]);
+  await expect.poll(marked("feedback-draft")).toEqual(["came"]);
+  await expect.poll(marked("feedback-done")).toEqual([]);
+  // and: the contents count what is not done in each section
+  if ((await contentsTab(page).getAttribute("aria-expanded")) === "false") {
+    await contentsTab(page).click();
+  }
+  await expect(contents(page).locator(".rail-entry .not-done")).toHaveText([
+    "2",
+    "1",
+  ]);
+  await expect(
+    contents(page)
+      .getByRole("button", { name: /Morning/ })
+      .locator(".not-done"),
+  ).toHaveAttribute("aria-label", "2 comments not done");
+});

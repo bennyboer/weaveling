@@ -384,6 +384,10 @@ bring-back-no-match = Aucune scène ne correspond.
 
 contents-unfold-all = Tout déplier
 contents-fold-all = Tout replier
+contents-not-done = { $count ->
+        [one] 1 commentaire à traiter
+       *[other] { $count } commentaires à traiter
+    }
 contents-unfold = Déplier { $section }
 reading-reading = Vous lisez
 reading-live = L’œuvre telle qu’elle est maintenant

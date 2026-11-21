@@ -384,6 +384,10 @@ bring-back-no-match = No scene matches.
 
 contents-unfold-all = Unfold all
 contents-fold-all = Fold all
+contents-not-done = { $count ->
+        [one] 1 comment not done
+       *[other] { $count } comments not done
+    }
 contents-unfold = Unfold { $section }
 reading-reading = Reading
 reading-live = The work as it is now

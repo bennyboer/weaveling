@@ -384,6 +384,10 @@ bring-back-no-match = Keine Szene passt.
 
 contents-unfold-all = Alles aufklappen
 contents-fold-all = Alles einklappen
+contents-not-done = { $count ->
+        [one] 1 Kommentar offen
+       *[other] { $count } Kommentare offen
+    }
 contents-unfold = { $section } aufklappen
 reading-reading = Du liest
 reading-live = Das Werk, wie es jetzt ist

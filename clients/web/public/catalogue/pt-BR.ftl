@@ -384,6 +384,10 @@ bring-back-no-match = Nenhuma cena corresponde.
 
 contents-unfold-all = Expandir tudo
 contents-fold-all = Recolher tudo
+contents-not-done = { $count ->
+        [one] 1 comentário pendente
+       *[other] { $count } comentários pendentes
+    }
 contents-unfold = Expandir { $section }
 reading-reading = Lendo
 reading-live = A obra como está agora
