@@ -79,7 +79,18 @@ pub struct Feedback {
     pub comment: Vec<CommentBlock>,
     pub draft: bool,
     pub by_you: bool,
+    /// Who wrote it, by name, where that is known.
+    pub written_by: Option<String>,
     pub written_at: OffsetDateTime,
+    pub submitted_at: Option<OffsetDateTime>,
+    /// Whether what it says was changed after it was submitted.
+    pub edited: bool,
+    /// Whether the authors marked it done.
+    pub done: bool,
+}
+
+fn moment(written: &str) -> Result<OffsetDateTime, ApiError> {
+    OffsetDateTime::parse(written, &Rfc3339).map_err(|_| ApiError::Unexpected)
 }
 
 impl TryFrom<FeedbackDTO> for Feedback {
@@ -92,8 +103,11 @@ impl TryFrom<FeedbackDTO> for Feedback {
             comment: dto.comment.into_iter().map(CommentBlock::from).collect(),
             draft: dto.draft,
             by_you: dto.by_you,
-            written_at: OffsetDateTime::parse(&dto.written_at, &Rfc3339)
-                .map_err(|_| ApiError::Unexpected)?,
+            written_by: dto.written_by,
+            written_at: moment(&dto.written_at)?,
+            submitted_at: dto.submitted_at.as_deref().map(moment).transpose()?,
+            edited: dto.edited,
+            done: dto.done,
         })
     }
 }

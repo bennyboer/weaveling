@@ -17,9 +17,14 @@ pub fn to_dto(feedback: &Feedback, asking: &Agent) -> FeedbackDTO {
             .iter()
             .map(to_comment_block_dto)
             .collect(),
-        draft: feedback.draft,
+        draft: feedback.is_draft(),
         by_you: &feedback.written_by == asking,
+        // TODO: the writer's name, as the feedback feature keeps them from the accounts (step 5)
+        written_by: None,
         written_at: clock::text::serialize(feedback.written_at),
+        submitted_at: feedback.submitted_at.map(clock::text::serialize),
+        edited: feedback.edited,
+        done: feedback.done,
     }
 }
 

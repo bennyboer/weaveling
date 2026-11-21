@@ -23,6 +23,18 @@ pub async fn on_reading_copy(copy: &ReadingCopyId) -> Result<Vec<Feedback>, ApiE
     found.into_iter().map(Feedback::try_from).collect()
 }
 
+/// Submits your drafts on a reading copy together, so everyone in its project sees them; answers with what was submitted.
+pub async fn submit_on_reading_copy(copy: &ReadingCopyId) -> Result<Vec<Feedback>, ApiError> {
+    let response = http::sent(Request::post(&format!(
+        "{FEEDBACK}/submitted?kind={}&id={copy}",
+        kind::READING_COPY
+    )))
+    .await?;
+    let submitted: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    submitted.into_iter().map(Feedback::try_from).collect()
+}
+
 /// Starts a draft, which only you see until you submit it.
 pub async fn draft(about: &About, comment: &[CommentBlock]) -> Result<Feedback, ApiError> {
     let payload = DraftFeedbackRequest {

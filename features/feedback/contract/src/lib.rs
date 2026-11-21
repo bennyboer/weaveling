@@ -83,7 +83,18 @@ pub struct FeedbackDTO {
     /// Whether it is still a draft, which only whoever wrote it sees.
     pub draft: bool,
     pub by_you: bool,
+    /// Who wrote it, by name, where that is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub written_by: Option<String>,
     pub written_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitted_at: Option<String>,
+    /// Whether what it says was changed after it was submitted.
+    #[serde(default, skip_serializing_if = "is_unset")]
+    pub edited: bool,
+    /// Whether the authors marked it done.
+    #[serde(default, skip_serializing_if = "is_unset")]
+    pub done: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

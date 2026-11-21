@@ -416,6 +416,30 @@ feedback-your-comment-placeholder = O que você achou?
 feedback-save-draft = Salvar o rascunho
 feedback-change = Alterar
 feedback-change-draft = Alterar este rascunho
+feedback-submit = { $count ->
+        [one] Enviar 1 comentário
+       *[other] Enviar { $count } comentários
+    }
+feedback-submit-hint = Depois de enviados, todos no projeto os veem.
+feedback-submit-asked = Enviar seus comentários?
+feedback-submit-fate = { $count ->
+        [one] Depois de enviado, todos no projeto veem seu comentário. Você ainda pode alterá-lo ou apagá-lo depois.
+       *[other] Depois de enviados, todos no projeto veem seus { $count } comentários. Você ainda pode alterá-los ou apagá-los depois.
+    }
+feedback-submit-cancel = Ainda não
+feedback-given = Comentários · { $count }
+feedback-given-named = Comentários enviados
+feedback-showing = Mostrar
+feedback-not-done = Pendentes · { $count }
+feedback-done = Feitos · { $count }
+feedback-by-reader = Por leitor
+feedback-none-not-done = Nada mais pendente.
+feedback-none-done = Nada marcado como feito ainda.
+feedback-you = Você
+feedback-a-member = Um membro
+feedback-edited = editado
+feedback-change-comment = Alterar este comentário
+feedback-delete-comment = Apagar este comentário
 copy-extent-book = a obra toda
 copy-extent-sections = { $count ->
         [one] uma seção

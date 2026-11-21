@@ -13,6 +13,7 @@ use serving::Problem;
 pub fn router(feedback: FeedbackCore) -> Router {
     Router::new()
         .route("/feedback", routing::get(feedback_on).post(draft))
+        .route("/feedback/submitted", routing::post(submit_on))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
         .with_state(feedback)
@@ -49,6 +50,24 @@ async fn feedback_on(
 
     Ok(Json(
         found
+            .iter()
+            .map(|piece| transformer::to_dto(piece, &agent))
+            .collect(),
+    ))
+}
+
+async fn submit_on(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<OnSubject>,
+) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
+    let submitted = feedback
+        .submit_on(&asked.subject()?, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(
+        submitted
             .iter()
             .map(|piece| transformer::to_dto(piece, &agent))
             .collect(),

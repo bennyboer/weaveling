@@ -416,6 +416,30 @@ feedback-your-comment-placeholder = Qu’en pensez-vous ?
 feedback-save-draft = Enregistrer le brouillon
 feedback-change = Modifier
 feedback-change-draft = Modifier ce brouillon
+feedback-submit = { $count ->
+        [one] Envoyer 1 commentaire
+       *[other] Envoyer { $count } commentaires
+    }
+feedback-submit-hint = Une fois envoyés, tout le monde dans le projet les voit.
+feedback-submit-asked = Envoyer vos retours ?
+feedback-submit-fate = { $count ->
+        [one] Une fois envoyé, votre commentaire est visible par tout le monde dans le projet. Vous pourrez encore le modifier ou le supprimer ensuite.
+       *[other] Une fois envoyés, vos { $count } commentaires sont visibles par tout le monde dans le projet. Vous pourrez encore les modifier ou les supprimer ensuite.
+    }
+feedback-submit-cancel = Pas encore
+feedback-given = Retours · { $count }
+feedback-given-named = Retours envoyés
+feedback-showing = Afficher
+feedback-not-done = À traiter · { $count }
+feedback-done = Traités · { $count }
+feedback-by-reader = Par lecteur
+feedback-none-not-done = Plus rien à traiter.
+feedback-none-done = Rien n’est encore marqué comme traité.
+feedback-you = Vous
+feedback-a-member = Un membre
+feedback-edited = modifié
+feedback-change-comment = Modifier ce commentaire
+feedback-delete-comment = Supprimer ce commentaire
 copy-extent-book = toute l’œuvre
 copy-extent-sections = { $count ->
         [one] une section

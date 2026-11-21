@@ -416,6 +416,30 @@ feedback-your-comment-placeholder = What do you think?
 feedback-save-draft = Save the draft
 feedback-change = Change
 feedback-change-draft = Change this draft
+feedback-submit = { $count ->
+        [one] Submit 1 comment
+       *[other] Submit { $count } comments
+    }
+feedback-submit-hint = Once submitted, everyone in the project sees them.
+feedback-submit-asked = Submit your feedback?
+feedback-submit-fate = { $count ->
+        [one] Once submitted, your comment is visible to everyone in the project. You can still change or delete it afterwards.
+       *[other] Once submitted, your { $count } comments are visible to everyone in the project. You can still change or delete them afterwards.
+    }
+feedback-submit-cancel = Not yet
+feedback-given = Feedback · { $count }
+feedback-given-named = Feedback given
+feedback-showing = Show
+feedback-not-done = Not done · { $count }
+feedback-done = Done · { $count }
+feedback-by-reader = By reader
+feedback-none-not-done = Nothing left to do.
+feedback-none-done = Nothing marked done yet.
+feedback-you = You
+feedback-a-member = A member
+feedback-edited = edited
+feedback-change-comment = Change this comment
+feedback-delete-comment = Delete this comment
 copy-extent-book = the whole work
 copy-extent-sections = { $count ->
         [one] one section

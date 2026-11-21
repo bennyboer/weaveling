@@ -1,6 +1,9 @@
+use fluent_bundle::FluentArgs;
+use leptos::portal::Portal;
 use leptos::prelude::*;
-use leptos::{IntoView, ev, html};
+use leptos::{IntoView, ev, html, view};
 
+use crate::dialog;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::composer;
@@ -11,6 +14,7 @@ use crate::feedback::service;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
+use crate::moment;
 use crate::problem;
 use crate::readings;
 use crate::readings::model::Book;
@@ -102,8 +106,8 @@ struct Column {
     drawer: Drawer,
 }
 
-/// The feedback on a reading copy, in a drawer on the right: for now your drafts, which only you see,
-/// and a comment on the whole copy started there.
+/// The feedback on a reading copy, in a drawer on the right: your drafts, which only you see until you submit them,
+/// the feedback everyone submitted, and a comment on the whole copy started there.
 pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> impl IntoView {
     let column = Column {
         feedback: commenting.feedback,
@@ -137,6 +141,39 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
         })
     });
     marked_in_the_text(drafts, book);
+    let given = Memo::new(move |_| {
+        column.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .filter(|piece| !piece.draft)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
+    let submitting = Action::new_local({
+        let copy = copy.clone();
+
+        move |_: &()| {
+            let copy = copy.clone();
+
+            async move {
+                match service::submit_on_reading_copy(&copy).await {
+                    Ok(submitted) => column.feedback.update(|feedback| {
+                        for sent in submitted {
+                            if let Some(held) =
+                                feedback.iter_mut().find(|piece| piece.id == sent.id)
+                            {
+                                *held = sent;
+                            }
+                        }
+                    }),
+                    Err(failure) => column.failed.set(Some(failure)),
+                }
+            }
+        }
+    });
+    let any_drafts = Memo::new(move |_| !drafts.with(Vec::is_empty));
+    let any_given = Memo::new(move |_| !given.with(Vec::is_empty));
     let whole = About::ReadingCopy {
         reading_copy: copy,
         place: ReadingCopyPlace::Whole,
@@ -171,39 +208,251 @@ pub fn on_reading_copy(commenting: Commenting, book: RwSignal<Option<Book>>) -> 
                     }
                 },
                 move || column.failed.get().map(problem::problem),
-                move || match drafts.with(Vec::len) {
-                    0 => (column.writing.with(Option::is_none))
-                        .then(|| {
-                            html::p()
-                                .class("nothing-yet")
-                                .child(speech::said("feedback-nothing-yet"))
-                        })
-                        .into_any(),
-                    count => html::section()
-                        .class("drafts")
-                        .attr("aria-label", speech::said("feedback-your-drafts-named"))
-                        .child((
-                            html::div().class("drafts-head").child((
-                                html::b().child(speech::say_about(
-                                    "feedback-your-drafts",
-                                    "count",
-                                    &count.to_string(),
-                                )),
-                                html::span()
-                                    .class("hint")
-                                    .child(speech::said("feedback-drafts-only-you")),
-                            )),
-                            For(ForProps::builder()
-                                .each(move || drafts.get())
-                                .key(|draft| draft.clone())
-                                .children(move |draft| a_draft(draft, column))
-                                .build()),
-                        ))
-                        .into_any(),
+                move || {
+                    let nothing = drafts.with(Vec::is_empty)
+                        && given.with(Vec::is_empty)
+                        && column.writing.with(Option::is_none);
+
+                    nothing.then(|| {
+                        html::p()
+                            .class("nothing-yet")
+                            .child(speech::said("feedback-nothing-yet"))
+                    })
                 },
+                move || {
+                    any_drafts
+                        .get()
+                        .then(|| your_drafts(drafts, submitting, column))
+                },
+                move || any_given.get().then(|| given_feedback(given, column)),
             ),
         },
     )
+}
+
+/// Your drafts in a dashed box, with the button that submits them all together.
+fn your_drafts(
+    drafts: Memo<Vec<Feedback>>,
+    submitting: Action<(), ()>,
+    column: Column,
+) -> impl IntoView {
+    let asking = RwSignal::new(false);
+
+    html::section()
+        .class("drafts")
+        .attr("aria-label", speech::said("feedback-your-drafts-named"))
+        .child((
+            html::div().class("drafts-head").child((
+                html::b().child(move || {
+                    speech::say_about(
+                        "feedback-your-drafts",
+                        "count",
+                        &drafts.with(Vec::len).to_string(),
+                    )
+                }),
+                html::span()
+                    .class("hint")
+                    .child(speech::said("feedback-drafts-only-you")),
+            )),
+            For(ForProps::builder()
+                .each(move || drafts.get())
+                .key(|draft| draft.clone())
+                .children(move |draft| a_note(draft, column))
+                .build()),
+            html::button()
+                .r#type("button")
+                .class("submit")
+                .disabled(move || submitting.pending().get())
+                .on(ev::click, move |_| asking.set(true))
+                .child(move || counted("feedback-submit", drafts.with(Vec::len))),
+            html::p()
+                .class("hint")
+                .child(speech::said("feedback-submit-hint")),
+            move || {
+                asking.get().then(|| {
+                    view! { <Portal>{submitting_asked(drafts, submitting, asking)}</Portal> }
+                })
+            },
+        ))
+}
+
+/// Asks before your drafts are submitted, as once submitted everyone in the project sees them.
+fn submitting_asked(
+    drafts: Memo<Vec<Feedback>>,
+    submitting: Action<(), ()>,
+    asking: RwSignal<bool>,
+) -> impl IntoView {
+    let close = move || asking.set(false);
+
+    dialog::modal(
+        Signal::derive(speech::said("feedback-submit-asked")),
+        "submit-feedback",
+        close,
+        (
+            html::p().child(move || counted("feedback-submit-fate", drafts.with(Vec::len))),
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| close())
+                    .child(speech::said("feedback-submit-cancel")),
+                html::button()
+                    .r#type("button")
+                    .class("primary")
+                    .on(ev::click, move |_| {
+                        close();
+                        submitting.dispatch(());
+                    })
+                    .child(move || counted("feedback-submit", drafts.with(Vec::len))),
+            )),
+        ),
+    )
+}
+
+/// A message told with a count, so the language may choose its plural.
+fn counted(message: &str, count: usize) -> String {
+    let mut args = FluentArgs::new();
+    args.set("count", count);
+
+    speech::say_with(message, &args)
+}
+
+/// How the feedback everyone submitted is shown: what is left to do, what is done, or each reader's together.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Showing {
+    NotDone,
+    Done,
+    ByReader,
+}
+
+/// The feedback everyone submitted, under its count, shown as chosen.
+fn given_feedback(given: Memo<Vec<Feedback>>, column: Column) -> impl IntoView {
+    let showing = RwSignal::new(Showing::NotDone);
+    let done =
+        Memo::new(move |_| given.with(|given| given.iter().filter(|piece| piece.done).count()));
+    let choice = move |shown: Showing, said: Signal<String>| {
+        html::button()
+            .r#type("button")
+            .class(("here", move || showing.get() == shown))
+            .attr("aria-pressed", move || (showing.get() == shown).to_string())
+            .on(ev::click, move |_| showing.set(shown))
+            .child(said)
+    };
+
+    html::section()
+        .class("given")
+        .attr("aria-label", speech::said("feedback-given-named"))
+        .child((
+            html::h2().child(move || {
+                speech::say_about("feedback-given", "count", &given.with(Vec::len).to_string())
+            }),
+            html::div()
+                .class("showing")
+                .role("group")
+                .attr("aria-label", speech::said("feedback-showing"))
+                .child((
+                    choice(
+                        Showing::NotDone,
+                        Signal::derive(move || {
+                            counted("feedback-not-done", given.with(Vec::len) - done.get())
+                        }),
+                    ),
+                    choice(
+                        Showing::Done,
+                        Signal::derive(move || counted("feedback-done", done.get())),
+                    ),
+                    choice(
+                        Showing::ByReader,
+                        Signal::derive(|| speech::say("feedback-by-reader")),
+                    ),
+                )),
+            move || match showing.get() {
+                Showing::ByReader => by_reader(given, column).into_any(),
+                kept => {
+                    let wanted = kept == Showing::Done;
+                    let shown = Memo::new(move |_| {
+                        given.with(|given| {
+                            given
+                                .iter()
+                                .filter(|piece| piece.done == wanted)
+                                .cloned()
+                                .collect::<Vec<_>>()
+                        })
+                    });
+
+                    (
+                        move || {
+                            shown.with(Vec::is_empty).then(|| {
+                                html::p()
+                                    .class("nothing-yet")
+                                    .child(speech::said(if wanted {
+                                        "feedback-none-done"
+                                    } else {
+                                        "feedback-none-not-done"
+                                    }))
+                            })
+                        },
+                        notes(shown, column),
+                    )
+                        .into_any()
+                }
+            },
+        ))
+}
+
+fn notes(shown: Memo<Vec<Feedback>>, column: Column) -> impl IntoView {
+    For(ForProps::builder()
+        .each(move || shown.get())
+        .key(|piece| piece.clone())
+        .children(move |piece| a_note(piece, column))
+        .build())
+}
+
+/// Who wrote a piece of feedback, as the column names them: you, their name, or a member where it is not known.
+fn writer_of(piece: &Feedback) -> String {
+    match (&piece.written_by, piece.by_you) {
+        (_, true) => speech::say("feedback-you"),
+        (Some(name), false) => name.clone(),
+        (None, false) => speech::say("feedback-a-member"),
+    }
+}
+
+/// Each reader's feedback together, under their name, in the order they first gave any.
+fn by_reader(given: Memo<Vec<Feedback>>, column: Column) -> impl IntoView {
+    let readers = Memo::new(move |_| {
+        given.with(|given| {
+            let mut readers: Vec<String> = Vec::new();
+            for piece in given {
+                let writer = writer_of(piece);
+                if !readers.contains(&writer) {
+                    readers.push(writer);
+                }
+            }
+
+            readers
+        })
+    });
+
+    For(ForProps::builder()
+        .each(move || readers.get())
+        .key(Clone::clone)
+        .children(move |reader| {
+            let named = reader.clone();
+            let theirs = Memo::new(move |_| {
+                given.with(|given| {
+                    given
+                        .iter()
+                        .filter(|piece| writer_of(piece) == named)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+            });
+
+            html::section()
+                .class("reader")
+                .attr("aria-label", reader.clone())
+                .child((html::h3().child(reader), notes(theirs, column)))
+        })
+        .build())
 }
 
 /// The name the drafts' passages are painted under in the text, as `::highlight(feedback-draft)` styles them.
@@ -274,8 +523,10 @@ fn a_new_draft(about: About, column: Column) -> impl IntoView {
         ))
 }
 
-fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
-    let id = draft.id.clone();
+/// A piece of feedback in the column: a draft of yours, or feedback submitted, with who gave it and when;
+/// your own may be changed and deleted.
+fn a_note(piece: Feedback, column: Column) -> impl IntoView {
+    let id = piece.id.clone();
     let deleting = Action::new_local({
         let id = id.clone();
 
@@ -320,13 +571,20 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
 
         Memo::new(move |_| column.writing.get() == Some(Writing::Changed(id.clone())))
     };
-    let held = draft.comment.clone();
+    let held = piece.comment.clone();
+    let yours = piece.by_you;
+    let (change, delete) = match piece.draft {
+        true => ("feedback-change-draft", "feedback-delete-draft"),
+        false => ("feedback-change-comment", "feedback-delete-comment"),
+    };
 
     html::article()
-        .class("note draft")
+        .class("note")
+        .class(("draft", piece.draft))
         .attr("data-feedback", id.to_string())
         .child((
-            about_shown(&draft.about, column),
+            (!piece.draft).then(|| who(&piece)),
+            about_shown(&piece.about, column),
             move || match being_changed.get() {
                 true => composer::composer(
                     held.clone(),
@@ -340,21 +598,23 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
 
                     (
                         html::div().class("comment").child(comment(&held)),
-                        html::div().class("note-actions").child((
-                            html::button()
-                                .r#type("button")
-                                .attr("aria-label", speech::said("feedback-change-draft"))
-                                .on(ev::click, move |_| {
-                                    column.writing.set(Some(Writing::Changed(id.clone())));
-                                })
-                                .child(speech::said("feedback-change")),
-                            html::button()
-                                .r#type("button")
-                                .attr("aria-label", speech::said("feedback-delete-draft"))
-                                .disabled(move || deleting.pending().get())
-                                .on(ev::click, move |_| _ = deleting.dispatch(()))
-                                .child(speech::said("feedback-delete")),
-                        )),
+                        yours.then(|| {
+                            html::div().class("note-actions").child((
+                                html::button()
+                                    .r#type("button")
+                                    .attr("aria-label", speech::said(change))
+                                    .on(ev::click, move |_| {
+                                        column.writing.set(Some(Writing::Changed(id.clone())));
+                                    })
+                                    .child(speech::said("feedback-change")),
+                                html::button()
+                                    .r#type("button")
+                                    .attr("aria-label", speech::said(delete))
+                                    .disabled(move || deleting.pending().get())
+                                    .on(ev::click, move |_| _ = deleting.dispatch(()))
+                                    .child(speech::said("feedback-delete")),
+                            ))
+                        }),
                     )
                         .into_any()
                 }
@@ -362,7 +622,26 @@ fn a_draft(draft: Feedback, column: Column) -> impl IntoView {
         ))
 }
 
-/// What a piece of feedback is about: the passage it quotes, or the scene, section or whole copy it is on.
+/// Who gave a piece of feedback and when it was submitted, and whether it was edited since.
+fn who(piece: &Feedback) -> impl IntoView + use<> {
+    let writer = writer_of(piece);
+    let initial = writer.chars().next().map(String::from).unwrap_or_default();
+    let when = moment::human_time(piece.submitted_at.unwrap_or(piece.written_at));
+    let edited = piece.edited;
+
+    html::div().class("who").child((
+        html::span()
+            .class("initial")
+            .attr("aria-hidden", "true")
+            .child(initial),
+        html::b().child(writer),
+        html::small().child((
+            when,
+            edited.then(|| (" \u{b7} ", speech::said("feedback-edited"))),
+        )),
+    ))
+}
+
 /// What a piece of feedback is about, as a link to that place in the copy.
 /// Where the feedback lies over the text, it is put away so the place can be seen.
 fn about_shown(about: &About, column: Column) -> impl IntoView + use<> {

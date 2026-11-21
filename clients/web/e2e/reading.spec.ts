@@ -1838,3 +1838,98 @@ test("a reading copy that is not there says so, with none of the project's views
   // then: it is read as before
   await expect(switcher(page)).toContainText("As written");
 });
+
+test("your drafts are submitted together, then shown as feedback given, not done, by reader and edited once changed", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with two drafts of yours
+  await aCopyOfABookWritten(page, "ReadingSubmitted");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await aDraftOn(page, { kind: "whole" }, "Lovely.");
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  const drafts = feedback(page).getByRole("region", { name: "Your drafts" });
+  const given = feedback(page).getByRole("region", { name: "Feedback given" });
+  await expect(drafts.locator(".note")).toHaveCount(2);
+  await expect(given).toHaveCount(0);
+
+  // when: submitting is asked for, then put off
+  await drafts.getByRole("button", { name: "Submit 2 comments" }).click();
+  const asked = page.getByRole("dialog", { name: "Submit your feedback?" });
+  await expect(asked).toContainText("visible to everyone in the project");
+  await asked.getByRole("button", { name: "Not yet" }).click();
+  // then: nothing is submitted
+  await expect(asked).toHaveCount(0);
+  await expect(drafts.locator(".note")).toHaveCount(2);
+
+  // when: they are submitted after all
+  await drafts.getByRole("button", { name: "Submit 2 comments" }).click();
+  await asked.getByRole("button", { name: "Submit 2 comments" }).click();
+
+  // then: no drafts are left, and both are feedback given, not done
+  await expect(drafts).toHaveCount(0);
+  await expect(
+    given.getByRole("heading", { name: "Feedback · 2" }),
+  ).toBeVisible();
+  await expect(
+    given.getByRole("button", { name: "Not done · 2" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(given.locator(".note")).toHaveCount(2);
+  await expect(given.locator(".note").first().locator(".who")).toContainText(
+    "You",
+  );
+  // and: they are kept so, read again
+  const kept = await draftsKept(page);
+  expect(kept.every((piece) => !(piece as { draft: boolean }).draft)).toBe(
+    true,
+  );
+
+  // when: what is done is shown
+  await given.getByRole("button", { name: "Done · 0" }).click();
+  // then: nothing is
+  await expect(given.getByText("Nothing marked done yet.")).toBeVisible();
+  await expect(given.locator(".note")).toHaveCount(0);
+
+  // when: each reader's is shown
+  await given.getByRole("button", { name: "By reader" }).click();
+  // then: both are yours, together
+  const yours = given.getByRole("region", { name: "You" });
+  await expect(yours.locator(".note")).toHaveCount(2);
+
+  // when: one is changed
+  const lovely = yours.locator(".note", { hasText: "Lovely." });
+  await lovely.getByRole("button", { name: "Change this comment" }).click();
+  await expect(commentField(page)).toHaveText("Lovely.");
+  await commentField(page).press("End");
+  await page.keyboard.type(" Truly.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // then: it says so, and is marked edited
+  const changed = yours.locator(".note", { hasText: "Lovely. Truly." });
+  await expect(changed.locator(".who")).toContainText("edited");
+
+  // when: it is deleted
+  await changed.getByRole("button", { name: "Delete this comment" }).click();
+  // then: one is left
+  await expect(
+    given.getByRole("heading", { name: "Feedback · 1" }),
+  ).toBeVisible();
+});
