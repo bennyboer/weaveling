@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use fluent_bundle::FluentArgs;
 use leptos::portal::Portal;
@@ -93,6 +94,16 @@ impl Commenting {
         self.draft_on(place).is_some()
     }
 
+    /// How many comments given are not done yet, in the whole copy.
+    pub fn not_done(self) -> usize {
+        self.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .filter(|piece| !piece.draft && !piece.done)
+                .count()
+        })
+    }
+
     /// How many comments not done yet lie in each section of the book: on the section itself, or on a scene of it or a passage in one.
     pub fn not_done_by_section(self, book: &Book) -> HashMap<SectionId, usize> {
         let section_of: HashMap<&SceneId, &SectionId> = book
@@ -157,6 +168,8 @@ struct Column {
     failed: RwSignal<Option<ApiError>>,
     book: RwSignal<Option<Book>>,
     drawer: Drawer,
+    /// Whether you may mark feedback done: you may write the project, as its authors and owners may.
+    marking: Signal<bool>,
 }
 
 /// The feedback on a reading copy, in a drawer on the right: your drafts, which only you see until you submit them,
@@ -166,6 +179,7 @@ pub fn on_reading_copy(
     commenting: Commenting,
     drawer: Drawer,
     book: RwSignal<Option<Book>>,
+    marking: Signal<bool>,
 ) -> impl IntoView {
     let column = Column {
         feedback: commenting.feedback,
@@ -173,6 +187,7 @@ pub fn on_reading_copy(
         failed: RwSignal::new(None),
         book,
         drawer,
+        marking,
     };
     Effect::new(move |_| {
         if column.writing.with(Option::is_some) {
@@ -657,6 +672,40 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
 
         Memo::new(move |_| column.writing.get() == Some(Writing::Changed(id.clone())))
     };
+    let done = piece.done;
+    let shown_done = RwSignal::new(done);
+    let leaving = RwSignal::new(false);
+    let marking_done = Action::new_local({
+        let id = id.clone();
+
+        move |marked_done: &bool| {
+            let id = id.clone();
+            let marked_done = *marked_done;
+            shown_done.set(marked_done);
+
+            async move {
+                match service::mark_done(&id, marked_done).await {
+                    Ok(marked) => {
+                        let moved = move || {
+                            column.feedback.update(|feedback| {
+                                if let Some(held) = feedback.iter_mut().find(|piece| piece.id == id)
+                                {
+                                    *held = marked;
+                                }
+                            });
+                        };
+                        _ = set_timeout(move || _ = leaving.try_set(true), SETTLED_BEFORE_LEAVING);
+                        _ = set_timeout(moved, SETTLED_BEFORE_LEAVING + LEAVING_FOR);
+                    }
+                    Err(failure) => {
+                        shown_done.set(done);
+                        column.failed.set(Some(failure));
+                    }
+                }
+            }
+        }
+    });
+    let given = !piece.draft;
     let held = piece.comment.clone();
     let yours = piece.by_you;
     let (change, delete) = match piece.draft {
@@ -667,6 +716,7 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
     html::article()
         .class("note")
         .class(("draft", piece.draft))
+        .class(("leaving", move || leaving.get()))
         .attr("data-feedback", id.to_string())
         .child((
             (!piece.draft).then(|| who(&piece)),
@@ -685,28 +735,90 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
 
                     (
                         html::div().class("comment").child(comment(&held)),
-                        yours.then(|| {
-                            html::div().class("note-actions").child((
-                                html::button()
-                                    .r#type("button")
-                                    .attr("aria-label", speech::said(change))
-                                    .on(ev::click, move |_| {
-                                        column.writing.set(Some(Writing::Changed(id.clone())));
-                                    })
-                                    .child(speech::said("feedback-change")),
-                                html::button()
-                                    .r#type("button")
-                                    .attr("aria-label", speech::said(delete))
-                                    .disabled(move || deleting.pending().get())
-                                    .on(ev::click, move |_| _ = deleting.dispatch(()))
-                                    .child(speech::said("feedback-delete")),
-                            ))
-                        }),
+                        html::div().class("note-foot").child((
+                            yours.then(|| {
+                                html::div().class("note-actions").child((
+                                    html::button()
+                                        .r#type("button")
+                                        .attr("aria-label", speech::said(change))
+                                        .on(ev::click, move |_| {
+                                            column.writing.set(Some(Writing::Changed(id.clone())));
+                                        })
+                                        .child(speech::said("feedback-change")),
+                                    html::button()
+                                        .r#type("button")
+                                        .attr("aria-label", speech::said(delete))
+                                        .disabled(move || deleting.pending().get())
+                                        .on(ev::click, move |_| _ = deleting.dispatch(()))
+                                        .child(speech::said("feedback-delete")),
+                                ))
+                            }),
+                            given
+                                .then(|| done_mark(done, shown_done, marking_done, column.marking)),
+                        )),
                     )
                         .into_any()
                 }
             },
         ))
+}
+
+/// How long a piece marked done or not done stays where it is, so its check is seen drawn in, before it fades out,
+/// and how long it takes to fade before it moves to where it is shown now.
+const SETTLED_BEFORE_LEAVING: Duration = Duration::from_millis(650);
+const LEAVING_FOR: Duration = Duration::from_millis(250);
+
+/// Whether a piece of feedback given is done: a circle that marks it so, and back, for whoever may mark it,
+/// and a quiet check for anyone else once it is.
+/// Marked done just now, its check is drawn in and grows a little before it settles.
+fn done_mark(
+    done: bool,
+    shown_done: RwSignal<bool>,
+    marking_done: Action<bool, ()>,
+    marking: Signal<bool>,
+) -> impl IntoView {
+    move || match marking.get() {
+        true => html::button()
+            .r#type("button")
+            .class("done-toggle")
+            .class(("drawing", move || shown_done.get() && !done))
+            .attr("aria-pressed", move || shown_done.get().to_string())
+            .attr("aria-label", speech::said("feedback-mark-done"))
+            .attr(
+                "title",
+                speech::said(if done {
+                    "feedback-mark-not-done-title"
+                } else {
+                    "feedback-mark-done-title"
+                }),
+            )
+            .attr("aria-busy", move || (shown_done.get() != done).to_string())
+            .on(ev::click, move |_| {
+                if shown_done.get_untracked() == done {
+                    marking_done.dispatch(!done);
+                }
+            })
+            .child(check())
+            .into_any(),
+        false => done
+            .then(|| {
+                html::span().class("done-mark").child((
+                    check(),
+                    html::span().child(speech::said("feedback-marked-done")),
+                ))
+            })
+            .into_any(),
+    }
+}
+
+/// A check in a circle, its stroke drawn in by the stylesheet.
+fn check() -> impl IntoView {
+    view! {
+        <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="m8 12.5 3 3 5-6" />
+        </svg>
+    }
 }
 
 /// Who gave a piece of feedback and when it was submitted, and whether it was edited since.

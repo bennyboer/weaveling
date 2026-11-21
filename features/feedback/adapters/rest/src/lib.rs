@@ -19,6 +19,10 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .route("/feedback/counts", routing::get(counted_on))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
+        .route(
+            "/feedback/{feedback}/done",
+            routing::put(marked_done).delete(marked_not_done),
+        )
         .with_state(feedback)
 }
 
@@ -141,6 +145,36 @@ async fn rewrite(
         .map_err(problem_of)?;
 
     Ok(Json(transformer::to_dto(&rewritten, &agent)))
+}
+
+async fn marked_done(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Path(id): Path<String>,
+) -> Result<Json<FeedbackDTO>, Problem> {
+    marked(&feedback, &id, true, &agent).await
+}
+
+async fn marked_not_done(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Path(id): Path<String>,
+) -> Result<Json<FeedbackDTO>, Problem> {
+    marked(&feedback, &id, false, &agent).await
+}
+
+async fn marked(
+    feedback: &FeedbackCore,
+    id: &str,
+    done: bool,
+    agent: &Agent,
+) -> Result<Json<FeedbackDTO>, Problem> {
+    let marked = feedback
+        .mark_done(id, done, agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(transformer::to_dto(&marked, agent)))
 }
 
 async fn delete(

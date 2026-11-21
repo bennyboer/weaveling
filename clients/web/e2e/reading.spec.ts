@@ -588,20 +588,20 @@ test("Escape closes the switcher and hands the focus back to it", async ({
   await expect(switcher(page)).toHaveAttribute("aria-expanded", "false");
 });
 
-test("on a phone, the contents start closed and open from the status bar, with no tab over the text", async ({
+test("on a phone, the contents start closed and open from a bar above the text, with no tab over it", async ({
   page,
 }) => {
   // given: a project's reading view on a phone
   await page.setViewportSize({ width: 375, height: 700 });
   await aReadingView(page, "ReadingPhone");
 
-  // then: no tab lies over the text, the button sits in the status bar
+  // then: no tab lies over the text, the button sits above it, named
   await expect(contentsTab(page)).toBeHidden();
-  const status = page.getByRole("contentinfo", { name: "Status" });
   const toggle = page.getByRole("button", { name: "Contents", exact: true });
-  const bar = (await status.boundingBox())!;
+  const text = (await book(page).boundingBox())!;
   const seen = (await toggle.boundingBox())!;
-  expect(seen.y, "it sits in the status bar").toBeGreaterThanOrEqual(bar.y);
+  expect(seen.y, "it sits above the text").toBeLessThan(text.y);
+  await expect(toggle).toHaveText("Contents");
 
   // and: the contents start closed, as they would lie over the text
   await expect(contents(page)).toBeHidden();
@@ -2137,4 +2137,77 @@ test("the switcher shows how much of each copy's feedback is not done, and your 
       .getByRole("link", { name: /The work as it is now/ })
       .locator(".chip.not-done"),
   ).toHaveCount(0);
+});
+
+test("feedback given is marked done and not done again, its mark in the text and its count following", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with a comment given on a passage in its first scene
+  await aCopyOfABookWritten(page, "ReadingMarkedDone");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  const given = feedback(page).getByRole("region", { name: "Feedback given" });
+  const marked = (name: string) => () =>
+    page.evaluate((name) => {
+      const highlight = (
+        CSS as unknown as { highlights: Map<string, Set<Range>> }
+      ).highlights.get(name);
+
+      return highlight ? [...highlight].map((words) => words.toString()) : [];
+    }, name);
+  await expect.poll(marked("feedback-given")).toEqual(["boats"]);
+
+  // when: it is marked done
+  await given.locator(".note").getByRole("button", { name: "Done" }).click();
+
+  // then: nothing is left to do, and it is done
+  await expect(
+    given.getByRole("button", { name: "Not done · 0" }),
+  ).toBeVisible();
+  await expect(given.getByText("Nothing left to do.")).toBeVisible();
+  await given.getByRole("button", { name: "Done · 1" }).click();
+  await expect(
+    given.locator(".note").getByRole("button", { name: "Done" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // and: its words are marked as done
+  await expect.poll(marked("feedback-done")).toEqual(["boats"]);
+  await expect.poll(marked("feedback-given")).toEqual([]);
+  // and: the contents count nothing left in its section
+  if ((await contentsTab(page).getAttribute("aria-expanded")) === "false") {
+    await contentsTab(page).click();
+  }
+  await expect(contents(page).locator(".rail-entry .not-done")).toHaveCount(0);
+
+  // when: it is marked not done again
+  await given.locator(".note").getByRole("button", { name: "Done" }).click();
+
+  // then: it is left to do again
+  await expect(
+    given.getByRole("button", { name: "Not done · 1" }),
+  ).toBeVisible();
+  await expect.poll(marked("feedback-given")).toEqual(["boats"]);
 });

@@ -433,10 +433,10 @@ body:has(.alarm) .status-note {
   right: 2.5rem;
 }
 
-/* On a phone the note starts after the drawer toggles, its count shrinks, and whether all is saved is told by its mark alone. */
+/* On a phone the note takes the status bar's width, its count shrinks, and whether all is saved is told by its mark alone. */
 @media (width <= 46rem) {
   .status-note {
-    left: 4.5rem;
+    left: 0.75rem;
     justify-content: flex-end;
     gap: 0.75rem;
     min-width: 0;

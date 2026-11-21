@@ -166,25 +166,28 @@ test("a drawer's edge moves with the arrow keys", async ({ page }) => {
   await expect(railHandle(page)).toHaveAttribute("aria-valuenow", "352");
 });
 
-test("on a phone, the drawers open from the status bar, with no tabs over the book", async ({
+test("on a phone, the drawers open from a bar above the book, with no tabs over it", async ({
   page,
 }) => {
   // given: a phone
   await aWritingView(page, 375);
 
-  // then: no drawer tabs lie over the book, the buttons sit in the status bar
+  // then: no drawer tabs lie over the book, the buttons sit above it, each named
   await expect(page.locator(".book-rail-tab")).toBeHidden();
   await expect(page.locator(".scene-tray-tab")).toBeHidden();
-  const status = page.getByRole("contentinfo", { name: "Status" });
   const contents = page.getByRole("button", { name: "Contents", exact: true });
   const thisScene = page.getByRole("button", {
     name: "This scene",
     exact: true,
   });
-  const bar = (await status.boundingBox())!;
-  for (const button of [contents, thisScene]) {
+  const book = (await page.locator(".writing").boundingBox())!;
+  for (const [button, named] of [
+    [contents, "Contents"],
+    [thisScene, "This scene"],
+  ] as const) {
     const seen = (await button.boundingBox())!;
-    expect(seen.y, "it sits in the status bar").toBeGreaterThanOrEqual(bar.y);
+    expect(seen.y, "it sits above the book").toBeLessThan(book.y);
+    await expect(button).toHaveText(named);
   }
 
   // when: the contents are opened

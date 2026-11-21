@@ -18,6 +18,7 @@ use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
 use crate::live::Subscription;
+use crate::members::roles::Roles;
 use crate::outline::model::SectionId;
 use crate::problem;
 use crate::projects::model::ProjectId;
@@ -97,6 +98,12 @@ pub fn reading_view(
         }
     });
     let has_book = Memo::new(move |_| book.with(Option::is_some));
+    let marking = {
+        let roles = expect_context::<Roles>();
+        let slug = slug.clone();
+
+        Signal::derive(move || roles.may_write(&slug))
+    };
     let commenting = match &copy {
         Some(copy) => Commenting::in_copy(copy.clone(), said),
         None => Commenting::on_the_live_work(),
@@ -109,7 +116,7 @@ pub fn reading_view(
             let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
             let feedback = copy.clone().map(|copy| {
                 (
-                    feedback::on_reading_copy(copy, commenting, said, book),
+                    feedback::on_reading_copy(copy, commenting, said, book, marking),
                     said,
                 )
             });
@@ -241,15 +248,25 @@ fn read(
             )),
         )),
         feedback,
-        toggles(rail, said),
+        toggles(rail, said.zip(commenting)),
     )
 }
 
 /// On a phone the contents, and a copy's feedback, open from the status bar, as no tab may lie over the text.
-fn toggles(rail: Drawer, said: Option<Drawer>) -> impl IntoView {
+/// Where the drawers' edges hold no tab, as on a phone, the contents and a copy's feedback open from a bar above the text,
+/// each named, and the feedback with how much of it is not done yet.
+fn toggles(rail: Drawer, said: Option<(Drawer, Commenting)>) -> impl IntoView {
     html::div().class("drawer-toggles").child((
-        toggle(rail, "contents", CONTENTS, Icon::Section),
-        said.map(|said| toggle(said, "feedback", feedback::FEEDBACK, Icon::Comment)),
+        toggle(rail, "contents", CONTENTS, Icon::Section, Signal::stored(0)),
+        said.map(|(said, commenting)| {
+            toggle(
+                said,
+                "feedback",
+                feedback::FEEDBACK,
+                Icon::Comment,
+                Signal::derive(move || commenting.not_done()),
+            )
+        }),
     ))
 }
 
@@ -258,15 +275,28 @@ fn toggle(
     named: &'static str,
     controls: &'static str,
     icon: Icon,
+    counted: Signal<usize>,
 ) -> impl IntoView {
     html::button()
         .r#type("button")
         .attr("aria-label", speech::said(named))
-        .attr("title", speech::said(named))
         .attr("aria-controls", controls)
         .attr("aria-expanded", move || drawer.is_open().to_string())
         .on(ev::click, move |_| drawer.toggle())
-        .child(icons::mark(icon))
+        .child((
+            icons::mark(icon),
+            html::span().child(speech::said(named)),
+            move || {
+                let count = counted.get();
+
+                (count > 0).then(|| {
+                    html::span()
+                        .class("count")
+                        .attr("aria-hidden", "true")
+                        .child(count.to_string())
+                })
+            },
+        ))
 }
 
 /// A section in the contents: how deep it lies, its title, whether sections lie under it, and whether those are folded away;

@@ -185,6 +185,26 @@ impl FeedbackCore {
         Ok(rewritten.clone())
     }
 
+    /// Marks a piece of feedback submitted as done, or not done again.
+    /// A draft is not there for this: only feedback given is worked through.
+    pub async fn mark_done(
+        &self,
+        feedback: &str,
+        done: bool,
+        _agent: &Agent,
+    ) -> Result<Feedback, FeedbackError> {
+        // TODO: only for whoever may write the subject's project, its authors and owners (step 5)
+        let mut kept = self.kept();
+        let found = kept
+            .iter_mut()
+            .find(|kept| kept.id.to_string() == feedback)
+            .filter(|kept| !kept.is_draft())
+            .ok_or(FeedbackError::FeedbackNotThere)?;
+        found.done = done;
+
+        Ok(found.clone())
+    }
+
     /// Deletes a piece of feedback, for whoever wrote it.
     pub async fn delete(&self, feedback: &str, agent: &Agent) -> Result<(), FeedbackError> {
         // TODO: an owner of the copy's project deletes any feedback too (step 5)

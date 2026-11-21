@@ -416,7 +416,7 @@ test("on a wide window the open tray sits beside the column and ends above the s
   ).toBe(true);
 });
 
-test("on a phone the tray slides over the text and is toggled from the status bar", async ({
+test("on a phone the tray slides over the text and is toggled from the bar above it", async ({
   page,
 }) => {
   // given: a scene open on a phone, the cursor in it
@@ -424,7 +424,7 @@ test("on a phone the tray slides over the text and is toggled from the status ba
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
 
-  // when: the tray is opened from the status bar
+  // when: the tray is opened from the bar above the text
   await page.getByRole("button", { name: "This scene", exact: true }).click();
   // then: it lies within the window, on that scene
   const tray = (await inspector(page).boundingBox())!;

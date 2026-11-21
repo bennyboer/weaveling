@@ -171,3 +171,39 @@ async fn no_more_copies_are_counted_at_once_than_the_contract_says() {
     refused_one_more.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&refused_one_more), refused::TOO_MANY_COUNTED);
 }
+
+#[tokio::test]
+async fn feedback_given_is_marked_done_and_not_done_again_but_a_draft_is_not_there_for_it() {
+    // given: a comment of ada's submitted, and a draft of hers
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let hedy = as_(&feedback, "account_hedy");
+    let given = drafted(&ada, a_passage(), saying("Which boats?")).await;
+    submitted(&ada).await;
+    let draft = drafted(&ada, a_passage(), saying("Still thinking.")).await;
+
+    // when: hedy marks the comment done
+    let marked = hedy.put(&format!("/feedback/{}/done", given.id)).await;
+
+    // then: it is done, for everyone, and counted no more as not done
+    marked.assert_status_ok();
+    assert!(marked.json::<FeedbackDTO>().done);
+    assert!(
+        on_the_copy(&ada)
+            .await
+            .iter()
+            .any(|piece| piece.id == given.id && piece.done)
+    );
+    assert_eq!(counted(&ada, &["copy_loom"]).await[0].not_done, 0);
+
+    // when: it is marked not done again
+    let unmarked = hedy.delete(&format!("/feedback/{}/done", given.id)).await;
+
+    // then: it is not done
+    unmarked.assert_status_ok();
+    assert!(!unmarked.json::<FeedbackDTO>().done);
+    // and: a draft is not there to be marked
+    ada.put(&format!("/feedback/{}/done", draft.id))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

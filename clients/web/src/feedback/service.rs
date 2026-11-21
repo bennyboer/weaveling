@@ -100,6 +100,20 @@ pub async fn rewrite(
     Feedback::try_from(rewritten)
 }
 
+/// Marks a piece of feedback given as done, or not done again.
+pub async fn mark_done(feedback: &FeedbackId, done: bool) -> Result<Feedback, ApiError> {
+    let at = format!("{FEEDBACK}/{feedback}/done");
+    let response = http::sent(if done {
+        Request::put(&at)
+    } else {
+        Request::delete(&at)
+    })
+    .await?;
+    let marked: FeedbackDTO = http::parsed(response, SUBJECT).await?;
+
+    Feedback::try_from(marked)
+}
+
 /// Deletes a piece of your feedback.
 pub async fn delete(feedback: &FeedbackId) -> Result<(), ApiError> {
     let response = http::sent(Request::delete(&format!("{FEEDBACK}/{feedback}"))).await?;
