@@ -155,6 +155,7 @@ refused-feedback-comment-link-unsafe = Un enlace solo puede llevar a una página
 refused-feedback-passage-empty = Selecciona al menos un carácter del texto para comentarlo.
 refused-feedback-not-yours = Solo quien escribió este comentario puede cambiarlo.
 refused-feedback-too-many-counted = Como mucho se cuentan { $max } copias a la vez.
+refused-feedback-place-unnamed = Los comentarios se piden sobre una escena o sobre una sección, solo una de ellas.
 refused-feedback-subject-unknown = No se pueden dar comentarios sobre eso.
 refused-board-id-invalid = Eso no es un ID de tablero válido.
 refused-idea-already-pinned = Esta idea ya está en el tablero.
@@ -445,6 +446,17 @@ feedback-a-member = Un miembro
 feedback-edited = editado
 feedback-mark-done = Hecho
 feedback-marked-done = Hecho
+feedback-none-on-scene = Todavía no hay comentarios sobre esta escena.
+feedback-on-the-scene = Sobre la escena entera
+feedback-none-on-section = Todavía no hay comentarios sobre esta sección.
+feedback-on-the-section = Sobre la sección entera
+feedback-flag = { $count ->
+        [one] 1 comentario pendiente sobre esta escena
+       *[other] { $count } comentarios pendientes sobre esta escena
+    }
+feedback-open-in-copy = Abrir en la copia
+feedback-show-done = Mostrar hechos · { $count }
+feedback-hide-done = Ocultar hechos
 feedback-mark-done-title = Marcar como hecho
 feedback-mark-not-done-title = Marcar como pendiente
 feedback-change-comment = Cambiar este comentario

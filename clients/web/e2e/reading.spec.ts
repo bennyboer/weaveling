@@ -10,9 +10,11 @@ import {
   views,
 } from "./support/shell";
 import {
+  heading,
   openTheWritingView,
   projectOf,
   projectsOutline,
+  rail,
   scene,
   titled,
 } from "./support/writing";
@@ -2210,4 +2212,199 @@ test("feedback given is marked done and not done again, its mark in the text and
     given.getByRole("button", { name: "Not done · 1" }),
   ).toBeVisible();
   await expect.poll(marked("feedback-given")).toEqual(["boats"]);
+});
+
+test("a scene's feedback is in its inspector in the writing view, grouped by copy, marked done there and opened in its copy", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with a passage of its first scene and the scene itself commented on
+  const { placed } = await aBookWritten(page, "WritingSceneFeedback");
+  await aCopyMade(page, {
+    name: "As written",
+    shared: { kind: "book" },
+    open_until: null,
+    deleted_on: null,
+  });
+  await copiesListed(page, ["As written"]);
+  await openTheReadingView(page);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /As written/ })
+    .click();
+  await expect(switcher(page)).toContainText("As written");
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: placed.harbour,
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Slow start.");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+
+  // when: the writing view is opened
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+
+  // then: the scene is flagged with its two comments not done, and no other
+  const flag = page
+    .locator(`.scene-row[data-scene-row="${placed.harbour}"]`)
+    .getByRole("button", { name: "2 comments not done on this scene" });
+  await expect(flag).toBeVisible();
+  await expect(page.locator(".feedback-flag")).toHaveCount(1);
+
+  // when: focus mode is gone into
+  await scene(page, placed.harbour).click();
+  await page.keyboard.press("Control+Shift+F");
+  // then: the flag is out of sight, as everything but the text is
+  await expect(flag).toBeHidden();
+  // when: it is left
+  await page.keyboard.press("Control+Shift+F");
+  // then: the flag is back
+  await expect(flag).toBeVisible();
+
+  // when: the flag is followed
+  await flag.click();
+
+  // then: its feedback is there, under the copy it was given in
+  const given = page
+    .getByRole("complementary", { name: "This scene" })
+    .getByRole("region", { name: "Feedback" });
+  await expect(
+    given.getByRole("heading", { name: "Feedback · 2" }),
+  ).toBeVisible();
+  const inCopy = given.getByRole("region", { name: "As written" });
+  await expect(inCopy.locator(".note")).toHaveCount(2);
+  await expect(inCopy.locator(".note").first().locator(".quote")).toHaveText(
+    "“boats”",
+  );
+  await expect(inCopy.locator(".note").nth(1)).toContainText(
+    "On the whole scene",
+  );
+  // and: each opens in its copy
+  await expect(
+    inCopy
+      .locator(".note")
+      .first()
+      .getByRole("link", { name: "Open in the copy" }),
+  ).toHaveAttribute("href", new RegExp(`/read/${copy}\\?feedback=`));
+
+  // when: one is marked done
+  await inCopy
+    .locator(".note")
+    .first()
+    .getByRole("button", { name: "Done" })
+    .click();
+
+  // then: one is left to do, and what is done is put away
+  await expect(
+    given.getByRole("heading", { name: "Feedback · 1" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(
+      `.scene-row[data-scene-row="${placed.harbour}"] .feedback-flag`,
+    ),
+  ).toHaveText("1");
+  await expect(inCopy.locator(".note")).toHaveCount(1);
+  await expect(inCopy.locator(".note")).toContainText("Slow start.");
+
+  // when: what is done is shown
+  await given.getByRole("button", { name: "Show done · 1" }).click();
+
+  // then: it is there again, marked done
+  await expect(inCopy.locator(".note")).toHaveCount(2);
+  await expect(
+    inCopy.locator(".note").first().getByRole("button", { name: "Done" }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  // when: the passage is opened in its copy
+  await inCopy
+    .locator(".note")
+    .first()
+    .getByRole("link", { name: "Open in the copy" })
+    .click();
+
+  // then: the copy is read, its words pointed at
+  await expect(page).toHaveURL(new RegExp(`/read/${copy}\\?feedback=`));
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const highlight = (
+          CSS as unknown as { highlights: Map<string, Set<Range>> }
+        ).highlights.get("pointed-at");
+
+        return highlight ? [...highlight].map((words) => words.toString()) : [];
+      }),
+    )
+    .toEqual(["boats"]);
+});
+
+test("a section's own feedback is in its inspector, and the writing view's contents count what is not done", async ({
+  page,
+}) => {
+  // given: a copy of a written book, its first section and a scene of it commented on
+  const { placed } = await aBookWritten(page, "WritingSectionFeedback");
+  await aCopyMade(page, {
+    name: "As written",
+    shared: { kind: "book" },
+    open_until: null,
+    deleted_on: null,
+  });
+  await copiesListed(page, ["As written"]);
+  await openTheReadingView(page);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /As written/ })
+    .click();
+  await expect(switcher(page)).toContainText("As written");
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Slow start.",
+  );
+  await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Lovely.");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+
+  // when: the writing view is opened, its contents shown
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  const contentsTab = page.locator('.drawer-tab[aria-controls="book-rail"]');
+  if ((await contentsTab.getAttribute("aria-expanded")) === "false") {
+    await contentsTab.click();
+  }
+
+  // then: the section counts its own and its scene's, the scene its own
+  await expect(
+    rail(page)
+      .getByRole("button", { name: /^Morning/ })
+      .locator(".not-done"),
+  ).toHaveText("2");
+  await rail(page).getByRole("button", { name: "Unfold all" }).click();
+  await expect(rail(page).locator(".rail-scene .not-done")).toHaveText(["1"]);
+
+  // when: the section is looked at in the inspector
+  await heading(page, "Morning").click();
+  const inspectorTab = page.locator('.drawer-tab[aria-controls="inspector"]');
+  if ((await inspectorTab.getAttribute("aria-expanded")) === "false") {
+    await inspectorTab.click();
+  }
+
+  // then: its own feedback is there, and not the scene's
+  const given = page
+    .getByRole("complementary", { name: "This section" })
+    .getByRole("region", { name: "Feedback" });
+  await expect(given.locator(".note")).toHaveCount(1);
+  await expect(given.locator(".note")).toContainText("On the whole section");
+  await expect(given.locator(".note")).toContainText("Slow start.");
 });

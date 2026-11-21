@@ -2,14 +2,17 @@ use std::collections::HashMap;
 
 use feedback_contract::{
     AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, DraftFeedbackRequest, FeedbackCountDTO,
-    FeedbackDTO, RewriteFeedbackRequest, kind,
+    FeedbackDTO, PendingDTO, RewriteFeedbackRequest, kind,
 };
 use gloo_net::http::Request;
 
-use crate::feedback::model::{About, CommentBlock, Feedback, FeedbackCount, FeedbackId};
+use crate::feedback::model::{About, CommentBlock, Feedback, FeedbackCount, FeedbackId, Pending};
 use crate::http;
 use crate::http::ApiError;
+use crate::outline::model::SectionId;
+use crate::projects::model::ProjectId;
 use crate::readings::reading_copies::ReadingCopyId;
+use crate::scenes::model::SceneId;
 
 const FEEDBACK: &str = "/api/feedback";
 const SUBJECT: &str = "comment";
@@ -68,6 +71,33 @@ pub async fn counted_on_reading_copies(
     }
 
     Ok(counted)
+}
+
+/// The feedback given on a scene, in every copy of it, oldest first.
+pub async fn given_on_scene(scene: &SceneId) -> Result<Vec<Feedback>, ApiError> {
+    let response = http::sent(Request::get(&format!("{FEEDBACK}/on?scene={scene}"))).await?;
+    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    found.into_iter().map(Feedback::try_from).collect()
+}
+
+/// The feedback given on a section itself, in every copy of it, oldest first.
+pub async fn given_on_section(section: &SectionId) -> Result<Vec<Feedback>, ApiError> {
+    let response = http::sent(Request::get(&format!("{FEEDBACK}/on?section={section}"))).await?;
+    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    found.into_iter().map(Feedback::try_from).collect()
+}
+
+/// How much feedback given is not done yet in a project, in every copy: on each scene, and on each section itself.
+pub async fn pending_in(project: &ProjectId) -> Result<Pending, ApiError> {
+    let response = http::sent(Request::get(&format!(
+        "{FEEDBACK}/pending?project={project}"
+    )))
+    .await?;
+    let told: PendingDTO = http::parsed(response, SUBJECT).await?;
+
+    Ok(Pending::from(told))
 }
 
 /// Starts a draft, which only you see until you submit it.

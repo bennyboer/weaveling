@@ -5,6 +5,7 @@ use leptos::{IntoView, ev, html};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, KeyboardEvent};
 
+use crate::feedback::pending::PendingHere;
 use crate::icons;
 use crate::icons::Icon;
 use crate::outline::model::SectionId;
@@ -13,11 +14,47 @@ use crate::scenes::model::SceneId;
 use crate::speech;
 use crate::writing::bringing_back::Landing;
 use crate::writing::heading;
+use crate::writing::inspector::Inspected;
 use crate::writing::margin::{Edge, Marked, Menu};
 use crate::writing::question::Question;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
+
+/// A flag beside a scene with comments not done yet on it, counting them; it opens the scene's feedback in its inspector.
+fn feedback_flag(scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let not_done = use_context::<PendingHere>();
+    let counted = {
+        let scene = scene.clone();
+
+        Memo::new(move |_| not_done.map_or(0, |not_done| not_done.on_scene(&scene)))
+    };
+
+    move || {
+        let count = counted.get();
+        let scene = scene.clone();
+
+        (count > 0).then(|| {
+            let mut args = FluentArgs::new();
+            args.set("count", count);
+            let said = speech::say_with("feedback-flag", &args);
+
+            html::button()
+                .r#type("button")
+                .class("feedback-flag")
+                .attr("aria-label", said.clone())
+                .attr("title", said)
+                .on(ev::click, move |_| {
+                    state.inspector.follow(Inspected::Scene(scene.clone()));
+                    state.inspector.drawer().open();
+                })
+                .child((
+                    icons::mark(Icon::Comment),
+                    html::span().child(count.to_string()),
+                ))
+        })
+    }
+}
 
 pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let marked = Marked::Scene(scene.clone());
@@ -28,6 +65,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
     });
     let chosen = scene.clone();
     let carried = scene.clone();
+    let flagged = scene.clone();
 
     html::div().class("scene-margin").child((
         (state.side == Side::Book).then(|| {
@@ -50,6 +88,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 scene_label(scene.clone(), state).into_any()
             }
         },
+        feedback_flag(flagged, state),
         margin_menu(
             "scene-actions",
             Face::Icon(Icon::More),

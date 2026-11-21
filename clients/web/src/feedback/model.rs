@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackDTO, ReadingCopyPlaceDTO,
+    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackDTO, PendingDTO, ReadingCopyPlaceDTO,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -69,6 +70,30 @@ pub enum CommentRun {
         link: Option<String>,
     },
     Break,
+}
+
+/// How much feedback given is not done yet in a project: on each scene, on it or a passage in it, and on each section itself.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub scenes: HashMap<SceneId, u32>,
+    pub sections: HashMap<SectionId, u32>,
+}
+
+impl From<PendingDTO> for Pending {
+    fn from(dto: PendingDTO) -> Self {
+        Self {
+            scenes: dto
+                .scenes
+                .into_iter()
+                .map(|(scene, count)| (SceneId::from(scene), count))
+                .collect(),
+            sections: dto
+                .sections
+                .into_iter()
+                .map(|(section, count)| (SectionId::from(section), count))
+                .collect(),
+        }
+    }
 }
 
 /// How much feedback one subject holds, as you count it.

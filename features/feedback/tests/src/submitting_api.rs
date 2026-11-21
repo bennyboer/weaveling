@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use feedback_contract::{
-    COUNTED_AT_ONCE, FeedbackCountDTO, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest,
-    refused,
+    AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO,
+    PendingDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
 };
 
 use crate::support::{
@@ -206,4 +206,132 @@ async fn feedback_given_is_marked_done_and_not_done_again_but_a_draft_is_not_the
     ada.put(&format!("/feedback/{}/done", draft.id))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_but_no_draft() {
+    // given: in two copies, a passage and the scene commented on and submitted
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let in_another = |place| AboutDTO::ReadingCopy {
+        reading_copy: "copy_weft".to_owned(),
+        place,
+    };
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    drafted(
+        &ada,
+        in_another(ReadingCopyPlaceDTO::Scene {
+            scene: "scene_harbour".to_owned(),
+        }),
+        saying("Slow."),
+    )
+    .await;
+    // and: one on another scene and one on the whole copy
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Scene {
+            scene: "scene_market".to_owned(),
+        }),
+        saying("Elsewhere."),
+    )
+    .await;
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Whole),
+        saying("Lovely."),
+    )
+    .await;
+    submitted(&ada).await;
+    ada.post("/feedback/submitted?kind=reading_copy&id=copy_weft")
+        .await
+        .assert_status_ok();
+    // and: a draft on the scene still
+    drafted(&ada, a_passage(), saying("Still thinking.")).await;
+
+    // when: the scene's feedback is asked for
+    let response = ada.get("/feedback/on?scene=scene_harbour").await;
+
+    // then: the passage and the scene are found, from both copies, and nothing else
+    response.assert_status_ok();
+    let found: Vec<String> = response
+        .json::<Vec<FeedbackDTO>>()
+        .iter()
+        .map(|piece| match &piece.comment[..] {
+            [CommentBlockDTO::Paragraph { runs }] => match &runs[..] {
+                [CommentRunDTO::Text { text, .. }] => text.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        })
+        .collect();
+    assert_eq!(found, ["Which boats?", "Slow."]);
+}
+
+#[tokio::test]
+async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_counted_by_scene_and_section()
+ {
+    // given: a passage and its scene, a section, and the whole copy commented on and submitted, and a draft on the section
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let the_section = || {
+        in_the_copy(ReadingCopyPlaceDTO::Section {
+            section: "section_morning".to_owned(),
+        })
+    };
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Scene {
+            scene: "scene_harbour".to_owned(),
+        }),
+        saying("Slow."),
+    )
+    .await;
+    let on_section = drafted(&ada, the_section(), saying("Long.")).await;
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Whole),
+        saying("Lovely."),
+    )
+    .await;
+    submitted(&ada).await;
+    drafted(&ada, the_section(), saying("Still thinking.")).await;
+
+    // when: the section's feedback is asked for
+    let found = ada.get("/feedback/on?section=section_morning").await;
+
+    // then: what was given on the section itself is found, and no draft
+    found.assert_status_ok();
+    let found = found.json::<Vec<FeedbackDTO>>();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id, on_section.id);
+
+    // when: what is not done in the project is counted
+    let counted = ada.get("/feedback/pending?project=project_loom").await;
+
+    // then: the scene holds two, the section one, and the whole copy counts nowhere
+    counted.assert_status_ok();
+    assert_eq!(
+        counted.json::<PendingDTO>(),
+        PendingDTO {
+            scenes: [("scene_harbour".to_owned(), 2)].into(),
+            sections: [("section_morning".to_owned(), 1)].into(),
+        }
+    );
+}
+
+#[tokio::test]
+async fn feedback_is_asked_for_on_a_scene_or_a_section_one_of_them() {
+    // given: the feedback
+    let ada = as_(&feedback(), "account_ada");
+
+    // expect: neither, or both, are refused as no place named
+    for asked in [
+        "/feedback/on",
+        "/feedback/on?scene=scene_harbour&section=section_morning",
+    ] {
+        let response = ada.get(asked).await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+        assert_eq!(refusal(&response), refused::PLACE_UNNAMED, "{asked}");
+    }
 }

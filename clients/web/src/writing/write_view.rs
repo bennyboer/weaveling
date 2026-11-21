@@ -7,6 +7,7 @@ use leptos_router::hooks;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent, KeyboardEvent, ScrollIntoViewOptions, ScrollLogicalPosition};
 
+use crate::feedback::pending::PendingHere;
 use crate::outline::model::{Section, SectionId};
 use crate::problem;
 use crate::projects::open_project::OpenProject;
@@ -52,6 +53,7 @@ pub fn WriteView(
     side: Side,
 ) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project), side);
+    provide_context(PendingHere::asked(route::project_id(&project)));
     let open_project = expect_context::<OpenProject>();
     open_project.open(&route::project_id(&project));
     Effect::new(move || {

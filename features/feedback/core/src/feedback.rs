@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use clock::Clock;
@@ -8,6 +9,7 @@ use crate::about::{About, Subject};
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
 use crate::id::FeedbackId;
+use crate::link::{SceneLink, SectionLink};
 
 /// A piece of feedback, as whoever may see it finds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +41,13 @@ pub struct Counted {
     pub not_done: usize,
     /// The asker's own drafts.
     pub your_drafts: usize,
+}
+
+/// How much feedback given is not done yet on each scene, on it or a passage in it, and on each section itself, in every copy.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub scenes: BTreeMap<SceneLink, usize>,
+    pub sections: BTreeMap<SectionLink, usize>,
 }
 
 /// The most subjects counted at once, so one question stays small however many subjects there are.
@@ -116,6 +125,61 @@ impl FeedbackCore {
                 }
             })
             .collect())
+    }
+
+    /// The feedback given on a scene, in every copy that holds it, oldest first:
+    /// on the scene itself, or on a passage in it. Drafts are left out, as only their writers see them.
+    pub async fn given_on_scene(
+        &self,
+        scene: &SceneLink,
+        _agent: &Agent,
+    ) -> Result<Vec<Feedback>, FeedbackError> {
+        // TODO: only in copies of a project the agent may read (step 5)
+        Ok(self
+            .kept()
+            .iter()
+            .filter(|feedback| !feedback.is_draft() && feedback.about.in_scene() == Some(scene))
+            .cloned()
+            .collect())
+    }
+
+    /// The feedback given on a section itself, in every copy that holds it, oldest first; drafts are left out.
+    pub async fn given_on_section(
+        &self,
+        section: &SectionLink,
+        _agent: &Agent,
+    ) -> Result<Vec<Feedback>, FeedbackError> {
+        // TODO: only in copies of a project the agent may read (step 5)
+        Ok(self
+            .kept()
+            .iter()
+            .filter(|feedback| !feedback.is_draft() && feedback.about.on_section() == Some(section))
+            .cloned()
+            .collect())
+    }
+
+    /// How much feedback given is pending, not done yet, on each scene and section of a project, in every copy of it.
+    pub async fn pending_in(
+        &self,
+        _project: &str,
+        _agent: &Agent,
+    ) -> Result<Pending, FeedbackError> {
+        // TODO: only in the project's copies, for whoever may read it (step 5); its scenes' and sections' ids are its own meanwhile
+        let mut pending = Pending::default();
+        for feedback in self
+            .kept()
+            .iter()
+            .filter(|feedback| !feedback.is_draft() && !feedback.done)
+        {
+            if let Some(scene) = feedback.about.in_scene() {
+                *pending.scenes.entry(scene.clone()).or_insert(0) += 1;
+            }
+            if let Some(section) = feedback.about.on_section() {
+                *pending.sections.entry(section.clone()).or_insert(0) += 1;
+            }
+        }
+
+        Ok(pending)
     }
 
     /// Submits the agent's drafts on a subject together, so everyone who may see the subject's feedback sees them.

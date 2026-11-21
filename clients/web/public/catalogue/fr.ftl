@@ -155,6 +155,7 @@ refused-feedback-comment-link-unsafe = Un lien ne peut mener qu’à une page we
 refused-feedback-passage-empty = Sélectionnez au moins un caractère du texte pour le commenter.
 refused-feedback-not-yours = Seule la personne qui a écrit ce commentaire peut le modifier.
 refused-feedback-too-many-counted = Au plus { $max } copies sont comptées à la fois.
+refused-feedback-place-unnamed = Les retours se demandent sur une scène ou sur une section, l’une des deux.
 refused-feedback-subject-unknown = Impossible de donner un retour là-dessus.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
@@ -445,6 +446,17 @@ feedback-a-member = Un membre
 feedback-edited = modifié
 feedback-mark-done = Traité
 feedback-marked-done = Traité
+feedback-none-on-scene = Pas encore de retours sur cette scène.
+feedback-on-the-scene = Sur toute la scène
+feedback-none-on-section = Pas encore de retours sur cette section.
+feedback-on-the-section = Sur toute la section
+feedback-flag = { $count ->
+        [one] 1 commentaire à traiter sur cette scène
+       *[other] { $count } commentaires à traiter sur cette scène
+    }
+feedback-open-in-copy = Ouvrir dans la copie
+feedback-show-done = Afficher les traités · { $count }
+feedback-hide-done = Masquer les traités
 feedback-mark-done-title = Marquer comme traité
 feedback-mark-not-done-title = Marquer comme à traiter
 feedback-change-comment = Modifier ce commentaire

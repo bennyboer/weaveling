@@ -5,6 +5,7 @@ use leptos_router::components::A;
 
 use crate::drawer;
 use crate::drawer::{Edge, Inside};
+use crate::feedback;
 use crate::icons;
 use crate::icons::Icon;
 use crate::ideas::model::IdeaId;
@@ -54,7 +55,8 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
                     .into_any(),
                 Some(Inspected::Scene(scene)) => (
                     title_field(scene.clone(), state),
-                    drawn_from(scene, project, state),
+                    drawn_from(scene.clone(), project, state),
+                    feedback::inspected::on_scene(scene, project.get_value()),
                 )
                     .into_any(),
                 Some(Inspected::Section(section)) => {
@@ -79,6 +81,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
                                 }
                             }),
                             pinned(section.clone(), project, state),
+                            feedback::inspected::on_section(section.clone(), project.get_value()),
                         )
                             .into_any(),
                     })

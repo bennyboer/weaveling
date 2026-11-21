@@ -322,7 +322,7 @@ fn chips(copy: &ListedReadingCopy) -> Vec<impl IntoView + use<>> {
 }
 
 /// When a copy was frozen, until when it is open, and when it is deleted, in one quiet line.
-fn copy_line(copy: &ListedReadingCopy) -> String {
+pub(crate) fn copy_line(copy: &ListedReadingCopy) -> String {
     let frozen = said_with("copy-line-frozen", &[("day", day(copy.made_at))]);
     let open = match (copy.open, copy.open_until) {
         (true, Some(until)) => said_with("copy-line-open-until", &[("day", day(until))]),

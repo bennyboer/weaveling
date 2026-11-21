@@ -1,9 +1,11 @@
+use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::drawer;
 use crate::drawer::{Edge, Inside};
+use crate::feedback::pending::PendingHere;
 use crate::icons;
 use crate::icons::Icon;
 use crate::outline::model::{Section, SectionId};
@@ -16,6 +18,8 @@ use crate::writing::write_view_state::WriteViewState;
 
 pub const BOOK_RAIL: &str = "book-rail";
 
+/// A line in the contents: a section or a scene, and how many comments on it are not done yet,
+/// a section's counting its scenes too, and while folded the sections under it.
 enum Entry {
     Section {
         id: SectionId,
@@ -23,15 +27,18 @@ enum Entry {
         depth: usize,
         foldable: bool,
         fold: Fold,
+        not_done: u32,
     },
     Scene {
         id: SceneId,
         depth: usize,
+        not_done: u32,
     },
 }
 
 pub fn contents(state: WriteViewState) -> impl IntoView {
     let rail = state.book_rail;
+    let not_done = use_context::<PendingHere>();
 
     drawer::drawer(
         rail.drawer(),
@@ -46,7 +53,7 @@ pub fn contents(state: WriteViewState) -> impl IntoView {
                 folding_everything(state),
             ),
             body: html::ol().class("rail-entries").child(move || {
-                entries(state)
+                entries(state, not_done)
                     .into_iter()
                     .map(|entry| row(entry, state))
                     .collect::<Vec<_>>()
@@ -96,17 +103,24 @@ fn folding_everything(state: WriteViewState) -> impl IntoView {
     )
 }
 
-fn entries(state: WriteViewState) -> Vec<Entry> {
+fn entries(state: WriteViewState, not_done: Option<PendingHere>) -> Vec<Entry> {
     let rail = state.book_rail;
+    let on_scene = |scene: &SceneId| not_done.map_or(0, |not_done| not_done.on_scene(scene));
     let mut entries = Vec::new();
-    let mut folded_below: Option<usize> = None;
+    let mut folded_below: Option<(usize, usize)> = None;
 
     for (depth, section) in state.structure.sections() {
-        if folded_below.is_some_and(|folded| depth > folded) {
+        let scenes = section.scenes();
+        let in_it = not_done.map_or(0, |not_done| not_done.on_section(&section.id))
+            + scenes.iter().map(on_scene).sum::<u32>();
+        if let Some((_, at)) = folded_below.filter(|(folded, _)| depth > *folded) {
+            if let Some(Entry::Section { not_done, .. }) = entries.get_mut(at) {
+                *not_done += in_it;
+            }
             continue;
         }
         let fold = rail.fold_of(&section.id, nests(state, &section.id));
-        folded_below = (fold == Fold::Folded).then_some(depth);
+        folded_below = (fold == Fold::Folded).then_some((depth, entries.len()));
 
         entries.push(Entry::Section {
             id: section.id.clone(),
@@ -114,9 +128,11 @@ fn entries(state: WriteViewState) -> Vec<Entry> {
             depth,
             foldable: foldable(state, &section),
             fold,
+            not_done: in_it,
         });
         if fold == Fold::Open {
-            entries.extend(section.scenes().into_iter().map(|id| Entry::Scene {
+            entries.extend(scenes.into_iter().map(|id| Entry::Scene {
+                not_done: on_scene(&id),
                 id,
                 depth: depth + 1,
             }));
@@ -124,6 +140,21 @@ fn entries(state: WriteViewState) -> Vec<Entry> {
     }
 
     entries
+}
+
+/// How many comments not done yet lie in an entry, beside its name, where there are any.
+fn not_done_count(not_done: u32) -> impl IntoView {
+    (not_done > 0).then(|| {
+        let mut args = FluentArgs::new();
+        args.set("count", not_done);
+        let said = speech::say_with("contents-not-done", &args);
+
+        html::span()
+            .class("not-done")
+            .attr("aria-label", said.clone())
+            .attr("title", said)
+            .child(not_done.to_string())
+    })
 }
 
 fn nests(state: WriteViewState, section: &SectionId) -> bool {
@@ -142,6 +173,7 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
             depth,
             foldable,
             fold,
+            not_done,
         } => {
             let unfolded = fold != Fold::Folded;
             let shown = match title.trim() {
@@ -180,11 +212,18 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                         .r#type("button")
                         .class("rail-entry")
                         .on(ev::click, move |_| go_to(Stop::Heading(id.clone()), state))
-                        .child(shown),
+                        .child((
+                            html::span().class("title").child(shown),
+                            not_done_count(not_done),
+                        )),
                 ))
                 .into_any()
         }
-        Entry::Scene { id, depth } => {
+        Entry::Scene {
+            id,
+            depth,
+            not_done,
+        } => {
             let named = id.clone();
 
             html::li()
@@ -195,14 +234,17 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                         .r#type("button")
                         .class("rail-entry")
                         .on(ev::click, move |_| go_to(Stop::Scene(id.clone()), state))
-                        .child(move || {
-                            let label = state.labels.of_scene(&named);
+                        .child((
+                            html::span().class("title").child(move || {
+                                let label = state.labels.of_scene(&named);
 
-                            match label.shown.trim() {
-                                "" => speech::say("scene-an-empty-one"),
-                                _ => label.shown,
-                            }
-                        }),
+                                match label.shown.trim() {
+                                    "" => speech::say("scene-an-empty-one"),
+                                    _ => label.shown,
+                                }
+                            }),
+                            not_done_count(not_done),
+                        )),
                 )
                 .into_any()
         }

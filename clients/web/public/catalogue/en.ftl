@@ -155,6 +155,7 @@ refused-feedback-comment-link-unsafe = A link can only lead to a page on the web
 refused-feedback-passage-empty = Select at least one character of the text to comment on.
 refused-feedback-not-yours = Only whoever wrote this comment may change it.
 refused-feedback-too-many-counted = At most { $max } copies are counted at once.
+refused-feedback-place-unnamed = Feedback is asked for on a scene or on a section, one of them.
 refused-feedback-subject-unknown = Feedback cannot be given on that.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.
@@ -445,6 +446,17 @@ feedback-a-member = A member
 feedback-edited = edited
 feedback-mark-done = Done
 feedback-marked-done = Done
+feedback-none-on-scene = No feedback on this scene yet.
+feedback-on-the-scene = On the whole scene
+feedback-none-on-section = No feedback on this section yet.
+feedback-on-the-section = On the whole section
+feedback-flag = { $count ->
+        [one] 1 comment not done on this scene
+       *[other] { $count } comments not done on this scene
+    }
+feedback-open-in-copy = Open in the copy
+feedback-show-done = Show done · { $count }
+feedback-hide-done = Hide done
 feedback-mark-done-title = Mark as done
 feedback-mark-not-done-title = Mark as not done
 feedback-change-comment = Change this comment

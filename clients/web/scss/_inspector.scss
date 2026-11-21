@@ -44,6 +44,27 @@
     overflow-wrap: anywhere;
   }
 
+  /* Each part after the scene's title stands apart: a line above it, room around it, its name in the accent. */
+  .drawn-from,
+  .feedback-on-scene {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+
+    > .tally {
+      margin-bottom: 0.75rem;
+      color: var(--ink);
+      font-weight: 500;
+    }
+
+    > .empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-style: normal;
+    }
+  }
+
   .drawn-from .tally {
     margin-bottom: 0.6rem;
   }

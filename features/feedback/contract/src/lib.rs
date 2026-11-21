@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// What a piece of feedback is about: the thing it is given on, and where in it.
@@ -107,6 +109,14 @@ pub struct FeedbackCountDTO {
     pub your_drafts: u32,
 }
 
+/// How much feedback given is not done yet in a project, in every copy of it:
+/// on each scene, on it or a passage in it, and on each section itself, by their ids. What has none is left out.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PendingDTO {
+    pub scenes: BTreeMap<String, u32>,
+    pub sections: BTreeMap<String, u32>,
+}
+
 /// The most subjects `GET /feedback/counts` counts at once.
 pub const COUNTED_AT_ONCE: usize = 100;
 
@@ -130,8 +140,9 @@ pub mod refused {
     pub const NOT_YOURS: &str = "feedback-not-yours";
     pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
     pub const TOO_MANY_COUNTED: &str = "feedback-too-many-counted";
+    pub const PLACE_UNNAMED: &str = "feedback-place-unnamed";
 
-    pub const EVERY: [&str; 8] = [
+    pub const EVERY: [&str; 9] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -140,5 +151,6 @@ pub mod refused {
         NOT_YOURS,
         SUBJECT_UNKNOWN,
         TOO_MANY_COUNTED,
+        PLACE_UNNAMED,
     ];
 }

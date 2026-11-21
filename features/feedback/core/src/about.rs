@@ -42,6 +42,29 @@ impl About {
         }
     }
 
+    /// The scene it is about, on the scene itself or a passage in it; none for a section or the whole.
+    pub fn in_scene(&self) -> Option<&SceneLink> {
+        match self {
+            Self::ReadingCopy { place, .. } => match place {
+                ReadingCopyPlace::Passage { scene, .. } | ReadingCopyPlace::Scene(scene) => {
+                    Some(scene)
+                }
+                ReadingCopyPlace::Section(_) | ReadingCopyPlace::Whole => None,
+            },
+        }
+    }
+
+    /// The section it is about itself; none for anything else, as a scene in it is told by `in_scene`.
+    pub fn on_section(&self) -> Option<&SectionLink> {
+        match self {
+            Self::ReadingCopy {
+                place: ReadingCopyPlace::Section(section),
+                ..
+            } => Some(section),
+            Self::ReadingCopy { .. } => None,
+        }
+    }
+
     /// Whether it is about something: a passage lies in a block, holds at least one character, and quotes it.
     pub fn holds_something(&self) -> bool {
         match self {

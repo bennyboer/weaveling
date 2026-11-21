@@ -155,6 +155,7 @@ refused-feedback-comment-link-unsafe = Ein Link kann nur zu einer Webseite oder 
 refused-feedback-passage-empty = Wähle mindestens ein Zeichen des Textes aus, um es zu kommentieren.
 refused-feedback-not-yours = Nur wer diesen Kommentar geschrieben hat, darf ihn ändern.
 refused-feedback-too-many-counted = Höchstens { $max } Kopien werden auf einmal gezählt.
+refused-feedback-place-unnamed = Feedback wird zu einer Szene oder zu einem Abschnitt abgefragt, zu genau einem davon.
 refused-feedback-subject-unknown = Dazu kann kein Feedback gegeben werden.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.
@@ -445,6 +446,17 @@ feedback-a-member = Ein Mitglied
 feedback-edited = bearbeitet
 feedback-mark-done = Erledigt
 feedback-marked-done = Erledigt
+feedback-none-on-scene = Zu dieser Szene gibt es noch kein Feedback.
+feedback-on-the-scene = Zur ganzen Szene
+feedback-none-on-section = Zu diesem Abschnitt gibt es noch kein Feedback.
+feedback-on-the-section = Zum ganzen Abschnitt
+feedback-flag = { $count ->
+        [one] 1 offener Kommentar zu dieser Szene
+       *[other] { $count } offene Kommentare zu dieser Szene
+    }
+feedback-open-in-copy = In der Kopie öffnen
+feedback-show-done = Erledigte zeigen · { $count }
+feedback-hide-done = Erledigte ausblenden
 feedback-mark-done-title = Als erledigt markieren
 feedback-mark-not-done-title = Als offen markieren
 feedback-change-comment = Diesen Kommentar ändern

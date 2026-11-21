@@ -6,9 +6,12 @@ use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use feedback_contract::{
-    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, RewriteFeedbackRequest, kind, refused,
+    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, RewriteFeedbackRequest, kind,
+    refused,
 };
-use feedback_core::{FeedbackCore, FeedbackError, InvalidComment, ReadingCopyLink, Subject};
+use feedback_core::{
+    FeedbackCore, FeedbackError, InvalidComment, ReadingCopyLink, SceneLink, SectionLink, Subject,
+};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -17,6 +20,8 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .route("/feedback", routing::get(feedback_on).post(draft))
         .route("/feedback/submitted", routing::post(submit_on))
         .route("/feedback/counts", routing::get(counted_on))
+        .route("/feedback/on", routing::get(given_on))
+        .route("/feedback/pending", routing::get(pending_in))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
         .route(
@@ -47,6 +52,65 @@ fn subject_of(kind: &str, id: String) -> Result<Subject, Problem> {
             format!("feedback is given on no subject of the kind {unknown}"),
         )),
     }
+}
+
+/// The place in the work whose feedback is asked for, in every copy: a scene or a section, one of them.
+#[derive(Deserialize)]
+struct OnPlace {
+    scene: Option<String>,
+    section: Option<String>,
+}
+
+async fn given_on(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<OnPlace>,
+) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
+    let found = match (asked.scene, asked.section) {
+        (Some(scene), None) => {
+            feedback
+                .given_on_scene(&SceneLink::from(scene), &agent)
+                .await
+        }
+        (None, Some(section)) => {
+            feedback
+                .given_on_section(&SectionLink::from(section), &agent)
+                .await
+        }
+        _ => {
+            return Err(Problem::rejected(
+                refused::PLACE_UNNAMED,
+                "feedback is asked for on a scene or on a section, one of them",
+            ));
+        }
+    }
+    .map_err(problem_of)?;
+
+    Ok(Json(
+        found
+            .iter()
+            .map(|piece| transformer::to_dto(piece, &agent))
+            .collect(),
+    ))
+}
+
+/// The project whose feedback pending is counted.
+#[derive(Deserialize)]
+struct InProject {
+    project: String,
+}
+
+async fn pending_in(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<InProject>,
+) -> Result<Json<PendingDTO>, Problem> {
+    let pending = feedback
+        .pending_in(&asked.project, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(transformer::to_pending_dto(&pending)))
 }
 
 /// The subjects whose feedback is counted: their kind, and their ids parted by commas.

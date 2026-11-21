@@ -1,11 +1,29 @@
 use eventsourcing::Agent;
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, ReadingCopyPlaceDTO,
+    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, PendingDTO,
+    ReadingCopyPlaceDTO,
 };
 use feedback_core::{
-    About, BlockPath, CommentBlock, CommentRun, Counted, Feedback, ReadingCopyLink,
+    About, BlockPath, CommentBlock, CommentRun, Counted, Feedback, Pending, ReadingCopyLink,
     ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
+
+pub fn to_pending_dto(pending: &Pending) -> PendingDTO {
+    let counted = |count: &usize| u32::try_from(*count).unwrap_or(u32::MAX);
+
+    PendingDTO {
+        scenes: pending
+            .scenes
+            .iter()
+            .map(|(scene, count)| (scene.to_string(), counted(count)))
+            .collect(),
+        sections: pending
+            .sections
+            .iter()
+            .map(|(section, count)| (section.to_string(), counted(count)))
+            .collect(),
+    }
+}
 
 pub fn to_count_dto(counted: &Counted) -> FeedbackCountDTO {
     let Subject::ReadingCopy(reading_copy) = &counted.subject;

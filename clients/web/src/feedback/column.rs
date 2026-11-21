@@ -5,6 +5,7 @@ use fluent_bundle::FluentArgs;
 use leptos::portal::Portal;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html, view};
+use leptos_router::hooks;
 
 use crate::dialog;
 use crate::drawer;
@@ -203,6 +204,7 @@ pub fn on_reading_copy(
             }
         });
     }
+    pointed_at_when_asked(column);
     let drafts = Memo::new(move |_| {
         column.feedback.with(|feedback| {
             feedback
@@ -320,6 +322,38 @@ pub fn on_reading_copy(
             ),
         },
     )
+}
+
+/// Where the copy was opened at a piece of its feedback (`?feedback=`), as from the writing view,
+/// brings that piece's place into sight once the feedback and the text are there, and makes it pulse.
+fn pointed_at_when_asked(column: Column) {
+    let Some(asked) =
+        untrack(|| hooks::use_query_map().read().get("feedback")).map(FeedbackId::from)
+    else {
+        return;
+    };
+    Effect::new(move |pointed: Option<bool>| {
+        if pointed == Some(true) {
+            return true;
+        }
+        let place = column.feedback.with(|feedback| {
+            feedback
+                .iter()
+                .find(|piece| piece.id == asked)
+                .map(|piece| piece.about.clone())
+        });
+        let Some(About::ReadingCopy { place, .. }) = place else {
+            return false;
+        };
+        if column.book.with(Option::is_none) {
+            return false;
+        }
+        _ = request_animation_frame(move || {
+            _ = request_animation_frame(move || readings::pointing::point_at(&place));
+        });
+
+        true
+    });
 }
 
 /// Your drafts in a dashed box, with the button that submits them all together.
@@ -765,13 +799,13 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
 
 /// How long a piece marked done or not done stays where it is, so its check is seen drawn in, before it fades out,
 /// and how long it takes to fade before it moves to where it is shown now.
-const SETTLED_BEFORE_LEAVING: Duration = Duration::from_millis(650);
-const LEAVING_FOR: Duration = Duration::from_millis(250);
+pub(crate) const SETTLED_BEFORE_LEAVING: Duration = Duration::from_millis(650);
+pub(crate) const LEAVING_FOR: Duration = Duration::from_millis(250);
 
 /// Whether a piece of feedback given is done: a circle that marks it so, and back, for whoever may mark it,
 /// and a quiet check for anyone else once it is.
 /// Marked done just now, its check is drawn in and grows a little before it settles.
-fn done_mark(
+pub(crate) fn done_mark(
     done: bool,
     shown_done: RwSignal<bool>,
     marking_done: Action<bool, ()>,
@@ -822,7 +856,7 @@ fn check() -> impl IntoView {
 }
 
 /// Who gave a piece of feedback and when it was submitted, and whether it was edited since.
-fn who(piece: &Feedback) -> impl IntoView + use<> {
+pub(crate) fn who(piece: &Feedback) -> impl IntoView + use<> {
     let writer = writer_of(piece);
     let initial = writer.chars().next().map(String::from).unwrap_or_default();
     let when = moment::human_time(piece.submitted_at.unwrap_or(piece.written_at));
@@ -922,7 +956,7 @@ const QUOTED_FROM_ITS_END: usize = 40;
 
 /// A passage as its feedback quotes it: whole if it is short, else its beginning and its end with an ellipsis between,
 /// each cut at a word, so it still says where it begins and where it ends.
-fn shortened(quote: &str) -> String {
+pub(crate) fn shortened(quote: &str) -> String {
     let chars: Vec<char> = quote.chars().collect();
     if chars.len() <= QUOTED_WHOLE_UP_TO {
         return quote.to_owned();
