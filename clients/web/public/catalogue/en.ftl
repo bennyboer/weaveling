@@ -154,6 +154,7 @@ refused-feedback-comment-too-long = A comment can be at most { $max } characters
 refused-feedback-comment-link-unsafe = A link can only lead to a page on the web or to an email address.
 refused-feedback-passage-empty = Select at least one character of the text to comment on.
 refused-feedback-not-yours = Only whoever wrote this comment may change it.
+refused-feedback-too-many-counted = At most { $max } copies are counted at once.
 refused-feedback-subject-unknown = Feedback cannot be given on that.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.
@@ -458,6 +459,14 @@ copy-open-no-end = Open, no end
 copy-closed-since = Closed { $day }
 copy-deleted-on = Deleted { $day }
 copy-kept = Kept for good
+copy-not-done = { $count ->
+        [one] 1 not done
+       *[other] { $count } not done
+    }
+copy-your-drafts = { $count ->
+        [one] 1 draft of yours
+       *[other] { $count } drafts of yours
+    }
 copy-line-frozen = Frozen { $day }
 copy-line-open-until = open until { $day }
 copy-line-open-no-end = open with no end

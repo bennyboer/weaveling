@@ -265,6 +265,17 @@
     background: color-mix(in srgb, var(--muted) 16%, transparent);
   }
 
+  /* A copy's feedback not done yet stands out first; your drafts waiting on it are dashed, as drafts are in the column. */
+  &.not-done {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    font-weight: 500;
+  }
+
+  &.drafts {
+    border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+    background: none;
+  }
+
   &.frozen {
     background: color-mix(in srgb, var(--tint-1) 16%, transparent);
   }

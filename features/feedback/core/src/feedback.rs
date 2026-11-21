@@ -31,6 +31,19 @@ impl Feedback {
     }
 }
 
+/// How much feedback a subject holds, as one who may see it counts it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Counted {
+    pub subject: Subject,
+    /// The feedback submitted and not done yet.
+    pub not_done: usize,
+    /// The asker's own drafts.
+    pub your_drafts: usize,
+}
+
+/// The most subjects counted at once, so one question stays small however many subjects there are.
+pub const COUNTED_AT_ONCE: usize = 100;
+
 /// The feedback feature's only way in.
 #[derive(Clone)]
 pub struct FeedbackCore {
@@ -67,6 +80,41 @@ impl FeedbackCore {
                     && (!feedback.is_draft() || &feedback.written_by == agent)
             })
             .cloned()
+            .collect())
+    }
+
+    /// How much feedback each subject holds, in the order asked, at most `COUNTED_AT_ONCE` of them.
+    pub async fn counted_on(
+        &self,
+        subjects: Vec<Subject>,
+        agent: &Agent,
+    ) -> Result<Vec<Counted>, FeedbackError> {
+        // TODO: only on subjects whose project the agent may read (step 5)
+        if subjects.len() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
+        let kept = self.kept();
+
+        Ok(subjects
+            .into_iter()
+            .map(|subject| {
+                let on: Vec<&Feedback> = kept
+                    .iter()
+                    .filter(|feedback| feedback.about.subject() == subject)
+                    .collect();
+
+                Counted {
+                    not_done: on
+                        .iter()
+                        .filter(|feedback| !feedback.is_draft() && !feedback.done)
+                        .count(),
+                    your_drafts: on
+                        .iter()
+                        .filter(|feedback| feedback.is_draft() && &feedback.written_by == agent)
+                        .count(),
+                    subject,
+                }
+            })
             .collect())
     }
 

@@ -154,6 +154,7 @@ refused-feedback-comment-too-long = Um comentário pode ter no máximo { $max } 
 refused-feedback-comment-link-unsafe = Um link só pode levar a uma página da web ou a um endereço de e-mail.
 refused-feedback-passage-empty = Selecione pelo menos um caractere do texto para comentar.
 refused-feedback-not-yours = Só quem escreveu este comentário pode alterá-lo.
+refused-feedback-too-many-counted = No máximo { $max } cópias são contadas de uma vez.
 refused-feedback-subject-unknown = Não é possível dar retorno sobre isso.
 refused-board-id-invalid = Isso não é um ID de quadro válido.
 refused-idea-already-pinned = Esta ideia já está no quadro.
@@ -458,6 +459,14 @@ copy-open-no-end = Aberta, sem fim
 copy-closed-since = Fechada em { $day }
 copy-deleted-on = Excluída em { $day }
 copy-kept = Guardada para sempre
+copy-not-done = { $count ->
+        [one] 1 pendente
+       *[other] { $count } pendentes
+    }
+copy-your-drafts = { $count ->
+        [one] 1 rascunho seu
+       *[other] { $count } rascunhos seus
+    }
 copy-line-frozen = Congelada em { $day }
 copy-line-open-until = aberta até { $day }
 copy-line-open-no-end = aberta sem fim

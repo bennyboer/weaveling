@@ -2021,3 +2021,36 @@ test("feedback given is marked in the text with a line of its own, and counted i
       .locator(".not-done"),
   ).toHaveAttribute("aria-label", "2 comments not done");
 });
+
+test("the switcher shows how much of each copy's feedback is not done, and your drafts waiting on it", async ({
+  page,
+}) => {
+  // given: a copy of a written book, with two comments given on it and one draft of yours
+  await aCopyOfABookWritten(page, "ReadingCopiesCounted");
+  await aDraftOn(page, { kind: "whole" }, "Lovely.");
+  await aDraftOn(
+    page,
+    { kind: "section", section: await aSectionOfTheCopy(page) },
+    "Slow start.",
+  );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?kind=reading_copy&id=${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  await aDraftOn(page, { kind: "whole" }, "One more thought.");
+
+  // when: what to read is chosen
+  await switcher(page).click();
+
+  // then: the copy says how much is not done, and that a draft of yours waits on it
+  const entry = whatToRead(page).getByRole("link", { name: /As written/ });
+  await expect(entry.locator(".chip.not-done")).toHaveText("2 not done");
+  await expect(entry.locator(".chip.drafts")).toHaveText("1 draft of yours");
+  // and: the live work says nothing of feedback
+  await expect(
+    whatToRead(page)
+      .getByRole("link", { name: /The work as it is now/ })
+      .locator(".chip.not-done"),
+  ).toHaveCount(0);
+});

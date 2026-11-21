@@ -71,6 +71,15 @@ pub enum CommentRun {
     Break,
 }
 
+/// How much feedback one subject holds, as you count it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FeedbackCount {
+    /// The feedback submitted and not done yet.
+    pub not_done: u32,
+    /// Your own drafts on it.
+    pub your_drafts: u32,
+}
+
 /// A piece of feedback, as whoever may see it finds it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Feedback {

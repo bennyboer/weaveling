@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use wasm_bindgen::JsCast;
 use web_sys::Node;
 
+use crate::feedback;
+use crate::feedback::model::FeedbackCount;
 use crate::members::roles::Roles;
 use crate::moment;
 use crate::readings::copy_tools;
@@ -157,6 +161,18 @@ fn switcher(
             open.get().then(|| {
                 let slug = slug.clone();
                 let reading = reading.clone();
+                let counts = LocalResource::new(move || {
+                    let listed: Vec<ReadingCopyId> = copies
+                        .get()
+                        .map(|listed| listed.iter().map(|copy| copy.id.clone()).collect())
+                        .unwrap_or_default();
+
+                    async move {
+                        feedback::service::counted_on_reading_copies(&listed)
+                            .await
+                            .unwrap_or_default()
+                    }
+                });
 
                 html::div()
                     .id(PANEL)
@@ -172,7 +188,12 @@ fn switcher(
                         live_entry(&slug, reading.is_none()),
                         move || {
                             copies.get().map(|listed| {
-                                copy_entries(&slug, reading.as_ref(), listed.to_vec())
+                                copy_entries(
+                                    &slug,
+                                    reading.as_ref(),
+                                    listed.to_vec(),
+                                    counts.get().unwrap_or_default(),
+                                )
                             })
                         },
                         move || {
@@ -210,12 +231,14 @@ fn copy_entries(
     slug: &str,
     reading: Option<&ReadingCopyId>,
     listed: Vec<ListedReadingCopy>,
+    counts: HashMap<ReadingCopyId, FeedbackCount>,
 ) -> impl IntoView + use<> {
     let count = u32::try_from(listed.len()).unwrap_or(u32::MAX);
     let entries = listed
         .into_iter()
         .map(|copy| {
             let here = reading == Some(&copy.id);
+            let counted = counts.get(&copy.id).copied().unwrap_or_default();
 
             html::a()
                 .href(route::reading_copy(slug, &copy.id.to_string()))
@@ -228,7 +251,9 @@ fn copy_entries(
                         maker(&copy),
                         extent(copy.extent)
                     )),
-                    html::span().class("chips").child(chips(&copy)),
+                    html::span()
+                        .class("chips")
+                        .child((feedback_chips(counted), chips(&copy))),
                 ))
         })
         .collect::<Vec<_>>();
@@ -252,6 +277,22 @@ fn maker(copy: &ListedReadingCopy) -> String {
             .clone()
             .unwrap_or_else(|| speech::say("copy-by-a-former-member"))
     }
+}
+
+/// How much of a copy's feedback is not done yet, and how many drafts of yours wait on it, where there is any.
+fn feedback_chips(held: FeedbackCount) -> impl IntoView {
+    (
+        (held.not_done > 0).then(|| {
+            html::span()
+                .class("chip not-done")
+                .child(counted("copy-not-done", held.not_done))
+        }),
+        (held.your_drafts > 0).then(|| {
+            html::span()
+                .class("chip drafts")
+                .child(counted("copy-your-drafts", held.your_drafts))
+        }),
+    )
 }
 
 fn chips(copy: &ListedReadingCopy) -> Vec<impl IntoView + use<>> {

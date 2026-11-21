@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, DraftFeedbackRequest, FeedbackDTO, RewriteFeedbackRequest, kind,
+    AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, DraftFeedbackRequest, FeedbackCountDTO,
+    FeedbackDTO, RewriteFeedbackRequest, kind,
 };
 use gloo_net::http::Request;
 
-use crate::feedback::model::{About, CommentBlock, Feedback, FeedbackId};
+use crate::feedback::model::{About, CommentBlock, Feedback, FeedbackCount, FeedbackId};
 use crate::http;
 use crate::http::ApiError;
 use crate::readings::reading_copies::ReadingCopyId;
@@ -33,6 +36,38 @@ pub async fn submit_on_reading_copy(copy: &ReadingCopyId) -> Result<Vec<Feedback
     let submitted: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
 
     submitted.into_iter().map(Feedback::try_from).collect()
+}
+
+/// How much feedback each reading copy holds: what is not done yet, and your drafts.
+/// It asks for as many copies at once as the feedback counts, so any number of copies takes few questions.
+pub async fn counted_on_reading_copies(
+    copies: &[ReadingCopyId],
+) -> Result<HashMap<ReadingCopyId, FeedbackCount>, ApiError> {
+    let mut counted = HashMap::new();
+    for batch in copies.chunks(COUNTED_AT_ONCE) {
+        let ids = batch
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let response = http::sent(Request::get(&format!(
+            "{FEEDBACK}/counts?kind={}&ids={ids}",
+            kind::READING_COPY
+        )))
+        .await?;
+        let told: Vec<FeedbackCountDTO> = http::parsed(response, SUBJECT).await?;
+        counted.extend(told.into_iter().map(|count| {
+            (
+                ReadingCopyId::from(count.id),
+                FeedbackCount {
+                    not_done: count.not_done,
+                    your_drafts: count.your_drafts,
+                },
+            )
+        }));
+    }
+
+    Ok(counted)
 }
 
 /// Starts a draft, which only you see until you submit it.

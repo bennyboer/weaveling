@@ -97,6 +97,19 @@ pub struct FeedbackDTO {
     pub done: bool,
 }
 
+/// How much feedback one subject holds, as the asker counts it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FeedbackCountDTO {
+    pub id: String,
+    /// The feedback submitted and not done yet.
+    pub not_done: u32,
+    /// The asker's own drafts on it.
+    pub your_drafts: u32,
+}
+
+/// The most subjects `GET /feedback/counts` counts at once.
+pub const COUNTED_AT_ONCE: usize = 100;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct DraftFeedbackRequest {
     pub about: AboutDTO,
@@ -116,8 +129,9 @@ pub mod refused {
     pub const PASSAGE_EMPTY: &str = "feedback-passage-empty";
     pub const NOT_YOURS: &str = "feedback-not-yours";
     pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
+    pub const TOO_MANY_COUNTED: &str = "feedback-too-many-counted";
 
-    pub const EVERY: [&str; 7] = [
+    pub const EVERY: [&str; 8] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -125,5 +139,6 @@ pub mod refused {
         PASSAGE_EMPTY,
         NOT_YOURS,
         SUBJECT_UNKNOWN,
+        TOO_MANY_COUNTED,
     ];
 }

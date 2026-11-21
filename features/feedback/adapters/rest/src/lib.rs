@@ -5,7 +5,9 @@ use axum::http::StatusCode;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
-use feedback_contract::{DraftFeedbackRequest, FeedbackDTO, RewriteFeedbackRequest, kind, refused};
+use feedback_contract::{
+    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, RewriteFeedbackRequest, kind, refused,
+};
 use feedback_core::{FeedbackCore, FeedbackError, InvalidComment, ReadingCopyLink, Subject};
 use serde::Deserialize;
 use serving::Problem;
@@ -14,6 +16,7 @@ pub fn router(feedback: FeedbackCore) -> Router {
     Router::new()
         .route("/feedback", routing::get(feedback_on).post(draft))
         .route("/feedback/submitted", routing::post(submit_on))
+        .route("/feedback/counts", routing::get(counted_on))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
         .with_state(feedback)
@@ -28,14 +31,46 @@ struct OnSubject {
 
 impl OnSubject {
     fn subject(self) -> Result<Subject, Problem> {
-        match self.kind.as_str() {
-            kind::READING_COPY => Ok(Subject::ReadingCopy(ReadingCopyLink::from(self.id))),
-            unknown => Err(Problem::rejected(
-                refused::SUBJECT_UNKNOWN,
-                format!("feedback is given on no subject of the kind {unknown}"),
-            )),
-        }
+        subject_of(&self.kind, self.id)
     }
+}
+
+fn subject_of(kind: &str, id: String) -> Result<Subject, Problem> {
+    match kind {
+        kind::READING_COPY => Ok(Subject::ReadingCopy(ReadingCopyLink::from(id))),
+        unknown => Err(Problem::rejected(
+            refused::SUBJECT_UNKNOWN,
+            format!("feedback is given on no subject of the kind {unknown}"),
+        )),
+    }
+}
+
+/// The subjects whose feedback is counted: their kind, and their ids parted by commas.
+#[derive(Deserialize)]
+struct OnSubjects {
+    kind: String,
+    ids: String,
+}
+
+async fn counted_on(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<OnSubjects>,
+) -> Result<Json<Vec<FeedbackCountDTO>>, Problem> {
+    let subjects = asked
+        .ids
+        .split(',')
+        .filter(|id| !id.is_empty())
+        .map(|id| subject_of(&asked.kind, id.to_owned()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let counted = feedback
+        .counted_on(subjects, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(
+        counted.iter().map(transformer::to_count_dto).collect(),
+    ))
 }
 
 async fn feedback_on(
@@ -135,5 +170,7 @@ fn problem_of(refusal: FeedbackError) -> Problem {
         FeedbackError::PassageEmpty => Problem::unprocessable(refused::PASSAGE_EMPTY, refusal),
         FeedbackError::FeedbackNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
         FeedbackError::NotYours => Problem::forbidden(refused::NOT_YOURS, refusal),
+        FeedbackError::TooManyCounted => Problem::rejected(refused::TOO_MANY_COUNTED, refusal)
+            .with("max", feedback_core::COUNTED_AT_ONCE),
     }
 }

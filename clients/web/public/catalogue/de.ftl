@@ -154,6 +154,7 @@ refused-feedback-comment-too-long = Ein Kommentar darf höchstens { $max } Zeich
 refused-feedback-comment-link-unsafe = Ein Link kann nur zu einer Webseite oder zu einer E-Mail-Adresse führen.
 refused-feedback-passage-empty = Wähle mindestens ein Zeichen des Textes aus, um es zu kommentieren.
 refused-feedback-not-yours = Nur wer diesen Kommentar geschrieben hat, darf ihn ändern.
+refused-feedback-too-many-counted = Höchstens { $max } Kopien werden auf einmal gezählt.
 refused-feedback-subject-unknown = Dazu kann kein Feedback gegeben werden.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.
@@ -458,6 +459,11 @@ copy-open-no-end = Offen, ohne Ende
 copy-closed-since = Geschlossen am { $day }
 copy-deleted-on = Gelöscht am { $day }
 copy-kept = Bleibt für immer
+copy-not-done = { $count } offen
+copy-your-drafts = { $count ->
+        [one] 1 Entwurf von dir
+       *[other] { $count } Entwürfe von dir
+    }
 copy-line-frozen = Eingefroren am { $day }
 copy-line-open-until = offen bis { $day }
 copy-line-open-no-end = offen ohne Ende

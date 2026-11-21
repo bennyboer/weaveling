@@ -1,11 +1,21 @@
 use eventsourcing::Agent;
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackDTO, ReadingCopyPlaceDTO,
+    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, ReadingCopyPlaceDTO,
 };
 use feedback_core::{
-    About, BlockPath, CommentBlock, CommentRun, Feedback, ReadingCopyLink, ReadingCopyPlace,
-    SceneLink, SectionLink,
+    About, BlockPath, CommentBlock, CommentRun, Counted, Feedback, ReadingCopyLink,
+    ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
+
+pub fn to_count_dto(counted: &Counted) -> FeedbackCountDTO {
+    let Subject::ReadingCopy(reading_copy) = &counted.subject;
+
+    FeedbackCountDTO {
+        id: reading_copy.to_string(),
+        not_done: u32::try_from(counted.not_done).unwrap_or(u32::MAX),
+        your_drafts: u32::try_from(counted.your_drafts).unwrap_or(u32::MAX),
+    }
+}
 
 pub fn to_dto(feedback: &Feedback, asking: &Agent) -> FeedbackDTO {
     FeedbackDTO {

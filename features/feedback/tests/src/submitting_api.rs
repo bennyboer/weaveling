@@ -1,6 +1,9 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use feedback_contract::{FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused};
+use feedback_contract::{
+    COUNTED_AT_ONCE, FeedbackCountDTO, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest,
+    refused,
+};
 
 use crate::support::{
     a_passage, as_, drafted, feedback, in_the_copy, on_the_copy, refusal, saying,
@@ -96,4 +99,75 @@ async fn submitted_feedback_is_marked_edited_once_changed_and_deleted_by_its_wri
 
     // then: nobody finds it
     assert_eq!(on_the_copy(&hedy).await, vec![]);
+}
+
+async fn counted(server: &TestServer, ids: &[&str]) -> Vec<FeedbackCountDTO> {
+    let response = server
+        .get(&format!(
+            "/feedback/counts?kind=reading_copy&ids={}",
+            ids.join(",")
+        ))
+        .await;
+    response.assert_status_ok();
+
+    response.json::<Vec<FeedbackCountDTO>>()
+}
+
+#[tokio::test]
+async fn each_copy_counts_what_is_not_done_and_your_drafts_on_it_in_the_order_asked() {
+    // given: two comments of ada's submitted on the copy, and a draft of hers and of hedy's after
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let hedy = as_(&feedback, "account_hedy");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    drafted(&ada, a_passage(), saying("Lovely.")).await;
+    submitted(&ada).await;
+    drafted(&ada, a_passage(), saying("Still thinking.")).await;
+    drafted(&hedy, a_passage(), saying("Mine.")).await;
+
+    // when: ada counts the copy and another
+    let seen = counted(&ada, &["copy_weft", "copy_loom"]).await;
+
+    // then: each is counted in the order asked, her own drafts alone among the drafts
+    assert_eq!(
+        seen,
+        vec![
+            FeedbackCountDTO {
+                id: "copy_weft".to_owned(),
+                not_done: 0,
+                your_drafts: 0,
+            },
+            FeedbackCountDTO {
+                id: "copy_loom".to_owned(),
+                not_done: 2,
+                your_drafts: 1,
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn no_more_copies_are_counted_at_once_than_the_contract_says() {
+    // given: as many copies as are counted at once, and one more
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let ids: Vec<String> = (0..=COUNTED_AT_ONCE)
+        .map(|at| format!("copy_{at}"))
+        .collect();
+    let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+
+    // expect: as many as the contract says are counted
+    assert_eq!(
+        counted(&ada, &ids[..COUNTED_AT_ONCE]).await.len(),
+        COUNTED_AT_ONCE
+    );
+    // and: one more is refused
+    let refused_one_more = ada
+        .get(&format!(
+            "/feedback/counts?kind=reading_copy&ids={}",
+            ids.join(",")
+        ))
+        .await;
+    refused_one_more.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&refused_one_more), refused::TOO_MANY_COUNTED);
 }

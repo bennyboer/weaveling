@@ -154,6 +154,7 @@ refused-feedback-comment-too-long = Un commentaire peut compter au plus { $max }
 refused-feedback-comment-link-unsafe = Un lien ne peut mener qu’à une page web ou à une adresse e-mail.
 refused-feedback-passage-empty = Sélectionnez au moins un caractère du texte pour le commenter.
 refused-feedback-not-yours = Seule la personne qui a écrit ce commentaire peut le modifier.
+refused-feedback-too-many-counted = Au plus { $max } copies sont comptées à la fois.
 refused-feedback-subject-unknown = Impossible de donner un retour là-dessus.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
@@ -458,6 +459,11 @@ copy-open-no-end = Ouverte, sans fin
 copy-closed-since = Fermée le { $day }
 copy-deleted-on = Supprimée le { $day }
 copy-kept = Gardée pour de bon
+copy-not-done = { $count } à traiter
+copy-your-drafts = { $count ->
+        [one] 1 brouillon de vous
+       *[other] { $count } brouillons de vous
+    }
 copy-line-frozen = Figée le { $day }
 copy-line-open-until = ouverte jusqu’au { $day }
 copy-line-open-no-end = ouverte sans fin
