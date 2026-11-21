@@ -309,13 +309,14 @@ async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_count
     // when: what is not done in the project is counted
     let counted = ada.get("/feedback/pending?project=project_loom").await;
 
-    // then: the scene holds two, the section one, and the whole copy counts nowhere
+    // then: the scene holds two, the section one, the whole copy no place, and all four are counted together
     counted.assert_status_ok();
     assert_eq!(
         counted.json::<PendingDTO>(),
         PendingDTO {
             scenes: [("scene_harbour".to_owned(), 2)].into(),
             sections: [("section_morning".to_owned(), 1)].into(),
+            total: 4,
         }
     );
 }
@@ -338,8 +339,8 @@ async fn feedback_is_asked_for_in_a_project_on_scenes_or_on_sections_one_of_them
 }
 
 #[tokio::test]
-async fn a_project_s_feedback_given_is_found_in_every_copy_but_no_draft() {
-    // given: a comment given in one copy and another, and a draft
+async fn a_project_s_feedback_given_is_found_in_every_copy_of_it_but_no_draft() {
+    // given: a comment given in one copy and another, a draft, and a comment in a copy of another project
     let feedback = feedback();
     let ada = as_(&feedback, "account_ada");
     drafted(&ada, a_passage(), saying("Which boats?")).await;
@@ -357,15 +358,31 @@ async fn a_project_s_feedback_given_is_found_in_every_copy_but_no_draft() {
         .await
         .assert_status_ok();
     drafted(&ada, a_passage(), saying("Still thinking.")).await;
+    drafted(
+        &ada,
+        AboutDTO::ReadingCopy {
+            reading_copy: "copy_shuttle".to_owned(),
+            place: ReadingCopyPlaceDTO::Whole,
+        },
+        saying("Elsewhere."),
+    )
+    .await;
+    ada.post("/feedback/submitted?reading_copies=copy_shuttle")
+        .await
+        .assert_status_ok();
 
     // when: the project's feedback is asked for
     let found = ada.get("/feedback/on?project=project_loom").await;
 
-    // then: both given are found, and not the draft
+    // then: both given in it are found, and neither the draft nor the other project's comment
     found.assert_status_ok();
     let found = found.json::<Vec<FeedbackDTO>>();
     assert_eq!(found.len(), 2);
     assert!(found.iter().all(|piece| !piece.draft));
+
+    // and: only the two are counted pending in it
+    let pending = ada.get("/feedback/pending?project=project_loom").await;
+    assert_eq!(pending.json::<PendingDTO>().total, 2);
 }
 
 #[tokio::test]
@@ -428,4 +445,66 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
         .await;
     refused_many.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&refused_many), refused::TOO_MANY_COUNTED);
+}
+
+#[tokio::test]
+async fn a_project_s_feedback_is_paged_newest_or_oldest_first_and_counted_whole() {
+    // given: three comments submitted one after another, the last on the whole copy
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let mut ids = Vec::new();
+    for (place, said) in [
+        (a_passage(), "First."),
+        (
+            in_the_copy(ReadingCopyPlaceDTO::Scene {
+                scene: "scene_harbour".to_owned(),
+            }),
+            "Second.",
+        ),
+        (in_the_copy(ReadingCopyPlaceDTO::Whole), "Third."),
+    ] {
+        ids.push(drafted(&ada, place, saying(said)).await.id);
+        submitted(&ada).await;
+    }
+    let listed =
+        |found: Vec<FeedbackDTO>| found.into_iter().map(|piece| piece.id).collect::<Vec<_>>();
+
+    // when: two of them are asked for newest first
+    let first = ada
+        .get("/feedback/on?project=project_loom&order=newest&limit=2")
+        .await;
+
+    // then: the two newest come
+    first.assert_status_ok();
+    assert_eq!(listed(first.json()), [ids[2].clone(), ids[1].clone()]);
+    // and: the page after them holds the oldest
+    let next = ada
+        .get(&format!(
+            "/feedback/on?project=project_loom&order=newest&limit=2&after={}",
+            ids[1]
+        ))
+        .await;
+    assert_eq!(listed(next.json()), [ids[0].clone()]);
+    // and: oldest first unless asked
+    assert_eq!(
+        listed(ada.get("/feedback/on?project=project_loom").await.json()),
+        ids
+    );
+    // and: an order unheard of, or more than the contract says at once, is refused
+    let unheard = ada
+        .get("/feedback/on?project=project_loom&order=random")
+        .await;
+    unheard.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&unheard), refused::ORDER_UNKNOWN);
+    let too_many = ada
+        .get(&format!(
+            "/feedback/on?project=project_loom&limit={}",
+            COUNTED_AT_ONCE + 1
+        ))
+        .await;
+    too_many.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&too_many), refused::TOO_MANY_COUNTED);
+    // and: all three are counted pending, the one on the whole copy too
+    let pending = ada.get("/feedback/pending?project=project_loom").await;
+    assert_eq!(pending.json::<PendingDTO>().total, 3);
 }

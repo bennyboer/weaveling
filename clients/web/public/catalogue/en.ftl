@@ -5,6 +5,7 @@ view-read = Read
 view-board = Board
 view-outline = Outline
 view-ideas = Ideas
+view-feedback = Feedback
 status-bar = Status
 
 theme = Theme
@@ -157,6 +158,7 @@ refused-feedback-not-yours = Only whoever wrote this comment may change it.
 refused-feedback-too-many-counted = At most { $max } are asked for at once.
 refused-feedback-place-unnamed = Feedback is asked for on reading copies, in a project, on scenes or on sections, one of them.
 refused-feedback-status-unknown = Feedback is pending or done; nothing else is asked for.
+refused-feedback-order-unknown = Feedback is listed oldest or newest first.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.
 refused-idea-not-pinned = This idea is not on the board.
@@ -463,6 +465,21 @@ feedback-marks-hide = Hide feedback in the text
 feedback-marks-show = Show feedback in the text
 feedback-open-in-copy = Open in the copy
 feedback-show-done = Show done · { $count }
+feedback-filter-pending = Pending
+feedback-filter-done = Done
+feedback-filter-all = All
+feedback-newest-first = Newest first
+feedback-oldest-first = Oldest first
+feedback-in-copy = in “{ $copy }”
+feedback-kind-text = Text
+feedback-whole-work = The whole work
+feedback-none-yet = No feedback yet. Ask your test readers for feedback on a reading copy.
+feedback-to-reading = To the reading view
+feedback-show-more = Show more
+feedback-pending-tab = { $count ->
+        [one] 1 comment pending
+       *[other] { $count } comments pending
+    }
 feedback-hide-done = Hide done
 feedback-mark-done-title = Mark as done
 feedback-mark-not-done-title = Mark as not done

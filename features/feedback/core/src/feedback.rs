@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use clock::Clock;
@@ -9,7 +9,7 @@ use crate::about::{About, Subject};
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
 use crate::id::FeedbackId;
-use crate::link::{SceneLink, SectionLink};
+use crate::link::{ReadingCopyLink, SceneLink, SectionLink};
 
 /// A piece of feedback, as whoever may see it finds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,25 @@ pub struct Counted {
 pub struct Pending {
     pub scenes: BTreeMap<SceneLink, usize>,
     pub sections: BTreeMap<SectionLink, usize>,
+    /// All of it, on a whole copy too, which lies on no scene and no section.
+    pub total: usize,
+}
+
+/// In which order feedback submitted is listed, by when it was submitted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Order {
+    #[default]
+    Oldest,
+    Newest,
+}
+
+/// One page of a listing: in which order, after which piece it goes on, and how many at most.
+/// By default all of it, oldest first; never more than `COUNTED_AT_ONCE` at once when a page is asked for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Page {
+    pub order: Order,
+    pub after: Option<String>,
+    pub at_most: Option<usize>,
 }
 
 /// Where feedback is looked for: some subjects it is given on, as some reading copies;
@@ -71,16 +90,21 @@ impl On {
         }
     }
 
-    fn holds(&self, about: &About) -> bool {
+    fn holds(&self, about: &About, copies: &HashMap<ReadingCopyLink, String>) -> bool {
         match self {
-            // TODO: only the project's copies (step 5); its scenes' and sections' ids are its own meanwhile
-            Self::Project(_) => true,
+            Self::Project(project) => in_project(about, project, copies),
             Self::Subjects(subjects) => subjects.contains(&about.subject()),
             Self::Scenes(scenes) => about.in_scene().is_some_and(|scene| scenes.contains(scene)),
             Self::Sections(sections) => about
                 .on_section()
                 .is_some_and(|section| sections.contains(section)),
         }
+    }
+}
+
+fn in_project(about: &About, project: &str, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+    match about.subject() {
+        Subject::ReadingCopy(copy) => copies.get(&copy).is_some_and(|made_of| made_of == project),
     }
 }
 
@@ -105,6 +129,7 @@ pub const COUNTED_AT_ONCE: usize = 100;
 pub struct FeedbackCore {
     // TODO: the `Feedback` aggregate in an event store and its catalogs, rather than what this process holds (step 5)
     kept: Arc<Mutex<Vec<Feedback>>>,
+    copies: Arc<Mutex<HashMap<ReadingCopyLink, String>>>,
     clock: Arc<dyn Clock>,
 }
 
@@ -112,6 +137,7 @@ impl FeedbackCore {
     pub fn new(clock: Arc<dyn Clock>) -> Self {
         Self {
             kept: Arc::new(Mutex::new(Vec::new())),
+            copies: Arc::new(Mutex::new(HashMap::new())),
             clock,
         }
     }
@@ -120,18 +146,33 @@ impl FeedbackCore {
         self.kept.lock().expect("feedback lock poisoned")
     }
 
+    fn copies(&self) -> HashMap<ReadingCopyLink, String> {
+        self.copies.lock().expect("copies lock poisoned").clone()
+    }
+
+    /// Remembers which project a reading copy was made of, so feedback on it is found in that project.
+    pub fn remember_copy(&self, copy: ReadingCopyLink, project: &str) {
+        self.copies
+            .lock()
+            .expect("copies lock poisoned")
+            .insert(copy, project.to_owned());
+    }
+
     /// The agent's own drafts where asked, oldest first, which only they see until they submit them.
     /// At most `COUNTED_AT_ONCE` places are looked on at once.
     pub async fn drafts(&self, on: &On, agent: &Agent) -> Result<Vec<Feedback>, FeedbackError> {
         if on.places() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
+        let copies = self.copies();
 
         Ok(self
             .kept()
             .iter()
             .filter(|feedback| {
-                feedback.is_draft() && &feedback.written_by == agent && on.holds(&feedback.about)
+                feedback.is_draft()
+                    && &feedback.written_by == agent
+                    && on.holds(&feedback.about, &copies)
             })
             .cloned()
             .collect())
@@ -179,44 +220,65 @@ impl FeedbackCore {
         &self,
         on: &On,
         status: Option<Status>,
+        page: &Page,
         _agent: &Agent,
     ) -> Result<Vec<Feedback>, FeedbackError> {
         // TODO: only in copies of a project the agent may read (step 5)
-        if on.places() > COUNTED_AT_ONCE {
+        if on.places() > COUNTED_AT_ONCE || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
+        {
             return Err(FeedbackError::TooManyCounted);
         }
-
-        Ok(self
+        let copies = self.copies();
+        let mut found: Vec<Feedback> = self
             .kept()
             .iter()
             .filter(|feedback| {
                 !feedback.is_draft()
-                    && on.holds(&feedback.about)
+                    && on.holds(&feedback.about, &copies)
                     && status.is_none_or(|status| status.holds(feedback))
             })
             .cloned()
+            .collect();
+        found.sort_by_key(|piece| piece.submitted_at);
+        if page.order == Order::Newest {
+            found.reverse();
+        }
+        let from = page
+            .after
+            .as_ref()
+            .and_then(|after| {
+                found
+                    .iter()
+                    .position(|piece| &piece.id.to_string() == after)
+            })
+            .map_or(0, |at| at + 1);
+
+        Ok(found
+            .into_iter()
+            .skip(from)
+            .take(page.at_most.unwrap_or(usize::MAX))
             .collect())
     }
 
     /// How much feedback given is pending, not done yet, on each scene and section of a project, in every copy of it.
     pub async fn pending_in(
         &self,
-        _project: &str,
+        project: &str,
         _agent: &Agent,
     ) -> Result<Pending, FeedbackError> {
-        // TODO: only in the project's copies, for whoever may read it (step 5); its scenes' and sections' ids are its own meanwhile
+        // TODO: for whoever may read the project (step 5)
+        let copies = self.copies();
         let mut pending = Pending::default();
-        for feedback in self
-            .kept()
-            .iter()
-            .filter(|feedback| !feedback.is_draft() && !feedback.done)
-        {
+        for feedback in self.kept().iter().filter(|feedback| {
+            !feedback.is_draft() && !feedback.done && in_project(&feedback.about, project, &copies)
+        }) {
             if let Some(scene) = feedback.about.in_scene() {
                 *pending.scenes.entry(scene.clone()).or_insert(0) += 1;
             }
             if let Some(section) = feedback.about.on_section() {
                 *pending.sections.entry(section.clone()).or_insert(0) += 1;
             }
+            pending.total += 1;
         }
 
         Ok(pending)
@@ -230,10 +292,13 @@ impl FeedbackCore {
             return Err(FeedbackError::TooManyCounted);
         }
         let now = self.clock.now();
+        let copies = self.copies();
         let mut kept = self.kept();
         let mut submitted = Vec::new();
         for feedback in kept.iter_mut().filter(|feedback| {
-            feedback.is_draft() && &feedback.written_by == agent && on.holds(&feedback.about)
+            feedback.is_draft()
+                && &feedback.written_by == agent
+                && on.holds(&feedback.about, &copies)
         }) {
             feedback.submitted_at = Some(now);
             submitted.push(feedback.clone());

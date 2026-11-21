@@ -11,6 +11,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 feedback-core = { version = "0.1.0", path = "../core", package = "weaveling-feedback-core" }
 feedback-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-feedback-rest" }
+feedback-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-feedback-messaging" }
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres"]

@@ -119,6 +119,30 @@ pub async fn submitted(
     listed("on", &on, &only).await
 }
 
+/// One page of the feedback submitted in a project, in every copy: in an order, after a piece, and at most so many,
+/// and if asked only what is pending or done.
+pub async fn page_in(
+    project: &ProjectId,
+    status: Option<&'static str>,
+    order: &'static str,
+    after: Option<&FeedbackId>,
+    at_most: usize,
+) -> Result<Vec<Feedback>, ApiError> {
+    let only = status
+        .map(|status| format!("&status={status}"))
+        .unwrap_or_default();
+    let after = after
+        .map(|after| format!("&after={after}"))
+        .unwrap_or_default();
+    let response = http::sent(Request::get(&format!(
+        "{FEEDBACK}/on?project={project}&order={order}&limit={at_most}{only}{after}"
+    )))
+    .await?;
+    let found: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    found.into_iter().map(Feedback::try_from).collect()
+}
+
 /// How much feedback given is not done yet in a project, in every copy: on each scene, and on each section itself.
 pub async fn pending_in(project: &ProjectId) -> Result<Pending, ApiError> {
     let response = http::sent(Request::get(&format!(

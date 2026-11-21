@@ -332,6 +332,7 @@ test("the writing view comes first among a project's views", async ({
     "Board",
     "Outline",
     "Ideas",
+    "Feedback",
   ]);
 });
 

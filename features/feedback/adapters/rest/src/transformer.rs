@@ -22,6 +22,7 @@ pub fn to_pending_dto(pending: &Pending) -> PendingDTO {
             .iter()
             .map(|(section, count)| (section.to_string(), counted(count)))
             .collect(),
+        total: counted(&pending.total),
     }
 }
 

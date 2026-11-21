@@ -570,7 +570,8 @@
 }
 
 .drawer.reading-feedback,
-.feedback-on-scene {
+.feedback-on-scene,
+.feedback-view {
   .inside {
     display: flex;
     flex-direction: column;
@@ -1594,5 +1595,187 @@ body.focused {
   svg {
     width: 0.85rem;
     height: 0.85rem;
+  }
+}
+
+/* The feedback view: what is shown and in which order above, the pieces one after another, more on asking. */
+.feedback-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  h1 {
+    margin: 0;
+  }
+
+  .feedback-view-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .ordering {
+    min-height: 2rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    background: none;
+    color: var(--muted);
+    font: 400 0.8rem/1 var(--reading);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--ink);
+    }
+  }
+
+  .feedback-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* A piece in the view: one quiet line of who and what about, the quote, and what was said standing out, then where it opens. */
+  .feedback-list .note {
+    gap: 0.625rem;
+    padding: 1rem 1.25rem;
+
+    > .meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.5rem;
+      font: 400 0.75rem/1.4 var(--reading);
+      color: var(--muted);
+    }
+
+    .who {
+      gap: 0.375rem;
+      font: inherit;
+
+      .initial {
+        width: 1.25rem;
+        height: 1.25rem;
+        font-size: 0.6rem;
+      }
+
+      b {
+        font-weight: 500;
+        color: var(--ink);
+      }
+    }
+
+    .about-line {
+      gap: 0.375rem;
+      font: inherit;
+
+      &::before {
+        content: "·";
+      }
+
+      .kind {
+        width: auto;
+        height: auto;
+        background: none;
+        color: var(--muted);
+      }
+
+      b {
+        font-weight: 400;
+        color: var(--ink);
+      }
+
+      .in {
+        padding: 0;
+        background: none;
+        font-size: inherit;
+      }
+    }
+
+    > .comment {
+      font: 400 0.975rem/1.55 var(--reading);
+      color: var(--ink);
+    }
+
+    > .note-foot {
+      margin-top: 0.125rem;
+    }
+  }
+
+  /* What a piece is about: the kind's mark and name, the thing, and where in it. */
+  .about-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font: 400 0.8rem/1.4 var(--reading);
+    color: var(--muted);
+
+    .kind {
+      display: grid;
+      place-items: center;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 0.375rem;
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      color: var(--ink);
+
+      svg {
+        width: 0.8rem;
+        height: 0.8rem;
+      }
+    }
+
+    b {
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    .in {
+      padding: 0.05rem 0.45rem;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--muted) 16%, transparent);
+      font-size: 0.72rem;
+    }
+  }
+
+  .nothing-yet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: var(--muted);
+
+    p {
+      margin: 0;
+    }
+
+    a {
+      color: var(--accent);
+    }
+  }
+
+  .show-more {
+    align-self: center;
+    min-height: 2.25rem;
+    padding: 0 1rem;
+    border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
+    border-radius: 0.5rem;
+    background: none;
+    color: var(--ink);
+    font: 400 0.85rem/1 var(--reading);
+    cursor: pointer;
+  }
+
+  .open-in-copy {
+    font: 400 0.75rem/1.4 var(--reading);
+    color: var(--muted);
+
+    &:hover,
+    &:focus-visible {
+      color: var(--ink);
+    }
   }
 }

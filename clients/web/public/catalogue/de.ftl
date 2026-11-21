@@ -5,6 +5,7 @@ view-read = Lesen
 view-board = Pinnwand
 view-outline = Gliederung
 view-ideas = Ideen
+view-feedback = Feedback
 status-bar = Status
 
 theme = Farbschema
@@ -157,6 +158,7 @@ refused-feedback-not-yours = Nur wer diesen Kommentar geschrieben hat, darf ihn 
 refused-feedback-too-many-counted = Höchstens { $max } werden auf einmal abgefragt.
 refused-feedback-place-unnamed = Feedback wird zu Lesekopien, zu einem Projekt, zu Szenen oder zu Abschnitten abgefragt, zu genau einem davon.
 refused-feedback-status-unknown = Feedback ist offen oder erledigt; anderes wird nicht abgefragt.
+refused-feedback-order-unknown = Feedback wird nach ältestem oder neuestem zuerst aufgelistet.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.
 refused-idea-not-pinned = Diese Idee hängt nicht an der Pinnwand.
@@ -463,6 +465,21 @@ feedback-marks-hide = Feedback im Text ausblenden
 feedback-marks-show = Feedback im Text zeigen
 feedback-open-in-copy = In der Kopie öffnen
 feedback-show-done = Erledigte zeigen · { $count }
+feedback-filter-pending = Offen
+feedback-filter-done = Erledigt
+feedback-filter-all = Alle
+feedback-newest-first = Neueste zuerst
+feedback-oldest-first = Älteste zuerst
+feedback-in-copy = in „{ $copy }“
+feedback-kind-text = Text
+feedback-whole-work = Das ganze Werk
+feedback-none-yet = Noch kein Feedback. Bitte deine Testleser:innen um Feedback zu einer Lesekopie.
+feedback-to-reading = Zur Leseansicht
+feedback-show-more = Mehr zeigen
+feedback-pending-tab = { $count ->
+        [one] 1 offener Kommentar
+       *[other] { $count } offene Kommentare
+    }
 feedback-hide-done = Erledigte ausblenden
 feedback-mark-done-title = Als erledigt markieren
 feedback-mark-not-done-title = Als offen markieren

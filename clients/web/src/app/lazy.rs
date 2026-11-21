@@ -3,6 +3,7 @@ use leptos_router::{LazyRoute, lazy_route};
 
 use crate::accounts::security::SecurityPage;
 use crate::app::board::BoardPage;
+use crate::app::feedback::FeedbackPage;
 use crate::app::idea::IdeaPage;
 use crate::app::ideas::IdeasPage;
 use crate::app::members::{MembersInvitedPage, MembersPage};
@@ -110,6 +111,20 @@ impl LazyRoute for OutlineRoute {
 
     fn view(_: Self) -> AnyView {
         OutlinePage().into_any()
+    }
+}
+
+/// The feedback given on the project.
+pub struct FeedbackRoute;
+
+#[lazy_route]
+impl LazyRoute for FeedbackRoute {
+    fn data() -> Self {
+        Self
+    }
+
+    fn view(_: Self) -> AnyView {
+        FeedbackPage().into_any()
     }
 }
 

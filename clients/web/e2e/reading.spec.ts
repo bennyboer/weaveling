@@ -2478,7 +2478,9 @@ test("feedback pending is marked in the writing view's text by its words, which 
   const passages = asked.filter((url) => url.includes("/feedback/on?scenes="));
   expect(passages.length).toBeGreaterThan(0);
   expect(decodeURIComponent(passages[0])).toContain(placed.harbour);
-  expect(asked.some((url) => url.includes("/feedback/on?project="))).toBe(false);
+  expect(asked.some((url) => url.includes("/feedback/on?project="))).toBe(
+    false,
+  );
 
   // when: words are written before them
   await scene(page, placed.harbour).click();
@@ -2554,4 +2556,123 @@ test("a reader switches feedback's marks off in a copy, and they stay off there"
   // then: nothing is put out of sight there, as it offers no switch
   await expect(page).toHaveURL(/\/read$/);
   await expect(page.locator("body")).not.toHaveClass(/feedback-marks-off/);
+});
+
+const feedbackView = (page: Page) => page.locator(".feedback-view");
+
+test("the feedback view of a project nobody gave feedback on says how to get some", async ({
+  page,
+}) => {
+  // given: a written book nobody commented on
+  await aBookWritten(page, "FeedbackViewEmpty");
+
+  // when: its feedback view is opened
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+
+  // then: it says there is none yet, and leads to the reading view
+  await expect(page).toHaveURL(/\/feedback$/);
+  await expect(feedbackView(page)).toContainText("No feedback yet.");
+  await expect(
+    feedbackView(page).getByRole("link", { name: "To the reading view" }),
+  ).toHaveAttribute("href", /\/read$/);
+  // and: the tab counts nothing
+  await expect(views(page).locator(".count")).toHaveCount(0);
+});
+
+test("the feedback view lists what is pending newest first, each told by its kind, and works it through", async ({
+  page,
+}) => {
+  // given: a copy of a written book, a passage of its first scene and then the whole copy commented on
+  await aCopyOfABookWritten(page, "FeedbackViewListed");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submit = async () => {
+    const submitted = await page.request.post(
+      `${API}/feedback/submitted?reading_copies=${copy}`,
+    );
+    expect(submitted.ok(), await submitted.text()).toBe(true);
+  };
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await submit();
+  await aDraftOn(page, { kind: "whole" }, "Lovely.");
+  await submit();
+
+  // when: the feedback view is opened
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+
+  // then: the tab and the filter count both pending
+  await expect(views(page).locator(".count")).toHaveText("2");
+  await expect(
+    feedbackView(page).getByRole("button", { name: "Pending · 2" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // and: the newest comes first, each saying what it is about, where and in which copy
+  const notes = feedbackView(page).locator(".note");
+  await expect(notes).toHaveCount(2);
+  await expect(
+    notes.nth(0).locator(".about-line").getByRole("img", { name: "Text" }),
+  ).toBeVisible();
+  await expect(notes.nth(0).locator(".about-line")).toContainText(
+    "The whole work",
+  );
+  await expect(notes.nth(0).locator(".about-line")).toContainText(
+    "in “As written”",
+  );
+  await expect(notes.nth(1).locator(".about-line")).toContainText("Morning");
+  await expect(notes.nth(1).locator(".quote")).toHaveText("“boats”");
+  await expect(
+    notes.nth(1).getByRole("link", { name: "Open in the copy" }),
+  ).toHaveAttribute("href", new RegExp(`/read/${copy}\\?feedback=`));
+
+  // when: oldest first is asked for
+  await feedbackView(page)
+    .getByRole("button", { name: "Newest first" })
+    .click();
+  // then: the passage leads
+  await expect(notes.nth(0).locator(".quote")).toHaveText("“boats”");
+
+  // when: the passage is marked done
+  await notes.nth(0).getByRole("button", { name: "Done" }).click();
+  // then: it goes, and one is left pending
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Lovely.");
+  await expect(
+    feedbackView(page)
+      .getByRole("group", { name: "Show" })
+      .getByRole("button", { name: "Pending · 1" }),
+  ).toBeVisible();
+
+  // when: what is done is shown
+  await feedbackView(page)
+    .getByRole("group", { name: "Show" })
+    .getByRole("button", { name: "Done", exact: true })
+    .click();
+  // then: the passage is there, marked done
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Which boats?");
+  // when: all is shown
+  await feedbackView(page)
+    .getByRole("group", { name: "Show" })
+    .getByRole("button", { name: "All", exact: true })
+    .click();
+  // then: both are there
+  await expect(notes).toHaveCount(2);
 });

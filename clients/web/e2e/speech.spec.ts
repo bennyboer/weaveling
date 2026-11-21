@@ -70,6 +70,7 @@ test.describe("a browser asking for German", () => {
       "Pinnwand",
       "Gliederung",
       "Ideen",
+      "Feedback",
     ]);
     // and: the theme, the status bar and the way back to every project speak german
     await expect(

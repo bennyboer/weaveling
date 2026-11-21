@@ -6,11 +6,11 @@ use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use feedback_contract::{
-    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, RewriteFeedbackRequest,
+    DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, RewriteFeedbackRequest, order,
     refused, status,
 };
 use feedback_core::{
-    FeedbackCore, FeedbackError, InvalidComment, On, ReadingCopyLink, Status, Subject,
+    FeedbackCore, FeedbackError, InvalidComment, On, Order, Page, ReadingCopyLink, Status, Subject,
 };
 use serde::Deserialize;
 use serving::Problem;
@@ -41,6 +41,9 @@ struct OnPlaces {
     scenes: Option<String>,
     sections: Option<String>,
     status: Option<String>,
+    order: Option<String>,
+    after: Option<String>,
+    limit: Option<usize>,
 }
 
 impl OnPlaces {
@@ -79,6 +82,26 @@ impl OnPlaces {
         self.on()
     }
 
+    /// The page of a listing asked for: oldest first unless asked, after a piece, and at most so many.
+    fn page(&self) -> Result<Page, Problem> {
+        let order = match self.order.as_deref() {
+            None | Some(order::OLDEST) => Order::Oldest,
+            Some(order::NEWEST) => Order::Newest,
+            Some(unknown) => {
+                return Err(Problem::rejected(
+                    refused::ORDER_UNKNOWN,
+                    format!("feedback is listed oldest or newest first, never {unknown}"),
+                ));
+            }
+        };
+
+        Ok(Page {
+            order,
+            after: self.after.clone(),
+            at_most: self.limit,
+        })
+    }
+
     fn status(&self) -> Result<Option<Status>, Problem> {
         match self.status.as_deref() {
             None => Ok(None),
@@ -106,7 +129,7 @@ async fn submitted_on(
     Query(asked): Query<OnPlaces>,
 ) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
     let found = feedback
-        .submitted(&asked.on()?, asked.status()?, &agent)
+        .submitted(&asked.on()?, asked.status()?, &asked.page()?, &agent)
         .await
         .map_err(problem_of)?;
 

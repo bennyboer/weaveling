@@ -5660,6 +5660,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-feedback-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "weaveling-eventpublishing",
+ "weaveling-feedback-core",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-readings-contract",
+]
+
+[[package]]
 name = "weaveling-feedback-rest"
 version = "0.1.0"
 dependencies = [
@@ -5693,6 +5705,7 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "weaveling-feedback-core",
+ "weaveling-feedback-messaging",
  "weaveling-feedback-rest",
  "weaveling-outbox",
  "weaveling-wiring",

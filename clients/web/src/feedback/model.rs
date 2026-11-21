@@ -77,6 +77,8 @@ pub enum CommentRun {
 pub struct Pending {
     pub scenes: HashMap<SceneId, u32>,
     pub sections: HashMap<SectionId, u32>,
+    /// All of it, on a whole copy too.
+    pub total: u32,
 }
 
 impl From<PendingDTO> for Pending {
@@ -92,6 +94,7 @@ impl From<PendingDTO> for Pending {
                 .into_iter()
                 .map(|(section, count)| (SectionId::from(section), count))
                 .collect(),
+            total: dto.total,
         }
     }
 }

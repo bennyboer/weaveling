@@ -5,6 +5,7 @@ view-read = Leer
 view-board = Tablero
 view-outline = Esquema
 view-ideas = Ideas
+view-feedback = Comentarios
 status-bar = Estado
 
 theme = Tema
@@ -157,6 +158,7 @@ refused-feedback-not-yours = Solo quien escribió este comentario puede cambiarl
 refused-feedback-too-many-counted = Como mucho se piden { $max } a la vez.
 refused-feedback-place-unnamed = Los comentarios se piden sobre copias de lectura, en un proyecto, sobre escenas o sobre secciones, solo uno de ellos.
 refused-feedback-status-unknown = Los comentarios están pendientes o hechos; no se pide otra cosa.
+refused-feedback-order-unknown = Los comentarios se listan de más antiguo o más reciente primero.
 refused-board-id-invalid = Eso no es un ID de tablero válido.
 refused-idea-already-pinned = Esta idea ya está en el tablero.
 refused-idea-not-pinned = Esta idea no está en el tablero.
@@ -463,6 +465,21 @@ feedback-marks-hide = Ocultar los comentarios en el texto
 feedback-marks-show = Mostrar los comentarios en el texto
 feedback-open-in-copy = Abrir en la copia
 feedback-show-done = Mostrar hechos · { $count }
+feedback-filter-pending = Pendientes
+feedback-filter-done = Hechos
+feedback-filter-all = Todos
+feedback-newest-first = Más recientes primero
+feedback-oldest-first = Más antiguos primero
+feedback-in-copy = en «{ $copy }»
+feedback-kind-text = Texto
+feedback-whole-work = La obra entera
+feedback-none-yet = Todavía no hay comentarios. Pide a tus lectores de prueba comentarios sobre una copia de lectura.
+feedback-to-reading = A la vista de lectura
+feedback-show-more = Mostrar más
+feedback-pending-tab = { $count ->
+        [one] 1 comentario pendiente
+       *[other] { $count } comentarios pendientes
+    }
 feedback-hide-done = Ocultar hechos
 feedback-mark-done-title = Marcar como hecho
 feedback-mark-not-done-title = Marcar como pendiente

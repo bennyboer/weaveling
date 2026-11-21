@@ -5,6 +5,7 @@ view-read = Lire
 view-board = Tableau
 view-outline = Plan
 view-ideas = Idées
+view-feedback = Retours
 status-bar = État
 
 theme = Thème
@@ -157,6 +158,7 @@ refused-feedback-not-yours = Seule la personne qui a écrit ce commentaire peut 
 refused-feedback-too-many-counted = Au plus { $max } sont demandés à la fois.
 refused-feedback-place-unnamed = Les retours se demandent sur des copies de lecture, dans un projet, sur des scènes ou sur des sections, l’un d’eux.
 refused-feedback-status-unknown = Les retours sont à traiter ou traités ; rien d’autre ne se demande.
+refused-feedback-order-unknown = Les retours se listent du plus ancien ou du plus récent d’abord.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
 refused-idea-not-pinned = Cette idée n’est pas sur le tableau.
@@ -463,6 +465,21 @@ feedback-marks-hide = Masquer les retours dans le texte
 feedback-marks-show = Afficher les retours dans le texte
 feedback-open-in-copy = Ouvrir dans la copie
 feedback-show-done = Afficher les traités · { $count }
+feedback-filter-pending = À traiter
+feedback-filter-done = Traités
+feedback-filter-all = Tous
+feedback-newest-first = Les plus récents d’abord
+feedback-oldest-first = Les plus anciens d’abord
+feedback-in-copy = dans « { $copy } »
+feedback-kind-text = Texte
+feedback-whole-work = L’œuvre entière
+feedback-none-yet = Pas encore de retours. Demandez à vos lecteurs test des retours sur une copie de lecture.
+feedback-to-reading = Vers la vue de lecture
+feedback-show-more = Afficher plus
+feedback-pending-tab = { $count ->
+        [one] 1 commentaire à traiter
+       *[other] { $count } commentaires à traiter
+    }
 feedback-hide-done = Masquer les traités
 feedback-mark-done-title = Marquer comme traité
 feedback-mark-not-done-title = Marquer comme à traiter

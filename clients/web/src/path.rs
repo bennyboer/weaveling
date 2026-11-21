@@ -154,6 +154,7 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
                 ["board"] => vec![named, said("view-board", None)],
                 ["outline"] => vec![named, said("view-outline", None)],
                 ["ideas"] => vec![named, said("view-ideas", None)],
+                ["feedback"] => vec![named, said("view-feedback", None)],
                 ["ideas", idea] => vec![
                     named,
                     view("view-ideas", route::pool(project)),

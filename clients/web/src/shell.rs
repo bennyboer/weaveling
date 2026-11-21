@@ -8,6 +8,7 @@ use leptos_router::components::A;
 use crate::accounts;
 use crate::accounts::{CurrentSession, SignInState};
 use crate::avatar;
+use crate::feedback;
 use crate::icons;
 use crate::icons::Icon;
 use crate::members::listed::Member;
@@ -32,6 +33,7 @@ pub enum Viewing {
     Board,
     Outline,
     Ideas,
+    Feedback,
     Write,
     Read,
 }
@@ -42,6 +44,7 @@ impl Viewing {
             Self::Board => "view-board",
             Self::Outline => "view-outline",
             Self::Ideas => "view-ideas",
+            Self::Feedback => "view-feedback",
             Self::Write => "view-write",
             Self::Read => "view-read",
         }
@@ -52,6 +55,7 @@ impl Viewing {
             Self::Board => route::board(project),
             Self::Outline => route::outline(project),
             Self::Ideas => route::pool(project),
+            Self::Feedback => route::feedback(project),
             Self::Write => route::writing(project),
             Self::Read => route::reading(project),
         }
@@ -150,6 +154,20 @@ fn whereabouts(
     let roles = expect_context::<Roles>();
     let id = route::project_id(&project);
     open_project.open(&id);
+    let pending = LocalResource::new({
+        let id = id.clone();
+
+        move || {
+            let id = id.clone();
+
+            async move {
+                feedback::service::pending_in(&id)
+                    .await
+                    .map(|pending| pending.total)
+                    .unwrap_or(0)
+            }
+        }
+    });
     let shown = Signal::derive(move || open_project.name().unwrap_or_else(|| named.clone()));
 
     (
@@ -182,10 +200,11 @@ fn whereabouts(
                     Viewing::Board,
                     Viewing::Outline,
                     Viewing::Ideas,
+                    Viewing::Feedback,
                 ]
                 .into_iter()
                 .filter(|view| writing || *view != Viewing::Write)
-                .map(|view| tab(view, project.clone(), here))
+                .map(|view| tab(view, project.clone(), here, pending))
                 .collect::<Vec<_>>()
             }),
     )
@@ -276,9 +295,30 @@ fn stacked(held: Vec<Member>) -> impl IntoView {
     ))
 }
 
-fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
+/// A view's tab, the feedback's counting what is still to be worked through.
+fn tab(
+    view: Viewing,
+    project: String,
+    here: Option<Viewing>,
+    pending: LocalResource<u32>,
+) -> impl IntoView {
     let at = view.at(&project);
     let here = here == Some(view);
+    let counted = move || {
+        (view == Viewing::Feedback)
+            .then(|| pending.get().filter(|count| *count > 0))
+            .flatten()
+            .map(|count| {
+                let mut args = FluentArgs::new();
+                args.set("count", count);
+
+                view! {
+                    <span class="count" title=speech::say_with("feedback-pending-tab", &args)>
+                        {count.to_string()}
+                    </span>
+                }
+            })
+    };
 
     view! {
         <A
@@ -287,6 +327,7 @@ fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
             attr:data-label=speech::said(view.message())
         >
             <span>{speech::said(view.message())}</span>
+            {counted}
         </A>
     }
 }

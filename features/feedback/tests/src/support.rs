@@ -9,13 +9,20 @@ use feedback_contract::{
     AboutDTO, CommentBlockDTO, CommentRunDTO, DraftFeedbackRequest, FeedbackDTO,
     ReadingCopyPlaceDTO,
 };
-use feedback_core::FeedbackCore;
+use feedback_core::{FeedbackCore, ReadingCopyLink};
 use serde_json::Value;
 
 pub const READING_COPY: &str = "copy_loom";
 
+/// The feedback feature, having heard that the loom and the weft copy were made of the loom project,
+/// and the shuttle copy of another.
 pub fn feedback() -> FeedbackCore {
-    FeedbackCore::new(Arc::new(FixedClock::new(clock::at(1_700_000_000))))
+    let feedback = FeedbackCore::new(Arc::new(FixedClock::new(clock::at(1_700_000_000))));
+    feedback.remember_copy(ReadingCopyLink::from(READING_COPY), "project_loom");
+    feedback.remember_copy(ReadingCopyLink::from("copy_weft"), "project_loom");
+    feedback.remember_copy(ReadingCopyLink::from("copy_shuttle"), "project_shuttle");
+
+    feedback
 }
 
 pub fn as_(feedback: &FeedbackCore, account: &str) -> TestServer {

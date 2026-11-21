@@ -1,4 +1,5 @@
 mod board;
+mod feedback;
 mod idea;
 mod ideas;
 /// The views that are loaded only when they are opened.
@@ -28,9 +29,10 @@ use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::your_account::YourAccountPage;
 use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::lazy::{
-    BoardRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute, InstanceInvitationsRoute,
-    InstanceRoute, InstanceStorageRoute, LooseScenesRoute, MembersInvitedRoute, MembersRoute,
-    OutlineRoute, ProjectRoute, ReadRoute, SecurityRoute, StorageRoute, WriteRoute,
+    BoardRoute, FeedbackRoute, IdeaRoute, IdeasRoute, InstanceAccountsRoute,
+    InstanceInvitationsRoute, InstanceRoute, InstanceStorageRoute, LooseScenesRoute,
+    MembersInvitedRoute, MembersRoute, OutlineRoute, ProjectRoute, ReadRoute, SecurityRoute,
+    StorageRoute, WriteRoute,
 };
 use crate::app::missing::MissingPage;
 use crate::app::trash::{TrashPage, TrashPageProps};
@@ -103,6 +105,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/projects/:project/board") view={Lazy::<BoardRoute>::new()} />
             <Route path=path!("/projects/:project/outline") view={Lazy::<OutlineRoute>::new()} />
             <Route path=path!("/projects/:project/ideas") view={Lazy::<IdeasRoute>::new()} />
+            <Route path=path!("/projects/:project/feedback") view={Lazy::<FeedbackRoute>::new()} />
             <Route path=path!("/projects/:project/members") view={Lazy::<MembersRoute>::new()} />
             <Route path=path!("/projects/:project/members/invited") view={Lazy::<MembersInvitedRoute>::new()} />
             <Route path=path!("/projects/:project/write") view={Lazy::<WriteRoute>::new()} />

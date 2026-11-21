@@ -13,6 +13,12 @@ pub enum AboutDTO {
     },
 }
 
+/// In which order `GET /feedback/on?order=` lists feedback submitted, by when it was submitted; oldest first unless asked.
+pub mod order {
+    pub const OLDEST: &str = "oldest";
+    pub const NEWEST: &str = "newest";
+}
+
 /// What feedback given is, as `GET /feedback/on?status=` asks for it.
 pub mod status {
     pub const PENDING: &str = "pending";
@@ -116,6 +122,8 @@ pub struct FeedbackCountDTO {
 pub struct PendingDTO {
     pub scenes: BTreeMap<String, u32>,
     pub sections: BTreeMap<String, u32>,
+    /// All of it, on a whole copy too, which lies on no scene and no section.
+    pub total: u32,
 }
 
 /// The most subjects `GET /feedback/counts` counts, and the most scenes `GET /feedback/on` looks on, at once.
@@ -142,8 +150,9 @@ pub mod refused {
     pub const TOO_MANY_COUNTED: &str = "feedback-too-many-counted";
     pub const PLACE_UNNAMED: &str = "feedback-place-unnamed";
     pub const STATUS_UNKNOWN: &str = "feedback-status-unknown";
+    pub const ORDER_UNKNOWN: &str = "feedback-order-unknown";
 
-    pub const EVERY: [&str; 9] = [
+    pub const EVERY: [&str; 10] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -153,5 +162,6 @@ pub mod refused {
         TOO_MANY_COUNTED,
         PLACE_UNNAMED,
         STATUS_UNKNOWN,
+        ORDER_UNKNOWN,
     ];
 }

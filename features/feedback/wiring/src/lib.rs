@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use feedback_core::FeedbackCore;
+use feedback_messaging::RememberCopiesListener;
 use outbox::Outbox;
 use wiring::{Context, Feature, Wired};
 
@@ -8,9 +9,10 @@ use wiring::{Context, Feature, Wired};
 pub struct Ports;
 
 pub fn wire(_ports: &Ports, context: &Context) -> Wired {
-    Wired::serving(feedback_rest::router(FeedbackCore::new(
-        context.clock.clone(),
-    )))
+    let feedback = FeedbackCore::new(context.clock.clone());
+
+    Wired::serving(feedback_rest::router(feedback.clone()))
+        .listening(vec![Arc::new(RememberCopiesListener::new(feedback))])
 }
 
 pub struct FeedbackFeature;
