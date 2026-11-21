@@ -3,6 +3,7 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos_router::hooks;
 
+use crate::app::project_page;
 use crate::ideas::inspector;
 use crate::ideas::inspector_state::InspectorState;
 use crate::problem;
@@ -24,6 +25,10 @@ pub fn IdeaPage() -> impl IntoView {
     let state = InspectorState::inspecting(project, asked);
     let ready = Memo::new(move |_| state.opened().is_some());
 
+    move || project_page::unless_gone(&project.get(), move || idea_page(state, ready))
+}
+
+fn idea_page(state: InspectorState, ready: Memo<bool>) -> impl IntoView {
     (
         move || shell::masthead(Some(Inside::of(&state.project(), None))),
         html::main().child(html::div().class("column").child((

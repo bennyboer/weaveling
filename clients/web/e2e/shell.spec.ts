@@ -1,7 +1,14 @@
 import { test, expect } from "@playwright/test";
 
 import { corkboard } from "./support/board";
-import { aNewProject, API, captureIdea, openTheOutline, openThePool, views } from "./support/shell";
+import {
+  aNewProject,
+  API,
+  captureIdea,
+  openTheOutline,
+  openThePool,
+  views,
+} from "./support/shell";
 import { projectOf } from "./support/writing";
 
 const statusBar = (page: import("@playwright/test").Page) =>
@@ -68,7 +75,9 @@ test("the status bar sits along the bottom of every view", async ({ page }) => {
   };
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
   await atTheBottom();
   await aNewProject(page, "Footing");
   await atTheBottom();
@@ -277,10 +286,9 @@ for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 700 });
     // and: a project with a short name
     await aNewProject(page, "x");
-    await page.request.patch(
-      `${API}/projects/${projectOf(page)}`,
-      { data: { name: "Kurz" } },
-    );
+    await page.request.patch(`${API}/projects/${projectOf(page)}`, {
+      data: { name: "Kurz" },
+    });
     await page.reload();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kurz");
 
@@ -325,4 +333,42 @@ test("the writing view comes first among a project's views", async ({
     "Outline",
     "Ideas",
   ]);
+});
+
+for (const view of ["write", "read", "board", "outline", "ideas", "members"]) {
+  test(`a project that is not there says so in its ${view} view, with none of its views above`, async ({
+    page,
+  }) => {
+    // when: a view of a project that was never started is opened
+    await page.goto(`/projects/gone-project_031VkO0hnpeQZUiAB7nDma/${view}`);
+
+    // then: it says the project is no more, and leads back to the projects
+    await expect(
+      page.getByRole("heading", { name: "That project no longer exists." }),
+    ).toBeVisible();
+    await expect(views(page)).toHaveCount(0);
+    await expect(page.locator(".whose")).toHaveCount(0);
+    // when: the way back is followed
+    await page.getByRole("link", { name: "To your projects" }).click();
+    // then: the workspace shows
+    await expect(page).toHaveURL(/\/$/);
+  });
+}
+
+test("an address naming no project at all says there is nothing there, with none of a project's views above", async ({
+  page,
+}) => {
+  // when: a project's view is opened under an id that is no id
+  await page.goto("/projects/test-project_short/read");
+
+  // then: it says nothing is at this address, and leads back to the projects
+  await expect(
+    page.getByRole("heading", {
+      name: "There is nothing woven at this address.",
+    }),
+  ).toBeVisible();
+  await expect(views(page)).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "To your projects" }),
+  ).toBeVisible();
 });

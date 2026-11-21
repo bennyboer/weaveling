@@ -102,6 +102,7 @@ problem-not-found =
         [scene] That scene no longer exists.
         [word-counts] Those word counts no longer exist.
         [work] That work no longer exists.
+        [copy] That reading copy no longer exists.
        *[other] That no longer exists.
     }
 problem-outdated =
@@ -538,6 +539,8 @@ refusal-acknowledge = Acknowledge
 alarm-note = Some changes could not be applied.
 alarm-show = Show
 missing = There is nothing woven at this address.
+not-found-hint = It may have been deleted, or the address is not quite right.
+not-found-to-projects = To your projects
 
 moment =
     { $day } { $month ->

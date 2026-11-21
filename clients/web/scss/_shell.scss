@@ -457,6 +457,37 @@
   padding: 3rem 1.5rem;
 }
 
+/* What is not there, or not any more: said quietly in the middle, with the way back. */
+.not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 18vh;
+  text-align: center;
+
+  > .mark {
+    width: 4.4rem;
+    height: 3rem;
+    background: var(--accent);
+    mask: url("/logo.svg") center / contain no-repeat;
+    opacity: 0.35;
+  }
+
+  > h2 {
+    margin: 0;
+    font-family: var(--heading);
+    font-size: 1.75rem;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  > .not-found-hint {
+    margin: 0 0 0.75rem;
+    color: var(--muted);
+  }
+}
+
 .quiet-note {
   position: fixed;
   bottom: 5.2rem;

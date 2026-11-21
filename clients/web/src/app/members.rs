@@ -3,6 +3,7 @@ use leptos::{IntoView, component, html, view};
 use leptos_router::components::A;
 use leptos_router::hooks;
 
+use crate::app::project_page;
 use crate::blocks;
 use crate::invitations::listing;
 use crate::invitations::service::InvitedInto;
@@ -36,33 +37,39 @@ fn members_page(section: Section) -> impl IntoView {
         params.read().get("project").map(|project| {
             let id = route::project_id(&project);
             let people = People::asked(id.clone());
+            let inside = project.clone();
 
-            (
-                shell::masthead(Some(Inside::of(&project, None))),
-                blocks::page(
-                    "members-page",
-                    speech::said("members-heading"),
-                    Some("members-hint"),
-                    sections(project.clone(), people),
-                    match section {
-                        Section::People => (
-                            blocks::list_card(
-                                "people",
-                                speech::said("members-people"),
-                                inviting(project.clone(), people),
-                                people::people(people),
-                                (),
-                            ),
-                            roles(),
-                        )
-                            .into_any(),
-                        Section::Invited => {
-                            listing::invitations_listing(InvitedInto::Project(id.to_string()))
-                                .into_any()
-                        }
-                    },
-                ),
-            )
+            project_page::unless_gone(&project, move || {
+                let project = inside.clone();
+                let id = id.clone();
+
+                (
+                    shell::masthead(Some(Inside::of(&project, None))),
+                    blocks::page(
+                        "members-page",
+                        speech::said("members-heading"),
+                        Some("members-hint"),
+                        sections(project.clone(), people),
+                        match section {
+                            Section::People => (
+                                blocks::list_card(
+                                    "people",
+                                    speech::said("members-people"),
+                                    inviting(project.clone(), people),
+                                    people::people(people),
+                                    (),
+                                ),
+                                roles(),
+                            )
+                                .into_any(),
+                            Section::Invited => {
+                                listing::invitations_listing(InvitedInto::Project(id.to_string()))
+                                    .into_any()
+                            }
+                        },
+                    ),
+                )
+            })
         })
     }
 }

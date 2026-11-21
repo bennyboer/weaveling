@@ -102,6 +102,7 @@ problem-not-found =
         [scene] Diese Szene gibt es nicht mehr.
         [word-counts] Diese Wortzahlen gibt es nicht mehr.
         [work] Dieses Werk gibt es nicht mehr.
+        [copy] Diese Lesekopie gibt es nicht mehr.
        *[other] Das gibt es nicht mehr.
     }
 problem-outdated =
@@ -538,6 +539,8 @@ refusal-acknowledge = Bestätigen
 alarm-note = Einige Änderungen konnten nicht übernommen werden.
 alarm-show = Anzeigen
 missing = An dieser Adresse ist nichts gewoben.
+not-found-hint = Vielleicht wurde es gelöscht, oder die Adresse stimmt nicht.
+not-found-to-projects = Zu deinen Projekten
 
 moment =
     { $day }. { $month ->

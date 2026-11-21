@@ -54,7 +54,11 @@ enum Shown {
 
 /// The work to read: the live book, or a reading copy of it.
 /// Above the text, the switcher chooses between them.
-pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
+pub fn reading_view(
+    slug: String,
+    copy: Option<String>,
+    copy_gone: RwSignal<bool>,
+) -> impl IntoView {
     let beside_the_text = window()
         .match_media(LYING_OVER_THE_TEXT)
         .ok()
@@ -77,7 +81,7 @@ pub fn reading_view(slug: String, copy: Option<String>) -> impl IntoView {
     let copy = copy.map(ReadingCopyId::from);
     match &copy {
         None => following_live(project.clone(), book, failed),
-        Some(copy) => reading_a_copy(copy.clone(), book, chosen, failed),
+        Some(copy) => reading_a_copy(copy.clone(), book, chosen, failed, copy_gone),
     }
     let copies = LocalResource::new({
         let project = project.clone();
@@ -162,12 +166,13 @@ fn following_live(
     on_cleanup(move || following.set_value(None));
 }
 
-/// Reads a reading copy once, as it never changes.
+/// Reads a reading copy once, as it never changes; a copy not there is told apart, so the page can say so as a whole.
 fn reading_a_copy(
     copy: ReadingCopyId,
     book: RwSignal<Option<Book>>,
     chosen: RwSignal<Option<ListedReadingCopy>>,
     failed: RwSignal<Option<ApiError>>,
+    gone: RwSignal<bool>,
 ) {
     leptos::task::spawn_local(async move {
         match service::reading_copy(&copy).await {
@@ -175,6 +180,7 @@ fn reading_a_copy(
                 _ = chosen.try_set(Some(listed));
                 _ = book.try_set(Some(read));
             }
+            Err(ApiError::NotFound(_)) => _ = gone.try_set(true),
             Err(failure) => _ = failed.try_set(Some(failure)),
         }
     });

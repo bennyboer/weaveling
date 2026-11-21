@@ -1810,3 +1810,31 @@ test("a section or scene you have a draft about keeps its comment button marked,
   // then: no button is marked any more
   await expect(marked).toHaveCount(0);
 });
+
+test("a reading copy that is not there says so, with none of the project's views above", async ({
+  page,
+}) => {
+  // given: a copy of a written book, read
+  await aCopyOfABookWritten(page, "ReadingCopyGone");
+  const read = page.url();
+
+  // when: a copy of that project that is not there is opened instead
+  await page.goto(
+    read.replace(/[^/]+$/, "reading-copy_031VkO0hnpeQZUiAB7nDma"),
+  );
+
+  // then: it says the copy is no more, and leads back to the projects
+  await expect(
+    page.getByRole("heading", { name: "That reading copy no longer exists." }),
+  ).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Views" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "To your projects" }),
+  ).toBeVisible();
+
+  // when: the copy that is there is opened again
+  await page.goto(read);
+
+  // then: it is read as before
+  await expect(switcher(page)).toContainText("As written");
+});
