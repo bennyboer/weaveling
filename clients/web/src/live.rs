@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use live_contract::FrameDTO;
+use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -14,6 +15,7 @@ extern "C" {
         about: &str,
         heard: &Closure<dyn Fn(String)>,
         opened: &Closure<dyn Fn()>,
+        not_there: &JsValue,
     ) -> LiveSubscription;
 
     #[wasm_bindgen(method)]
@@ -46,6 +48,7 @@ pub struct Subscription {
     subscription: LiveSubscription,
     _heard: Closure<dyn Fn(String)>,
     _opened: Closure<dyn Fn()>,
+    _not_there: Option<Closure<dyn Fn()>>,
 }
 
 impl Subscription {
@@ -55,14 +58,52 @@ impl Subscription {
         heard: impl Fn(FrameDTO) + 'static,
         opened: impl Fn() + 'static,
     ) -> Self {
+        Self::started(topic, about, heard, opened, None)
+    }
+
+    /// Starts one that is also told the first time the server finds nothing there to follow, while it keeps asking again.
+    /// The server says so alike for what is not there and for what the asker may not follow,
+    /// so whoever started it can ask what is there by other means.
+    pub fn start_told_not_there(
+        topic: &str,
+        about: &[(&str, &str)],
+        heard: impl Fn(FrameDTO) + 'static,
+        opened: impl Fn() + 'static,
+        not_there: impl Fn() + 'static,
+    ) -> Self {
+        Self::started(
+            topic,
+            about,
+            heard,
+            opened,
+            Some(Closure::<dyn Fn()>::new(not_there)),
+        )
+    }
+
+    fn started(
+        topic: &str,
+        about: &[(&str, &str)],
+        heard: impl Fn(FrameDTO) + 'static,
+        opened: impl Fn() + 'static,
+        not_there: Option<Closure<dyn Fn()>>,
+    ) -> Self {
         let heard = heard_as_frames(heard);
         let opened = Closure::<dyn Fn()>::new(opened);
-        let subscription = LiveSubscription::new(topic, &about_as_told(about), &heard, &opened);
+        let subscription = LiveSubscription::new(
+            topic,
+            &about_as_told(about),
+            &heard,
+            &opened,
+            not_there
+                .as_ref()
+                .map_or(&JsValue::UNDEFINED, |told| told.as_ref()),
+        );
 
         Self {
             subscription,
             _heard: heard,
             _opened: opened,
+            _not_there: not_there,
         }
     }
 }

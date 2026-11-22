@@ -11,9 +11,17 @@ class LiveConnection {
     this.socket = null;
   }
 
-  subscribe(topic, about, heard, opened) {
+  subscribe(topic, about, heard, opened, notThere) {
     this.counted += 1;
-    const subscription = { id: String(this.counted), topic, about, heard, opened, failures: 0 };
+    const subscription = {
+      id: String(this.counted),
+      topic,
+      about,
+      heard,
+      opened,
+      notThere,
+      failures: 0,
+    };
     this.subscriptions.set(subscription.id, subscription);
     if (this.socket) {
       this.ask(subscription);
@@ -67,6 +75,9 @@ class LiveConnection {
     if (why === "behind") {
       this.ask(subscription);
     } else if (why === "not-there" || why === "failed") {
+      if (why === "not-there" && subscription.failures === 0) {
+        subscription.notThere?.();
+      }
       const wait = Math.min(ASKED_AGAIN_FIRST * 2 ** subscription.failures, ASKED_AGAIN_AT_MOST);
       subscription.failures += 1;
       subscription.again = setTimeout(() => {
@@ -95,12 +106,13 @@ class LiveConnection {
 const connection = new LiveConnection();
 
 export class LiveSubscription {
-  constructor(topic, about, heard, opened) {
+  constructor(topic, about, heard, opened, notThere) {
     this.id = connection.subscribe(
       topic,
       JSON.parse(about),
       (frame) => heard(frame),
       () => opened(),
+      notThere ? () => notThere() : undefined,
     );
   }
 

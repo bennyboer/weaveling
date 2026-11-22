@@ -75,12 +75,14 @@ impl OpenProject {
         self.project.set(Some(project.clone()));
         self.held.set(Some(project.clone()));
         self.refused.set(None);
-        self.following.set_value(Some(Subscription::start(
-            "projects",
-            &[("project", project.to_string().as_str())],
-            move |told| self.heard(told),
-            move || self.ask(),
-        )));
+        self.following
+            .set_value(Some(Subscription::start_told_not_there(
+                "projects",
+                &[("project", project.to_string().as_str())],
+                move |told| self.heard(told),
+                move || self.ask(),
+                move || self.ask(),
+            )));
     }
 
     fn ask(self) {
