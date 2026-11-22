@@ -162,6 +162,7 @@ refused-feedback-order-unknown = Os comentários são listados do mais antigo ou
 refused-feedback-subject-unknown = Os comentários são dados sobre cópias de leitura.
 refused-feedback-place-unknown = Um lugar no texto é uma cena ou uma seção.
 refused-feedback-giver-unknown = Os comentários são dados localmente ou por uma conta.
+refused-feedback-reading-copy-closed = Esta cópia de leitura está fechada, não é mais possível comentar nela.
 refused-board-id-invalid = Isso não é um ID de quadro válido.
 refused-idea-already-pinned = Esta ideia já está no quadro.
 refused-idea-not-pinned = Esta ideia não está no quadro.

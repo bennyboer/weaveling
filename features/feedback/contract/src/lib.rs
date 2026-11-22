@@ -317,8 +317,9 @@ pub mod refused {
     pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
     pub const PLACE_UNKNOWN: &str = "feedback-place-unknown";
     pub const GIVER_UNKNOWN: &str = "feedback-giver-unknown";
+    pub const READING_COPY_CLOSED: &str = "feedback-reading-copy-closed";
 
-    pub const EVERY: [&str; 13] = [
+    pub const EVERY: [&str; 14] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -332,5 +333,6 @@ pub mod refused {
         SUBJECT_UNKNOWN,
         PLACE_UNKNOWN,
         GIVER_UNKNOWN,
+        READING_COPY_CLOSED,
     ];
 }

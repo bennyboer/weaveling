@@ -4,8 +4,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use clock::Clock;
 use eventsourcing::Agent;
 use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 use crate::about::{About, Subject};
+use crate::catalog::{KnownReadingCopy, ReadingCopyCatalog};
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
 use crate::id::FeedbackId;
@@ -114,7 +116,11 @@ impl Asked {
         self.subjects.as_ref().map_or(0, Vec::len) + self.places.as_ref().map_or(0, Places::len)
     }
 
-    fn holds(&self, feedback: &ListedFeedback, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+    fn holds(
+        &self,
+        feedback: &ListedFeedback,
+        copies: &HashMap<ReadingCopyLink, KnownReadingCopy>,
+    ) -> bool {
         let about = &feedback.about;
 
         self.project
@@ -132,9 +138,21 @@ impl Asked {
     }
 }
 
-fn in_project(about: &About, project: &str, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+fn in_project(
+    about: &About,
+    project: &str,
+    copies: &HashMap<ReadingCopyLink, KnownReadingCopy>,
+) -> bool {
     match about.subject() {
-        Subject::ReadingCopy(copy) => copies.get(&copy).is_some_and(|made_of| made_of == project),
+        Subject::ReadingCopy(copy) => copies
+            .get(&copy)
+            .is_some_and(|known| known.project.as_str() == project),
+    }
+}
+
+fn reading_copy_of(about: &About) -> ReadingCopyLink {
+    match about.subject() {
+        Subject::ReadingCopy(copy) => copy,
     }
 }
 
@@ -159,15 +177,21 @@ pub const COUNTED_AT_ONCE: usize = 100;
 pub struct FeedbackCore {
     // TODO: the `Feedback` aggregate in an event store and its catalogs, rather than what this process holds (step 5)
     kept: Arc<Mutex<Vec<ListedFeedback>>>,
-    copies: Arc<Mutex<HashMap<ReadingCopyLink, String>>>,
+    copies: Arc<dyn ReadingCopyCatalog>,
+    transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
 
 impl FeedbackCore {
-    pub fn new(clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        copies: Arc<dyn ReadingCopyCatalog>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
             kept: Arc::new(Mutex::new(Vec::new())),
-            copies: Arc::new(Mutex::new(HashMap::new())),
+            copies,
+            transactions,
             clock,
         }
     }
@@ -176,16 +200,74 @@ impl FeedbackCore {
         self.kept.lock().expect("feedback lock poisoned")
     }
 
-    fn copies(&self) -> HashMap<ReadingCopyLink, String> {
-        self.copies.lock().expect("copies lock poisoned").clone()
+    /// The copies the feedback kept is given on, as the readings told of them.
+    async fn reading_copies_heard(
+        &self,
+    ) -> Result<HashMap<ReadingCopyLink, KnownReadingCopy>, FeedbackError> {
+        let mut given_on: Vec<ReadingCopyLink> = self
+            .kept()
+            .iter()
+            .map(|feedback| reading_copy_of(&feedback.about))
+            .collect();
+        given_on.sort();
+        given_on.dedup();
+
+        Ok(self.copies.known(&given_on).await?)
     }
 
-    /// Remembers which project a reading copy was made of, so feedback on it is found in that project.
-    pub fn remember_copy(&self, copy: ReadingCopyLink, project: &str) {
-        self.copies
-            .lock()
-            .expect("copies lock poisoned")
-            .insert(copy, project.to_owned());
+    /// Refuses feedback on a copy the readings told is closed by now.
+    /// A copy not heard of yet is let through, as feedback is drafted right after a copy is made for it.
+    async fn open_for_feedback(&self, copies: &[ReadingCopyLink]) -> Result<(), FeedbackError> {
+        let now = self.clock.now();
+        let known = self.copies.known(copies).await?;
+        if known.values().any(|copy| !copy.is_open_at(now)) {
+            return Err(FeedbackError::ReadingCopyClosed);
+        }
+
+        Ok(())
+    }
+
+    /// Keeps a reading copy as the readings told it at a version of it: its project, and until when it is open.
+    pub async fn reading_copy_heard(
+        &self,
+        within: Option<&mut Transaction>,
+        copy: &ReadingCopyLink,
+        known: &KnownReadingCopy,
+        version: u64,
+    ) -> Result<(), FeedbackError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.copies.keep(transaction, copy, known, version).await?;
+
+            Ok(())
+        })
+    }
+
+    /// Forgets a deleted reading copy, so a late message about it does not bring it back.
+    pub async fn reading_copy_deleted(
+        &self,
+        within: Option<&mut Transaction>,
+        copy: &ReadingCopyLink,
+        at: OffsetDateTime,
+    ) -> Result<(), FeedbackError> {
+        transacting::joining!(&*self.transactions, within, |transaction| {
+            self.copies.forget(transaction, copy, at).await?;
+
+            Ok(())
+        })
+    }
+
+    /// Forgets, in batches, the tombstones of deleted copies laid long enough ago that no message about them can still arrive.
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, FeedbackError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            Ok(self
+                .copies
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?)
+        })
     }
 
     /// The agent's own drafts where asked, oldest first, which only they see until they submit them.
@@ -198,7 +280,7 @@ impl FeedbackCore {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.copies();
+        let copies = self.reading_copies_heard().await?;
 
         Ok(self
             .kept()
@@ -263,7 +345,7 @@ impl FeedbackCore {
         {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.copies();
+        let copies = self.reading_copies_heard().await?;
         let mut found: Vec<ListedFeedback> = self
             .kept()
             .iter()
@@ -302,7 +384,7 @@ impl FeedbackCore {
         _agent: &Agent,
     ) -> Result<Vec<Agent>, FeedbackError> {
         // TODO: for whoever may read the project (step 5)
-        let copies = self.copies();
+        let copies = self.reading_copies_heard().await?;
         let mut given: Vec<&ListedFeedback> = Vec::new();
         let kept = self.kept();
         given.extend(kept.iter().filter(|feedback| {
@@ -325,7 +407,7 @@ impl FeedbackCore {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.copies();
+        let copies = self.reading_copies_heard().await?;
         let mut pending = Pending::default();
         for feedback in self.kept().iter().filter(|feedback| {
             !feedback.is_draft() && !feedback.done && asked.holds(feedback, &copies)
@@ -349,12 +431,23 @@ impl FeedbackCore {
         asked: &Asked,
         agent: &Agent,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
-        // TODO: only while the subject is open, for whoever may read its project (step 5)
+        // TODO: for whoever may read its project (step 5)
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
+        let copies = self.reading_copies_heard().await?;
+        let submitting: Vec<ReadingCopyLink> = self
+            .kept()
+            .iter()
+            .filter(|feedback| {
+                feedback.is_draft()
+                    && &feedback.written_by == agent
+                    && asked.holds(feedback, &copies)
+            })
+            .map(|feedback| reading_copy_of(&feedback.about))
+            .collect();
+        self.open_for_feedback(&submitting).await?;
         let now = self.clock.now();
-        let copies = self.copies();
         let mut kept = self.kept();
         let mut submitted = Vec::new();
         for feedback in kept.iter_mut().filter(|feedback| {
@@ -374,11 +467,12 @@ impl FeedbackCore {
         comment: Vec<CommentBlock>,
         agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
-        // TODO: only on a subject that is open, for whoever may read its project (step 5)
+        // TODO: for whoever may read its project (step 5)
         let comment = Comment::new(comment)?;
         if !about.holds_something() {
             return Err(FeedbackError::PassageEmpty);
         }
+        self.open_for_feedback(&[reading_copy_of(&about)]).await?;
         let now = self.clock.now();
         let drafted = ListedFeedback {
             id: FeedbackId::generate(now),

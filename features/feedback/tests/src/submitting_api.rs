@@ -5,8 +5,14 @@ use feedback_contract::{
     ListedGiverDTO, PendingDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
 };
 
+use std::sync::Arc;
+
+use clock::FixedClock;
+use feedback_contract::DraftFeedbackRequest;
+
 use crate::support::{
-    a_passage, as_, drafted, feedback, in_the_copy, on_the_copy, refusal, saying,
+    CLOSING_COPY, NOW, a_passage, as_, drafted, feedback, feedback_on, in_the_copy, on_the_copy,
+    refusal, saying,
 };
 
 async fn submitted(server: &TestServer) -> Vec<FeedbackDTO> {
@@ -21,7 +27,7 @@ async fn submitted(server: &TestServer) -> Vec<FeedbackDTO> {
 #[tokio::test]
 async fn drafts_are_submitted_together_and_then_seen_by_everyone() {
     // given: two drafts of ada's, and one of hedy's
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let hedy = as_(&feedback, "account_hedy");
     drafted(&ada, a_passage(), saying("Which boats?")).await;
@@ -60,7 +66,7 @@ async fn drafts_are_submitted_together_and_then_seen_by_everyone() {
 #[tokio::test]
 async fn submitted_feedback_is_marked_edited_once_changed_and_deleted_by_its_writer_alone() {
     // given: a comment of ada's, submitted
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let hedy = as_(&feedback, "account_hedy");
     let given = drafted(&ada, a_passage(), saying("First thought.")).await;
@@ -119,7 +125,7 @@ async fn counted(server: &TestServer, ids: &[&str]) -> Vec<FeedbackCountDTO> {
 #[tokio::test]
 async fn each_copy_counts_what_is_not_done_and_your_drafts_on_it_in_the_order_asked() {
     // given: two comments of ada's submitted on the copy, and a draft of hers and of hedy's after
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let hedy = as_(&feedback, "account_hedy");
     drafted(&ada, a_passage(), saying("Which boats?")).await;
@@ -152,7 +158,7 @@ async fn each_copy_counts_what_is_not_done_and_your_drafts_on_it_in_the_order_as
 #[tokio::test]
 async fn no_more_copies_are_counted_at_once_than_the_contract_says() {
     // given: as many copies as are counted at once, and one more
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let ids: Vec<String> = (0..=COUNTED_AT_ONCE)
         .map(|at| format!("copy_{at}"))
@@ -181,7 +187,7 @@ async fn no_more_copies_are_counted_at_once_than_the_contract_says() {
 #[tokio::test]
 async fn feedback_given_is_marked_done_and_not_done_again_but_a_draft_is_not_there_for_it() {
     // given: a comment of ada's submitted, and a draft of hers
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let hedy = as_(&feedback, "account_hedy");
     let given = drafted(&ada, a_passage(), saying("Which boats?")).await;
@@ -217,7 +223,7 @@ async fn feedback_given_is_marked_done_and_not_done_again_but_a_draft_is_not_the
 #[tokio::test]
 async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_but_no_draft() {
     // given: in two copies, a passage and the scene commented on and submitted
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let in_another = |place| AboutDTO::ReadingCopy {
         reading_copy: "copy_weft".to_owned(),
@@ -276,7 +282,7 @@ async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_b
 #[tokio::test]
 async fn a_section_asked_for_with_its_scenes_finds_the_feedback_on_any_of_them() {
     // given: a passage in a scene, the section itself, another scene, and the whole copy commented on and submitted
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let boats = drafted(&ada, a_passage(), saying("Which boats?")).await;
     let long = drafted(
@@ -322,7 +328,7 @@ async fn a_section_asked_for_with_its_scenes_finds_the_feedback_on_any_of_them()
 async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_counted_by_scene_and_section()
  {
     // given: a passage and its scene, a section, and the whole copy commented on and submitted, and a draft on the section
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let the_section = || {
         in_the_copy(ReadingCopyPlaceDTO::Section {
@@ -375,7 +381,7 @@ async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_count
 #[tokio::test]
 async fn feedback_asked_for_nowhere_in_particular_or_on_what_is_not_known_is_refused() {
     // given: the feedback
-    let ada = as_(&feedback(), "account_ada");
+    let ada = as_(&feedback().await, "account_ada");
 
     // expect: nothing named, a subject of no known kind, or a place of no known kind are refused
     for (asked, refused_as) in [
@@ -400,7 +406,7 @@ async fn feedback_asked_for_nowhere_in_particular_or_on_what_is_not_known_is_ref
 #[tokio::test]
 async fn a_project_copies_and_places_in_the_text_narrow_the_feedback_together() {
     // given: the same scene commented on in two copies of the project, and in a copy of another project
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let on_the_harbour = |copy: &str| AboutDTO::ReadingCopy {
         reading_copy: copy.to_owned(),
@@ -443,7 +449,7 @@ async fn a_project_copies_and_places_in_the_text_narrow_the_feedback_together() 
 #[tokio::test]
 async fn a_project_s_feedback_given_is_found_in_every_copy_of_it_but_no_draft() {
     // given: a comment given in one copy and another, a draft, and a comment in a copy of another project
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     drafted(&ada, a_passage(), saying("Which boats?")).await;
     drafted(
@@ -491,7 +497,7 @@ async fn a_project_s_feedback_given_is_found_in_every_copy_of_it_but_no_draft() 
 async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes_than_the_contract_says()
  {
     // given: passages in two scenes commented on, one marked done, the scene itself, and a draft, all in a copy
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let in_the_market = in_the_copy(ReadingCopyPlaceDTO::Passage {
         scene: "scene_market".to_owned(),
@@ -552,7 +558,7 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
 #[tokio::test]
 async fn a_project_s_feedback_is_paged_newest_or_oldest_first_and_counted_whole() {
     // given: three comments submitted one after another, the last on the whole copy
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let mut ids = Vec::new();
     for (place, said) in [
@@ -614,7 +620,7 @@ async fn a_project_s_feedback_is_paged_newest_or_oldest_first_and_counted_whole(
 #[tokio::test]
 async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedback_found_alone() {
     // given: ada and then bea commenting in the project, ada again, and bea's draft not yet submitted
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let bea = as_(&feedback, "account_bea");
     let boats = drafted(&ada, a_passage(), saying("Which boats?")).await;
@@ -676,4 +682,44 @@ async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedb
     let unknown = bea.get("/feedback/on?given_by=guest:someone").await;
     unknown.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&unknown), refused::GIVER_UNKNOWN);
+}
+
+#[tokio::test]
+async fn feedback_is_drafted_and_submitted_only_while_its_copy_is_open() {
+    // given: a draft in a copy that closes a day from now
+    let clock = Arc::new(FixedClock::new(clock::at(NOW)));
+    let feedback = feedback_on(clock.clone()).await;
+    let ada = as_(&feedback, "account_ada");
+    let in_the_closing_copy = || AboutDTO::ReadingCopy {
+        reading_copy: CLOSING_COPY.to_owned(),
+        place: ReadingCopyPlaceDTO::Whole,
+    };
+    drafted(&ada, in_the_closing_copy(), saying("Lovely.")).await;
+
+    // when: two days pass, and the draft is submitted
+    clock.set(clock::at(NOW + 2 * 24 * 60 * 60));
+    let submitting = ada
+        .post(&format!(
+            "/feedback/submitted?subjects=reading_copy:{CLOSING_COPY}"
+        ))
+        .await;
+
+    // then: it is refused, as the copy is closed
+    submitting.assert_status(StatusCode::CONFLICT);
+    assert_eq!(refusal(&submitting), refused::READING_COPY_CLOSED);
+
+    // when: another draft is begun in it
+    let drafting = ada
+        .post("/feedback")
+        .json(&DraftFeedbackRequest {
+            about: in_the_closing_copy(),
+            comment: saying("Too late?"),
+        })
+        .await;
+
+    // then: it is refused too
+    drafting.assert_status(StatusCode::CONFLICT);
+    assert_eq!(refusal(&drafting), refused::READING_COPY_CLOSED);
+    // and: a copy open without end still takes feedback
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
 }

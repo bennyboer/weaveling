@@ -5679,11 +5679,14 @@ name = "weaveling-feedback-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-feedback-core",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-readings-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5706,12 +5709,15 @@ dependencies = [
  "axum",
  "axum-test",
  "serde_json",
+ "time",
  "tokio",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-feedback-catalog",
  "weaveling-feedback-contract",
  "weaveling-feedback-core",
  "weaveling-feedback-rest",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5719,10 +5725,14 @@ name = "weaveling-feedback-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "weaveling-chores",
+ "weaveling-feedback-catalog",
  "weaveling-feedback-core",
  "weaveling-feedback-messaging",
  "weaveling-feedback-rest",
+ "weaveling-inbox",
  "weaveling-outbox",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 

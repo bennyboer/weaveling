@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 async fn a_draft_is_written_about_a_passage_a_scene_a_section_or_the_whole_copy() {
     // given: the feedback
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
 
     // when: ada drafts on each kind of place
@@ -44,7 +44,7 @@ async fn a_draft_is_written_about_a_passage_a_scene_a_section_or_the_whole_copy(
 #[tokio::test]
 async fn a_draft_is_seen_by_whoever_wrote_it_alone() {
     // given: a draft of ada's
-    let feedback = feedback();
+    let feedback = feedback().await;
     let draft = drafted(&as_(&feedback, "account_ada"), a_passage(), saying("Mine.")).await;
     let hedy = as_(&feedback, "account_hedy");
 
@@ -65,7 +65,7 @@ async fn a_draft_is_seen_by_whoever_wrote_it_alone() {
 #[tokio::test]
 async fn a_draft_is_rewritten_and_deleted_by_whoever_wrote_it() {
     // given: a draft of ada's
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let draft = drafted(&ada, a_passage(), saying("First thought.")).await;
     // and: what she says now, formatted
@@ -132,7 +132,7 @@ async fn a_draft_is_rewritten_and_deleted_by_whoever_wrote_it() {
 #[tokio::test]
 async fn a_blank_draft_an_unsafe_link_or_a_passage_holding_nothing_is_refused() {
     // given: the feedback
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
 
     // expect: a draft saying nothing is refused
@@ -185,7 +185,7 @@ async fn a_blank_draft_an_unsafe_link_or_a_passage_holding_nothing_is_refused() 
 #[tokio::test]
 async fn drafts_are_asked_for_by_where_they_lie_and_are_neither_pending_nor_done() {
     // given: a draft of ada's on the copy
-    let feedback = feedback();
+    let feedback = feedback().await;
     let ada = as_(&feedback, "account_ada");
     let draft = drafted(&ada, a_passage(), saying("Mine.")).await;
 

@@ -162,6 +162,7 @@ refused-feedback-order-unknown = Feedback is listed oldest or newest first.
 refused-feedback-subject-unknown = Feedback is given on reading copies.
 refused-feedback-place-unknown = A place in the text is a scene or a section.
 refused-feedback-giver-unknown = Feedback is given locally or by an account.
+refused-feedback-reading-copy-closed = This reading copy is closed, so no more feedback can be given in it.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.
 refused-idea-not-pinned = This idea is not on the board.

@@ -7,10 +7,13 @@ edition.workspace = true
 axum = { workspace = true }
 axum-test = { workspace = true }
 serde_json = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 feedback-contract = { version = "0.1.0", path = "../contract", package = "weaveling-feedback-contract" }
+feedback-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-feedback-catalog" }
 feedback-core = { version = "0.1.0", path = "../core", package = "weaveling-feedback-core" }
 feedback-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-feedback-rest" }

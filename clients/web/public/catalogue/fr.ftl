@@ -162,6 +162,7 @@ refused-feedback-order-unknown = Les retours se listent du plus ancien ou du plu
 refused-feedback-subject-unknown = Les retours portent sur des copies de lecture.
 refused-feedback-place-unknown = Un endroit du texte est une scène ou une section.
 refused-feedback-giver-unknown = Les retours sont donnés en local ou par un compte.
+refused-feedback-reading-copy-closed = Cette copie de lecture est fermée, on ne peut plus y donner de retour.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
 refused-idea-not-pinned = Cette idée n’est pas sur le tableau.

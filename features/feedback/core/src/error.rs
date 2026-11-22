@@ -1,5 +1,7 @@
 use thiserror::Error;
+use transacting::{Failure, LostRace};
 
+use crate::catalog::CatalogError;
 use crate::comment::InvalidComment;
 
 #[derive(Debug, Error)]
@@ -14,4 +16,19 @@ pub enum FeedbackError {
     NotYours,
     #[error("at most {} are asked for at once", crate::feedback::COUNTED_AT_ONCE)]
     TooManyCounted,
+    #[error("the reading copy is closed for feedback")]
+    ReadingCopyClosed,
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for FeedbackError {
+    fn lost_race(&self) -> bool {
+        match self {
+            FeedbackError::Transaction(failure) => failure.lost_race(),
+            _ => false,
+        }
+    }
 }
