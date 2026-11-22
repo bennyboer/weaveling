@@ -12,5 +12,7 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
 
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

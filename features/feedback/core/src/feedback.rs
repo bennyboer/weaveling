@@ -13,7 +13,7 @@ use crate::link::{ReadingCopyLink, SceneLink, SectionLink};
 
 /// A piece of feedback, as whoever may see it finds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Feedback {
+pub struct ListedFeedback {
     pub id: FeedbackId,
     pub about: About,
     pub comment: Comment,
@@ -27,7 +27,7 @@ pub struct Feedback {
     pub written_at: OffsetDateTime,
 }
 
-impl Feedback {
+impl ListedFeedback {
     pub fn is_draft(&self) -> bool {
         self.submitted_at.is_none()
     }
@@ -114,7 +114,7 @@ impl Asked {
         self.subjects.as_ref().map_or(0, Vec::len) + self.places.as_ref().map_or(0, Places::len)
     }
 
-    fn holds(&self, feedback: &Feedback, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+    fn holds(&self, feedback: &ListedFeedback, copies: &HashMap<ReadingCopyLink, String>) -> bool {
         let about = &feedback.about;
 
         self.project
@@ -146,7 +146,7 @@ pub enum Status {
 }
 
 impl Status {
-    fn holds(self, feedback: &Feedback) -> bool {
+    fn holds(self, feedback: &ListedFeedback) -> bool {
         feedback.done == (self == Self::Done)
     }
 }
@@ -158,7 +158,7 @@ pub const COUNTED_AT_ONCE: usize = 100;
 #[derive(Clone)]
 pub struct FeedbackCore {
     // TODO: the `Feedback` aggregate in an event store and its catalogs, rather than what this process holds (step 5)
-    kept: Arc<Mutex<Vec<Feedback>>>,
+    kept: Arc<Mutex<Vec<ListedFeedback>>>,
     copies: Arc<Mutex<HashMap<ReadingCopyLink, String>>>,
     clock: Arc<dyn Clock>,
 }
@@ -172,7 +172,7 @@ impl FeedbackCore {
         }
     }
 
-    fn kept(&self) -> MutexGuard<'_, Vec<Feedback>> {
+    fn kept(&self) -> MutexGuard<'_, Vec<ListedFeedback>> {
         self.kept.lock().expect("feedback lock poisoned")
     }
 
@@ -194,7 +194,7 @@ impl FeedbackCore {
         &self,
         asked: &Asked,
         agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
+    ) -> Result<Vec<ListedFeedback>, FeedbackError> {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
@@ -227,7 +227,7 @@ impl FeedbackCore {
         Ok(subjects
             .into_iter()
             .map(|subject| {
-                let on: Vec<&Feedback> = kept
+                let on: Vec<&ListedFeedback> = kept
                     .iter()
                     .filter(|feedback| feedback.about.subject() == subject)
                     .collect();
@@ -256,7 +256,7 @@ impl FeedbackCore {
         status: Option<Status>,
         page: &Page,
         _agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
+    ) -> Result<Vec<ListedFeedback>, FeedbackError> {
         // TODO: only in copies of a project the agent may read (step 5)
         if asked.looked_on() > COUNTED_AT_ONCE
             || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
@@ -264,7 +264,7 @@ impl FeedbackCore {
             return Err(FeedbackError::TooManyCounted);
         }
         let copies = self.copies();
-        let mut found: Vec<Feedback> = self
+        let mut found: Vec<ListedFeedback> = self
             .kept()
             .iter()
             .filter(|feedback| {
@@ -303,7 +303,7 @@ impl FeedbackCore {
     ) -> Result<Vec<Agent>, FeedbackError> {
         // TODO: for whoever may read the project (step 5)
         let copies = self.copies();
-        let mut given: Vec<&Feedback> = Vec::new();
+        let mut given: Vec<&ListedFeedback> = Vec::new();
         let kept = self.kept();
         given.extend(kept.iter().filter(|feedback| {
             !feedback.is_draft() && in_project(&feedback.about, project, &copies)
@@ -348,7 +348,7 @@ impl FeedbackCore {
         &self,
         asked: &Asked,
         agent: &Agent,
-    ) -> Result<Vec<Feedback>, FeedbackError> {
+    ) -> Result<Vec<ListedFeedback>, FeedbackError> {
         // TODO: only while the subject is open, for whoever may read its project (step 5)
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
@@ -373,14 +373,14 @@ impl FeedbackCore {
         about: About,
         comment: Vec<CommentBlock>,
         agent: &Agent,
-    ) -> Result<Feedback, FeedbackError> {
+    ) -> Result<ListedFeedback, FeedbackError> {
         // TODO: only on a subject that is open, for whoever may read its project (step 5)
         let comment = Comment::new(comment)?;
         if !about.holds_something() {
             return Err(FeedbackError::PassageEmpty);
         }
         let now = self.clock.now();
-        let drafted = Feedback {
+        let drafted = ListedFeedback {
             id: FeedbackId::generate(now),
             about,
             comment,
@@ -401,7 +401,7 @@ impl FeedbackCore {
         feedback: &str,
         comment: Vec<CommentBlock>,
         agent: &Agent,
-    ) -> Result<Feedback, FeedbackError> {
+    ) -> Result<ListedFeedback, FeedbackError> {
         let comment = Comment::new(comment)?;
         let mut kept = self.kept();
         let rewritten = written_by(&mut kept, feedback, agent)?;
@@ -418,7 +418,7 @@ impl FeedbackCore {
         feedback: &str,
         done: bool,
         _agent: &Agent,
-    ) -> Result<Feedback, FeedbackError> {
+    ) -> Result<ListedFeedback, FeedbackError> {
         // TODO: only for whoever may write the subject's project, its authors and owners (step 5)
         let mut kept = self.kept();
         let found = kept
@@ -445,10 +445,10 @@ impl FeedbackCore {
 /// The feedback, if the agent wrote it.
 /// Someone else's draft is not there for them at all, and someone else's submitted feedback is not theirs to change.
 fn written_by<'a>(
-    kept: &'a mut [Feedback],
+    kept: &'a mut [ListedFeedback],
     feedback: &str,
     agent: &Agent,
-) -> Result<&'a mut Feedback, FeedbackError> {
+) -> Result<&'a mut ListedFeedback, FeedbackError> {
     let found = kept
         .iter_mut()
         .find(|kept| kept.id.to_string() == feedback)

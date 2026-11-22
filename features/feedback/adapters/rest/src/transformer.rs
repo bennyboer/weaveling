@@ -4,7 +4,7 @@ use feedback_contract::{
     ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
 };
 use feedback_core::{
-    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, Feedback, Pending, Places,
+    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, ListedFeedback, Pending, Places,
     ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
 
@@ -36,7 +36,7 @@ pub fn to_count_dto(counted: &Counted) -> FeedbackCountDTO {
     }
 }
 
-pub fn to_dto(feedback: &Feedback, asking: &Agent) -> FeedbackDTO {
+pub fn to_dto(feedback: &ListedFeedback, asking: &Agent) -> FeedbackDTO {
     FeedbackDTO {
         id: feedback.id.to_string(),
         about: to_about_dto(&feedback.about),
