@@ -55,7 +55,7 @@ impl PendingHere {
     fn counted_again(self) {
         let project = self.project.get_value();
         leptos::task::spawn_local(async move {
-            if let Ok(counted) = service::pending_in(&project).await {
+            if let Ok(counted) = service::pending(&Asked::in_project(&project)).await {
                 _ = self.counted.try_set(counted);
             }
         });

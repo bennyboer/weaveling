@@ -160,7 +160,7 @@ impl Views {
             let id = id.clone();
 
             async move {
-                feedback::service::pending_in(&id)
+                feedback::service::pending(&feedback::service::Asked::in_project(&id))
                     .await
                     .map(|pending| pending.total)
                     .unwrap_or(0)

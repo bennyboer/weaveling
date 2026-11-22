@@ -69,13 +69,14 @@ pub struct Page {
     pub at_most: Option<usize>,
 }
 
-/// Which feedback is asked for: in a project, on some subjects, at some places in them.
+/// Which feedback is asked for: in a project, on some subjects, at some places in them, given by some.
 /// Each narrows what the others leave; what is not named does not narrow, so nothing named would be everything.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Asked {
     pub project: Option<String>,
     pub subjects: Option<Vec<Subject>>,
     pub places: Option<Places>,
+    pub given_by: Option<Vec<Agent>>,
 }
 
 /// Places inside subjects, as each kind of subject has them: in a reading copy's text,
@@ -113,7 +114,9 @@ impl Asked {
         self.subjects.as_ref().map_or(0, Vec::len) + self.places.as_ref().map_or(0, Places::len)
     }
 
-    fn holds(&self, about: &About, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+    fn holds(&self, feedback: &Feedback, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+        let about = &feedback.about;
+
         self.project
             .as_ref()
             .is_none_or(|project| in_project(about, project, copies))
@@ -122,6 +125,10 @@ impl Asked {
                 .as_ref()
                 .is_none_or(|subjects| subjects.contains(&about.subject()))
             && self.places.as_ref().is_none_or(|places| places.hold(about))
+            && self
+                .given_by
+                .as_ref()
+                .is_none_or(|givers| givers.contains(&feedback.written_by))
     }
 }
 
@@ -199,7 +206,7 @@ impl FeedbackCore {
             .filter(|feedback| {
                 feedback.is_draft()
                     && &feedback.written_by == agent
-                    && asked.holds(&feedback.about, &copies)
+                    && asked.holds(feedback, &copies)
             })
             .cloned()
             .collect())
@@ -262,7 +269,7 @@ impl FeedbackCore {
             .iter()
             .filter(|feedback| {
                 !feedback.is_draft()
-                    && asked.holds(&feedback.about, &copies)
+                    && asked.holds(feedback, &copies)
                     && status.is_none_or(|status| status.holds(feedback))
             })
             .cloned()
@@ -288,17 +295,40 @@ impl FeedbackCore {
             .collect())
     }
 
-    /// How much feedback given is pending, not done yet, on each scene and section of a project, in every copy of it.
-    pub async fn pending_in(
+    /// Whoever gave feedback in a project, in every copy of it, in the order they first submitted any.
+    pub async fn givers_in(
         &self,
         project: &str,
         _agent: &Agent,
-    ) -> Result<Pending, FeedbackError> {
+    ) -> Result<Vec<Agent>, FeedbackError> {
         // TODO: for whoever may read the project (step 5)
+        let copies = self.copies();
+        let mut given: Vec<&Feedback> = Vec::new();
+        let kept = self.kept();
+        given.extend(kept.iter().filter(|feedback| {
+            !feedback.is_draft() && in_project(&feedback.about, project, &copies)
+        }));
+        given.sort_by_key(|feedback| feedback.submitted_at);
+        let mut givers: Vec<Agent> = Vec::new();
+        for feedback in given {
+            if !givers.contains(&feedback.written_by) {
+                givers.push(feedback.written_by.clone());
+            }
+        }
+
+        Ok(givers)
+    }
+
+    /// How much feedback given where asked is pending, not done yet: on each scene and section, and in all.
+    pub async fn pending(&self, asked: &Asked, _agent: &Agent) -> Result<Pending, FeedbackError> {
+        // TODO: only in copies of a project the agent may read (step 5)
+        if asked.looked_on() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
         let copies = self.copies();
         let mut pending = Pending::default();
         for feedback in self.kept().iter().filter(|feedback| {
-            !feedback.is_draft() && !feedback.done && in_project(&feedback.about, project, &copies)
+            !feedback.is_draft() && !feedback.done && asked.holds(feedback, &copies)
         }) {
             if let Some(scene) = feedback.about.in_scene() {
                 *pending.scenes.entry(scene.clone()).or_insert(0) += 1;
@@ -328,9 +358,7 @@ impl FeedbackCore {
         let mut kept = self.kept();
         let mut submitted = Vec::new();
         for feedback in kept.iter_mut().filter(|feedback| {
-            feedback.is_draft()
-                && &feedback.written_by == agent
-                && asked.holds(&feedback.about, &copies)
+            feedback.is_draft() && &feedback.written_by == agent && asked.holds(feedback, &copies)
         }) {
             feedback.submitted_at = Some(now);
             submitted.push(feedback.clone());

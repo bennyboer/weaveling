@@ -16,10 +16,10 @@ pub enum AboutDTO {
 
 /// Which feedback is asked for, as `GET /feedback/on`, `GET /feedback/drafts` and `POST /feedback/submitted` name it in their query:
 ///
-/// `project=p&subjects=reading_copy:c1,reading_copy:c2&places=scene:a,scene:b,section:s`
+/// `project=p&subjects=reading_copy:c1,reading_copy:c2&places=scene:a,scene:b,section:s&given_by=account:r`
 ///
 /// Every parameter named narrows what the others leave: the feedback in project `p`,
-/// and on one of the subjects named, and at one of the places named.
+/// and on one of the subjects named, and at one of the places named, and given by one of the givers named.
 /// The values inside one parameter are alternatives: on `c1` or on `c2`; at `a`, at `b` or at `s`.
 /// A parameter left out does not narrow, and with none named the asking is refused as `feedback-place-unnamed`.
 ///
@@ -27,12 +27,15 @@ pub enum AboutDTO {
 /// A place is where inside a subject, named the same way: in a reading copy's text `scene:<id>`,
 /// holding the feedback on the scene and on passages in it, or `section:<id>`, holding what is on the section itself.
 /// So a section with everything in it is asked for as the section and its scenes: `places=section:s,scene:a,scene:b`.
-/// A kind not known is refused as `feedback-subject-unknown` or `feedback-place-unknown`.
+/// A giver is whoever gave feedback, named as its kind and its id too: `account:<id>`,
+/// or `local` where this Weaveling instance keeps no accounts; `GET /feedback/givers?project=` lists them.
+/// A kind not known is refused as `feedback-subject-unknown`, `feedback-place-unknown` or `feedback-giver-unknown`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AskedDTO {
     pub project: Option<String>,
     pub subjects: Vec<SubjectDTO>,
     pub places: Vec<PlaceDTO>,
+    pub given_by: Vec<GiverDTO>,
 }
 
 /// A subject named in `subjects=`.
@@ -48,7 +51,24 @@ pub enum PlaceDTO {
     Section(String),
 }
 
-/// A subject or place whose kind is not known; it holds what was named.
+/// A giver named in `given_by=`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GiverDTO {
+    Local,
+    Account(String),
+}
+
+/// Whoever gave feedback in a project, as `GET /feedback/givers?project=` lists them, in the order they first submitted any:
+/// how `given_by=` names them, whether it is the asker, and their name where it is known.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ListedGiverDTO {
+    pub giver: String,
+    pub by_you: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// A subject, place or giver whose kind is not known; it holds what was named.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownKind(pub String);
 
@@ -66,6 +86,30 @@ impl fmt::Display for PlaceDTO {
             Self::Scene(id) => write!(f, "scene:{id}"),
             Self::Section(id) => write!(f, "section:{id}"),
         }
+    }
+}
+
+impl fmt::Display for GiverDTO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Local => f.write_str("local"),
+            Self::Account(id) => write!(f, "account:{id}"),
+        }
+    }
+}
+
+impl GiverDTO {
+    /// The givers named in `given_by=`, parted by commas.
+    pub fn listed(named: &str) -> Result<Vec<Self>, UnknownKind> {
+        named
+            .split(',')
+            .filter(|one| !one.is_empty())
+            .map(|one| match one.split_once(':') {
+                None if one == "local" => Ok(Self::Local),
+                Some(("account", id)) => Ok(Self::Account(id.to_owned())),
+                _ => Err(UnknownKind(one.to_owned())),
+            })
+            .collect()
     }
 }
 
@@ -118,6 +162,7 @@ impl AskedDTO {
                 .map(|project| format!("project={project}")),
             joined("subjects", &self.subjects),
             joined("places", &self.places),
+            joined("given_by", &self.given_by),
         ]
         .into_iter()
         .flatten()
@@ -271,8 +316,9 @@ pub mod refused {
     pub const ORDER_UNKNOWN: &str = "feedback-order-unknown";
     pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
     pub const PLACE_UNKNOWN: &str = "feedback-place-unknown";
+    pub const GIVER_UNKNOWN: &str = "feedback-giver-unknown";
 
-    pub const EVERY: [&str; 12] = [
+    pub const EVERY: [&str; 13] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -285,5 +331,6 @@ pub mod refused {
         ORDER_UNKNOWN,
         SUBJECT_UNKNOWN,
         PLACE_UNKNOWN,
+        GIVER_UNKNOWN,
     ];
 }

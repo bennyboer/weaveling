@@ -1628,8 +1628,8 @@ body.focused {
     gap: 0.5rem;
   }
 
-  /* Narrowing to what is about one thing: a copy, a section or a scene. */
-  .about-picker {
+  /* Narrowing to what is about one thing, a copy, a section or a scene; or to what one giver gave. */
+  :is(.about-picker, .giver-picker) {
     display: flex;
     align-items: center;
     gap: 0.4rem;

@@ -6,8 +6,8 @@ use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
 use feedback_contract::{
-    AskedDTO, DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, PendingDTO, PlaceDTO,
-    RewriteFeedbackRequest, SubjectDTO, UnknownKind, order, refused, status,
+    AskedDTO, DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, GiverDTO, ListedGiverDTO,
+    PendingDTO, PlaceDTO, RewriteFeedbackRequest, SubjectDTO, UnknownKind, order, refused, status,
 };
 use feedback_core::{Asked, FeedbackCore, FeedbackError, InvalidComment, Order, Page, Status};
 use serde::Deserialize;
@@ -20,7 +20,8 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .route("/feedback/submitted", routing::post(submit_on))
         .route("/feedback/counts", routing::get(counted_on))
         .route("/feedback/on", routing::get(submitted_on))
-        .route("/feedback/pending", routing::get(pending_in))
+        .route("/feedback/pending", routing::get(pending))
+        .route("/feedback/givers", routing::get(givers_in))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
         .route(
@@ -30,13 +31,14 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .with_state(feedback)
 }
 
-/// Which feedback is asked for, as `AskedDTO` tells it: `project=`, `subjects=` and `places=`, each narrowing the others;
+/// Which feedback is asked for, as `AskedDTO` tells it: `project=`, `subjects=`, `places=` and `given_by=`, each narrowing the others;
 /// and, if asked, only what is pending or done, a page at a time.
 #[derive(Deserialize)]
 struct AskedFor {
     project: Option<String>,
     subjects: Option<String>,
     places: Option<String>,
+    given_by: Option<String>,
     status: Option<String>,
     order: Option<String>,
     after: Option<String>,
@@ -44,7 +46,7 @@ struct AskedFor {
 }
 
 impl AskedFor {
-    /// Which feedback is asked for: in a project, on some subjects, at some places in them, each narrowing the others.
+    /// Which feedback is asked for: in a project, on some subjects, at some places in them, given by some, each narrowing the others.
     fn asked(&self) -> Result<Asked, Problem> {
         let asked = AskedDTO {
             project: self.project.clone(),
@@ -57,15 +59,39 @@ impl AskedFor {
                     )
                 },
             )?,
+            given_by: GiverDTO::listed(self.given_by.as_deref().unwrap_or_default()).map_err(
+                |UnknownKind(named)| {
+                    Problem::rejected(
+                        refused::GIVER_UNKNOWN,
+                        format!("feedback is given locally or by an account, never by {named}"),
+                    )
+                },
+            )?,
         };
         if !asked.names_anything() {
             return Err(Problem::rejected(
                 refused::PLACE_UNNAMED,
-                "feedback is asked for in a project, on some subjects or at some places",
+                "feedback is asked for in a project, on some subjects, at some places or given by some",
             ));
         }
 
         Ok(transformer::asked_of(asked))
+    }
+
+    /// Where what is pending is counted: neither a status nor a page, as it counts what is pending, all of it.
+    fn pending_asked(&self) -> Result<Asked, Problem> {
+        if self.status.is_some()
+            || self.order.is_some()
+            || self.after.is_some()
+            || self.limit.is_some()
+        {
+            return Err(Problem::rejected(
+                refused::STATUS_UNKNOWN,
+                "what is pending is counted whole, neither by status nor a page at a time",
+            ));
+        }
+
+        self.asked()
     }
 
     /// Where drafts are asked for or submitted: the places alone, as a draft is neither pending nor done.
@@ -146,23 +172,41 @@ async fn submitted_on(
     ))
 }
 
-/// The project whose feedback pending is counted.
+/// The project whose givers are listed.
 #[derive(Deserialize)]
 struct InProject {
     project: String,
 }
 
-async fn pending_in(
+async fn pending(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Query(asked): Query<InProject>,
+    Query(asked_for): Query<AskedFor>,
 ) -> Result<Json<PendingDTO>, Problem> {
     let pending = feedback
-        .pending_in(&asked.project, &agent)
+        .pending(&asked_for.pending_asked()?, &agent)
         .await
         .map_err(problem_of)?;
 
     Ok(Json(transformer::to_pending_dto(&pending)))
+}
+
+async fn givers_in(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<InProject>,
+) -> Result<Json<Vec<ListedGiverDTO>>, Problem> {
+    let givers = feedback
+        .givers_in(&asked.project, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(
+        givers
+            .iter()
+            .filter_map(|giver| transformer::to_listed_giver_dto(giver, &agent))
+            .collect(),
+    ))
 }
 
 /// The subjects whose feedback is counted, as `subjects=` names them in `AskedDTO`.

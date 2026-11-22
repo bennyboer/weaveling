@@ -5,12 +5,14 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
-use crate::feedback::model::{About, Feedback, FeedbackId, ReadingCopyPlace};
+use crate::feedback::model::{About, Feedback, FeedbackId, Giver, ReadingCopyPlace};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
 use crate::icons;
 use crate::icons::Icon;
+use crate::members::listed::Member;
 use crate::members::roles::Roles;
+use crate::members::service as members;
 use crate::outline::model::SectionId;
 use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
@@ -125,7 +127,16 @@ pub fn feedback_view(project: String) -> impl IntoView {
     let showing = RwSignal::new(Showing::Pending);
     let newest_first = RwSignal::new(true);
     let narrowed = RwSignal::new(Narrowed::Anything);
+    let by = RwSignal::new(None::<String>);
     let book = RwSignal::new(None::<Book>);
+    let asked = {
+        let id = id.clone();
+
+        Signal::derive(move || Asked {
+            given_by: by.get().into_iter().collect(),
+            ..book.with(|book| narrowed.with(|narrowed| narrowed.asked(&id, book.as_ref())))
+        })
+    };
     let pieces = RwSignal::new(Vec::<Feedback>::new());
     let more = RwSignal::new(false);
     let loaded = RwSignal::new(false);
@@ -141,9 +152,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 })
                 .flatten();
             let status = showing.get_untracked().status();
-            let asked = book.with_untracked(|book| {
-                narrowed.with_untracked(|narrowed| narrowed.asked(&id, book.as_ref()))
-            });
+            let asked = asked.get_untracked();
             let order = if newest_first.get_untracked() {
                 order::NEWEST
             } else {
@@ -180,6 +189,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
         showing.track();
         newest_first.track();
         narrowed.track();
+        by.track();
         paging.dispatch(false);
     });
     let copies = LocalResource::new({
@@ -214,48 +224,38 @@ pub fn feedback_view(project: String) -> impl IntoView {
         Signal::derive(move || roles.may_write(&project))
     };
     let pending = LocalResource::new({
+        move || {
+            pieces.track();
+            let asked = asked.get();
+
+            async move {
+                service::pending(&asked)
+                    .await
+                    .map(|pending| pending.total)
+                    .unwrap_or(0)
+            }
+        }
+    });
+    let givers = LocalResource::new({
         let id = id.clone();
 
         move || {
-            pieces.track();
             let id = id.clone();
-            let narrowed = narrowed.get();
-            let held = match &narrowed {
-                Narrowed::Section(section) => book.with(|book| held_in(section, book.as_ref())),
-                _ => (Vec::new(), Vec::new()),
-            };
+
+            async move { service::givers_in(&id).await.unwrap_or_default() }
+        }
+    });
+    let members = LocalResource::new({
+        let id = id.clone();
+
+        move || {
+            let id = id.clone();
 
             async move {
-                match narrowed {
-                    Narrowed::ReadingCopy(copy) => {
-                        service::counted_on_reading_copies(std::slice::from_ref(&copy))
-                            .await
-                            .ok()
-                            .and_then(|counted| counted.get(&copy).map(|count| count.not_done))
-                            .unwrap_or(0)
-                    }
-                    narrowed => service::pending_in(&id)
-                        .await
-                        .map(|pending| match narrowed {
-                            Narrowed::Scene(scene) => {
-                                pending.scenes.get(&scene).copied().unwrap_or(0)
-                            }
-                            Narrowed::Section(_) => {
-                                let (scenes, sections) = &held;
-                                scenes
-                                    .iter()
-                                    .filter_map(|scene| pending.scenes.get(scene))
-                                    .chain(
-                                        sections
-                                            .iter()
-                                            .filter_map(|section| pending.sections.get(section)),
-                                    )
-                                    .sum()
-                            }
-                            _ => pending.total,
-                        })
-                        .unwrap_or(0),
-                }
+                members::members_of(&id.to_string())
+                    .await
+                    .map(|members| members.people)
+                    .unwrap_or_default()
             }
         }
     });
@@ -287,6 +287,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 )),
             html::div().class("narrowing").child((
                 about_picker(narrowed, copies, book),
+                giver_picker(by, givers, members),
                 html::button()
                     .r#type("button")
                     .class("ordering")
@@ -408,6 +409,66 @@ fn about_picker(
                 },
             )),
     ))
+}
+
+/// The picker narrowing the feedback to what one giver gave: everyone, you, or each other who gave any.
+fn giver_picker(
+    by: RwSignal<Option<String>>,
+    givers: LocalResource<Vec<Giver>>,
+    members: LocalResource<Vec<Member>>,
+) -> impl IntoView {
+    let option = move |value: Option<String>, said: String| {
+        let chosen = value.clone();
+
+        html::option()
+            .value(value.unwrap_or_default())
+            .selected(move || by.with(|by| by == &chosen))
+            .child(said)
+    };
+
+    html::label().class("giver-picker").child((
+        html::span().child(speech::said("feedback-by")),
+        html::select()
+            .on(ev::change, move |event| {
+                let value = event_target_value(&event);
+                by.set((!value.is_empty()).then_some(value));
+            })
+            .child((
+                option(None, speech::say("feedback-by-everyone")),
+                move || {
+                    let known = members.get().unwrap_or_default();
+
+                    givers
+                        .get()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|giver| {
+                            let named = giver_named(&giver, &known);
+                            option(Some(giver.giver), named)
+                        })
+                        .collect::<Vec<_>>()
+                },
+            )),
+    ))
+}
+
+/// A giver as the picker names them: you, by the name the feedback knows, or as a member of the project.
+fn giver_named(giver: &Giver, members: &[Member]) -> String {
+    if giver.by_you {
+        return speech::say("feedback-you");
+    }
+    // TODO: every giver named by the feedback itself, those from outside the project too (step 5)
+    let as_member = giver
+        .giver
+        .strip_prefix("account:")
+        .and_then(|account| members.iter().find(|member| member.account == account))
+        .and_then(|member| member.name.clone());
+
+    giver
+        .name
+        .clone()
+        .or(as_member)
+        .unwrap_or_else(|| speech::say("feedback-a-member"))
 }
 
 /// What the view says when it shows nothing: none given at all yet, and how to get some; or nothing left to do; or nothing done yet.

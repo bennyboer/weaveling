@@ -1,7 +1,7 @@
-use eventsourcing::Agent;
+use eventsourcing::{AccountId, Agent};
 use feedback_contract::{
-    AboutDTO, AskedDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, PendingDTO,
-    PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
+    AboutDTO, AskedDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, GiverDTO,
+    ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
 };
 use feedback_core::{
     About, Asked, BlockPath, CommentBlock, CommentRun, Counted, Feedback, Pending, Places,
@@ -212,7 +212,34 @@ pub fn asked_of(asked: AskedDTO) -> Asked {
         subjects: (!asked.subjects.is_empty())
             .then(|| asked.subjects.into_iter().map(subject_of).collect()),
         places: (!asked.places.is_empty()).then_some(Places::Text { scenes, sections }),
+        given_by: (!asked.given_by.is_empty())
+            .then(|| asked.given_by.into_iter().map(agent_of).collect()),
     }
+}
+
+fn agent_of(giver: GiverDTO) -> Agent {
+    match giver {
+        GiverDTO::Local => Agent::Local,
+        GiverDTO::Account(account) => Agent::Account(AccountId::from(account.as_str())),
+    }
+}
+
+/// How `given_by=` names whoever gave feedback; the system gives none.
+fn to_giver_dto(giver: &Agent) -> Option<GiverDTO> {
+    match giver {
+        Agent::Local => Some(GiverDTO::Local),
+        Agent::Account(account) => Some(GiverDTO::Account(account.to_string())),
+        Agent::System => None,
+    }
+}
+
+pub fn to_listed_giver_dto(giver: &Agent, asking: &Agent) -> Option<ListedGiverDTO> {
+    to_giver_dto(giver).map(|named| ListedGiverDTO {
+        giver: named.to_string(),
+        by_you: giver == asking,
+        // TODO: the giver's name, as the feedback feature keeps them from the accounts (step 5)
+        name: None,
+    })
 }
 
 pub fn subject_of(subject: SubjectDTO) -> Subject {

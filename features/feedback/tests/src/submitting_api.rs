@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
 use feedback_contract::{
     AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO,
-    PendingDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
+    ListedGiverDTO, PendingDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
 };
 
 use crate::support::{
@@ -609,4 +609,71 @@ async fn a_project_s_feedback_is_paged_newest_or_oldest_first_and_counted_whole(
     // and: all three are counted pending, the one on the whole copy too
     let pending = ada.get("/feedback/pending?project=project_loom").await;
     assert_eq!(pending.json::<PendingDTO>().total, 3);
+}
+
+#[tokio::test]
+async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedback_found_alone() {
+    // given: ada and then bea commenting in the project, ada again, and bea's draft not yet submitted
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    let boats = drafted(&ada, a_passage(), saying("Which boats?")).await;
+    submitted(&ada).await;
+    let slow = drafted(&bea, a_passage(), saying("Slow.")).await;
+    submitted(&bea).await;
+    let lovely = drafted(&ada, a_passage(), saying("Lovely.")).await;
+    submitted(&ada).await;
+    drafted(&bea, a_passage(), saying("Still thinking.")).await;
+
+    // when: bea asks who gave feedback in the project
+    let givers = bea.get("/feedback/givers?project=project_loom").await;
+
+    // then: ada and bea, in the order they first gave any, bea told which one is bea
+    givers.assert_status_ok();
+    assert_eq!(
+        givers.json::<Vec<ListedGiverDTO>>(),
+        [
+            ListedGiverDTO {
+                giver: "account:account_ada".to_owned(),
+                by_you: false,
+                name: None,
+            },
+            ListedGiverDTO {
+                giver: "account:account_bea".to_owned(),
+                by_you: true,
+                name: None,
+            },
+        ]
+    );
+
+    // when: the project's feedback is asked for by ada alone, and by bea alone
+    let by_ada = bea
+        .get("/feedback/on?project=project_loom&given_by=account:account_ada")
+        .await;
+    let by_bea = bea
+        .get("/feedback/on?project=project_loom&given_by=account:account_bea")
+        .await;
+
+    // then: each finds what that reader submitted, not bea's draft
+    let ids = |response: axum_test::TestResponse| -> Vec<String> {
+        response.assert_status_ok();
+        response
+            .json::<Vec<FeedbackDTO>>()
+            .into_iter()
+            .map(|piece| piece.id)
+            .collect()
+    };
+    assert_eq!(ids(by_ada), [boats.id, lovely.id]);
+    assert_eq!(ids(by_bea), [slow.id]);
+    // and: what is pending is counted by the same narrowing
+    let pending_by_ada = bea
+        .get("/feedback/pending?project=project_loom&given_by=account:account_ada")
+        .await;
+    pending_by_ada.assert_status_ok();
+    assert_eq!(pending_by_ada.json::<PendingDTO>().total, 2);
+
+    // and: a giver of no known kind is refused
+    let unknown = bea.get("/feedback/on?given_by=guest:someone").await;
+    unknown.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&unknown), refused::GIVER_UNKNOWN);
 }

@@ -2741,4 +2741,15 @@ test("the feedback view narrows to what is about one scene, one section with eve
   // then: everything in it is shown again, and counted pending
   await expect(notes).toHaveCount(2);
   await expect(pending).toHaveText("Pending · 2");
+
+  // when: who gave it is looked at
+  const by = feedbackView(page).getByLabel("By");
+  // then: everyone, and you as the one who gave all of it
+  await expect(by.locator("option")).toHaveText(["Everyone", "You"]);
+
+  // when: what you gave is chosen
+  await by.selectOption({ label: "You" });
+  // then: both are yours, and counted pending by the same narrowing
+  await expect(notes).toHaveCount(2);
+  await expect(pending).toHaveText("Pending · 2");
 });

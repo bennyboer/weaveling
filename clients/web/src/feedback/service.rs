@@ -2,11 +2,14 @@ use std::collections::HashMap;
 
 use feedback_contract::{
     AboutDTO, AskedDTO, COUNTED_AT_ONCE, CommentBlockDTO, DraftFeedbackRequest, FeedbackCountDTO,
-    FeedbackDTO, PendingDTO, PlaceDTO, RewriteFeedbackRequest, SubjectDTO,
+    FeedbackDTO, GiverDTO, ListedGiverDTO, PendingDTO, PlaceDTO, RewriteFeedbackRequest,
+    SubjectDTO,
 };
 use gloo_net::http::Request;
 
-use crate::feedback::model::{About, CommentBlock, Feedback, FeedbackCount, FeedbackId, Pending};
+use crate::feedback::model::{
+    About, CommentBlock, Feedback, FeedbackCount, FeedbackId, Giver, Pending,
+};
 use crate::http;
 use crate::http::ApiError;
 use crate::outline::model::SectionId;
@@ -71,6 +74,8 @@ pub struct Asked {
     pub reading_copies: Vec<ReadingCopyId>,
     pub scenes: Vec<SceneId>,
     pub sections: Vec<SectionId>,
+    /// Who gave it, as the feedback named them when it listed them.
+    pub given_by: Vec<String>,
 }
 
 impl Asked {
@@ -109,6 +114,7 @@ impl Asked {
                         .map(|scene| PlaceDTO::Scene(scene.to_string())),
                 )
                 .collect(),
+            given_by: GiverDTO::listed(&self.given_by.join(",")).unwrap_or_default(),
         }
         .to_query()
     }
@@ -199,15 +205,27 @@ pub async fn page_in(
     found.into_iter().map(Feedback::try_from).collect()
 }
 
-/// How much feedback given is not done yet in a project, in every copy: on each scene, and on each section itself.
-pub async fn pending_in(project: &ProjectId) -> Result<Pending, ApiError> {
+/// How much feedback given where asked is not done yet, in every copy: on each scene, on each section itself, and in all.
+pub async fn pending(asked: &Asked) -> Result<Pending, ApiError> {
     let response = http::sent(Request::get(&format!(
-        "{FEEDBACK}/pending?project={project}"
+        "{FEEDBACK}/pending?{}",
+        asked.query()
     )))
     .await?;
     let told: PendingDTO = http::parsed(response, SUBJECT).await?;
 
     Ok(Pending::from(told))
+}
+
+/// Whoever gave feedback in a project, in the order they first submitted any.
+pub async fn givers_in(project: &ProjectId) -> Result<Vec<Giver>, ApiError> {
+    let response = http::sent(Request::get(&format!(
+        "{FEEDBACK}/givers?project={project}"
+    )))
+    .await?;
+    let told: Vec<ListedGiverDTO> = http::parsed(response, SUBJECT).await?;
+
+    Ok(told.into_iter().map(Giver::from).collect())
 }
 
 /// Starts a draft, which only you see until you submit it.

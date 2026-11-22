@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackDTO, PendingDTO, ReadingCopyPlaceDTO,
+    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackDTO, ListedGiverDTO, PendingDTO,
+    ReadingCopyPlaceDTO,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -70,6 +71,25 @@ pub enum CommentRun {
         link: Option<String>,
     },
     Break,
+}
+
+/// Whoever gave feedback in a project: how the feedback names them when asked for theirs alone,
+/// whether it is you, and their name where the feedback knows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Giver {
+    pub giver: String,
+    pub by_you: bool,
+    pub name: Option<String>,
+}
+
+impl From<ListedGiverDTO> for Giver {
+    fn from(dto: ListedGiverDTO) -> Self {
+        Self {
+            giver: dto.giver,
+            by_you: dto.by_you,
+            name: dto.name,
+        }
+    }
 }
 
 /// How much feedback given is not done yet in a project: on each scene, on it or a passage in it, and on each section itself.
