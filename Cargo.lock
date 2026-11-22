@@ -5640,6 +5640,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-feedback-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-feedback-core",
+ "weaveling-transacting",
+]
+
+[[package]]
 name = "weaveling-feedback-contract"
 version = "0.1.0"
 dependencies = [
@@ -5650,6 +5662,7 @@ dependencies = [
 name = "weaveling-feedback-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "thiserror 2.0.21",
  "time",
  "tokio",
@@ -5657,6 +5670,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-projects-contract",
+ "weaveling-transacting",
  "weaveling-words",
 ]
 

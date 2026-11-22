@@ -14,4 +14,4 @@ This feature keeps what readers say about something in the work. A piece of feed
 
 *For now the routes run on a stub that keeps drafts in the server's memory, so the reading view can be built on them first; who may read the copy, whether it is open, and the `Feedback` aggregate come in step 5.*
 
-**Crates:** `core` (`FeedbackCore`, `About`, `Subject`, `ReadingCopyPlace`, `BlockPath`, `Comment`) · `contract` · `adapters/rest` · `adapters/messaging` (`feedback-remember-copies`, hearing `reading-copy.made`) · `wiring` · `tests`.
+**Crates:** `core` (`FeedbackCore`, `About`, `Subject`, `ReadingCopyPlace`, `BlockPath`, `Comment`) · `contract` · `adapters/rest` · `adapters/catalog` (`InMemoryReadingCopyCatalog`: the copies heard of, their project and until when they are open) · `adapters/messaging` (`feedback-remember-copies`, hearing `reading-copy.made`) · `wiring` · `tests`.
