@@ -86,6 +86,9 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     let phone_sized = phone_sizing();
     let sharing = RwSignal::new(false);
     let this_project = inside.as_ref().map(|inside| inside.project.clone());
+    let views = inside
+        .as_ref()
+        .map(|inside| Views::of(&inside.project, inside.here));
 
     let header = html::header().class("masthead").child((
         view! {
@@ -94,7 +97,9 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
                 <span>"Weaveling"</span>
             </A>
         },
-        inside.map(|inside| whereabouts(inside, phone_sized, sharing)),
+        inside
+            .zip(views.clone())
+            .map(|(inside, views)| whereabouts(inside, views, phone_sized, sharing)),
         move || {
             (!phone_sized.get()).then(|| (theme::picker(), picker::picker()))
         },
@@ -107,7 +112,7 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
         },
     ));
 
-    (header, path::path_bar())
+    (header, path::path_bar(views))
 }
 
 const PHONE: &str = "(width <= 30rem)";
@@ -140,24 +145,18 @@ pub fn status_bar() -> impl IntoView {
         .child(alarm::alarm(AlarmState::new()))
 }
 
-fn whereabouts(
-    inside: Inside,
-    phone_sized: RwSignal<bool>,
-    sharing: RwSignal<bool>,
-) -> impl IntoView {
-    let Inside {
-        project,
-        named,
-        here,
-    } = inside;
-    let open_project = expect_context::<OpenProject>();
-    let roles = expect_context::<Roles>();
-    let id = route::project_id(&project);
-    open_project.open(&id);
-    let pending = LocalResource::new({
-        let id = id.clone();
+/// A project's views, the one open, and how much feedback is pending in it: for its tabs and for the path's switcher alike.
+#[derive(Clone)]
+pub struct Views {
+    project: String,
+    here: Option<Viewing>,
+    pending: LocalResource<u32>,
+}
 
-        move || {
+impl Views {
+    fn of(project: &str, here: Option<Viewing>) -> Self {
+        let id = route::project_id(project);
+        let pending = LocalResource::new(move || {
             let id = id.clone();
 
             async move {
@@ -166,8 +165,51 @@ fn whereabouts(
                     .map(|pending| pending.total)
                     .unwrap_or(0)
             }
+        });
+
+        Self {
+            project: project.to_owned(),
+            here,
+            pending,
         }
-    });
+    }
+
+    /// The views whoever is signed in may open, the writing view only for those who may write.
+    fn shown(&self) -> Vec<Viewing> {
+        let roles = expect_context::<Roles>();
+        let writing = roles.may_write(&self.project);
+
+        [
+            Viewing::Write,
+            Viewing::Read,
+            Viewing::Board,
+            Viewing::Outline,
+            Viewing::Ideas,
+            Viewing::Feedback,
+        ]
+        .into_iter()
+        .filter(|view| writing || *view != Viewing::Write)
+        .collect()
+    }
+
+    fn tabs(&self) -> Vec<impl IntoView + use<>> {
+        self.shown()
+            .into_iter()
+            .map(|view| tab(view, self.project.clone(), self.here, self.pending))
+            .collect()
+    }
+}
+
+fn whereabouts(
+    inside: Inside,
+    views: Views,
+    phone_sized: RwSignal<bool>,
+    sharing: RwSignal<bool>,
+) -> impl IntoView {
+    let Inside { project, named, .. } = inside;
+    let open_project = expect_context::<OpenProject>();
+    let id = route::project_id(&project);
+    open_project.open(&id);
     let shown = Signal::derive(move || open_project.name().unwrap_or_else(|| named.clone()));
 
     (
@@ -188,26 +230,74 @@ fn whereabouts(
                 Signal::derive(move || !phone_sized.get()),
             ),
         )),
-        html::nav()
-            .class("views")
-            .attr("aria-label", speech::said("masthead-views"))
-            .child(move || {
-                let writing = roles.may_write(&project);
-
-                [
-                    Viewing::Write,
-                    Viewing::Read,
-                    Viewing::Board,
-                    Viewing::Outline,
-                    Viewing::Ideas,
-                    Viewing::Feedback,
-                ]
-                .into_iter()
-                .filter(|view| writing || *view != Viewing::Write)
-                .map(|view| tab(view, project.clone(), here, pending))
-                .collect::<Vec<_>>()
-            }),
+        move || {
+            (!phone_sized.get()).then(|| {
+                html::nav()
+                    .class("views")
+                    .attr("aria-label", speech::said("masthead-views"))
+                    .child(views.tabs())
+            })
+        },
     )
+}
+
+/// The view open, as a step of the path: a button naming it, opening a list of every view to switch to.
+pub(crate) fn views_switch(views: Views, here: bool) -> impl IntoView {
+    let open = RwSignal::new(false);
+    let clicking_away = window_event_listener(ev::click, move |_| open.set(false));
+    let escaping = window_event_listener(ev::keydown, move |event| {
+        if event.key() == "Escape" {
+            open.set(false);
+        }
+    });
+    on_cleanup(move || {
+        clicking_away.remove();
+        escaping.remove();
+    });
+    let named = views.here.map_or("masthead-views", |view| view.message());
+    let pending = views.pending;
+
+    html::div()
+        .class("views-switch")
+        .on(ev::click, |event| event.stop_propagation())
+        .child((
+            html::button()
+                .r#type("button")
+                .class("views-button")
+                .attr("aria-current", here.then_some("page"))
+                .attr("aria-expanded", move || open.get().to_string())
+                .on(ev::click, move |_| open.update(|open| *open = !*open))
+                .child((
+                    html::span().child(speech::said(named)),
+                    (views.here != Some(Viewing::Feedback)).then(|| counted(pending)),
+                    icons::mark(Icon::Open),
+                )),
+            move || {
+                open.get().then(|| {
+                    html::nav()
+                        .class("views-list")
+                        .attr("aria-label", speech::said("masthead-views"))
+                        .on(ev::click, move |_| open.set(false))
+                        .child(views.tabs())
+                })
+            },
+        ))
+}
+
+/// How much feedback is still to be worked through, when there is any.
+fn counted(pending: LocalResource<u32>) -> impl IntoView {
+    move || {
+        pending.get().filter(|count| *count > 0).map(|count| {
+            let mut args = FluentArgs::new();
+            args.set("count", count);
+
+            view! {
+                <span class="count" title=speech::say_with("feedback-pending-tab", &args)>
+                    {count.to_string()}
+                </span>
+            }
+        })
+    }
 }
 
 const AVATARS_SHOWN: usize = 3;
@@ -304,21 +394,7 @@ fn tab(
 ) -> impl IntoView {
     let at = view.at(&project);
     let here = here == Some(view);
-    let counted = move || {
-        (view == Viewing::Feedback)
-            .then(|| pending.get().filter(|count| *count > 0))
-            .flatten()
-            .map(|count| {
-                let mut args = FluentArgs::new();
-                args.set("count", count);
-
-                view! {
-                    <span class="count" title=speech::say_with("feedback-pending-tab", &args)>
-                        {count.to_string()}
-                    </span>
-                }
-            })
-    };
+    let counted = (view == Viewing::Feedback).then(|| counted(pending));
 
     view! {
         <A

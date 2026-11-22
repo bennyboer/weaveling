@@ -1,19 +1,41 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
-import { aNewProject, openTheOutline, views } from "./support/shell";
-import { aBookInTheWritingView, asked, backToWhereILeftOff, backToWhereYouLeftOffButton, beginning, flow, following, menuItem, openTheWritingView, projectOf, saveState, scene, sceneActions, theBookIsIn, titled } from "./support/writing";
+import { aNewProject, openTheOutline, openView, views } from "./support/shell";
+import {
+  aBookInTheWritingView,
+  asked,
+  backToWhereILeftOff,
+  backToWhereYouLeftOffButton,
+  beginning,
+  flow,
+  following,
+  menuItem,
+  openTheWritingView,
+  projectOf,
+  saveState,
+  scene,
+  sceneActions,
+  theBookIsIn,
+  titled,
+} from "./support/writing";
 
 test("the first time, Write lands at the start of the book", async ({
   page,
 }) => {
   // when: a book is opened in the writing view for the first time
-  const scenes = await aBookInTheWritingView(page, "FirstLanding", { "Part One": 1, "Part Two": 1 });
+  const scenes = await aBookInTheWritingView(page, "FirstLanding", {
+    "Part One": 1,
+    "Part Two": 1,
+  });
 
   // then: the cursor is at the start of the book
   await expect(scene(page, scenes["Part One"][0])).toBeFocused();
   // and: no way back is offered
-  await expect(backToWhereYouLeftOffButton(page), "nothing was left off yet").toHaveCount(0);
+  await expect(
+    backToWhereYouLeftOffButton(page),
+    "nothing was left off yet",
+  ).toHaveCount(0);
   // and: typing goes there
   await page.keyboard.type("Begun");
   await expect(scene(page, scenes["Part One"][0])).toHaveText("Begun");
@@ -38,7 +60,7 @@ test("going back to where the author left off finds the very letter, after movin
   await expect(saveState(page)).toHaveText("All saved");
 
   // when: another view is opened and the writing view again
-  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openView(page, "Board");
   await openTheWritingView(page);
   // and: the author goes back to where she left off
   await backToWhereILeftOff(page);
@@ -287,11 +309,13 @@ test("Write opens at the start of the book, and offers the way back to where the
   await expect(saveState(page)).toHaveText("All saved");
 
   // when: another view is opened and the writing view again
-  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openView(page, "Board");
   await openTheWritingView(page);
 
   // then: the way back is offered, naming the scene
-  await expect(backToWhereYouLeftOffButton(page)).toContainText("The far scene");
+  await expect(backToWhereYouLeftOffButton(page)).toContainText(
+    "The far scene",
+  );
   // and: the book is open at its start, the cursor in no scene
   expect(
     await page.evaluate(() => window.scrollY),
@@ -307,7 +331,10 @@ test("Write opens at the start of the book, and offers the way back to where the
   await expect(scene(page, far)).toBeFocused();
   await expect(scene(page, far)).toBeInViewport();
   // and: the offer goes
-  await expect(backToWhereYouLeftOffButton(page), "taken, the offer goes").toHaveCount(0);
+  await expect(
+    backToWhereYouLeftOffButton(page),
+    "taken, the offer goes",
+  ).toHaveCount(0);
   await page.keyboard.type("X");
   await expect(scene(page, far)).toHaveText("AXlpha Beta");
 });
@@ -362,7 +389,9 @@ test("with the scene left off in already in sight, the way back is not offered",
   // and: the way back is never offered
   await expect(backToWhereYouLeftOffButton(page)).toHaveCount(0);
   expect(
-    await page.evaluate(() => document.documentElement.dataset.offered ?? "never"),
+    await page.evaluate(
+      () => document.documentElement.dataset.offered ?? "never",
+    ),
     "the scene is right there to click into, so not even a flash of the offer",
   ).toBe("never");
 });

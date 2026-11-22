@@ -5,6 +5,7 @@ import {
   API,
   aSceneMade,
   scenesCatalogued,
+  openView,
   views,
 } from "./support/shell";
 import { aBookShaped } from "./support/book";
@@ -40,7 +41,7 @@ async function aWritingView(page: Page, width = 1440) {
   });
   expect(titled.ok()).toBe(true);
   await scenesCatalogued(page, [scene]);
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await expect(flow(page)).toBeVisible();
 }
 

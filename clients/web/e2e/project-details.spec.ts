@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, API, views } from "./support/shell";
+import { aNewProject, API, openView, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
 import { projectOf, theBookIsIn } from "./support/writing";
 import { routingLive } from "./support/live";
@@ -132,7 +132,7 @@ test("the book takes its new language without leaving the writing view", async (
   // given: a book open in the writing view
   await aNewProject(page, "Relanguaged");
   await aBookWithScenes(page, { "Part One": 1 });
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   const book = page.getByRole("article", { name: "The work" });
   await expect(book.locator(".scene .ProseMirror")).toHaveCount(1);
 
@@ -411,7 +411,8 @@ test("confirmed, the dialog follows the book being rewritten until every scene i
 }) => {
   // given: a book of three scenes, its details open on new quotation marks
   const live = await routingLive(page, { withheld: ["quotation-restylings"] });
-  const tell = (event: object) => live.tell("quotation-restylings", { version: 1, event });
+  const tell = (event: object) =>
+    live.tell("quotation-restylings", { version: 1, event });
   await aNewProject(page, "Followed");
   await aBookWithScenes(page, { "Part One": 3 });
   await page.route("**/api/scenes/quotation-restylings/*", (route) =>

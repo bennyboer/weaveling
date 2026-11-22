@@ -7,6 +7,7 @@ import {
   API,
   aSceneMade,
   scenesCatalogued,
+  openView,
   views,
 } from "./support/shell";
 import {
@@ -28,7 +29,7 @@ const contentsTab = (page: Page) =>
   page.locator('.drawer-tab[aria-controls="reading-contents"]');
 
 async function openTheReadingView(page: Page) {
-  await views(page).getByRole("link", { name: "Read", exact: true }).click();
+  await openView(page, "Read");
   await expect(book(page)).toBeVisible();
 }
 
@@ -2256,7 +2257,7 @@ test("a scene's feedback is in its inspector in the writing view, grouped by cop
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
   // when: the writing view is opened
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
 
   // then: the scene is flagged with its two comments not done, and no other
   const flag = page
@@ -2382,7 +2383,7 @@ test("a section's own feedback is in its inspector, and the writing view's conte
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
   // when: the writing view is opened, its contents shown
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   const contentsTab = page.locator('.drawer-tab[aria-controls="book-rail"]');
   if ((await contentsTab.getAttribute("aria-expanded")) === "false") {
     await contentsTab.click();
@@ -2470,7 +2471,7 @@ test("feedback pending is marked in the writing view's text by its words, which 
   page.on("request", (request) => {
     if (request.url().includes("/api/feedback/")) asked.push(request.url());
   });
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
 
   // then: the passage's words are marked
   await expect.poll(painted(page, "feedback-given")).toEqual(["boats"]);

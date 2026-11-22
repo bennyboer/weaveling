@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, openTheBoard, views } from "./support/shell";
+import { aNewProject, openTheBoard, openView, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
 import { flow, gapBelow, scene } from "./support/writing";
 
@@ -22,7 +22,7 @@ const opacityOf = (page: Page, selector: string) =>
 async function writingIn(page: Page, named: string) {
   const title = await aNewProject(page, named);
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await expect(flow(page)).toBeVisible();
 
   return { title, scenes };
@@ -294,7 +294,7 @@ test("in focus mode the break between scenes is dimmed, and shown whole while it
   await aNewProject(page, "FocusBreak");
   const scenes = await aBookWithScenes(page, { "Part One": 2 });
   const [first] = scenes["Part One"];
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await scene(page, first).click();
   await page.keyboard.type("Where the cursor is.");
   await page.keyboard.press("Control+Shift+F");
@@ -303,7 +303,9 @@ test("in focus mode the break between scenes is dimmed, and shown whole while it
 
   // expect: the break below it is dimmed with the rest
   await expect
-    .poll(() => between.evaluate((shown) => Number(getComputedStyle(shown).opacity)))
+    .poll(() =>
+      between.evaluate((shown) => Number(getComputedStyle(shown).opacity)),
+    )
     .toBeCloseTo(0.3);
 
   // when: the pointer comes near it
@@ -311,6 +313,8 @@ test("in focus mode the break between scenes is dimmed, and shown whole while it
 
   // then: it is shown whole, as its lines are
   await expect
-    .poll(() => between.evaluate((shown) => Number(getComputedStyle(shown).opacity)))
+    .poll(() =>
+      between.evaluate((shown) => Number(getComputedStyle(shown).opacity)),
+    )
     .toBe(1);
 });

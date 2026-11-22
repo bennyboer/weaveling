@@ -7,7 +7,9 @@ import {
   captureIdea,
   openTheOutline,
   openThePool,
+  openView,
   views,
+  viewsSwitch,
 } from "./support/shell";
 import { projectOf } from "./support/writing";
 
@@ -233,7 +235,7 @@ for (const width of [375, 700, 900, 1100]) {
     await page.setViewportSize({ width, height: 700 });
     // and: a long-named project open in the writing view
     const title = await aNewProject(page, "A rather long name for a phone");
-    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await openView(page, "Write");
     await expect(page.getByRole("article", { name: "The work" })).toBeVisible();
 
     // when: the masthead is measured
@@ -253,9 +255,11 @@ for (const width of [375, 700, 900, 1100]) {
         logo: inside(".wordmark .mark"),
         name: box(".whose span").width,
         details: inside(".project-details-button"),
-        views: [...document.querySelectorAll(".views .view")].every((view) =>
-          inside(`.views a[href="${view.getAttribute("href")}"]`),
-        ),
+        views:
+          inside(".views-button") ||
+          [...document.querySelectorAll(".views .view")].every((view) =>
+            inside(`.views a[href="${view.getAttribute("href")}"]`),
+          ),
         theming: inside(".theming") || inside(".more-button"),
         speaking: inside(".speaking") || inside(".more-button"),
       };
@@ -278,7 +282,7 @@ for (const width of [375, 700, 900, 1100]) {
   });
 }
 
-for (const width of [375, 1440]) {
+for (const width of [375, 700, 1440]) {
   test(`on a window ${width}px wide, a short name sits right beside its details button`, async ({
     page,
   }) => {
@@ -296,7 +300,7 @@ for (const width of [375, 1440]) {
     const seen = await page.evaluate(() => {
       const name = document.createRange();
       name.selectNodeContents(document.querySelector(".whose span")!);
-      const views = document.querySelector(".views")!.getBoundingClientRect();
+      const views = document.querySelector(".views")?.getBoundingClientRect();
       const bar = document.querySelector(".masthead")!.getBoundingClientRect();
 
       return {
@@ -304,20 +308,85 @@ for (const width of [375, 1440]) {
           document
             .querySelector(".project-details-button svg")!
             .getBoundingClientRect().left - name.getBoundingClientRect().right,
-        viewsFrom: views.left - bar.left,
-        viewsTo: bar.right - views.right,
+        tabs: views !== undefined,
+        viewsFrom: views && views.left - bar.left,
+        viewsTo: views && bar.right - views.right,
       };
     });
 
     // then: the name sits right beside its details button
     expect(seen.gap).toBeLessThanOrEqual(16);
+    // and: on a phone there are no tabs, the path switching the views
+    expect(seen.tabs, "tabs are shown beside the name").toBe(width > 480);
     // and: on a narrow window the views run the full width
-    if (width < 900) {
+    if (width > 480 && width < 900) {
       expect(seen.viewsFrom, "the views' row runs the full width").toBe(0);
       expect(seen.viewsTo, "the views' row runs the full width").toBe(0);
     }
   });
 }
+
+test("on a phone the views are switched from the path alone, its step naming the view open", async ({
+  page,
+}) => {
+  // given: a phone-sized window and a project open on its board
+  await page.setViewportSize({ width: 375, height: 700 });
+  await aNewProject(page, "Pocket");
+  const button = viewsSwitch(page);
+
+  // then: the path's step names the view open, and no tabs are shown
+  await expect(button).toHaveText("Board");
+  await expect(button).toHaveAttribute("aria-current", "page");
+  await expect(views(page).getByRole("link")).toHaveCount(0);
+
+  // when: the button is pressed
+  await button.click();
+  // then: every view is listed
+  await expect(views(page).getByRole("link")).toHaveText([
+    "Write",
+    "Read",
+    "Board",
+    "Outline",
+    "Ideas",
+    "Feedback",
+  ]);
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+
+  // when: escape is pressed
+  await page.keyboard.press("Escape");
+  // then: the list closes
+  await expect(views(page).getByRole("link")).toHaveCount(0);
+
+  // when: the outline is chosen from the list
+  await openView(page, "Outline");
+  // then: the outline opens, the button names it, and the list is closed
+  await expect(page).toHaveURL(/\/outline$/);
+  await expect(button).toHaveText("Outline");
+  await expect(views(page).getByRole("link")).toHaveCount(0);
+});
+
+test("beside the tabs, the path's step of the view open switches to another view", async ({
+  page,
+}) => {
+  // given: a project open on its board in a wide window
+  await aNewProject(page, "Wide");
+
+  // when: the path's step is pressed, and the ideas chosen
+  await viewsSwitch(page).click();
+  await page
+    .getByRole("navigation", { name: "Path" })
+    .getByRole("link", { name: "Ideas", exact: true })
+    .click();
+
+  // then: the ideas open, the step names them, and the list is closed
+  await expect(page).toHaveURL(/\/ideas$/);
+  await expect(viewsSwitch(page)).toHaveText("Ideas");
+  await expect(
+    page
+      .getByRole("navigation", { name: "Path" })
+      .getByRole("link", { name: "Board" }),
+  ).toHaveCount(0);
+});
 
 test("the writing view comes first among a project's views", async ({
   page,

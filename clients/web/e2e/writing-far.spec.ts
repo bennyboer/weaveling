@@ -1,8 +1,18 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
-import { aNewProject, API, views } from "./support/shell";
-import { backToWhereILeftOff, cataloguedOpening, flow, holdingWhatIsWritten, label, openTheWritingView, saveState, scene, wordCount } from "./support/writing";
+import { aNewProject, API, openView, views } from "./support/shell";
+import {
+  backToWhereILeftOff,
+  cataloguedOpening,
+  flow,
+  holdingWhatIsWritten,
+  label,
+  openTheWritingView,
+  saveState,
+  scene,
+  wordCount,
+} from "./support/writing";
 
 const sceneCarried = (frame: string | Buffer) => {
   const bytes = Buffer.from(frame);
@@ -327,7 +337,10 @@ test("another author's cursor takes no style but a colour, whatever the other wi
   const cursor = flow(page).locator(
     `[data-scene="${only}"] .ProseMirror-yjs-cursor`,
   );
-  await expect(cursor).toHaveAttribute("style", /^border-color: #[0-9a-f]{6}$/i);
+  await expect(cursor).toHaveAttribute(
+    "style",
+    /^border-color: #[0-9a-f]{6}$/i,
+  );
   await other.close();
 });
 
@@ -561,7 +574,7 @@ test("leaving the writing view closes its connection", async ({ page }) => {
   expect(sockets).toHaveLength(1);
 
   // when: the board is opened
-  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openView(page, "Board");
 
   // then: the connection is closed
   await expect.poll(() => sockets[0].isClosed()).toBe(true);

@@ -1,6 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aLooseScene, aNewProject, API, aSceneMade, scenesCatalogued, views } from "./support/shell";
+import {
+  aLooseScene,
+  aNewProject,
+  API,
+  aSceneMade,
+  scenesCatalogued,
+  openView,
+  views,
+} from "./support/shell";
 import { aBookShaped, aBookWithScenes } from "./support/book";
 import { aBookInTheWritingView, flow, scene, theBook } from "./support/writing";
 
@@ -211,7 +219,7 @@ test("scenes outside the book are chosen the same way", async ({ page }) => {
   await aBookWithScenes(page, { "Part One": 1 });
   const first = await aLooseScene(page);
   const second = await aLooseScene(page);
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await expect(scene(page, first)).toBeVisible();
@@ -289,7 +297,7 @@ test("a heading is a step of its own when choosing across sections", async ({
   const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [first] = made["Part One"];
   const [second] = made["Part Two"];
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await written(page, second, "In part two.");
   await page.keyboard.press("ControlOrMeta+Home");
 
@@ -344,7 +352,7 @@ test("ending a choosing on a heading puts the cursor in that heading", async ({
   await aNewProject(page, "EndOnHeading");
   const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [second] = made["Part Two"];
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await written(page, second, "Text.");
   await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+ArrowUp");
@@ -505,7 +513,7 @@ test("a chosen heading removes its section with the sections inside it and all t
   }
   await scenesCatalogued(page, Object.values(scenes));
   // and: the headings and scenes of the second section chosen
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await written(page, scenes["Part Two"], "Two.");
   await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("Shift+ArrowUp");
@@ -539,7 +547,7 @@ test("headings chosen without a scene among them are asked about as sections alo
     { title: "Part One" },
     { title: "Part Two", after: "Part One" },
   ]);
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   // and: both headings chosen
   await flow(page).getByRole("heading", { name: "Part One" }).click();
   await flow(page)
@@ -563,7 +571,7 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
   await aBookWithScenes(page, { "Part One": 1 });
   const first = await aLooseScene(page);
   await aLooseScene(page);
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await expect(page).toHaveURL(/\/write$/);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await written(page, first, "Loose.");
@@ -607,7 +615,9 @@ test("scenes begun in the view, taken out of the work, show among those outside 
       response,
       json: {
         ...listed,
-        scenes: listed.scenes.filter((held: { id: string }) => held.id !== begun),
+        scenes: listed.scenes.filter(
+          (held: { id: string }) => held.id !== begun,
+        ),
       },
     });
   });
@@ -682,7 +692,7 @@ test.describe("copying what is chosen", () => {
     // given: two sections of a scene each, chosen across the heading between them
     await aNewProject(page, "CopyingHeadings");
     const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
-    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await openView(page, "Write");
     await written(page, made["Part One"][0], "One.");
     await written(page, made["Part Two"][0], "Two.");
     await page.keyboard.press("ControlOrMeta+Home");
@@ -849,7 +859,7 @@ test.describe("choosing with the mouse", () => {
     // given: two sections of a scene each
     await aNewProject(page, "DraggingHeadings");
     const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
-    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await openView(page, "Write");
     await written(page, made["Part One"][0], "One.");
     await written(page, made["Part Two"][0], "Two.");
 

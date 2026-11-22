@@ -8,12 +8,15 @@ use crate::icons;
 use crate::icons::Icon;
 use crate::projects::open_project::OpenProject;
 use crate::route;
+use crate::shell;
+use crate::shell::Views;
 use crate::speech;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Label {
     Home,
     Said(&'static str),
+    View(&'static str),
     Project(String),
     Idea(String),
 }
@@ -25,8 +28,8 @@ struct Crumb {
 }
 
 /// The path from the user's projects to the page shown, read from the page's address.
-/// Every step except the last is a link back.
-pub fn path_bar() -> impl IntoView {
+/// Every step except the last is a link back; a project's view is a switch to its other views.
+pub fn path_bar(views: Option<Views>) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let screen = session.screen();
     let location = hooks::use_location();
@@ -44,7 +47,7 @@ pub fn path_bar() -> impl IntoView {
                         crumbs
                             .into_iter()
                             .enumerate()
-                            .map(|(at, crumb)| step(crumb, at == last))
+                            .map(|(at, crumb)| step(crumb, at == last, views.clone()))
                             .collect_view(),
                     ),
                 )
@@ -52,8 +55,12 @@ pub fn path_bar() -> impl IntoView {
     }
 }
 
-fn step(crumb: Crumb, here: bool) -> impl IntoView {
+fn step(crumb: Crumb, here: bool, views: Option<Views>) -> impl IntoView {
     let home = crumb.label == Label::Home;
+    let switching = matches!(crumb.label, Label::View(_))
+        .then_some(views)
+        .flatten();
+    let leads_to = crumb.leads_to.clone();
     let named = move || {
         if home {
             (
@@ -66,13 +73,14 @@ fn step(crumb: Crumb, here: bool) -> impl IntoView {
         }
     };
 
-    let shown = match (crumb.leads_to, here) {
-        (_, true) => html::span()
+    let shown = match (switching, leads_to, here) {
+        (Some(views), _, _) => shell::views_switch(views, here).into_any(),
+        (None, _, true) => html::span()
             .attr("aria-current", "page")
             .child(named)
             .into_any(),
-        (Some(href), false) => view! { <A href=href exact=true>{named}</A> }.into_any(),
-        (None, false) => html::span().class("passing").child(named).into_any(),
+        (None, Some(href), false) => view! { <A href=href exact=true>{named}</A> }.into_any(),
+        (None, None, false) => html::span().class("passing").child(named).into_any(),
     };
 
     html::li().class(("home", home)).child((
@@ -89,7 +97,7 @@ fn step(crumb: Crumb, here: bool) -> impl IntoView {
 fn named(label: &Label) -> String {
     match label {
         Label::Home => speech::say("path-home"),
-        Label::Said(message) => speech::say(message),
+        Label::Said(message) | Label::View(message) => speech::say(message),
         Label::Project(segment) => expect_context::<OpenProject>()
             .name()
             .unwrap_or_else(|| route::named(segment)),
@@ -136,28 +144,31 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
                 label: Label::Project((*project).to_owned()),
                 leads_to: Some(route::writing(project)),
             };
-            let view = |message, at: String| said(message, Some(at));
+            let view = |message, leads_to: Option<String>| Crumb {
+                label: Label::View(message),
+                leads_to,
+            };
             match rest {
                 [] => vec![named],
-                ["write"] => vec![named, said("view-write", None)],
+                ["write"] => vec![named, view("view-write", None)],
                 ["write", "loose"] => vec![
                     named,
-                    view("view-write", route::writing(project)),
+                    view("view-write", Some(route::writing(project))),
                     said("writing-side-loose", None),
                 ],
-                ["read"] => vec![named, said("view-read", None)],
+                ["read"] => vec![named, view("view-read", None)],
                 ["read", _] => vec![
                     named,
-                    view("view-read", route::reading(project)),
+                    view("view-read", Some(route::reading(project))),
                     said("reading-copy", None),
                 ],
-                ["board"] => vec![named, said("view-board", None)],
-                ["outline"] => vec![named, said("view-outline", None)],
-                ["ideas"] => vec![named, said("view-ideas", None)],
-                ["feedback"] => vec![named, said("view-feedback", None)],
+                ["board"] => vec![named, view("view-board", None)],
+                ["outline"] => vec![named, view("view-outline", None)],
+                ["ideas"] => vec![named, view("view-ideas", None)],
+                ["feedback"] => vec![named, view("view-feedback", None)],
                 ["ideas", idea] => vec![
                     named,
-                    view("view-ideas", route::pool(project)),
+                    view("view-ideas", Some(route::pool(project))),
                     Crumb {
                         label: Label::Idea((*idea).to_owned()),
                         leads_to: None,
@@ -166,7 +177,7 @@ fn crumbs_of(pathname: &str) -> Vec<Crumb> {
                 ["members"] => vec![named, said("members-heading", None)],
                 ["members", "invited"] => vec![
                     named,
-                    view("members-heading", route::members(project)),
+                    said("members-heading", Some(route::members(project))),
                     said("members-invited", None),
                 ],
                 _ => vec![said("path-missing", None)],
@@ -220,7 +231,7 @@ mod tests {
         assert_eq!(
             crumbs[2],
             Crumb {
-                label: Label::Said("view-board"),
+                label: Label::View("view-board"),
                 leads_to: None,
             }
         );
@@ -234,7 +245,7 @@ mod tests {
             vec![
                 Label::Home,
                 Label::Project("the-loom-project_1".to_owned()),
-                Label::Said("view-read"),
+                Label::View("view-read"),
             ]
         );
     }
@@ -246,7 +257,7 @@ mod tests {
             crumbs_of("/projects/the-loom-project_1/read/copy_1")[2..],
             [
                 Crumb {
-                    label: Label::Said("view-read"),
+                    label: Label::View("view-read"),
                     leads_to: Some("/projects/the-loom-project_1/read".to_owned()),
                 },
                 Crumb {
@@ -272,7 +283,7 @@ mod tests {
                     leads_to: Some(route::writing("loom-project_1")),
                 },
                 Crumb {
-                    label: Label::Said("view-ideas"),
+                    label: Label::View("view-ideas"),
                     leads_to: Some(route::pool("loom-project_1")),
                 },
                 Crumb {

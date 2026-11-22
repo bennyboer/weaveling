@@ -139,21 +139,11 @@
     font-size: 0.9rem;
   }
 
-  /* How much feedback waits to be worked through, at the corner of its view's tab. */
+  /* At the corner of its view's tab. */
   .view .count {
     position: absolute;
     top: -0.25rem;
     right: -0.35rem;
-    box-sizing: border-box;
-    display: grid;
-    place-items: center;
-    min-width: 1.1rem;
-    height: 1.1rem;
-    padding: 0 0.3rem;
-    border-radius: 999px;
-    background: var(--accent);
-    color: var(--paper);
-    font: 500 0.65rem/1 var(--reading);
   }
 
   .view::after {
@@ -312,20 +302,18 @@
   }
 }
 
-@media (width <= 30rem) {
-  .masthead {
-    .views {
-      gap: 0;
-      margin: 0 -1rem;
-      padding: 0 0.5rem;
-      flex-basis: calc(100% + 2rem);
-    }
-
-    .view {
-      padding: 0.45rem 0.4rem;
-      font-size: 0.8rem;
-    }
-  }
+/* How much feedback waits to be worked through, on the feedback view's tab and on the path's switch. */
+:is(.masthead .view, .views-switch) .count {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--paper);
+  font: 500 0.65rem/1 var(--reading);
 }
 
 .masthead .more {
@@ -665,6 +653,92 @@
     color: var(--ink);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* The view open, as a step of the path: a switch to the project's other views. */
+  .views-switch {
+    position: relative;
+    display: flex;
+  }
+
+  .views-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.4rem;
+    border: none;
+    border-radius: 0.3rem;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+
+    &[aria-current="page"] {
+      color: var(--ink);
+    }
+
+    &:hover,
+    &[aria-expanded="true"] {
+      color: var(--ink);
+      background: var(--raised);
+    }
+
+    svg {
+      width: 0.85rem;
+      height: 0.85rem;
+      color: var(--muted);
+      transition: transform 0.15s ease;
+    }
+
+    &[aria-expanded="true"] svg {
+      transform: rotate(180deg);
+    }
+
+    /* Beside the tabs the feedback's own tab counts it already. */
+    @media (width > 30rem) {
+      .count {
+        display: none;
+      }
+    }
+  }
+
+  .views-list {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 12rem;
+    padding: 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--paper);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+
+    a {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    a.here {
+      color: var(--ink);
+      font-weight: 500;
+      background: var(--line);
+    }
+
+    /* On a phone the step may sit far right: the list spans the window instead of running off it. */
+    @media (width <= 30rem) {
+      position: fixed;
+      top: auto;
+      right: 1rem;
+      left: 1rem;
+      margin-top: 0.3rem;
+    }
   }
 
   .home :is(a, [aria-current="page"]) {

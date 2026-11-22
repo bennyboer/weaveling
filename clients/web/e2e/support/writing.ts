@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./book";
-import { aNewProject, API, sceneCatalogued, views } from "./shell";
+import { aNewProject, API, sceneCatalogued, openView, views } from "./shell";
 
 export const flow = (page: Page) =>
   page.getByRole("article", { name: "The work" });
@@ -16,7 +16,7 @@ export const rail = (page: Page) =>
   page.getByRole("complementary", { name: "Contents" });
 
 export async function openTheWritingView(page: Page) {
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await openView(page, "Write");
   await expect(flow(page)).toBeVisible();
 }
 

@@ -10,8 +10,23 @@ const aName = (of: string) =>
 export const views = (page: Page) =>
   page.getByRole("navigation", { name: "Views" });
 
+/** The switch to a project's other views, on the view's step of the path. */
+export const viewsSwitch = (page: Page) =>
+  page.getByRole("navigation", { name: "Path" }).locator(".views-button");
+
+/** Opens a project's view by its tab, or on a phone, where there are no tabs, through the path's switch. */
+export const openView = async (page: Page, name: string) => {
+  if ((page.viewportSize()?.width ?? Infinity) <= 480) {
+    await viewsSwitch(page).click();
+  }
+  await views(page).getByRole("link", { name, exact: true }).click();
+};
+
 const slugOf = (title: string) =>
-  title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 export async function aNewProject(
   page: Page,
@@ -63,19 +78,19 @@ export async function onTheBoard(page: Page, named = "Board") {
 }
 
 export async function openTheBoard(page: Page) {
-  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openView(page, "Board");
   await onTheBoard(page);
 }
 
 export async function openTheOutline(page: Page) {
-  await views(page).getByRole("link", { name: "Outline", exact: true }).click();
+  await openView(page, "Outline");
   await expect(
     page.getByRole("button", { name: "Add a section" }),
   ).toBeVisible();
 }
 
 export async function openThePool(page: Page) {
-  await views(page).getByRole("link", { name: "Ideas", exact: true }).click();
+  await openView(page, "Ideas");
   await expect(
     page.getByRole("heading", { name: "Ideas", exact: true }),
   ).toBeVisible();
@@ -102,9 +117,7 @@ async function cataloguedScenes(
   page: Page,
 ): Promise<{ id: string; title: string }[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
-  const listed = await page.request.get(
-    `${API}/scenes?project=${project}`,
-  );
+  const listed = await page.request.get(`${API}/scenes?project=${project}`);
 
   return (await listed.json()).scenes;
 }
@@ -149,9 +162,7 @@ export async function sceneCatalogued(
 
 async function cataloguedTitles(page: Page): Promise<string[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
-  const listed = await page.request.get(
-    `${API}/ideas?project=${project}`,
-  );
+  const listed = await page.request.get(`${API}/ideas?project=${project}`);
 
   return (await listed.json()).map((idea: { title: string }) => idea.title);
 }

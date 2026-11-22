@@ -724,8 +724,13 @@
       font: 400 0.8rem/1 var(--reading);
       cursor: pointer;
 
+      &:hover {
+        color: var(--ink);
+        background: color-mix(in srgb, var(--line) 55%, transparent);
+      }
+
       &.here {
-        background: color-mix(in srgb, var(--accent) 14%, transparent);
+        background: var(--line);
         color: var(--ink);
         font-weight: 500;
       }
