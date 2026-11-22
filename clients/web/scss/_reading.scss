@@ -1621,6 +1621,34 @@ body.focused {
     gap: 0.75rem;
   }
 
+  .narrowing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Narrowing to what is about one thing: a copy, a section or a scene. */
+  .about-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: 400 0.8rem/1 var(--reading);
+    color: var(--muted);
+
+    select {
+      min-height: 2rem;
+      max-width: 14rem;
+      padding: 0 0.5rem;
+      border: 1px solid var(--line);
+      border-radius: 0.375rem;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+  }
+
   .ordering {
     min-height: 2rem;
     padding: 0 0.75rem;

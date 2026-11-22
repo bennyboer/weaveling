@@ -7,17 +7,97 @@ use leptos::{IntoView, ev, html};
 use crate::feedback::column;
 use crate::feedback::model::{About, Feedback, FeedbackId, ReadingCopyPlace};
 use crate::feedback::service;
+use crate::feedback::service::Asked;
 use crate::icons;
 use crate::icons::Icon;
 use crate::members::roles::Roles;
+use crate::outline::model::SectionId;
+use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
 use crate::readings::service as readings;
 use crate::route;
+use crate::scenes::model::SceneId;
 use crate::speech;
 
 /// How many pieces a page of the feedback view holds.
 const A_PAGE: usize = 50;
+
+/// What the feedback shown is about: anything, or one thing, a copy, a section with everything in it, or a scene.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Narrowed {
+    Anything,
+    ReadingCopy(ReadingCopyId),
+    Section(SectionId),
+    Scene(SceneId),
+}
+
+impl Narrowed {
+    fn value(&self) -> String {
+        match self {
+            Self::Anything => String::new(),
+            Self::ReadingCopy(copy) => format!("copy:{copy}"),
+            Self::Section(section) => format!("section:{section}"),
+            Self::Scene(scene) => format!("scene:{scene}"),
+        }
+    }
+
+    fn read(value: &str) -> Self {
+        match value.split_once(':') {
+            Some(("copy", copy)) => Self::ReadingCopy(ReadingCopyId::from(copy.to_owned())),
+            Some(("section", section)) => Self::Section(SectionId::from(section.to_owned())),
+            Some(("scene", scene)) => Self::Scene(SceneId::from(scene.to_owned())),
+            _ => Self::Anything,
+        }
+    }
+
+    /// Which of the project's feedback is paged through: a section with the sections under it and every scene in them.
+    fn asked(&self, project: &ProjectId, book: Option<&Book>) -> Asked {
+        let in_project = Asked::in_project(project);
+        match self {
+            Self::Anything => in_project,
+            Self::ReadingCopy(copy) => Asked {
+                reading_copies: vec![copy.clone()],
+                ..in_project
+            },
+            Self::Scene(scene) => Asked {
+                scenes: vec![scene.clone()],
+                ..in_project
+            },
+            Self::Section(section) => {
+                let (scenes, sections) = held_in(section, book);
+                Asked {
+                    scenes,
+                    sections,
+                    ..in_project
+                }
+            }
+        }
+    }
+}
+
+/// A section, the sections under it, and every scene in them, as the book reads now.
+fn held_in(section: &SectionId, book: Option<&Book>) -> (Vec<SceneId>, Vec<SectionId>) {
+    let mut scenes = Vec::new();
+    let mut sections = vec![section.clone()];
+    let Some(book) = book else {
+        return (scenes, sections);
+    };
+    let mut outlined = book
+        .sections
+        .iter()
+        .skip_while(|outlined| &outlined.section != section);
+    let Some(top) = outlined.next() else {
+        return (scenes, sections);
+    };
+    scenes.extend(top.scenes.iter().cloned());
+    for under in outlined.take_while(|outlined| outlined.depth > top.depth) {
+        sections.push(under.section.clone());
+        scenes.extend(under.scenes.iter().cloned());
+    }
+
+    (scenes, sections)
+}
 
 /// Which feedback the view shows: what is still to be worked through, what is done, or all of it.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -44,6 +124,8 @@ pub fn feedback_view(project: String) -> impl IntoView {
     let id = route::project_id(&project);
     let showing = RwSignal::new(Showing::Pending);
     let newest_first = RwSignal::new(true);
+    let narrowed = RwSignal::new(Narrowed::Anything);
+    let book = RwSignal::new(None::<Book>);
     let pieces = RwSignal::new(Vec::<Feedback>::new());
     let more = RwSignal::new(false);
     let loaded = RwSignal::new(false);
@@ -59,6 +141,9 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 })
                 .flatten();
             let status = showing.get_untracked().status();
+            let asked = book.with_untracked(|book| {
+                narrowed.with_untracked(|narrowed| narrowed.asked(&id, book.as_ref()))
+            });
             let order = if newest_first.get_untracked() {
                 order::NEWEST
             } else {
@@ -67,14 +152,16 @@ pub fn feedback_view(project: String) -> impl IntoView {
             let going_on = *going_on;
 
             async move {
-                let Ok(found) = service::page_in(&id, status, order, after.as_ref(), A_PAGE).await
+                let Ok(found) =
+                    service::page_in(&asked, status, order, after.as_ref(), A_PAGE).await
                 else {
                     return;
                 };
                 let nothing_shown = !going_on && found.is_empty();
+                let everything = Asked::in_project(&id);
                 let none_given = nothing_shown
-                    && (status.is_none()
-                        || service::page_in(&id, None, order, None, 1)
+                    && ((status.is_none() && asked == everything)
+                        || service::page_in(&everything, None, order, None, 1)
                             .await
                             .is_ok_and(|any| any.is_empty()));
                 _ = none_at_all.try_set(none_given);
@@ -92,6 +179,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
     Effect::new(move |_| {
         showing.track();
         newest_first.track();
+        narrowed.track();
         paging.dispatch(false);
     });
     let copies = LocalResource::new({
@@ -110,7 +198,6 @@ pub fn feedback_view(project: String) -> impl IntoView {
             }
         }
     });
-    let book = RwSignal::new(None::<Book>);
     {
         let id = id.clone();
         leptos::task::spawn_local(async move {
@@ -132,12 +219,43 @@ pub fn feedback_view(project: String) -> impl IntoView {
         move || {
             pieces.track();
             let id = id.clone();
+            let narrowed = narrowed.get();
+            let held = match &narrowed {
+                Narrowed::Section(section) => book.with(|book| held_in(section, book.as_ref())),
+                _ => (Vec::new(), Vec::new()),
+            };
 
             async move {
-                service::pending_in(&id)
-                    .await
-                    .map(|pending| pending.total)
-                    .unwrap_or(0)
+                match narrowed {
+                    Narrowed::ReadingCopy(copy) => {
+                        service::counted_on_reading_copies(std::slice::from_ref(&copy))
+                            .await
+                            .ok()
+                            .and_then(|counted| counted.get(&copy).map(|count| count.not_done))
+                            .unwrap_or(0)
+                    }
+                    narrowed => service::pending_in(&id)
+                        .await
+                        .map(|pending| match narrowed {
+                            Narrowed::Scene(scene) => {
+                                pending.scenes.get(&scene).copied().unwrap_or(0)
+                            }
+                            Narrowed::Section(_) => {
+                                let (scenes, sections) = &held;
+                                scenes
+                                    .iter()
+                                    .filter_map(|scene| pending.scenes.get(scene))
+                                    .chain(
+                                        sections
+                                            .iter()
+                                            .filter_map(|section| pending.sections.get(section)),
+                                    )
+                                    .sum()
+                            }
+                            _ => pending.total,
+                        })
+                        .unwrap_or(0),
+                }
             }
         }
     });
@@ -167,19 +285,22 @@ pub fn feedback_view(project: String) -> impl IntoView {
                     choice(Showing::Done, "feedback-filter-done"),
                     choice(Showing::All, "feedback-filter-all"),
                 )),
-            html::button()
-                .r#type("button")
-                .class("ordering")
-                .on(ev::click, move |_| {
-                    newest_first.update(|newest| *newest = !*newest)
-                })
-                .child(move || {
-                    speech::say(if newest_first.get() {
-                        "feedback-newest-first"
-                    } else {
-                        "feedback-oldest-first"
+            html::div().class("narrowing").child((
+                about_picker(narrowed, copies, book),
+                html::button()
+                    .r#type("button")
+                    .class("ordering")
+                    .on(ev::click, move |_| {
+                        newest_first.update(|newest| *newest = !*newest)
                     })
-                }),
+                    .child(move || {
+                        speech::say(if newest_first.get() {
+                            "feedback-newest-first"
+                        } else {
+                            "feedback-oldest-first"
+                        })
+                    }),
+            )),
         )),
         move || {
             let nothing = loaded.get() && pieces.with(Vec::is_empty);
@@ -205,6 +326,87 @@ pub fn feedback_view(project: String) -> impl IntoView {
                     .child(speech::said("feedback-show-more"))
             })
         },
+    ))
+}
+
+/// The picker narrowing the feedback to what is about one thing: a copy, or a section or scene of the book as it reads now.
+fn about_picker(
+    narrowed: RwSignal<Narrowed>,
+    copies: LocalResource<HashMap<ReadingCopyId, ListedReadingCopy>>,
+    book: RwSignal<Option<Book>>,
+) -> impl IntoView {
+    let option = move |value: Narrowed, said: String| {
+        let chosen = value.clone();
+
+        html::option()
+            .value(value.value())
+            .selected(move || narrowed.with(|narrowed| narrowed == &chosen))
+            .child(said)
+    };
+
+    html::label().class("about-picker").child((
+        html::span().child(speech::said("feedback-about")),
+        html::select()
+            .on(ev::change, move |event| {
+                narrowed.set(Narrowed::read(&event_target_value(&event)))
+            })
+            .child((
+                option(Narrowed::Anything, speech::say("feedback-about-anything")),
+                move || {
+                    let mut listed: Vec<ListedReadingCopy> = copies
+                        .get()
+                        .map(|copies| copies.into_values().collect())
+                        .unwrap_or_default();
+                    listed.sort_by(|one, other| one.name.cmp(&other.name));
+
+                    (!listed.is_empty()).then(|| {
+                        html::optgroup()
+                            .label(speech::say("feedback-about-copies"))
+                            .child(
+                                listed
+                                    .into_iter()
+                                    .map(|copy| option(Narrowed::ReadingCopy(copy.id), copy.name))
+                                    .collect::<Vec<_>>(),
+                            )
+                    })
+                },
+                move || {
+                    book.with(|book| {
+                        book.iter()
+                            .flat_map(|book| &book.sections)
+                            .map(|outlined| {
+                                let title = if outlined.title.trim().is_empty() {
+                                    speech::say("heading-untitled")
+                                } else {
+                                    outlined.title.clone()
+                                };
+
+                                html::optgroup().label(title).child((
+                                    option(
+                                        Narrowed::Section(outlined.section.clone()),
+                                        speech::say("feedback-about-section"),
+                                    ),
+                                    outlined
+                                        .scenes
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(at, scene)| {
+                                            option(
+                                                Narrowed::Scene(scene.clone()),
+                                                speech::say_about(
+                                                    "feedback-about-scene",
+                                                    "number",
+                                                    &(at + 1).to_string(),
+                                                ),
+                                            )
+                                        })
+                                        .collect::<Vec<_>>(),
+                                ))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                },
+            )),
     ))
 }
 

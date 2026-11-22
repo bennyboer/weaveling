@@ -1,11 +1,11 @@
 use eventsourcing::Agent;
 use feedback_contract::{
-    AboutDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, PendingDTO,
-    ReadingCopyPlaceDTO,
+    AboutDTO, AskedDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, PendingDTO,
+    PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
 };
 use feedback_core::{
-    About, BlockPath, CommentBlock, CommentRun, Counted, Feedback, Pending, ReadingCopyLink,
-    ReadingCopyPlace, SceneLink, SectionLink, Subject,
+    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, Feedback, Pending, Places,
+    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
 
 pub fn to_pending_dto(pending: &Pending) -> PendingDTO {
@@ -193,5 +193,30 @@ fn comment_run_of(run: CommentRunDTO) -> CommentRun {
             link,
         },
         CommentRunDTO::Break => CommentRun::Break,
+    }
+}
+
+/// Which feedback is asked for, as the core tells it: a list left empty does not narrow.
+pub fn asked_of(asked: AskedDTO) -> Asked {
+    let mut scenes = Vec::new();
+    let mut sections = Vec::new();
+    for place in &asked.places {
+        match place {
+            PlaceDTO::Scene(scene) => scenes.push(SceneLink::from(scene.as_str())),
+            PlaceDTO::Section(section) => sections.push(SectionLink::from(section.as_str())),
+        }
+    }
+
+    Asked {
+        project: asked.project,
+        subjects: (!asked.subjects.is_empty())
+            .then(|| asked.subjects.into_iter().map(subject_of).collect()),
+        places: (!asked.places.is_empty()).then_some(Places::Text { scenes, sections }),
+    }
+}
+
+pub fn subject_of(subject: SubjectDTO) -> Subject {
+    match subject {
+        SubjectDTO::ReadingCopy(copy) => Subject::ReadingCopy(ReadingCopyLink::from(copy.as_str())),
     }
 }

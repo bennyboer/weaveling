@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,123 @@ pub enum AboutDTO {
         reading_copy: String,
         place: ReadingCopyPlaceDTO,
     },
+}
+
+/// Which feedback is asked for, as `GET /feedback/on`, `GET /feedback/drafts` and `POST /feedback/submitted` name it in their query:
+///
+/// `project=p&subjects=reading_copy:c1,reading_copy:c2&places=scene:a,scene:b,section:s`
+///
+/// Every parameter named narrows what the others leave: the feedback in project `p`,
+/// and on one of the subjects named, and at one of the places named.
+/// The values inside one parameter are alternatives: on `c1` or on `c2`; at `a`, at `b` or at `s`.
+/// A parameter left out does not narrow, and with none named the asking is refused as `feedback-place-unnamed`.
+///
+/// A subject is what feedback is given on as a whole, named as its kind and its id: `reading_copy:<id>`.
+/// A place is where inside a subject, named the same way: in a reading copy's text `scene:<id>`,
+/// holding the feedback on the scene and on passages in it, or `section:<id>`, holding what is on the section itself.
+/// So a section with everything in it is asked for as the section and its scenes: `places=section:s,scene:a,scene:b`.
+/// A kind not known is refused as `feedback-subject-unknown` or `feedback-place-unknown`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AskedDTO {
+    pub project: Option<String>,
+    pub subjects: Vec<SubjectDTO>,
+    pub places: Vec<PlaceDTO>,
+}
+
+/// A subject named in `subjects=`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubjectDTO {
+    ReadingCopy(String),
+}
+
+/// A place named in `places=`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlaceDTO {
+    Scene(String),
+    Section(String),
+}
+
+/// A subject or place whose kind is not known; it holds what was named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownKind(pub String);
+
+impl fmt::Display for SubjectDTO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadingCopy(id) => write!(f, "reading_copy:{id}"),
+        }
+    }
+}
+
+impl fmt::Display for PlaceDTO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Scene(id) => write!(f, "scene:{id}"),
+            Self::Section(id) => write!(f, "section:{id}"),
+        }
+    }
+}
+
+impl SubjectDTO {
+    /// The subjects named in `subjects=`, parted by commas.
+    pub fn listed(named: &str) -> Result<Vec<Self>, UnknownKind> {
+        listed(named, |kind, id| match kind {
+            "reading_copy" => Some(Self::ReadingCopy(id.to_owned())),
+            _ => None,
+        })
+    }
+}
+
+impl PlaceDTO {
+    /// The places named in `places=`, parted by commas.
+    pub fn listed(named: &str) -> Result<Vec<Self>, UnknownKind> {
+        listed(named, |kind, id| match kind {
+            "scene" => Some(Self::Scene(id.to_owned())),
+            "section" => Some(Self::Section(id.to_owned())),
+            _ => None,
+        })
+    }
+}
+
+fn listed<T>(named: &str, read: impl Fn(&str, &str) -> Option<T>) -> Result<Vec<T>, UnknownKind> {
+    named
+        .split(',')
+        .filter(|one| !one.is_empty())
+        .map(|one| {
+            one.split_once(':')
+                .and_then(|(kind, id)| read(kind, id))
+                .ok_or_else(|| UnknownKind(one.to_owned()))
+        })
+        .collect()
+}
+
+impl AskedDTO {
+    /// The query it is asked with, without the leading `?`; the ids are as safe in a query as they are given.
+    pub fn to_query(&self) -> String {
+        fn joined<T: ToString>(named: &str, listed: &[T]) -> Option<String> {
+            (!listed.is_empty()).then(|| {
+                let values: Vec<String> = listed.iter().map(ToString::to_string).collect();
+                format!("{named}={}", values.join(","))
+            })
+        }
+
+        [
+            self.project
+                .as_ref()
+                .map(|project| format!("project={project}")),
+            joined("subjects", &self.subjects),
+            joined("places", &self.places),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("&")
+    }
+
+    /// Whether anything at all is named, as asking for nothing in particular is not asking.
+    pub fn names_anything(&self) -> bool {
+        self != &Self::default()
+    }
 }
 
 /// In which order `GET /feedback/on?order=` lists feedback submitted, by when it was submitted; oldest first unless asked.
@@ -151,8 +269,10 @@ pub mod refused {
     pub const PLACE_UNNAMED: &str = "feedback-place-unnamed";
     pub const STATUS_UNKNOWN: &str = "feedback-status-unknown";
     pub const ORDER_UNKNOWN: &str = "feedback-order-unknown";
+    pub const SUBJECT_UNKNOWN: &str = "feedback-subject-unknown";
+    pub const PLACE_UNKNOWN: &str = "feedback-place-unknown";
 
-    pub const EVERY: [&str; 10] = [
+    pub const EVERY: [&str; 12] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -163,5 +283,7 @@ pub mod refused {
         PLACE_UNNAMED,
         STATUS_UNKNOWN,
         ORDER_UNKNOWN,
+        SUBJECT_UNKNOWN,
+        PLACE_UNKNOWN,
     ];
 }

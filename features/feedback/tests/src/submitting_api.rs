@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum_test::{TestResponse, TestServer};
 use feedback_contract::{
     AboutDTO, COUNTED_AT_ONCE, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO,
     PendingDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
@@ -11,7 +11,7 @@ use crate::support::{
 
 async fn submitted(server: &TestServer) -> Vec<FeedbackDTO> {
     let response = server
-        .post("/feedback/submitted?reading_copies=copy_loom")
+        .post("/feedback/submitted?subjects=reading_copy:copy_loom")
         .await;
     response.assert_status_ok();
 
@@ -104,8 +104,11 @@ async fn submitted_feedback_is_marked_edited_once_changed_and_deleted_by_its_wri
 async fn counted(server: &TestServer, ids: &[&str]) -> Vec<FeedbackCountDTO> {
     let response = server
         .get(&format!(
-            "/feedback/counts?reading_copies={}",
-            ids.join(",")
+            "/feedback/counts?subjects={}",
+            ids.iter()
+                .map(|id| format!("reading_copy:{id}"))
+                .collect::<Vec<_>>()
+                .join(",")
         ))
         .await;
     response.assert_status_ok();
@@ -164,8 +167,11 @@ async fn no_more_copies_are_counted_at_once_than_the_contract_says() {
     // and: one more is refused
     let refused_one_more = ada
         .get(&format!(
-            "/feedback/counts?reading_copies={}",
-            ids.join(",")
+            "/feedback/counts?subjects={}",
+            ids.iter()
+                .map(|id| format!("reading_copy:{id}"))
+                .collect::<Vec<_>>()
+                .join(",")
         ))
         .await;
     refused_one_more.assert_status(StatusCode::BAD_REQUEST);
@@ -242,14 +248,14 @@ async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_b
     )
     .await;
     submitted(&ada).await;
-    ada.post("/feedback/submitted?reading_copies=copy_weft")
+    ada.post("/feedback/submitted?subjects=reading_copy:copy_weft")
         .await
         .assert_status_ok();
     // and: a draft on the scene still
     drafted(&ada, a_passage(), saying("Still thinking.")).await;
 
     // when: the scene's feedback is asked for
-    let response = ada.get("/feedback/on?scenes=scene_harbour").await;
+    let response = ada.get("/feedback/on?places=scene:scene_harbour").await;
 
     // then: the passage and the scene are found, from both copies, and nothing else
     response.assert_status_ok();
@@ -265,6 +271,51 @@ async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_b
         })
         .collect();
     assert_eq!(found, ["Which boats?", "Slow."]);
+}
+
+#[tokio::test]
+async fn a_section_asked_for_with_its_scenes_finds_the_feedback_on_any_of_them() {
+    // given: a passage in a scene, the section itself, another scene, and the whole copy commented on and submitted
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let boats = drafted(&ada, a_passage(), saying("Which boats?")).await;
+    let long = drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Section {
+            section: "section_morning".to_owned(),
+        }),
+        saying("Long."),
+    )
+    .await;
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Scene {
+            scene: "scene_market".to_owned(),
+        }),
+        saying("Elsewhere."),
+    )
+    .await;
+    drafted(
+        &ada,
+        in_the_copy(ReadingCopyPlaceDTO::Whole),
+        saying("Lovely."),
+    )
+    .await;
+    submitted(&ada).await;
+
+    // when: the section and the scene in it are asked for together
+    let found = ada
+        .get("/feedback/on?places=section:section_morning,scene:scene_harbour")
+        .await;
+
+    // then: the passage in the scene and the section itself are found, and nothing else
+    found.assert_status_ok();
+    let found: Vec<String> = found
+        .json::<Vec<FeedbackDTO>>()
+        .into_iter()
+        .map(|piece| piece.id)
+        .collect();
+    assert_eq!(found, [boats.id, long.id]);
 }
 
 #[tokio::test]
@@ -298,7 +349,7 @@ async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_count
     drafted(&ada, the_section(), saying("Still thinking.")).await;
 
     // when: the section's feedback is asked for
-    let found = ada.get("/feedback/on?sections=section_morning").await;
+    let found = ada.get("/feedback/on?places=section:section_morning").await;
 
     // then: what was given on the section itself is found, and no draft
     found.assert_status_ok();
@@ -322,20 +373,71 @@ async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_count
 }
 
 #[tokio::test]
-async fn feedback_is_asked_for_in_a_project_on_scenes_or_on_sections_one_of_them() {
+async fn feedback_asked_for_nowhere_in_particular_or_on_what_is_not_known_is_refused() {
     // given: the feedback
     let ada = as_(&feedback(), "account_ada");
 
-    // expect: neither, or both, are refused as no place named
-    for asked in [
-        "/feedback/on",
-        "/feedback/on?scenes=scene_harbour&sections=section_morning",
-        "/feedback/on?project=project_loom&scenes=scene_harbour",
+    // expect: nothing named, a subject of no known kind, or a place of no known kind are refused
+    for (asked, refused_as) in [
+        ("/feedback/on?status=pending", refused::PLACE_UNNAMED),
+        (
+            "/feedback/on?subjects=character:mira",
+            refused::SUBJECT_UNKNOWN,
+        ),
+        ("/feedback/on?subjects=copy_loom", refused::SUBJECT_UNKNOWN),
+        ("/feedback/on?places=chapter:one", refused::PLACE_UNKNOWN),
+        (
+            "/feedback/counts?subjects=board:one",
+            refused::SUBJECT_UNKNOWN,
+        ),
     ] {
         let response = ada.get(asked).await;
         response.assert_status(StatusCode::BAD_REQUEST);
-        assert_eq!(refusal(&response), refused::PLACE_UNNAMED, "{asked}");
+        assert_eq!(refusal(&response), refused_as, "{asked}");
     }
+}
+
+#[tokio::test]
+async fn a_project_copies_and_places_in_the_text_narrow_the_feedback_together() {
+    // given: the same scene commented on in two copies of the project, and in a copy of another project
+    let feedback = feedback();
+    let ada = as_(&feedback, "account_ada");
+    let on_the_harbour = |copy: &str| AboutDTO::ReadingCopy {
+        reading_copy: copy.to_owned(),
+        place: ReadingCopyPlaceDTO::Scene {
+            scene: "scene_harbour".to_owned(),
+        },
+    };
+    let in_loom = drafted(&ada, on_the_harbour("copy_loom"), saying("Slow.")).await;
+    let in_weft = drafted(&ada, on_the_harbour("copy_weft"), saying("Still slow.")).await;
+    drafted(&ada, on_the_harbour("copy_shuttle"), saying("Elsewhere.")).await;
+    for copy in ["copy_loom", "copy_weft", "copy_shuttle"] {
+        ada.post(&format!("/feedback/submitted?subjects=reading_copy:{copy}"))
+            .await
+            .assert_status_ok();
+    }
+    let found = |response: TestResponse| -> Vec<String> {
+        response.assert_status_ok();
+        response
+            .json::<Vec<FeedbackDTO>>()
+            .into_iter()
+            .map(|piece| piece.id)
+            .collect()
+    };
+
+    // when: the scene is asked for in the project
+    let in_the_project = ada
+        .get("/feedback/on?project=project_loom&places=scene:scene_harbour")
+        .await;
+    // then: both copies of the project are found, not the other project's
+    assert_eq!(found(in_the_project), [in_loom.id.clone(), in_weft.id]);
+
+    // when: the scene is asked for in one copy
+    let in_one_copy = ada
+        .get("/feedback/on?subjects=reading_copy:copy_loom&places=scene:scene_harbour")
+        .await;
+    // then: only that copy's is found
+    assert_eq!(found(in_one_copy), [in_loom.id]);
 }
 
 #[tokio::test]
@@ -354,7 +456,7 @@ async fn a_project_s_feedback_given_is_found_in_every_copy_of_it_but_no_draft() 
     )
     .await;
     submitted(&ada).await;
-    ada.post("/feedback/submitted?reading_copies=copy_weft")
+    ada.post("/feedback/submitted?subjects=reading_copy:copy_weft")
         .await
         .assert_status_ok();
     drafted(&ada, a_passage(), saying("Still thinking.")).await;
@@ -367,7 +469,7 @@ async fn a_project_s_feedback_given_is_found_in_every_copy_of_it_but_no_draft() 
         saying("Elsewhere."),
     )
     .await;
-    ada.post("/feedback/submitted?reading_copies=copy_shuttle")
+    ada.post("/feedback/submitted?subjects=reading_copy:copy_shuttle")
         .await
         .assert_status_ok();
 
@@ -413,7 +515,7 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
         .await
         .assert_status_ok();
     drafted(&ada, in_the_market, saying("Still thinking.")).await;
-    let on_both = "/feedback/on?scenes=scene_harbour,scene_market";
+    let on_both = "/feedback/on?places=scene:scene_harbour,scene:scene_market";
     let ids = |found: Vec<FeedbackDTO>| found.into_iter().map(|piece| piece.id).collect::<Vec<_>>();
 
     // when: what is pending on both scenes is asked for
@@ -438,10 +540,10 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
     assert_eq!(refusal(&unheard), refused::STATUS_UNKNOWN);
     // and: no more scenes than the contract says are looked on at once
     let many: Vec<String> = (0..=COUNTED_AT_ONCE)
-        .map(|at| format!("scene_{at}"))
+        .map(|at| format!("scene:scene_{at}"))
         .collect();
     let refused_many = ada
-        .get(&format!("/feedback/on?scenes={}", many.join(",")))
+        .get(&format!("/feedback/on?places={}", many.join(",")))
         .await;
     refused_many.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&refused_many), refused::TOO_MANY_COUNTED);

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::slice;
 use std::time::Duration;
 
 use fluent_bundle::FluentArgs;
@@ -16,6 +15,7 @@ use crate::feedback::model::{
     About, CommentBlock, CommentRun, Feedback, FeedbackId, ReadingCopyPlace,
 };
 use crate::feedback::service;
+use crate::feedback::service::Asked;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
@@ -199,9 +199,9 @@ pub fn on_reading_copy(
     {
         let copy = copy.clone();
         leptos::task::spawn_local(async move {
-            let on = || service::On::ReadingCopies(slice::from_ref(&copy));
-            let found = match service::submitted(on(), None).await {
-                Ok(mut found) => service::drafts(on()).await.map(|drafts| {
+            let asked = Asked::in_copy(&copy);
+            let found = match service::submitted(&asked, None).await {
+                Ok(mut found) => service::drafts(&asked).await.map(|drafts| {
                     found.extend(drafts);
                     found
                 }),

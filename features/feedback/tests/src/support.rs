@@ -79,8 +79,8 @@ pub async fn drafted(
 pub async fn on_the_copy(server: &TestServer) -> Vec<FeedbackDTO> {
     let mut seen = Vec::new();
     for asked in [
-        format!("/feedback/on?reading_copies={READING_COPY}"),
-        format!("/feedback/drafts?reading_copies={READING_COPY}"),
+        format!("/feedback/on?subjects=reading_copy:{READING_COPY}"),
+        format!("/feedback/drafts?subjects=reading_copy:{READING_COPY}"),
     ] {
         let response = server.get(&asked).await;
         response.assert_status_ok();

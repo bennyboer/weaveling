@@ -1145,7 +1145,7 @@ async function draftsKept(page: Page) {
   const kept: { comment: unknown; about: unknown }[] = [];
   for (const route of ["on", "drafts"]) {
     const listed = await page.request.get(
-      `${API}/feedback/${route}?reading_copies=${copy}`,
+      `${API}/feedback/${route}?subjects=reading_copy:${copy}`,
     );
     expect(listed.ok(), await listed.text()).toBe(true);
     kept.push(...(await listed.json()));
@@ -2066,7 +2066,7 @@ test("feedback given is marked in the text with a line of its own, and counted i
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await aDraftOn(
@@ -2126,7 +2126,7 @@ test("the switcher shows how much of each copy's feedback is not done, and your 
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await aDraftOn(page, { kind: "whole" }, "One more thought.");
@@ -2170,7 +2170,7 @@ test("feedback given is marked done and not done again, its mark in the text and
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
   await page.reload();
@@ -2252,7 +2252,7 @@ test("a scene's feedback is in its inspector in the writing view, grouped by cop
   await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Slow start.");
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
@@ -2378,7 +2378,7 @@ test("a section's own feedback is in its inspector, and the writing view's conte
   await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Lovely.");
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
@@ -2462,7 +2462,7 @@ test("feedback pending is marked in the writing view's text by its words, which 
   );
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submitted = await page.request.post(
-    `${API}/feedback/submitted?reading_copies=${copy}`,
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
   );
   expect(submitted.ok(), await submitted.text()).toBe(true);
 
@@ -2476,12 +2476,13 @@ test("feedback pending is marked in the writing view's text by its words, which 
   // then: the passage's words are marked
   await expect.poll(painted(page, "feedback-given")).toEqual(["boats"]);
   // and: only the feedback pending on the scenes drawn was asked for, never the whole project's
-  const passages = asked.filter((url) => url.includes("/feedback/on?scenes="));
+  const listings = asked
+    .filter((url) => url.includes("/feedback/on?"))
+    .map((url) => new URL(url).searchParams);
+  const passages = listings.filter((asked) => asked.has("places"));
   expect(passages.length).toBeGreaterThan(0);
-  expect(decodeURIComponent(passages[0])).toContain(placed.harbour);
-  expect(asked.some((url) => url.includes("/feedback/on?project="))).toBe(
-    false,
-  );
+  expect(passages[0].get("places")).toContain(`scene:${placed.harbour}`);
+  expect(listings.some((asked) => !asked.has("places"))).toBe(false);
 
   // when: words are written before them
   await scene(page, placed.harbour).click();
@@ -2595,7 +2596,7 @@ test("the feedback view lists what is pending newest first, each told by its kin
   const copy = new URL(page.url()).pathname.split("/").pop()!;
   const submit = async () => {
     const submitted = await page.request.post(
-      `${API}/feedback/submitted?reading_copies=${copy}`,
+      `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
     );
     expect(submitted.ok(), await submitted.text()).toBe(true);
   };
@@ -2676,4 +2677,68 @@ test("the feedback view lists what is pending newest first, each told by its kin
     .click();
   // then: both are there
   await expect(notes).toHaveCount(2);
+});
+
+test("the feedback view narrows to what is about one scene, one section with everything in it, or one copy", async ({
+  page,
+}) => {
+  // given: a copy of a written book, a passage of its first scene and then the whole copy commented on
+  await aCopyOfABookWritten(page, "FeedbackViewNarrowed");
+  const scenes = await book(page)
+    .locator(".scene")
+    .evaluateAll((all) =>
+      all.map((scene) => scene.getAttribute("data-scene")!),
+    );
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  await aDraftOn(
+    page,
+    {
+      kind: "passage",
+      scene: scenes[0],
+      block_path: [0],
+      from: 4,
+      to: 9,
+      quote: "boats",
+    },
+    "Which boats?",
+  );
+  await aDraftOn(page, { kind: "whole" }, "Lovely.");
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  // and: the feedback view open on everything
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+  const notes = feedbackView(page).locator(".note");
+  const about = feedbackView(page).getByLabel("About");
+  const pending = feedbackView(page)
+    .getByRole("group", { name: "Show" })
+    .getByRole("button", { name: /^Pending/ });
+  await expect(notes).toHaveCount(2);
+  await expect(about).toHaveValue("");
+
+  // when: the first scene is chosen
+  await about.selectOption(`scene:${scenes[0]}`);
+  // then: only the passage in it is shown, and counted pending
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Which boats?");
+  await expect(pending).toHaveText("Pending · 1");
+
+  // when: the whole section holding it is chosen
+  const morning = await about
+    .locator('optgroup[label="Morning"] option')
+    .first()
+    .getAttribute("value");
+  await about.selectOption(morning!);
+  // then: the passage in its scene is shown, not what is on the whole copy
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Which boats?");
+
+  // when: the copy is chosen
+  await about.selectOption({ label: "As written" });
+  // then: everything in it is shown again, and counted pending
+  await expect(notes).toHaveCount(2);
+  await expect(pending).toHaveText("Pending · 2");
 });

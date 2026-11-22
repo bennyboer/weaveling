@@ -69,36 +69,59 @@ pub struct Page {
     pub at_most: Option<usize>,
 }
 
-/// Where feedback is looked for: some subjects it is given on, as some reading copies;
-/// or, in every copy, a project, some scenes, on them or passages in them, or some sections themselves.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum On {
-    Subjects(Vec<Subject>),
-    Project(String),
-    Scenes(Vec<SceneLink>),
-    Sections(Vec<SectionLink>),
+/// Which feedback is asked for: in a project, on some subjects, at some places in them.
+/// Each narrows what the others leave; what is not named does not narrow, so nothing named would be everything.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Asked {
+    pub project: Option<String>,
+    pub subjects: Option<Vec<Subject>>,
+    pub places: Option<Places>,
 }
 
-impl On {
-    /// How many places are looked on at once; a project counts as none.
-    fn places(&self) -> usize {
+/// Places inside subjects, as each kind of subject has them: in a reading copy's text,
+/// some scenes, on them or passages in them, and some sections themselves, feedback on any of them found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Places {
+    Text {
+        scenes: Vec<SceneLink>,
+        sections: Vec<SectionLink>,
+    },
+}
+
+impl Places {
+    fn len(&self) -> usize {
         match self {
-            Self::Project(_) => 0,
-            Self::Subjects(subjects) => subjects.len(),
-            Self::Scenes(scenes) => scenes.len(),
-            Self::Sections(sections) => sections.len(),
+            Self::Text { scenes, sections } => scenes.len() + sections.len(),
         }
     }
 
-    fn holds(&self, about: &About, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+    fn hold(&self, about: &About) -> bool {
         match self {
-            Self::Project(project) => in_project(about, project, copies),
-            Self::Subjects(subjects) => subjects.contains(&about.subject()),
-            Self::Scenes(scenes) => about.in_scene().is_some_and(|scene| scenes.contains(scene)),
-            Self::Sections(sections) => about
-                .on_section()
-                .is_some_and(|section| sections.contains(section)),
+            Self::Text { scenes, sections } => {
+                about.in_scene().is_some_and(|scene| scenes.contains(scene))
+                    || about
+                        .on_section()
+                        .is_some_and(|section| sections.contains(section))
+            }
         }
+    }
+}
+
+impl Asked {
+    /// How many subjects and places are looked on at once; a project counts as none.
+    fn looked_on(&self) -> usize {
+        self.subjects.as_ref().map_or(0, Vec::len) + self.places.as_ref().map_or(0, Places::len)
+    }
+
+    fn holds(&self, about: &About, copies: &HashMap<ReadingCopyLink, String>) -> bool {
+        self.project
+            .as_ref()
+            .is_none_or(|project| in_project(about, project, copies))
+            && self
+                .subjects
+                .as_ref()
+                .is_none_or(|subjects| subjects.contains(&about.subject()))
+            && self.places.as_ref().is_none_or(|places| places.hold(about))
     }
 }
 
@@ -159,9 +182,13 @@ impl FeedbackCore {
     }
 
     /// The agent's own drafts where asked, oldest first, which only they see until they submit them.
-    /// At most `COUNTED_AT_ONCE` places are looked on at once.
-    pub async fn drafts(&self, on: &On, agent: &Agent) -> Result<Vec<Feedback>, FeedbackError> {
-        if on.places() > COUNTED_AT_ONCE {
+    /// At most `COUNTED_AT_ONCE` subjects and places are looked on at once.
+    pub async fn drafts(
+        &self,
+        asked: &Asked,
+        agent: &Agent,
+    ) -> Result<Vec<Feedback>, FeedbackError> {
+        if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
         let copies = self.copies();
@@ -172,7 +199,7 @@ impl FeedbackCore {
             .filter(|feedback| {
                 feedback.is_draft()
                     && &feedback.written_by == agent
-                    && on.holds(&feedback.about, &copies)
+                    && asked.holds(&feedback.about, &copies)
             })
             .cloned()
             .collect())
@@ -214,17 +241,18 @@ impl FeedbackCore {
     }
 
     /// The feedback submitted where asked, in every copy, oldest first, and if asked only what is pending or done.
-    /// Drafts are left out, as only their writers see them. At most `COUNTED_AT_ONCE` scenes or sections are looked on at once,
+    /// Drafts are left out, as only their writers see them. At most `COUNTED_AT_ONCE` subjects and places are looked on at once,
     /// so the writing view asks only for those in sight.
     pub async fn submitted(
         &self,
-        on: &On,
+        asked: &Asked,
         status: Option<Status>,
         page: &Page,
         _agent: &Agent,
     ) -> Result<Vec<Feedback>, FeedbackError> {
         // TODO: only in copies of a project the agent may read (step 5)
-        if on.places() > COUNTED_AT_ONCE || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
+        if asked.looked_on() > COUNTED_AT_ONCE
+            || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
         {
             return Err(FeedbackError::TooManyCounted);
         }
@@ -234,7 +262,7 @@ impl FeedbackCore {
             .iter()
             .filter(|feedback| {
                 !feedback.is_draft()
-                    && on.holds(&feedback.about, &copies)
+                    && asked.holds(&feedback.about, &copies)
                     && status.is_none_or(|status| status.holds(feedback))
             })
             .cloned()
@@ -286,9 +314,13 @@ impl FeedbackCore {
 
     /// Submits the agent's drafts where asked together, so everyone who may see the subject's feedback sees them.
     /// It answers with what was submitted, oldest first; with no drafts, nothing.
-    pub async fn submit(&self, on: &On, agent: &Agent) -> Result<Vec<Feedback>, FeedbackError> {
+    pub async fn submit(
+        &self,
+        asked: &Asked,
+        agent: &Agent,
+    ) -> Result<Vec<Feedback>, FeedbackError> {
         // TODO: only while the subject is open, for whoever may read its project (step 5)
-        if on.places() > COUNTED_AT_ONCE {
+        if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
         let now = self.clock.now();
@@ -298,7 +330,7 @@ impl FeedbackCore {
         for feedback in kept.iter_mut().filter(|feedback| {
             feedback.is_draft()
                 && &feedback.written_by == agent
-                && on.holds(&feedback.about, &copies)
+                && asked.holds(&feedback.about, &copies)
         }) {
             feedback.submitted_at = Some(now);
             submitted.push(feedback.clone());

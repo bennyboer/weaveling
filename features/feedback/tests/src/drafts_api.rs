@@ -190,12 +190,12 @@ async fn drafts_are_asked_for_by_where_they_lie_and_are_neither_pending_nor_done
     let draft = drafted(&ada, a_passage(), saying("Mine.")).await;
 
     // expect: she finds it on its scene as on its copy
-    let on_scene = ada.get("/feedback/drafts?scenes=scene_harbour").await;
+    let on_scene = ada.get("/feedback/drafts?places=scene:scene_harbour").await;
     on_scene.assert_status_ok();
     assert_eq!(on_scene.json::<Vec<FeedbackDTO>>(), vec![draft]);
     // and: drafts asked for by status are refused, as they have none
     let by_status = ada
-        .get("/feedback/drafts?scenes=scene_harbour&status=pending")
+        .get("/feedback/drafts?places=scene:scene_harbour&status=pending")
         .await;
     by_status.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&by_status), refused::STATUS_UNKNOWN);

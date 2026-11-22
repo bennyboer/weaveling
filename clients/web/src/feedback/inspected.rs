@@ -1,5 +1,3 @@
-use std::slice;
-
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
@@ -7,6 +5,7 @@ use crate::feedback::column;
 use crate::feedback::model::{About, Feedback, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
+use crate::feedback::service::Asked;
 use crate::members::roles::Roles;
 use crate::outline::model::SectionId;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
@@ -40,15 +39,19 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
     let given = RwSignal::new(Vec::<Feedback>::new());
     {
         let inspected = inspected.clone();
+        let in_project = Asked::in_project(&route::project_id(&project));
         leptos::task::spawn_local(async move {
-            let found = match &inspected {
-                Inspected::Scene(scene) => {
-                    service::submitted(service::On::Scenes(slice::from_ref(scene)), None).await
-                }
-                Inspected::Section(section) => {
-                    service::submitted(service::On::Sections(slice::from_ref(section)), None).await
-                }
+            let asked = match &inspected {
+                Inspected::Scene(scene) => Asked {
+                    scenes: vec![scene.clone()],
+                    ..in_project
+                },
+                Inspected::Section(section) => Asked {
+                    sections: vec![section.clone()],
+                    ..in_project
+                },
             };
+            let found = service::submitted(&asked, None).await;
             if let Ok(found) = found {
                 _ = given.try_set(found);
             }

@@ -6,6 +6,7 @@ use leptos::prelude::*;
 
 use crate::feedback::model::{Pending, PendingPassage};
 use crate::feedback::service;
+use crate::feedback::service::Asked;
 use crate::outline::model::SectionId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
@@ -96,9 +97,11 @@ impl PendingHere {
             return;
         }
         leptos::task::spawn_local(async move {
-            let Ok(given) =
-                service::submitted(service::On::Scenes(&scenes), Some(status::PENDING)).await
-            else {
+            let asked = Asked {
+                scenes: scenes.clone(),
+                ..Asked::in_project(&self.project.get_value())
+            };
+            let Ok(given) = service::submitted(&asked, Some(status::PENDING)).await else {
                 return;
             };
             let found = given.iter().filter_map(PendingPassage::of);
