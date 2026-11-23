@@ -12,7 +12,10 @@ mod piece_tests;
 
 pub use about::{About, ReadingCopyPlace, Subject};
 pub use block_path::BlockPath;
-pub use catalog::{AccountNameCatalog, CatalogError, KnownReadingCopy, ReadingCopyCatalog};
+pub use catalog::{
+    AccountNameCatalog, CatalogError, CataloguedFeedback, FeedbackCatalog, KnownReadingCopy,
+    ReadingCopyCatalog,
+};
 pub use comment::{Comment, CommentBlock, CommentRun, InvalidComment};
 pub use error::FeedbackError;
 pub use feedback::{

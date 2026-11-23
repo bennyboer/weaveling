@@ -7,7 +7,9 @@ use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::about::{About, Subject};
-use crate::catalog::{AccountNameCatalog, KnownReadingCopy, ReadingCopyCatalog};
+use crate::catalog::{
+    AccountNameCatalog, CataloguedFeedback, KnownReadingCopy, ReadingCopyCatalog,
+};
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
 use crate::id::FeedbackId;
@@ -147,6 +149,27 @@ impl Asked {
     }
 }
 
+impl Asked {
+    /// Whether a piece kept in the catalog is among those asked for: in the project, on a subject, at a place and by a giver named.
+    pub fn holds_catalogued(&self, piece: &CataloguedFeedback) -> bool {
+        self.project
+            .as_ref()
+            .is_none_or(|project| piece.project.as_str() == project)
+            && self
+                .subjects
+                .as_ref()
+                .is_none_or(|subjects| subjects.contains(&piece.about.subject()))
+            && self
+                .places
+                .as_ref()
+                .is_none_or(|places| places.hold(&piece.about))
+            && self
+                .given_by
+                .as_ref()
+                .is_none_or(|givers| givers.contains(&piece.written_by))
+    }
+}
+
 fn in_project(
     about: &About,
     project: &str,
@@ -182,6 +205,11 @@ pub enum Status {
 impl Status {
     fn holds(self, feedback: &ListedFeedback) -> bool {
         feedback.done == (self == Self::Done)
+    }
+
+    /// Whether a piece kept in the catalog is pending or done as asked.
+    pub fn holds_catalogued(self, piece: &CataloguedFeedback) -> bool {
+        piece.done == (self == Self::Done)
     }
 }
 

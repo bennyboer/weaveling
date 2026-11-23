@@ -2,11 +2,15 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use async_trait::async_trait;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Agent};
 use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
 
+use crate::about::{About, Subject};
+use crate::comment::Comment;
+use crate::feedback::{Asked, Counted, Page, Pending, Status};
+use crate::id::FeedbackId;
 use crate::link::{ProjectLink, ReadingCopyLink};
 
 #[derive(Debug, Error)]
@@ -99,6 +103,82 @@ pub trait AccountNameCatalog: Send + Sync {
         &self,
         accounts: &[AccountId],
     ) -> Result<HashMap<AccountId, String>, CatalogError>;
+}
+
+/// A piece of feedback as the catalog keeps it, to be found and counted:
+/// its project and what it is about, what it says, who wrote it and when, and how far it was worked through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CataloguedFeedback {
+    pub id: FeedbackId,
+    pub project: ProjectLink,
+    pub about: About,
+    pub comment: Comment,
+    pub written_by: Agent,
+    pub written_at: OffsetDateTime,
+    /// When it was submitted; until then it is a draft, which only whoever wrote it sees.
+    pub submitted_at: Option<OffsetDateTime>,
+    /// Whether what it says was changed after it was submitted.
+    pub edited: bool,
+    /// Whether the authors marked it done.
+    pub done: bool,
+}
+
+impl CataloguedFeedback {
+    pub fn is_draft(&self) -> bool {
+        self.submitted_at.is_none()
+    }
+}
+
+/// The feedback as it now stands, kept for finding and counting it.
+/// Each piece is kept in the transaction its events are stored in, so what was just written is found at once.
+/// Pieces submitted at the same time are listed in the order they were first kept.
+#[async_trait]
+pub trait FeedbackCatalog: Send + Sync {
+    /// Keeps a piece as it now stands, in place of what was kept of it before.
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        piece: &CataloguedFeedback,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets a deleted piece.
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        piece: &FeedbackId,
+    ) -> Result<(), CatalogError>;
+
+    /// One piece, drafted or submitted, if it is kept.
+    async fn piece(&self, piece: &FeedbackId) -> Result<Option<CataloguedFeedback>, CatalogError>;
+
+    /// A writer's own drafts where asked, oldest first.
+    async fn drafts_of(
+        &self,
+        asked: &Asked,
+        writer: &Agent,
+    ) -> Result<Vec<CataloguedFeedback>, CatalogError>;
+
+    /// The feedback submitted where asked, drafts left out, if asked only what is pending or done,
+    /// in the order the page asks for, after the piece it names, and no more than it asks for.
+    async fn submitted(
+        &self,
+        asked: &Asked,
+        status: Option<Status>,
+        page: &Page,
+    ) -> Result<Vec<CataloguedFeedback>, CatalogError>;
+
+    /// How much feedback submitted where asked is pending, not done yet: on each scene and section, and in all.
+    async fn pending(&self, asked: &Asked) -> Result<Pending, CatalogError>;
+
+    /// Whoever submitted feedback in a project, in the order they first submitted any.
+    async fn givers_in(&self, project: &ProjectLink) -> Result<Vec<Agent>, CatalogError>;
+
+    /// How much feedback each subject holds, in the order asked: what is submitted and not done, and the asker's own drafts.
+    async fn counted_on(
+        &self,
+        subjects: &[Subject],
+        asker: &Agent,
+    ) -> Result<Vec<Counted>, CatalogError>;
 }
 
 #[cfg(test)]
