@@ -1365,6 +1365,73 @@ pub async fn without_accounts_nothing_is_written_in_a_project_never_started_or_i
     journey.end().await;
 }
 
+pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database<B: Backend>() {
+    // given: a reading copy of a project on a relayed server
+    let journey = Journey::<B>::relayed().await;
+    let project = journey.project("Kept feedback").await;
+    let copy = id_in(
+        &journey
+            .posted(
+                "/api/readings/copies",
+                json!({
+                    "project": project,
+                    "name": "For Lena",
+                    "shared": { "kind": "book" },
+                    "open_until": null,
+                    "deleted_on": null,
+                }),
+                StatusCode::CREATED,
+            )
+            .await,
+        "id",
+    );
+
+    // when: a draft is begun in it, once the feedback has heard of the copy
+    let draft = json!({
+        "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
+        "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": "Lovely." }] }],
+    });
+    assert!(
+        until(|| async {
+            journey
+                .server
+                .post("/api/feedback")
+                .json(&draft)
+                .await
+                .status_code()
+                == StatusCode::CREATED
+        })
+        .await,
+        "the feedback should hear of the copy, and of the project it was made of, and take the draft"
+    );
+
+    // then: the feedback database keeps the piece and its event
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM feedback")
+            .await,
+        1
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM events")
+            .await,
+        1
+    );
+    // and: it is listed as the draft it is
+    assert_eq!(
+        journey
+            .read(&format!(
+                "/api/feedback/drafts?subjects=reading_copy:{copy}"
+            ))
+            .await[0]["comment"][0]["runs"][0]["text"],
+        "Lovely."
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -1392,6 +1459,7 @@ macro_rules! journeys {
             an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there,
             an_account_turns_down_in_the_application_what_it_is_invited_into,
             an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into,
+            a_draft_in_a_reading_copy_is_kept_in_the_feedback_database,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

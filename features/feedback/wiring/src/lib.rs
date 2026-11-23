@@ -73,7 +73,6 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 }
 
 /// What the feedback feature keeps, in memory.
-// TODO: kept on SQLite too, in the feature's own tables (5d3)
 fn kept_in_memory(context: &Context) -> Ports {
     let EventSourced {
         events,
@@ -145,8 +144,43 @@ impl Feature for FeedbackFeature {
     }
 
     #[cfg(feature = "sqlite")]
-    fn on_sqlite(_pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(kept_in_memory(context))
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
+            &pool,
+            feedback_store::codec(),
+            feedback_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            feedback: Arc::new(feedback_catalog::SqliteFeedbackCatalog::new(pool.clone())),
+            copies: Arc::new(feedback_catalog::SqliteReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            names: Arc::new(feedback_catalog::SqliteAccountNameCatalog::new(
+                pool.clone(),
+            )),
+            events,
+            transactions,
+            access: KeptAccess::new(Arc::new(access::SqliteAccess::new(pool))),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
+            outbox,
+        })
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::sqlite::migrations(),
+            outbox::sqlite::migrations(),
+            feedback_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
+            access::sqlite::migrations(),
+        ]
     }
 
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
