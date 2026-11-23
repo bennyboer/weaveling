@@ -23,10 +23,11 @@ enum StoredFeedbackEvent {
     MarkedDone,
     MarkedNotDone,
     Deleted,
+    /// Once the piece is deleted, it holds neither what it was about nor what it said.
     Snapshotted {
         project: String,
-        about: StoredAbout,
-        comment: Vec<StoredBlock>,
+        about: Option<StoredAbout>,
+        comment: Option<Vec<StoredBlock>>,
         written_by: StoredAgent,
         written_at: String,
         submitted_at: Option<String>,
@@ -317,8 +318,8 @@ impl From<&FeedbackEvent> for StoredFeedbackEvent {
                 deleted,
             } => Self::Snapshotted {
                 project: project.to_string(),
-                about: StoredAbout::from(about),
-                comment: stored_comment(comment),
+                about: about.as_ref().map(StoredAbout::from),
+                comment: comment.as_ref().map(stored_comment),
                 written_by: StoredAgent::from(written_by),
                 written_at: text::written(*written_at),
                 submitted_at: submitted_at.map(text::written),
@@ -361,8 +362,8 @@ impl TryFrom<StoredFeedbackEvent> for FeedbackEvent {
                 deleted,
             } => Self::Snapshotted {
                 project: ProjectLink::from(project),
-                about: About::from(about),
-                comment: comment_of(comment)?,
+                about: about.map(About::from),
+                comment: comment.map(comment_of).transpose()?,
                 written_by: Agent::from(written_by),
                 written_at: moment(&written_at)?,
                 submitted_at: maybe_moment(submitted_at.as_deref())?,
@@ -458,8 +459,8 @@ mod tests {
         ] {
             every.push(FeedbackEvent::Snapshotted {
                 project: ProjectLink::from("project_loom"),
-                about: in_the_copy(ReadingCopyPlace::Whole),
-                comment: a_comment(),
+                about: Some(in_the_copy(ReadingCopyPlace::Whole)),
+                comment: Some(a_comment()),
                 written_by,
                 written_at: AT + Duration::seconds(7),
                 submitted_at,
@@ -468,6 +469,19 @@ mod tests {
                 deleted: false,
             });
         }
+
+        // and: a deleted piece's snapshot, which holds no words
+        every.push(FeedbackEvent::Snapshotted {
+            project: ProjectLink::from("project_loom"),
+            about: None,
+            comment: None,
+            written_by: Agent::Account(AccountId::from("account_ada")),
+            written_at: AT,
+            submitted_at: Some(AT),
+            edited: false,
+            done: false,
+            deleted: true,
+        });
 
         // expect: each reads back as it was kept
         for event in every {

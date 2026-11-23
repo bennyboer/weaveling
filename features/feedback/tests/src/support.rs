@@ -14,7 +14,7 @@ use feedback_contract::{
     AboutDTO, CommentBlockDTO, CommentRunDTO, DraftFeedbackRequest, FeedbackDTO,
     ReadingCopyPlaceDTO,
 };
-use feedback_core::{FeedbackCore, KnownReadingCopy, ProjectLink, ReadingCopyLink};
+use feedback_core::{FeedbackCore, FeedbackEvent, KnownReadingCopy, ProjectLink, ReadingCopyLink};
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
@@ -66,9 +66,25 @@ pub async fn feedback() -> FeedbackCore {
 /// that ada and bea signed up as Ada and Bea; that ada owns the loom project, otto and hedy write it,
 /// and bea reads it; and that ada owns the shuttle project, of which bea is no member.
 pub async fn feedback_on(clock: Arc<TickingClock>) -> FeedbackCore {
+    feedback_keeping(clock, Arc::new(InMemoryEventStore::new())).await
+}
+
+/// The feedback feature at `NOW` with the event store it keeps its pieces in, for a test to look into.
+pub async fn feedback_with_events() -> (FeedbackCore, Arc<InMemoryEventStore<FeedbackEvent>>) {
+    let events = Arc::new(InMemoryEventStore::new());
+    let feedback =
+        feedback_keeping(Arc::new(TickingClock::at(clock::at(NOW))), events.clone()).await;
+
+    (feedback, events)
+}
+
+async fn feedback_keeping(
+    clock: Arc<TickingClock>,
+    events: Arc<InMemoryEventStore<FeedbackEvent>>,
+) -> FeedbackCore {
     let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let feedback = FeedbackCore::new(
-        Arc::new(InMemoryEventStore::new()),
+        events,
         Arc::new(InMemoryFeedbackCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),

@@ -111,8 +111,8 @@ fn a_draft_is_its_writer_s_about_a_place_in_a_project() {
     assert!(drafted.is_draft());
     assert_eq!(drafted.written_by(), &ada());
     assert_eq!(drafted.written_at(), DRAFTED_AT);
-    assert_eq!(drafted.about(), &a_passage("boats"));
-    assert_eq!(drafted.comment(), &saying("Which boats?"));
+    assert_eq!(drafted.about(), Some(&a_passage("boats")));
+    assert_eq!(drafted.comment(), Some(&saying("Which boats?")));
     // and: not done, not edited, and it tells its project
     assert!(!drafted.is_done());
     assert!(!drafted.is_edited());
@@ -166,7 +166,7 @@ fn a_draft_reworded_is_not_edited_but_feedback_given_and_reworded_is() {
     )
     .expect("rewording should succeed");
     // then: it says the new words, and is not edited, as nobody saw the old ones
-    assert_eq!(reworded.comment(), &saying("Which ships?"));
+    assert_eq!(reworded.comment(), Some(&saying("Which ships?")));
     assert!(!reworded.is_edited());
 
     // when: ada rewords what ada gave
@@ -177,7 +177,7 @@ fn a_draft_reworded_is_not_edited_but_feedback_given_and_reworded_is() {
     )
     .expect("rewording should succeed");
     // then: it says the new words, and is edited
-    assert_eq!(edited.comment(), &saying("Which ships?"));
+    assert_eq!(edited.comment(), Some(&saying("Which ships?")));
     assert!(edited.is_edited());
 }
 
@@ -328,4 +328,32 @@ fn an_owner_deletes_anyone_s_feedback_given_but_no_draft() {
     let refused = a_draft().decide(FeedbackCommand::Delete(Deleter::Owner), &bea());
     // then: it is refused, as a draft is not there for anyone but its writer
     assert_eq!(refused, Err(FeedbackRefused::NotSubmitted));
+}
+
+#[test]
+fn a_deleted_piece_holds_its_words_no_more_nor_does_its_snapshot() {
+    // when: ada deletes what ada gave
+    let deleted = decided(&given(), FeedbackCommand::Delete(Deleter::Writer), &ada())
+        .expect("deleting should succeed");
+
+    // then: it holds neither what it was about nor what it said
+    assert_eq!(deleted.about(), None);
+    assert_eq!(deleted.comment(), None);
+    // and: its snapshot holds none of it either, only whose and in which project it was
+    match deleted.snapshot() {
+        FeedbackEvent::Snapshotted {
+            project,
+            about,
+            comment,
+            written_by,
+            deleted,
+            ..
+        } => {
+            assert_eq!(project, ProjectLink::from("project_loom"));
+            assert_eq!((about, comment), (None, None));
+            assert_eq!(written_by, ada());
+            assert!(deleted);
+        }
+        other => panic!("a snapshot was expected, not {other:?}"),
+    }
 }

@@ -62,10 +62,11 @@ pub enum FeedbackEvent {
     MarkedDone,
     MarkedNotDone,
     Deleted,
+    /// The piece as it stands. Once it is deleted, it holds neither what it was about nor what it said.
     Snapshotted {
         project: ProjectLink,
-        about: About,
-        comment: Comment,
+        about: Option<About>,
+        comment: Option<Comment>,
         written_by: Agent,
         written_at: OffsetDateTime,
         submitted_at: Option<OffsetDateTime>,
@@ -77,17 +78,33 @@ pub enum FeedbackEvent {
 
 /// A piece of feedback: what someone says about something in a project, a draft only they see until they submit it.
 /// Once submitted, everyone who may see its subject's feedback sees it, and the authors work it through, marking it done.
+/// Once deleted, its words are erased: it holds neither what it was about nor what it said.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Feedback {
     project: ProjectLink,
-    about: About,
-    comment: Comment,
+    words: Option<Words>,
     written_by: Agent,
     written_at: OffsetDateTime,
     submitted_at: Option<OffsetDateTime>,
     edited: bool,
     done: bool,
     deleted: bool,
+}
+
+/// What a piece is about and what it says, as long as it is not deleted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Words {
+    about: About,
+    comment: Comment,
+}
+
+impl Words {
+    fn of(about: Option<&About>, comment: Option<&Comment>) -> Option<Self> {
+        Some(Self {
+            about: about?.clone(),
+            comment: comment?.clone(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -111,12 +128,14 @@ impl Feedback {
         &self.project
     }
 
-    pub fn about(&self) -> &About {
-        &self.about
+    /// What it is about; none once it is deleted.
+    pub fn about(&self) -> Option<&About> {
+        self.words.as_ref().map(|words| &words.about)
     }
 
-    pub fn comment(&self) -> &Comment {
-        &self.comment
+    /// What it says; none once it is deleted.
+    pub fn comment(&self) -> Option<&Comment> {
+        self.words.as_ref().map(|words| &words.comment)
     }
 
     pub fn written_by(&self) -> &Agent {
@@ -231,8 +250,10 @@ impl Aggregate for Feedback {
                 comment,
             } => Some(Self {
                 project: project.clone(),
-                about: about.clone(),
-                comment: comment.clone(),
+                words: Some(Words {
+                    about: about.clone(),
+                    comment: comment.clone(),
+                }),
                 written_by: metadata.agent.clone(),
                 written_at: metadata.occurred_at,
                 submitted_at: None,
@@ -252,8 +273,7 @@ impl Aggregate for Feedback {
                 deleted,
             } => Some(Self {
                 project: project.clone(),
-                about: about.clone(),
-                comment: comment.clone(),
+                words: Words::of(about.as_ref(), comment.as_ref()),
                 written_by: written_by.clone(),
                 written_at: *written_at,
                 submitted_at: *submitted_at,
@@ -278,7 +298,7 @@ impl Aggregate for Feedback {
             FeedbackCommand::Draft { .. } => Err(FeedbackRefused::AlreadyDrafted),
             FeedbackCommand::Reword(to) => {
                 self.by_its_writer(agent)?;
-                if to == self.comment {
+                if self.comment() == Some(&to) {
                     return Ok(vec![]);
                 }
 
@@ -323,13 +343,18 @@ impl Aggregate for Feedback {
         match event {
             FeedbackEvent::Drafted { .. } => {}
             FeedbackEvent::Reworded(to) => {
-                self.comment = to.clone();
+                if let Some(words) = &mut self.words {
+                    words.comment = to.clone();
+                }
                 self.edited |= !self.is_draft();
             }
             FeedbackEvent::Submitted => self.submitted_at = Some(metadata.occurred_at),
             FeedbackEvent::MarkedDone => self.done = true,
             FeedbackEvent::MarkedNotDone => self.done = false,
-            FeedbackEvent::Deleted => self.deleted = true,
+            FeedbackEvent::Deleted => {
+                self.deleted = true;
+                self.words = None;
+            }
             FeedbackEvent::Snapshotted {
                 project,
                 about,
@@ -342,8 +367,7 @@ impl Aggregate for Feedback {
                 deleted,
             } => {
                 self.project = project.clone();
-                self.about = about.clone();
-                self.comment = comment.clone();
+                self.words = Words::of(about.as_ref(), comment.as_ref());
                 self.written_by = written_by.clone();
                 self.written_at = *written_at;
                 self.submitted_at = *submitted_at;
@@ -357,8 +381,8 @@ impl Aggregate for Feedback {
     fn snapshot(&self) -> FeedbackEvent {
         FeedbackEvent::Snapshotted {
             project: self.project.clone(),
-            about: self.about.clone(),
-            comment: self.comment.clone(),
+            about: self.about().cloned(),
+            comment: self.comment().cloned(),
             written_by: self.written_by.clone(),
             written_at: self.written_at,
             submitted_at: self.submitted_at,

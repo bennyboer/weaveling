@@ -4,7 +4,12 @@ use feedback_contract::{
     AboutDTO, DraftFeedbackRequest, FeedbackDTO, ReadingCopyPlaceDTO, refused,
 };
 
-use crate::support::{READING_COPY, a_passage, as_, drafted, feedback, refusal, saying};
+use eventsourcing::{AggregateId, EventStore, Version};
+use feedback_core::{FeedbackEvent, KIND};
+
+use crate::support::{
+    READING_COPY, a_passage, as_, drafted, feedback, feedback_with_events, refusal, saying,
+};
 
 /// One's drafts in the loom copy, submitted together.
 async fn given(server: &TestServer) -> Vec<FeedbackDTO> {
@@ -126,4 +131,41 @@ async fn feedback_asked_for_in_no_project_and_on_no_copy_is_refused() {
     // then: it is refused as no place named that tells whose it is
     response.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&response), refused::PLACE_UNNAMED);
+}
+
+#[tokio::test]
+async fn a_piece_deleted_leaves_no_word_of_it_behind() {
+    // given: ada's feedback given on a passage
+    let (feedback, events) = feedback_with_events().await;
+    let ada = as_(&feedback, "account_ada");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    let boats = given(&ada).await.remove(0);
+
+    // when: ada deletes it
+    ada.delete(&format!("/feedback/{}", boats.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: its events collapsed into one snapshot, which holds neither the passage nor the comment
+    let kept = events
+        .read_from(&AggregateId::from(boats.id.as_str()), KIND, Version::ZERO)
+        .await
+        .expect("reading the stream should succeed");
+    assert_eq!(
+        kept.len(),
+        1,
+        "only the snapshot of the deleted piece stays"
+    );
+    match &kept[0].event {
+        FeedbackEvent::Snapshotted {
+            about,
+            comment,
+            deleted,
+            ..
+        } => {
+            assert_eq!((about, comment), (&None, &None));
+            assert!(deleted);
+        }
+        other => panic!("a snapshot was expected, not {other:?}"),
+    }
 }

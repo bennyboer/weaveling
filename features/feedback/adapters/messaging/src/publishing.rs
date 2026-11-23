@@ -191,8 +191,8 @@ mod tests {
         // given: a snapshot of a piece
         let snapshot = FeedbackEvent::Snapshotted {
             project: ProjectLink::from("project_loom"),
-            about: on_the_harbour(),
-            comment: saying("Slow."),
+            about: Some(on_the_harbour()),
+            comment: Some(saying("Slow.")),
             written_by: Agent::Local,
             written_at: AT,
             submitted_at: None,

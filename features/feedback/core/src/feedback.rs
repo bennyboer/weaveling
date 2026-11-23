@@ -60,18 +60,19 @@ impl ListedFeedback {
 }
 
 impl CataloguedFeedback {
-    fn of(id: FeedbackId, piece: &Feedback) -> Self {
-        Self {
+    /// The piece as the catalog keeps it, while it still holds its words; a deleted one is kept no more.
+    fn of(id: FeedbackId, piece: &Feedback) -> Option<Self> {
+        Some(Self {
             id,
             project: piece.project().clone(),
-            about: piece.about().clone(),
-            comment: piece.comment().clone(),
+            about: piece.about()?.clone(),
+            comment: piece.comment()?.clone(),
             written_by: piece.written_by().clone(),
             written_at: piece.written_at(),
             submitted_at: piece.submitted_at(),
             edited: piece.is_edited(),
             done: piece.is_done(),
-        }
+        })
     }
 }
 
@@ -458,12 +459,13 @@ impl FeedbackCore {
             .events
             .latest_within(transaction, &AggregateId::from(&piece))
             .await?;
-        if standing.state.is_deleted() {
+        let Some(catalogued) =
+            CataloguedFeedback::of(piece, &standing.state).filter(|_| !standing.state.is_deleted())
+        else {
             self.feedback.forget(transaction, &piece).await?;
 
             return Ok(None);
-        }
-        let catalogued = CataloguedFeedback::of(piece, &standing.state);
+        };
         self.feedback.keep(transaction, &catalogued).await?;
 
         Ok(Some(catalogued))
@@ -730,7 +732,7 @@ impl FeedbackCore {
             .await
     }
 
-    /// Deletes a piece of feedback, for whoever wrote it, or for an owner of its project once it is given.
+    /// Deletes a piece of feedback, for whoever wrote it, or for an owner of its project once it is given; its words are erased.
     pub async fn delete(&self, feedback: &str, agent: &Agent) -> Result<(), FeedbackError> {
         let piece = self.found(feedback, agent).await?;
         let deleter = if &piece.written_by == agent {
@@ -740,9 +742,35 @@ impl FeedbackCore {
                 .await?;
             Deleter::Owner
         };
-        self.carried_out(piece.id, FeedbackCommand::Delete(deleter), agent)
-            .await?;
+        self.erased(piece.id, deleter, agent).await
+    }
 
-        Ok(())
+    /// Deletes a piece and erases its words: its events collapse into a snapshot that holds neither what it was about
+    /// nor what it said, and the messages already sent about it are forgotten, all in one transaction.
+    async fn erased(
+        &self,
+        piece: FeedbackId,
+        deleter: Deleter,
+        agent: &Agent,
+    ) -> Result<(), FeedbackError> {
+        let aggregate = AggregateId::from(&piece);
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .execute(
+                    transaction,
+                    &aggregate,
+                    FeedbackCommand::Delete(deleter),
+                    agent,
+                )
+                .await?;
+            self.catalogue(transaction, piece).await?;
+            self.events.compact(transaction, &aggregate, agent).await?;
+            self.events
+                .forget_published(transaction, &aggregate)
+                .await?;
+
+            Ok::<_, FeedbackError>(())
+        })
     }
 }

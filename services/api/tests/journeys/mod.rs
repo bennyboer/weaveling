@@ -1365,7 +1365,9 @@ pub async fn without_accounts_nothing_is_written_in_a_project_never_started_or_i
     journey.end().await;
 }
 
-pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database<B: Backend>() {
+pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_erased_once_deleted<
+    B: Backend,
+>() {
     // given: a reading copy of a project on a relayed server
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Kept feedback").await;
@@ -1429,6 +1431,49 @@ pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database<B: Backe
             .await[0]["comment"][0]["runs"][0]["text"],
         "Lovely."
     );
+
+    // when: the draft is deleted
+    let drafted = journey
+        .read(&format!(
+            "/api/feedback/drafts?subjects=reading_copy:{copy}"
+        ))
+        .await;
+    let piece = drafted[0]["id"]
+        .as_str()
+        .expect("a draft has an id")
+        .to_owned();
+    journey
+        .server
+        .delete(&format!("/api/feedback/{piece}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: the feedback database keeps no word of it, only the snapshot that it was deleted
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM feedback")
+            .await,
+        0
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM events")
+            .await,
+        1
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count(
+                "feedback",
+                "SELECT count(*) FROM events WHERE CAST(body AS TEXT) LIKE '%Lovely%'"
+            )
+            .await,
+        0,
+        "a deleted piece's words are erased from its history"
+    );
     journey.end().await;
 }
 
@@ -1459,7 +1504,7 @@ macro_rules! journeys {
             an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there,
             an_account_turns_down_in_the_application_what_it_is_invited_into,
             an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into,
-            a_draft_in_a_reading_copy_is_kept_in_the_feedback_database,
+            a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_erased_once_deleted,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {
