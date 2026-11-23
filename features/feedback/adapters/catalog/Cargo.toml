@@ -8,6 +8,7 @@ async-trait = { workspace = true }
 time = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 feedback-core = { version = "0.1.0", path = "../../core", package = "weaveling-feedback-core" }

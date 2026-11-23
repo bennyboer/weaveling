@@ -10,9 +10,11 @@ use std::sync::Arc;
 use clock::FixedClock;
 use feedback_contract::DraftFeedbackRequest;
 
+use eventsourcing::AccountId;
+
 use crate::support::{
-    CLOSING_COPY, NOW, a_passage, as_, drafted, feedback, feedback_on, in_the_copy, on_the_copy,
-    refusal, saying,
+    CLOSING_COPY, NOW, READING_COPY, a_passage, as_, drafted, feedback, feedback_on, in_the_copy,
+    on_the_copy, refusal, saying,
 };
 
 async fn submitted(server: &TestServer) -> Vec<FeedbackDTO> {
@@ -634,7 +636,7 @@ async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedb
     // when: bea asks who gave feedback in the project
     let givers = bea.get("/feedback/givers?project=project_loom").await;
 
-    // then: ada and bea, in the order they first gave any, bea told which one is bea
+    // then: ada and bea by the names they signed up with, in the order they first gave any, bea told which one is bea
     givers.assert_status_ok();
     assert_eq!(
         givers.json::<Vec<ListedGiverDTO>>(),
@@ -642,12 +644,12 @@ async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedb
             ListedGiverDTO {
                 giver: "account:account_ada".to_owned(),
                 by_you: false,
-                name: None,
+                name: Some("Ada".to_owned()),
             },
             ListedGiverDTO {
                 giver: "account:account_bea".to_owned(),
                 by_you: true,
-                name: None,
+                name: Some("Bea".to_owned()),
             },
         ]
     );
@@ -722,4 +724,46 @@ async fn feedback_is_drafted_and_submitted_only_while_its_copy_is_open() {
     assert_eq!(refusal(&drafting), refused::READING_COPY_CLOSED);
     // and: a copy open without end still takes feedback
     drafted(&ada, a_passage(), saying("Which boats?")).await;
+}
+
+#[tokio::test]
+async fn feedback_names_whoever_gave_it_until_their_account_is_deleted() {
+    // given: ada's feedback given
+    let feedback = feedback().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    submitted(&ada).await;
+    let named_by = |found: Vec<FeedbackDTO>| -> Vec<Option<String>> {
+        found.into_iter().map(|piece| piece.written_by).collect()
+    };
+
+    // when: bea reads the copy's feedback
+    let seen = bea
+        .get(&format!(
+            "/feedback/on?subjects=reading_copy:{READING_COPY}"
+        ))
+        .await;
+
+    // then: it names ada by the name ada signed up with
+    seen.assert_status_ok();
+    assert_eq!(named_by(seen.json()), [Some("Ada".to_owned())]);
+
+    // when: ada's account is deleted, and the feedback read again
+    feedback
+        .account_gone(None, &AccountId::from("account_ada"), clock::at(NOW))
+        .await
+        .expect("forgetting a name should succeed");
+    let seen = bea
+        .get(&format!(
+            "/feedback/on?subjects=reading_copy:{READING_COPY}"
+        ))
+        .await;
+
+    // then: the feedback stays, naming nobody
+    seen.assert_status_ok();
+    assert_eq!(named_by(seen.json()), [None]);
+    // and: ada is listed as a giver still, under no name
+    let givers = bea.get("/feedback/givers?project=project_loom").await;
+    assert_eq!(givers.json::<Vec<ListedGiverDTO>>()[0].name, None);
 }

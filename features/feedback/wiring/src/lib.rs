@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
-use feedback_catalog::InMemoryReadingCopyCatalog;
-use feedback_core::{FeedbackCore, ReadingCopyCatalog};
-use feedback_messaging::RememberReadingCopiesListener;
+use feedback_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use feedback_core::{AccountNameCatalog, FeedbackCore, ReadingCopyCatalog};
+use feedback_messaging::{RememberAccountNamesListener, RememberReadingCopiesListener};
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
 use transacting::{InMemoryTransactions, Transactions};
@@ -12,6 +12,7 @@ use wiring::{Context, Feature, Wired};
 // TODO: the event store and the outbox, once feedback is kept (5c)
 pub struct Ports {
     pub copies: Arc<dyn ReadingCopyCatalog>,
+    pub names: Arc<dyn AccountNameCatalog>,
     pub transactions: Arc<dyn Transactions>,
     pub inbox: Arc<dyn Inbox>,
 }
@@ -20,14 +21,16 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let feedback = FeedbackCore::new(
         ports.copies.clone(),
+        ports.names.clone(),
         ports.transactions.clone(),
         context.clock.clone(),
     );
 
     Wired::serving(feedback_rest::router(feedback.clone()))
-        .listening(vec![Arc::new(
-            hearing.inboxed(RememberReadingCopiesListener::new(feedback.clone())),
-        )])
+        .listening(vec![
+            Arc::new(hearing.inboxed(RememberReadingCopiesListener::new(feedback.clone()))),
+            Arc::new(hearing.inboxed(RememberAccountNamesListener::new(feedback.clone()))),
+        ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-feedback-tombstones",
@@ -50,6 +53,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 fn kept_in_memory(context: &Context) -> Ports {
     Ports {
         copies: Arc::new(InMemoryReadingCopyCatalog::new()),
+        names: Arc::new(InMemoryAccountNameCatalog::new()),
         transactions: Arc::new(InMemoryTransactions::new()),
         inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
     }

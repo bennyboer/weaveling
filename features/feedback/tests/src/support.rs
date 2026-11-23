@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use feedback_catalog::InMemoryReadingCopyCatalog;
+use feedback_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
 use feedback_contract::{
     AboutDTO, CommentBlockDTO, CommentRunDTO, DraftFeedbackRequest, FeedbackDTO,
     ReadingCopyPlaceDTO,
@@ -29,13 +29,21 @@ pub async fn feedback() -> FeedbackCore {
 }
 
 /// The feedback feature on a clock a test may move, having heard that the loom, the weft and the closing copy
-/// were made of the loom project, the closing one open for a day, and the shuttle copy of another.
+/// were made of the loom project, the closing one open for a day, and the shuttle copy of another;
+/// and that ada and bea signed up as Ada and Bea.
 pub async fn feedback_on(clock: Arc<FixedClock>) -> FeedbackCore {
     let feedback = FeedbackCore::new(
         Arc::new(InMemoryReadingCopyCatalog::new()),
+        Arc::new(InMemoryAccountNameCatalog::new()),
         Arc::new(InMemoryTransactions::new()),
         clock,
     );
+    for (account, name) in [("account_ada", "Ada"), ("account_bea", "Bea")] {
+        feedback
+            .name_heard(None, &AccountId::from(account), name)
+            .await
+            .expect("hearing a name should succeed");
+    }
     for (copy, project, open_until) in [
         (READING_COPY, "project_loom", None),
         ("copy_weft", "project_loom", None),

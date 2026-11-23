@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use async_trait::async_trait;
+use eventsourcing::AccountId;
 use thiserror::Error;
 use time::OffsetDateTime;
 use transacting::Transaction;
@@ -63,6 +64,41 @@ pub trait ReadingCopyCatalog: Send + Sync {
         &self,
         copies: &[ReadingCopyLink],
     ) -> Result<HashMap<ReadingCopyLink, KnownReadingCopy>, CatalogError>;
+}
+
+/// The names accounts signed up with, as the accounts told them, so feedback names whoever gave it.
+/// A deleted account's name is forgotten, and its feedback names nobody.
+#[async_trait]
+pub trait AccountNameCatalog: Send + Sync {
+    /// Keeps the name an account signed up with, unless the account is deleted.
+    async fn remember_name(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        name: &str,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets a deleted account's name, and lays a tombstone so a late sign-up does not bring it back.
+    async fn forget_name(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    /// Forgets the tombstones laid before a time, the oldest first and no more than asked; it answers how many.
+    async fn forget_tombstones_laid_before(
+        &self,
+        transaction: &mut Transaction,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
+
+    /// The names of those accounts whose name is kept.
+    async fn names_of(
+        &self,
+        accounts: &[AccountId],
+    ) -> Result<HashMap<AccountId, String>, CatalogError>;
 }
 
 #[cfg(test)]

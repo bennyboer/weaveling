@@ -5647,6 +5647,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-feedback-core",
  "weaveling-transacting",
 ]
@@ -5679,8 +5680,10 @@ name = "weaveling-feedback-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
  "weaveling-feedback-core",
  "weaveling-inbox",
  "weaveling-messaging",

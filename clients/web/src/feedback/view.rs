@@ -10,9 +10,7 @@ use crate::feedback::service;
 use crate::feedback::service::Asked;
 use crate::icons;
 use crate::icons::Icon;
-use crate::members::listed::Member;
 use crate::members::roles::Roles;
-use crate::members::service as members;
 use crate::outline::model::SectionId;
 use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
@@ -245,20 +243,6 @@ pub fn feedback_view(project: String) -> impl IntoView {
             async move { service::givers_in(&id).await.unwrap_or_default() }
         }
     });
-    let members = LocalResource::new({
-        let id = id.clone();
-
-        move || {
-            let id = id.clone();
-
-            async move {
-                members::members_of(&id.to_string())
-                    .await
-                    .map(|members| members.people)
-                    .unwrap_or_default()
-            }
-        }
-    });
     let choice = move |shown: Showing, said: &'static str| {
         html::button()
             .r#type("button")
@@ -287,7 +271,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 )),
             html::div().class("narrowing").child((
                 about_picker(narrowed, copies, book),
-                giver_picker(by, givers, members),
+                giver_picker(by, givers),
                 html::button()
                     .r#type("button")
                     .class("ordering")
@@ -412,11 +396,7 @@ fn about_picker(
 }
 
 /// The picker narrowing the feedback to what one giver gave: everyone, you, or each other who gave any.
-fn giver_picker(
-    by: RwSignal<Option<String>>,
-    givers: LocalResource<Vec<Giver>>,
-    members: LocalResource<Vec<Member>>,
-) -> impl IntoView {
+fn giver_picker(by: RwSignal<Option<String>>, givers: LocalResource<Vec<Giver>>) -> impl IntoView {
     let option = move |value: Option<String>, said: String| {
         let chosen = value.clone();
 
@@ -436,14 +416,12 @@ fn giver_picker(
             .child((
                 option(None, speech::say("feedback-by-everyone")),
                 move || {
-                    let known = members.get().unwrap_or_default();
-
                     givers
                         .get()
                         .unwrap_or_default()
                         .into_iter()
                         .map(|giver| {
-                            let named = giver_named(&giver, &known);
+                            let named = giver_named(&giver);
                             option(Some(giver.giver), named)
                         })
                         .collect::<Vec<_>>()
@@ -452,22 +430,15 @@ fn giver_picker(
     ))
 }
 
-/// A giver as the picker names them: you, by the name the feedback knows, or as a member of the project.
-fn giver_named(giver: &Giver, members: &[Member]) -> String {
+/// A giver as the picker names them: you, or by the name the feedback knows, else as a member.
+fn giver_named(giver: &Giver) -> String {
     if giver.by_you {
         return speech::say("feedback-you");
     }
-    // TODO: every giver named by the feedback itself, those from outside the project too (step 5)
-    let as_member = giver
-        .giver
-        .strip_prefix("account:")
-        .and_then(|account| members.iter().find(|member| member.account == account))
-        .and_then(|member| member.name.clone());
 
     giver
         .name
         .clone()
-        .or(as_member)
         .unwrap_or_else(|| speech::say("feedback-a-member"))
 }
 

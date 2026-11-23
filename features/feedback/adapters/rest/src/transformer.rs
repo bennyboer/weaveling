@@ -4,8 +4,8 @@ use feedback_contract::{
     ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
 };
 use feedback_core::{
-    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, ListedFeedback, Pending, Places,
-    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
+    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, Giver, ListedFeedback, Pending,
+    Places, ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
 
 pub fn to_pending_dto(pending: &Pending) -> PendingDTO {
@@ -48,8 +48,7 @@ pub fn to_dto(feedback: &ListedFeedback, asking: &Agent) -> FeedbackDTO {
             .collect(),
         draft: feedback.is_draft(),
         by_you: &feedback.written_by == asking,
-        // TODO: the writer's name, as the feedback feature keeps them from the accounts (step 5)
-        written_by: None,
+        written_by: feedback.written_by_name.clone(),
         written_at: clock::text::serialize(feedback.written_at),
         submitted_at: feedback.submitted_at.map(clock::text::serialize),
         edited: feedback.edited,
@@ -233,12 +232,11 @@ fn to_giver_dto(giver: &Agent) -> Option<GiverDTO> {
     }
 }
 
-pub fn to_listed_giver_dto(giver: &Agent, asking: &Agent) -> Option<ListedGiverDTO> {
-    to_giver_dto(giver).map(|named| ListedGiverDTO {
+pub fn to_listed_giver_dto(giver: &Giver, asking: &Agent) -> Option<ListedGiverDTO> {
+    to_giver_dto(&giver.agent).map(|named| ListedGiverDTO {
         giver: named.to_string(),
-        by_you: giver == asking,
-        // TODO: the giver's name, as the feedback feature keeps them from the accounts (step 5)
-        name: None,
+        by_you: &giver.agent == asking,
+        name: giver.name.clone(),
     })
 }
 
