@@ -73,7 +73,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 }
 
 /// What the feedback feature keeps, in memory.
-// TODO: kept on PostgreSQL and SQLite too, in the feature's own tables (5d)
+// TODO: kept on SQLite too, in the feature's own tables (5d3)
 fn kept_in_memory(context: &Context) -> Ports {
     let EventSourced {
         events,
@@ -105,8 +105,43 @@ impl Feature for FeedbackFeature {
     }
 
     #[cfg(feature = "postgres")]
-    fn on_postgres(_pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(kept_in_memory(context))
+    fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
+            &pool,
+            feedback_store::codec(),
+            feedback_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            feedback: Arc::new(feedback_catalog::PostgresFeedbackCatalog::new(pool.clone())),
+            copies: Arc::new(feedback_catalog::PostgresReadingCopyCatalog::new(
+                pool.clone(),
+            )),
+            names: Arc::new(feedback_catalog::PostgresAccountNameCatalog::new(
+                pool.clone(),
+            )),
+            events,
+            transactions,
+            access: KeptAccess::new(Arc::new(access::PostgresAccess::new(pool))),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
+            outbox,
+        })
+    }
+
+    #[cfg(feature = "postgres")]
+    fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::postgres::migrations(),
+            outbox::postgres::migrations(),
+            feedback_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
+            access::postgres::migrations(),
+        ]
     }
 
     #[cfg(feature = "sqlite")]

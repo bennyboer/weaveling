@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use access::{HearsAccess, InMemoryAccess, KeptAccess, Role};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
-use clock::FixedClock;
+use clock::Clock;
 use eventsourcing::{AccountId, Agent};
 use eventsourcing::{InMemoryEventStore, Version};
 use feedback_catalog::{
@@ -16,7 +16,7 @@ use feedback_contract::{
 };
 use feedback_core::{FeedbackCore, KnownReadingCopy, ProjectLink, ReadingCopyLink};
 use serde_json::Value;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
 pub const READING_COPY: &str = "copy_loom";
@@ -27,16 +27,45 @@ pub const NOW: i64 = 1_700_000_000;
 /// A copy of the loom project that closes a day after `NOW`.
 pub const CLOSING_COPY: &str = "copy_closing";
 
-/// The feedback feature at `NOW`.
+/// A clock that moves on a millisecond each time it is read, so what happens one after another happens at times one after another,
+/// as it does on a real clock; a test may set it to a time of its own.
+#[derive(Debug)]
+pub struct TickingClock {
+    now: Mutex<OffsetDateTime>,
+}
+
+impl TickingClock {
+    pub fn at(now: OffsetDateTime) -> Self {
+        Self {
+            now: Mutex::new(now),
+        }
+    }
+
+    pub fn set(&self, now: OffsetDateTime) {
+        *self.now.lock().expect("clock lock poisoned") = now;
+    }
+}
+
+impl Clock for TickingClock {
+    fn now(&self) -> OffsetDateTime {
+        let mut now = self.now.lock().expect("clock lock poisoned");
+        let read = *now;
+        *now += Duration::milliseconds(1);
+
+        read
+    }
+}
+
+/// The feedback feature from `NOW` on.
 pub async fn feedback() -> FeedbackCore {
-    feedback_on(Arc::new(FixedClock::new(clock::at(NOW)))).await
+    feedback_on(Arc::new(TickingClock::at(clock::at(NOW)))).await
 }
 
 /// The feedback feature on a clock a test may move, having heard that the loom, the weft and the closing copy
 /// were made of the loom project, the closing one open for a day, and the shuttle copy of another;
 /// that ada and bea signed up as Ada and Bea; that ada owns the loom project, otto and hedy write it,
 /// and bea reads it; and that ada owns the shuttle project, of which bea is no member.
-pub async fn feedback_on(clock: Arc<FixedClock>) -> FeedbackCore {
+pub async fn feedback_on(clock: Arc<TickingClock>) -> FeedbackCore {
     let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let feedback = FeedbackCore::new(
         Arc::new(InMemoryEventStore::new()),

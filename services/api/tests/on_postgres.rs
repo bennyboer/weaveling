@@ -14,7 +14,7 @@ use test_harness::PostgresFixture;
 use weaveling_service_api::{Storage, Unprepared};
 use wiring::Databases;
 
-use journeys::{Backend, DATABASES, Journey};
+use journeys::{Backend, DATABASES, Journey, id_in, until};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -116,6 +116,75 @@ async fn a_server_keeps_an_address_signed_up_in_the_accounts_database() {
             .count("accounts", "SELECT count(*) FROM events")
             .await,
         1
+    );
+    journey.end().await;
+}
+
+// TODO: among the journeys of every backend once the feedback is kept on SQLite too (5d3)
+#[tokio::test(flavor = "multi_thread")]
+async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database() {
+    // given: a reading copy of a project on a relayed server
+    let journey = Journey::<OnPostgres>::relayed().await;
+    let project = journey.project("Kept feedback").await;
+    let copy = id_in(
+        &journey
+            .posted(
+                "/api/readings/copies",
+                json!({
+                    "project": project,
+                    "name": "For Lena",
+                    "shared": { "kind": "book" },
+                    "open_until": null,
+                    "deleted_on": null,
+                }),
+                StatusCode::CREATED,
+            )
+            .await,
+        "id",
+    );
+
+    // when: a draft is begun in it, once the feedback has heard of the copy
+    let draft = json!({
+        "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
+        "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": "Lovely." }] }],
+    });
+    assert!(
+        until(|| async {
+            journey
+                .server
+                .post("/api/feedback")
+                .json(&draft)
+                .await
+                .status_code()
+                == StatusCode::CREATED
+        })
+        .await,
+        "the feedback should hear of the copy, and of the project it was made of, and take the draft"
+    );
+
+    // then: the feedback database keeps the piece and its event
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM feedback")
+            .await,
+        1
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count("feedback", "SELECT count(*) FROM events")
+            .await,
+        1
+    );
+    // and: it is listed as the draft it is
+    assert_eq!(
+        journey
+            .read(&format!(
+                "/api/feedback/drafts?subjects=reading_copy:{copy}"
+            ))
+            .await[0]["comment"][0]["runs"][0]["text"],
+        "Lovely."
     );
     journey.end().await;
 }

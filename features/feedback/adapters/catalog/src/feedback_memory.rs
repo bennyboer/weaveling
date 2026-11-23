@@ -8,7 +8,6 @@ use feedback_core::{
 };
 use transacting::{Failure, Transaction};
 
-/// The pieces in the order they were first kept, so pieces submitted at the same time keep that order.
 #[derive(Debug, Default)]
 pub struct InMemoryFeedbackCatalog {
     pieces: Arc<RwLock<Vec<CataloguedFeedback>>>,
@@ -86,7 +85,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
             .filter(|piece| piece.is_draft() && &piece.written_by == writer && asked.holds(piece))
             .cloned()
             .collect();
-        drafts.sort_by_key(|piece| piece.written_at);
+        drafts.sort_by_key(|piece| (piece.written_at, piece.id.to_string()));
 
         Ok(drafts)
     }
@@ -107,7 +106,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
             })
             .cloned()
             .collect();
-        found.sort_by_key(|piece| piece.submitted_at);
+        found.sort_by_key(|piece| (piece.submitted_at, piece.written_at, piece.id.to_string()));
         if page.order == Order::Newest {
             found.reverse();
         }
@@ -153,7 +152,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
             .iter()
             .filter(|piece| !piece.is_draft() && &piece.project == project)
             .collect();
-        given.sort_by_key(|piece| piece.submitted_at);
+        given.sort_by_key(|piece| (piece.submitted_at, piece.written_at, piece.id.to_string()));
         let mut givers: Vec<Agent> = Vec::new();
         for piece in given {
             if !givers.contains(&piece.written_by) {

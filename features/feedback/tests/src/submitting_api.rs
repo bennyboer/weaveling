@@ -7,14 +7,13 @@ use feedback_contract::{
 
 use std::sync::Arc;
 
-use clock::FixedClock;
 use feedback_contract::DraftFeedbackRequest;
 
 use eventsourcing::AccountId;
 
 use crate::support::{
-    CLOSING_COPY, NOW, READING_COPY, a_passage, as_, drafted, feedback, feedback_on, in_the_copy,
-    on_the_copy, refusal, saying,
+    CLOSING_COPY, NOW, READING_COPY, TickingClock, a_passage, as_, drafted, feedback, feedback_on,
+    in_the_copy, on_the_copy, refusal, saying,
 };
 
 async fn submitted(server: &TestServer) -> Vec<FeedbackDTO> {
@@ -696,7 +695,7 @@ async fn whoever_gave_feedback_in_a_project_is_listed_as_a_giver_and_their_feedb
 #[tokio::test]
 async fn feedback_is_drafted_and_submitted_only_while_its_copy_is_open() {
     // given: a draft in a copy that closes a day from now
-    let clock = Arc::new(FixedClock::new(clock::at(NOW)));
+    let clock = Arc::new(TickingClock::at(clock::at(NOW)));
     let feedback = feedback_on(clock.clone()).await;
     let ada = as_(&feedback, "account_ada");
     let in_the_closing_copy = || AboutDTO::ReadingCopy {

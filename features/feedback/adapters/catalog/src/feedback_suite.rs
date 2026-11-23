@@ -339,29 +339,18 @@ pub async fn feedback_submitted_is_narrowed_by_everything_named_and_by_status(
     assert_eq!(submitted(catalog, &by_bea, None, &all).await, [beas.id]);
 }
 
-pub async fn feedback_submitted_is_paged_oldest_or_newest_first_and_pieces_submitted_together_keep_the_order_kept(
+pub async fn feedback_submitted_is_paged_oldest_or_newest_first_and_pieces_submitted_together_follow_the_order_written(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
-    // given: three pieces submitted together, kept in an order, and one submitted later
-    let first = submitted_at(
-        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 3),
-        10,
-    );
-    let second = submitted_at(
-        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 1),
-        10,
-    );
-    let third = submitted_at(
-        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 2),
-        10,
-    );
-    let last = submitted_at(
-        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 4),
-        20,
-    );
-    kept(catalog, &[&first, &second, &third, &last]).await;
+    // given: three pieces submitted together, kept in another order than they were written, and one submitted later
+    let written_at = |seconds: i64| a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), seconds);
+    let first = submitted_at(written_at(1), 10);
+    let second = submitted_at(written_at(2), 10);
+    let third = submitted_at(written_at(3), 10);
+    let last = submitted_at(written_at(4), 20);
+    kept(catalog, &[&third, &first, &last, &second]).await;
 
-    // expect: oldest first, those submitted together in the order kept
+    // expect: oldest first, those submitted together in the order written
     assert_eq!(
         submitted(catalog, &in_the_loom(), None, &Page::default()).await,
         [first.id, second.id, third.id, last.id]
@@ -486,6 +475,63 @@ pub async fn the_givers_in_a_project_are_listed_in_the_order_they_first_gave_any
     );
 }
 
+pub async fn the_givers_follow_their_pieces_as_they_are_submitted_and_deleted(
+    catalog: &Committing<'_, impl FeedbackCatalog>,
+) {
+    // given: ada giving first, bea next, ada again later, and otto's draft
+    let otto = Agent::Account(AccountId::from("account_otto"));
+    let adas_first = by(
+        submitted_at(
+            a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 1),
+            10,
+        ),
+        ada(),
+    );
+    let beas = by(
+        submitted_at(
+            a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 2),
+            20,
+        ),
+        bea(),
+    );
+    let adas_later = by(
+        submitted_at(
+            a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 3),
+            30,
+        ),
+        ada(),
+    );
+    let ottos = by(
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 4),
+        otto.clone(),
+    );
+    kept(catalog, &[&adas_first, &beas, &adas_later, &ottos]).await;
+    let givers = || async {
+        catalog
+            .uncommitted()
+            .givers_in(&ProjectLink::from("project_loom"))
+            .await
+            .expect("asking should succeed")
+    };
+
+    // when: ada's first piece is deleted
+    catalog
+        .forget_piece(&adas_first.id)
+        .await
+        .expect("forgetting should succeed");
+    // then: bea gave first now, and ada after her by the later piece
+    assert_eq!(givers().await, [bea(), ada()]);
+
+    // when: bea's only piece is deleted, and otto submits the draft
+    catalog
+        .forget_piece(&beas.id)
+        .await
+        .expect("forgetting should succeed");
+    kept(catalog, &[&submitted_at(ottos.clone(), 40)]).await;
+    // then: bea gave nothing any more, and otto is listed after ada
+    assert_eq!(givers().await, [ada(), otto]);
+}
+
 pub async fn each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
@@ -580,7 +626,7 @@ macro_rules! feedback_conformance_tests {
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
-            feedback_submitted_is_paged_oldest_or_newest_first_and_pieces_submitted_together_keep_the_order_kept
+            feedback_submitted_is_paged_oldest_or_newest_first_and_pieces_submitted_together_follow_the_order_written
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
@@ -589,6 +635,10 @@ macro_rules! feedback_conformance_tests {
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
             the_givers_in_a_project_are_listed_in_the_order_they_first_gave_any
+        );
+        $crate::feedback_suite::feedback_conformance_case!(
+            $workbench,
+            the_givers_follow_their_pieces_as_they_are_submitted_and_deleted
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,

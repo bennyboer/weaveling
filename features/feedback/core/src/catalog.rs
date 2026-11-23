@@ -131,7 +131,7 @@ impl CataloguedFeedback {
 
 /// The feedback as it now stands, kept for finding and counting it.
 /// Each piece is kept in the transaction its events are stored in, so what was just written is found at once.
-/// Pieces submitted at the same time are listed in the order they were first kept.
+/// Pieces submitted at the same time are listed in the order they were written, and those written at the same time by their ids.
 #[async_trait]
 pub trait FeedbackCatalog: Send + Sync {
     /// Keeps a piece as it now stands, in place of what was kept of it before.

@@ -17,9 +17,10 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 feedback-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-feedback-catalog" }
 feedback-core = { version = "0.1.0", path = "../core", package = "weaveling-feedback-core" }
+feedback-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-feedback-store" }
 feedback-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-feedback-rest" }
 feedback-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-feedback-messaging" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "feedback-catalog/postgres", "transacting/postgres", "inbox/postgres", "access/postgres"]
 sqlite = ["dep:sqlx", "wiring/sqlite"]
