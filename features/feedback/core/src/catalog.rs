@@ -170,6 +170,13 @@ pub trait FeedbackCatalog: Send + Sync {
     /// How much feedback submitted where asked is pending, not done yet: on each scene and section, and in all.
     async fn pending(&self, asked: &Asked) -> Result<Pending, CatalogError>;
 
+    /// Some of the pieces given or drafted on a subject, no more than asked, to be swept as the subject goes.
+    async fn pieces_on(
+        &self,
+        subject: &Subject,
+        at_most: usize,
+    ) -> Result<Vec<FeedbackId>, CatalogError>;
+
     /// Whoever submitted feedback in a project, in the order they first submitted any.
     async fn givers_in(&self, project: &ProjectLink) -> Result<Vec<Agent>, CatalogError>;
 

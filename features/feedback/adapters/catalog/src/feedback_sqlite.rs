@@ -59,6 +59,8 @@ const FIND_GIVER: &str = "
     LIMIT 1
 ";
 
+const PIECES_ON: &str = "SELECT feedback FROM feedback WHERE subject_kind = ?1 AND subject_id = ?2 ORDER BY feedback LIMIT ?3";
+
 const COUNTED_ON: &str = "
     SELECT subject_kind, subject_id,
            COUNT(*) FILTER (WHERE submitted_at IS NOT NULL AND NOT done) AS not_done,
@@ -317,6 +319,29 @@ impl FeedbackCatalog for SqliteFeedbackCatalog {
         }
 
         Ok(pending)
+    }
+
+    async fn pieces_on(
+        &self,
+        subject: &Subject,
+        at_most: usize,
+    ) -> Result<Vec<FeedbackId>, CatalogError> {
+        let (kind, id) = kept::subject_columns(subject);
+
+        sqlx::query(PIECES_ON)
+            .bind(kind)
+            .bind(id)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row| {
+                let piece: String = row.try_get("feedback").map_err(unreachable)?;
+
+                FeedbackId::from_str(&piece).map_err(unreachable)
+            })
+            .collect()
     }
 
     async fn givers_in(&self, project: &ProjectLink) -> Result<Vec<Agent>, CatalogError> {

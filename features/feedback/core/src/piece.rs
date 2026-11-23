@@ -48,6 +48,8 @@ pub enum Deleter {
     Writer,
     /// An owner of its project; only once it is submitted, as someone else's draft is not there for them.
     Owner,
+    /// The system, as the reading copy it was given in, or the project, is deleted with it, drafts and all.
+    System,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,6 +334,7 @@ impl Aggregate for Feedback {
                 match by {
                     Deleter::Writer => self.by_its_writer(agent)?,
                     Deleter::Owner => self.submitted()?,
+                    Deleter::System => {}
                 }
 
                 Ok(vec![FeedbackEvent::Deleted])

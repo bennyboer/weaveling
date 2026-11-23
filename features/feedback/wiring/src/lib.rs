@@ -12,7 +12,7 @@ use feedback_core::{
 };
 use feedback_messaging::{
     RememberAccountNamesListener, RememberReadingCopiesListener, RememberRolesListener,
-    RememberStandingListener,
+    RememberStandingListener, SweepFeedbackOfDeletedReadingCopyListener,
 };
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
@@ -50,7 +50,14 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 
     Wired::serving(feedback_rest::router(feedback.clone()))
         .listening(vec![
-            Arc::new(hearing.inboxed(RememberReadingCopiesListener::new(feedback.clone()))),
+            Arc::new(hearing.inboxed(RememberReadingCopiesListener::new(
+                feedback.clone(),
+                ports.outbox.clone(),
+                context.clock.clone(),
+            ))),
+            Arc::new(SweepFeedbackOfDeletedReadingCopyListener::new(
+                feedback.clone(),
+            )),
             Arc::new(hearing.inboxed(RememberAccountNamesListener::new(feedback.clone()))),
             Arc::new(hearing.inboxed(RememberRolesListener::new(feedback.clone()))),
             Arc::new(hearing.inboxed(RememberStandingListener::new(feedback.clone()))),

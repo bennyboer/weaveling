@@ -532,6 +532,55 @@ pub async fn the_givers_follow_their_pieces_as_they_are_submitted_and_deleted(
     assert_eq!(givers().await, [ada(), otto]);
 }
 
+pub async fn a_subject_s_pieces_are_found_in_batches_drafts_and_all(
+    catalog: &Committing<'_, impl FeedbackCatalog>,
+) {
+    // given: in the loom copy a draft and two pieces given, and in the weft copy one more
+    let in_the_loom = [
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 1),
+        submitted_at(
+            a_draft(in_copy("copy_loom", on_scene("scene_harbour")), 2),
+            10,
+        ),
+        by(
+            submitted_at(
+                a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 3),
+                20,
+            ),
+            bea(),
+        ),
+    ];
+    let in_the_weft = submitted_at(
+        a_draft(in_copy("copy_weft", ReadingCopyPlace::Whole), 4),
+        30,
+    );
+    kept(
+        catalog,
+        &in_the_loom.iter().chain([&in_the_weft]).collect::<Vec<_>>(),
+    )
+    .await;
+    let loom = Subject::ReadingCopy(ReadingCopyLink::from("copy_loom"));
+    let found = |at_most| {
+        let loom = loom.clone();
+        async move {
+            catalog
+                .uncommitted()
+                .pieces_on(&loom, at_most)
+                .await
+                .expect("asking should succeed")
+        }
+    };
+
+    // expect: no more than asked at once
+    assert_eq!(found(2).await.len(), 2);
+    // and: all of the loom copy's, the draft among them, and none of the weft copy's
+    let mut all = found(10).await;
+    all.sort();
+    let mut expected: Vec<FeedbackId> = in_the_loom.iter().map(|piece| piece.id).collect();
+    expected.sort();
+    assert_eq!(all, expected);
+}
+
 pub async fn each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
@@ -639,6 +688,10 @@ macro_rules! feedback_conformance_tests {
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
             the_givers_follow_their_pieces_as_they_are_submitted_and_deleted
+        );
+        $crate::feedback_suite::feedback_conformance_case!(
+            $workbench,
+            a_subject_s_pieces_are_found_in_batches_drafts_and_all
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,

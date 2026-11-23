@@ -5,7 +5,7 @@ use feedback_contract::{
 };
 
 use eventsourcing::{AggregateId, EventStore, Version};
-use feedback_core::{FeedbackEvent, KIND};
+use feedback_core::{FeedbackEvent, KIND, ReadingCopyLink};
 
 use crate::support::{
     READING_COPY, a_passage, as_, drafted, feedback, feedback_with_events, refusal, saying,
@@ -168,4 +168,69 @@ async fn a_piece_deleted_leaves_no_word_of_it_behind() {
         }
         other => panic!("a snapshot was expected, not {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn a_deleted_reading_copy_takes_its_feedback_with_it_drafts_and_all() {
+    // given: in the loom copy feedback given by ada and bea's draft, and in the weft copy ada's feedback
+    let (feedback, events) = feedback_with_events().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    let boats = given(&ada).await.remove(0);
+    let draft = drafted(&bea, a_passage(), saying("Still thinking.")).await;
+    drafted(
+        &ada,
+        AboutDTO::ReadingCopy {
+            reading_copy: "copy_weft".to_owned(),
+            place: ReadingCopyPlaceDTO::Whole,
+        },
+        saying("Lovely."),
+    )
+    .await;
+    ada.post("/feedback/submitted?subjects=reading_copy:copy_weft")
+        .await
+        .assert_status_ok();
+
+    // when: the loom copy is swept, as its deletion asks
+    feedback
+        .sweep_reading_copy(&ReadingCopyLink::from(READING_COPY))
+        .await
+        .expect("sweeping should succeed");
+
+    // then: nothing is left of the loom copy's feedback, nor of the draft
+    let left = ada.get("/feedback/on?project=project_loom").await;
+    let left: Vec<String> = left
+        .json::<Vec<FeedbackDTO>>()
+        .into_iter()
+        .map(|piece| match piece.about {
+            AboutDTO::ReadingCopy { reading_copy, .. } => reading_copy,
+        })
+        .collect();
+    assert_eq!(left, ["copy_weft"]);
+    assert!(
+        bea.get(&format!(
+            "/feedback/drafts?subjects=reading_copy:{READING_COPY}"
+        ))
+        .await
+        .json::<Vec<FeedbackDTO>>()
+        .is_empty()
+    );
+    // and: no word of either is kept
+    for piece in [&boats.id, &draft.id] {
+        let kept = events
+            .read_from(&AggregateId::from(piece.as_str()), KIND, Version::ZERO)
+            .await
+            .expect("reading the stream should succeed");
+        assert_eq!(
+            kept.len(),
+            1,
+            "only the snapshot of the deleted piece stays"
+        );
+    }
+    // and: sweeping again finds nothing more to do
+    feedback
+        .sweep_reading_copy(&ReadingCopyLink::from(READING_COPY))
+        .await
+        .expect("sweeping again should succeed");
 }

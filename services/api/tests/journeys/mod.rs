@@ -1477,6 +1477,92 @@ pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_eras
     journey.end().await;
 }
 
+pub async fn a_deleted_reading_copy_takes_its_feedback_with_it<B: Backend>() {
+    // given: a reading copy with feedback given in it and a draft
+    let journey = Journey::<B>::relayed().await;
+    let project = journey.project("Swept feedback").await;
+    let copy = id_in(
+        &journey
+            .posted(
+                "/api/readings/copies",
+                json!({
+                    "project": project,
+                    "name": "For Lena",
+                    "shared": { "kind": "book" },
+                    "open_until": null,
+                    "deleted_on": null,
+                }),
+                StatusCode::CREATED,
+            )
+            .await,
+        "id",
+    );
+    let saying = |text: &str| {
+        json!({
+            "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
+            "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": text }] }],
+        })
+    };
+    assert!(
+        until(|| async {
+            journey
+                .server
+                .post("/api/feedback")
+                .json(&saying("Lovely."))
+                .await
+                .status_code()
+                == StatusCode::CREATED
+        })
+        .await,
+        "the feedback should hear of the copy and take the draft"
+    );
+    journey
+        .server
+        .post(&format!(
+            "/api/feedback/submitted?subjects=reading_copy:{copy}"
+        ))
+        .await
+        .assert_status_ok();
+    journey
+        .server
+        .post("/api/feedback")
+        .json(&saying("Still thinking."))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // when: the copy is deleted
+    journey
+        .server
+        .delete(&format!("/api/readings/copies/{copy}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: its feedback is swept, drafts and all, and no word of it is kept
+    assert!(
+        until(|| async {
+            journey
+                .backend
+                .count("feedback", "SELECT count(*) FROM feedback")
+                .await
+                == 0
+        })
+        .await,
+        "the copy's deletion should reach the feedback, which sweeps what was given in it"
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count(
+                "feedback",
+                "SELECT count(*) FROM events WHERE CAST(body AS TEXT) LIKE '%Lovely%' OR CAST(body AS TEXT) LIKE '%thinking%'"
+            )
+            .await,
+        0,
+        "the words of a deleted copy's feedback are erased with it"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -1505,6 +1591,7 @@ macro_rules! journeys {
             an_account_turns_down_in_the_application_what_it_is_invited_into,
             an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into,
             a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_erased_once_deleted,
+            a_deleted_reading_copy_takes_its_feedback_with_it,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

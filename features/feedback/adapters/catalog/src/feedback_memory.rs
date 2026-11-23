@@ -146,6 +146,20 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
         Ok(pending)
     }
 
+    async fn pieces_on(
+        &self,
+        subject: &Subject,
+        at_most: usize,
+    ) -> Result<Vec<FeedbackId>, CatalogError> {
+        Ok(self
+            .read()
+            .iter()
+            .filter(|piece| &piece.about.subject() == subject)
+            .take(at_most)
+            .map(|piece| piece.id)
+            .collect())
+    }
+
     async fn givers_in(&self, project: &ProjectLink) -> Result<Vec<Agent>, CatalogError> {
         let pieces = self.read();
         let mut given: Vec<&CataloguedFeedback> = pieces

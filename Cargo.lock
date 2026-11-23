@@ -5686,6 +5686,7 @@ name = "weaveling-feedback-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "time",
  "weaveling-access",
  "weaveling-accounts-contract",
@@ -5697,6 +5698,7 @@ dependencies = [
  "weaveling-inbox",
  "weaveling-members-contract",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-projects-contract",
  "weaveling-readings-contract",
  "weaveling-transacting",

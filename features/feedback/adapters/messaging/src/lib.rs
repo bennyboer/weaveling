@@ -6,4 +6,7 @@ mod reading_copies;
 pub use access::{RememberRolesListener, RememberStandingListener};
 pub use names::RememberAccountNamesListener;
 pub use publishing::message_for;
-pub use reading_copies::RememberReadingCopiesListener;
+pub use reading_copies::{
+    RememberReadingCopiesListener, SWEEP_READING_COPY, SweepFeedbackOfDeletedReadingCopyListener,
+    SweepReadingCopyDTO,
+};

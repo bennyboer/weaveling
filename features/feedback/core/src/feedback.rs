@@ -214,6 +214,9 @@ fn reading_copy_of(about: &About) -> ReadingCopyLink {
 /// The most subjects counted at once, so one question stays small however many subjects there are.
 pub const COUNTED_AT_ONCE: usize = 100;
 
+/// How many pieces of a deleted reading copy are found at once to be swept.
+const SWEPT_AT_ONCE: usize = 100;
+
 /// The feedback feature's only way in.
 #[derive(Clone)]
 pub struct FeedbackCore {
@@ -743,6 +746,24 @@ impl FeedbackCore {
             Deleter::Owner
         };
         self.erased(piece.id, deleter, agent).await
+    }
+
+    /// Deletes every piece given or drafted in a deleted reading copy, as the system, a batch at a time,
+    /// each erased in a transaction of its own; once none is left, it is done. Asked again, it carries on where it was.
+    pub async fn sweep_reading_copy(&self, copy: &ReadingCopyLink) -> Result<(), FeedbackError> {
+        let subject = Subject::ReadingCopy(copy.clone());
+        loop {
+            let batch = self.feedback.pieces_on(&subject, SWEPT_AT_ONCE).await?;
+            if batch.is_empty() {
+                return Ok(());
+            }
+            for piece in batch {
+                match self.erased(piece, Deleter::System, &Agent::System).await {
+                    Ok(()) | Err(FeedbackError::FeedbackNotThere) => {}
+                    Err(failure) => return Err(failure),
+                }
+            }
+        }
     }
 
     /// Deletes a piece and erases its words: its events collapse into a snapshot that holds neither what it was about

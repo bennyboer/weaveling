@@ -357,3 +357,17 @@ fn a_deleted_piece_holds_its_words_no_more_nor_does_its_snapshot() {
         other => panic!("a snapshot was expected, not {other:?}"),
     }
 }
+
+#[test]
+fn the_system_deletes_drafts_and_feedback_given_alike() {
+    // expect: the system deletes ada's draft and what ada gave, as their copy goes
+    for feedback in [a_draft(), given()] {
+        let deleted = decided(
+            &feedback,
+            FeedbackCommand::Delete(Deleter::System),
+            &Agent::System,
+        )
+        .expect("deleting as the system should succeed");
+        assert!(deleted.is_deleted(), "a draft: {}", feedback.is_draft());
+    }
+}
