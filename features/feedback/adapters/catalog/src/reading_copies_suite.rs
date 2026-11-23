@@ -227,6 +227,75 @@ pub async fn old_tombstones_are_forgotten_oldest_first_and_no_more_than_asked(
     assert!(!kept(catalog, "copy_late", open_until(None), 1).await);
 }
 
+impl<C: ReadingCopyCatalog> Committing<'_, C> {
+    pub async fn drafts_dropped(&self, copy: &ReadingCopyLink) -> Result<(), CatalogError> {
+        transacting::retrying!(self.transactions, |transaction| {
+            self.catalog
+                .drafts_dropped(transaction, copy)
+                .await
+                .map_err(Tried::Refused)?;
+
+            Ok(())
+        })
+        .map_err(|tried: Tried<_>| tried.answered(unreachable))
+    }
+}
+
+async fn closed_with_drafts_left(
+    catalog: &Committing<'_, impl ReadingCopyCatalog>,
+    by: i64,
+    at_most: usize,
+) -> Vec<ReadingCopyLink> {
+    catalog
+        .uncommitted()
+        .closed_with_drafts_left(at(by), at_most)
+        .await
+        .expect("asking should succeed")
+}
+
+pub async fn the_copies_closed_by_a_time_are_found_until_their_drafts_are_dropped(
+    catalog: &Committing<'_, impl ReadingCopyCatalog>,
+) {
+    // given: copies closing at 20 and 10, one closing at 50, and one open without end
+    kept(catalog, "copy_late", open_until(Some(20)), 1).await;
+    kept(catalog, "copy_early", open_until(Some(10)), 1).await;
+    kept(catalog, "copy_open", open_until(Some(50)), 1).await;
+    kept(catalog, "copy_endless", open_until(None), 1).await;
+
+    // expect: by 30, the two closed, the earliest first, and no more than asked
+    assert_eq!(
+        closed_with_drafts_left(catalog, 30, 10).await,
+        [a_copy("copy_early"), a_copy("copy_late")]
+    );
+    assert_eq!(
+        closed_with_drafts_left(catalog, 30, 1).await,
+        [a_copy("copy_early")]
+    );
+
+    // when: the earliest copy's drafts are dropped
+    catalog
+        .drafts_dropped(&a_copy("copy_early"))
+        .await
+        .expect("keeping that drafts were dropped should succeed");
+    // then: it is found no more
+    assert_eq!(
+        closed_with_drafts_left(catalog, 30, 10).await,
+        [a_copy("copy_late")]
+    );
+
+    // when: it is extended to close again at 40
+    kept(catalog, "copy_early", open_until(Some(40)), 2).await;
+    // then: it is found again once closed again, its new drafts to be dropped too
+    assert_eq!(
+        closed_with_drafts_left(catalog, 30, 10).await,
+        [a_copy("copy_late")]
+    );
+    assert_eq!(
+        closed_with_drafts_left(catalog, 45, 10).await,
+        [a_copy("copy_late"), a_copy("copy_early")]
+    );
+}
+
 macro_rules! reading_copies_conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -261,6 +330,10 @@ macro_rules! reading_copies_conformance_tests {
         $crate::reading_copies_suite::reading_copies_conformance_case!(
             $workbench,
             old_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
+        );
+        $crate::reading_copies_suite::reading_copies_conformance_case!(
+            $workbench,
+            the_copies_closed_by_a_time_are_found_until_their_drafts_are_dropped
         );
     };
 }

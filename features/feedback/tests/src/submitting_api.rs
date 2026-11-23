@@ -795,3 +795,74 @@ async fn a_draft_on_a_copy_the_feedback_has_not_heard_of_yet_is_refused_to_be_as
     drafting.assert_status(StatusCode::CONFLICT);
     assert_eq!(refusal(&drafting), refused::READING_COPY_UNKNOWN);
 }
+
+#[tokio::test]
+async fn drafts_left_in_a_copy_once_it_closes_are_dropped_and_feedback_given_stays() {
+    // given: in the copy closing a day from now ada's feedback given and drafts of ada and bea, and in an open copy a draft
+    let clock = Arc::new(TickingClock::at(clock::at(NOW)));
+    let feedback = feedback_on(clock.clone()).await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    let in_the_closing_copy = || AboutDTO::ReadingCopy {
+        reading_copy: CLOSING_COPY.to_owned(),
+        place: ReadingCopyPlaceDTO::Whole,
+    };
+    drafted(&ada, in_the_closing_copy(), saying("Lovely.")).await;
+    ada.post(&format!(
+        "/feedback/submitted?subjects=reading_copy:{CLOSING_COPY}"
+    ))
+    .await
+    .assert_status_ok();
+    drafted(&ada, in_the_closing_copy(), saying("And then?")).await;
+    drafted(&bea, in_the_closing_copy(), saying("Hm.")).await;
+    let open = drafted(&ada, a_passage(), saying("Which boats?")).await;
+
+    // when: two days pass, and the drafts of closed copies are dropped
+    clock.set(clock::at(NOW + 2 * 24 * 60 * 60));
+    let closed = feedback
+        .drop_drafts_of_closed_copies(10)
+        .await
+        .expect("dropping should succeed");
+
+    // then: the closing copy was closed out, its drafts gone, what was given there kept
+    assert_eq!(closed, 1);
+    for (who, left) in [(&ada, 0), (&bea, 0)] {
+        assert_eq!(
+            who.get(&format!(
+                "/feedback/drafts?subjects=reading_copy:{CLOSING_COPY}"
+            ))
+            .await
+            .json::<Vec<FeedbackDTO>>()
+            .len(),
+            left
+        );
+    }
+    assert_eq!(
+        ada.get(&format!(
+            "/feedback/on?subjects=reading_copy:{CLOSING_COPY}"
+        ))
+        .await
+        .json::<Vec<FeedbackDTO>>()
+        .len(),
+        1
+    );
+    // and: the draft in the open copy stays
+    let left: Vec<String> = ada
+        .get(&format!(
+            "/feedback/drafts?subjects=reading_copy:{READING_COPY}"
+        ))
+        .await
+        .json::<Vec<FeedbackDTO>>()
+        .into_iter()
+        .map(|piece| piece.id)
+        .collect();
+    assert_eq!(left, [open.id]);
+    // and: asked again, nothing is left to do
+    assert_eq!(
+        feedback
+            .drop_drafts_of_closed_copies(10)
+            .await
+            .expect("dropping again should succeed"),
+        0
+    );
+}

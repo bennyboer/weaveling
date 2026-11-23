@@ -46,8 +46,13 @@ CREATE TABLE reading_copies_heard (
     reading_copy TEXT PRIMARY KEY,
     project TEXT NOT NULL,
     open_until INTEGER,
-    version INTEGER NOT NULL
+    version INTEGER NOT NULL,
+    drafts_dropped INTEGER NOT NULL DEFAULT 0
 );
+
+-- The copies closing, whose drafts are still to be dropped once they are closed.
+CREATE INDEX reading_copies_closing ON reading_copies_heard (open_until)
+    WHERE open_until IS NOT NULL AND NOT drafts_dropped;
 
 CREATE TABLE reading_copy_tombstones (
     reading_copy TEXT PRIMARY KEY,

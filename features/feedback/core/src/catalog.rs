@@ -63,6 +63,21 @@ pub trait ReadingCopyCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
+    /// Some of the copies closed by a time whose drafts are not dropped yet, no more than asked.
+    /// A copy whose times are kept anew, as when it is extended, has its drafts dropped again once it closes again.
+    async fn closed_with_drafts_left(
+        &self,
+        by: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<ReadingCopyLink>, CatalogError>;
+
+    /// Keeps that a closed copy's drafts were dropped.
+    async fn drafts_dropped(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyLink,
+    ) -> Result<(), CatalogError>;
+
     /// The copies asked for that are kept; one never heard of or deleted is left out.
     async fn known(
         &self,
@@ -169,6 +184,13 @@ pub trait FeedbackCatalog: Send + Sync {
 
     /// How much feedback submitted where asked is pending, not done yet: on each scene and section, and in all.
     async fn pending(&self, asked: &Asked) -> Result<Pending, CatalogError>;
+
+    /// Some of the drafts on a subject, by anyone, no more than asked, to be dropped as the subject closes.
+    async fn drafts_on(
+        &self,
+        subject: &Subject,
+        at_most: usize,
+    ) -> Result<Vec<FeedbackId>, CatalogError>;
 
     /// Some of the pieces given or drafted on a subject, no more than asked, to be swept as the subject goes.
     async fn pieces_on(

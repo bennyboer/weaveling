@@ -217,6 +217,13 @@ pub const COUNTED_AT_ONCE: usize = 100;
 /// How many pieces of a deleted reading copy are found at once to be swept.
 const SWEPT_AT_ONCE: usize = 100;
 
+/// What of a reading copy's feedback is swept: all of it as the copy is deleted, or the drafts left as it closes.
+#[derive(Clone, Copy)]
+enum Swept {
+    Everything,
+    Drafts,
+}
+
 /// The feedback feature's only way in.
 #[derive(Clone)]
 pub struct FeedbackCore {
@@ -751,9 +758,40 @@ impl FeedbackCore {
     /// Deletes every piece given or drafted in a deleted reading copy, as the system, a batch at a time,
     /// each erased in a transaction of its own; once none is left, it is done. Asked again, it carries on where it was.
     pub async fn sweep_reading_copy(&self, copy: &ReadingCopyLink) -> Result<(), FeedbackError> {
+        self.erased_in_batches(copy, Swept::Everything).await
+    }
+
+    /// Drops the drafts left unsubmitted in reading copies closed by now, as the system, no more copies than asked;
+    /// each copy is kept as done once its drafts are gone. It answers how many copies it did.
+    pub async fn drop_drafts_of_closed_copies(&self, at_most: usize) -> Result<u64, FeedbackError> {
+        let closed = self
+            .copies
+            .closed_with_drafts_left(self.clock.now(), at_most)
+            .await?;
+        for copy in &closed {
+            self.erased_in_batches(copy, Swept::Drafts).await?;
+            transacting::retrying!(&*self.transactions, |transaction| {
+                self.copies.drafts_dropped(transaction, copy).await?;
+
+                Ok::<_, FeedbackError>(())
+            })?;
+        }
+
+        Ok(u64::try_from(closed.len()).unwrap_or(u64::MAX))
+    }
+
+    /// Erases a copy's pieces as the system, a batch at a time, until none of those swept is left.
+    async fn erased_in_batches(
+        &self,
+        copy: &ReadingCopyLink,
+        swept: Swept,
+    ) -> Result<(), FeedbackError> {
         let subject = Subject::ReadingCopy(copy.clone());
         loop {
-            let batch = self.feedback.pieces_on(&subject, SWEPT_AT_ONCE).await?;
+            let batch = match swept {
+                Swept::Everything => self.feedback.pieces_on(&subject, SWEPT_AT_ONCE).await?,
+                Swept::Drafts => self.feedback.drafts_on(&subject, SWEPT_AT_ONCE).await?,
+            };
             if batch.is_empty() {
                 return Ok(());
             }

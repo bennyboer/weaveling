@@ -5752,6 +5752,7 @@ dependencies = [
 name = "weaveling-feedback-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
  "weaveling-access",
  "weaveling-authorizing",

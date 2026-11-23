@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
 access = { version = "0.1.0", path = "../../../libraries/access", package = "weaveling-access" }

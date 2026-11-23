@@ -581,6 +581,47 @@ pub async fn a_subject_s_pieces_are_found_in_batches_drafts_and_all(
     assert_eq!(all, expected);
 }
 
+pub async fn a_subject_s_drafts_by_anyone_are_found_and_nothing_given(
+    catalog: &Committing<'_, impl FeedbackCatalog>,
+) {
+    // given: in the loom copy ada's and bea's drafts and a piece given, and in the weft copy a draft
+    let adas = a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 1);
+    let beas = by(
+        a_draft(in_copy("copy_loom", on_scene("scene_harbour")), 2),
+        bea(),
+    );
+    let given = submitted_at(
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 3),
+        10,
+    );
+    let elsewhere = a_draft(in_copy("copy_weft", ReadingCopyPlace::Whole), 4);
+    kept(catalog, &[&adas, &beas, &given, &elsewhere]).await;
+    let loom = Subject::ReadingCopy(ReadingCopyLink::from("copy_loom"));
+
+    // when: the loom copy's drafts are asked for
+    let mut found = catalog
+        .uncommitted()
+        .drafts_on(&loom, 10)
+        .await
+        .expect("asking should succeed");
+    found.sort();
+
+    // then: ada's and bea's, and neither what was given nor the weft copy's
+    let mut expected = vec![adas.id, beas.id];
+    expected.sort();
+    assert_eq!(found, expected);
+    // and: no more than asked
+    assert_eq!(
+        catalog
+            .uncommitted()
+            .drafts_on(&loom, 1)
+            .await
+            .expect("asking should succeed")
+            .len(),
+        1
+    );
+}
+
 pub async fn each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
@@ -692,6 +733,10 @@ macro_rules! feedback_conformance_tests {
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
             a_subject_s_pieces_are_found_in_batches_drafts_and_all
+        );
+        $crate::feedback_suite::feedback_conformance_case!(
+            $workbench,
+            a_subject_s_drafts_by_anyone_are_found_and_nothing_given
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,

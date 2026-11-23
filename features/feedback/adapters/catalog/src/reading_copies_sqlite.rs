@@ -17,7 +17,8 @@ const KEEP: &str = "
     SELECT ?1, ?2, ?3, ?4
     WHERE NOT EXISTS (SELECT 1 FROM reading_copy_tombstones WHERE reading_copy = ?1)
     ON CONFLICT (reading_copy) DO UPDATE
-    SET project = excluded.project, open_until = excluded.open_until, version = excluded.version
+    SET project = excluded.project, open_until = excluded.open_until, version = excluded.version,
+        drafts_dropped = 0
     WHERE reading_copies_heard.version < excluded.version
 ";
 
@@ -33,6 +34,16 @@ const FORGET_OLD_TOMBSTONES: &str = "
         LIMIT ?2
     )
 ";
+
+const CLOSED_WITH_DRAFTS_LEFT: &str = "
+    SELECT reading_copy FROM reading_copies_heard
+    WHERE open_until IS NOT NULL AND open_until <= ?1 AND NOT drafts_dropped
+    ORDER BY open_until, reading_copy
+    LIMIT ?2
+";
+
+const DRAFTS_DROPPED: &str =
+    "UPDATE reading_copies_heard SET drafts_dropped = 1 WHERE reading_copy = ?1";
 
 const KNOWN: &str = "SELECT reading_copy, project, open_until FROM reading_copies_heard WHERE reading_copy IN (SELECT value FROM json_each(?1))";
 
@@ -101,6 +112,40 @@ impl ReadingCopyCatalog for SqliteReadingCopyCatalog {
             .await
             .map_err(unreachable)?
             .rows_affected())
+    }
+
+    async fn closed_with_drafts_left(
+        &self,
+        by: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<ReadingCopyLink>, CatalogError> {
+        sqlx::query(CLOSED_WITH_DRAFTS_LEFT)
+            .bind(in_microseconds(by))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row| {
+                let copy: String = row.try_get("reading_copy").map_err(unreachable)?;
+
+                Ok(ReadingCopyLink::from(copy))
+            })
+            .collect()
+    }
+
+    async fn drafts_dropped(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyLink,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(DRAFTS_DROPPED)
+            .bind(copy.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn known(

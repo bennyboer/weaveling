@@ -10,6 +10,7 @@ use transacting::{Failure, Transaction};
 struct Kept {
     known: KnownReadingCopy,
     version: u64,
+    drafts_dropped: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -74,6 +75,7 @@ impl ReadingCopyCatalog for InMemoryReadingCopyCatalog {
                 Kept {
                     known: known.clone(),
                     version,
+                    drafts_dropped: false,
                 },
             );
         }
@@ -121,6 +123,45 @@ impl ReadingCopyCatalog for InMemoryReadingCopyCatalog {
         }
 
         Ok(forgotten.len() as u64)
+    }
+
+    async fn closed_with_drafts_left(
+        &self,
+        by: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<ReadingCopyLink>, CatalogError> {
+        let copies = self.read();
+        let mut closed: Vec<(OffsetDateTime, ReadingCopyLink)> = copies
+            .kept
+            .iter()
+            .filter(|(_, kept)| !kept.drafts_dropped)
+            .filter_map(|(copy, kept)| {
+                kept.known
+                    .open_until
+                    .filter(|until| *until <= by)
+                    .map(|until| (until, copy.clone()))
+            })
+            .collect();
+        closed.sort();
+
+        Ok(closed
+            .into_iter()
+            .take(at_most)
+            .map(|(_, copy)| copy)
+            .collect())
+    }
+
+    async fn drafts_dropped(
+        &self,
+        transaction: &mut Transaction,
+        copy: &ReadingCopyLink,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        if let Some(kept) = self.write().kept.get_mut(copy) {
+            kept.drafts_dropped = true;
+        }
+
+        Ok(())
     }
 
     async fn known(

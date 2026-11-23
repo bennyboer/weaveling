@@ -1,8 +1,11 @@
+use std::error::Error;
 use std::sync::Arc;
+use std::time::Duration;
 
 use access::{InMemoryAccess, KeptAccess};
+use async_trait::async_trait;
 use authorizing::Authorizer;
-use chores::ForgetOldTombstones;
+use chores::{Chore, ForgetOldTombstones};
 use eventsourcing::EventStore;
 use feedback_catalog::{
     InMemoryAccountNameCatalog, InMemoryFeedbackCatalog, InMemoryReadingCopyCatalog,
@@ -18,6 +21,40 @@ use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
+
+/// How many closed reading copies have their drafts dropped together, before the chore asks for more.
+const CLOSED_EACH_BATCH: usize = 100;
+
+/// Once an hour, drops the drafts left unsubmitted in the reading copies that closed, as nobody may submit them any more.
+struct DropDraftsOfClosedCopies {
+    feedback: FeedbackCore,
+}
+
+#[async_trait]
+impl Chore for DropDraftsOfClosedCopies {
+    fn named(&self) -> &'static str {
+        "drop-drafts-of-closed-reading-copies"
+    }
+
+    fn every(&self) -> Duration {
+        Duration::from_secs(60 * 60)
+    }
+
+    /// Asks again while a whole batch of copies was done.
+    async fn carry_out(&self) -> Result<u64, Box<dyn Error + Send + Sync>> {
+        let mut done = 0;
+        loop {
+            let batch = self
+                .feedback
+                .drop_drafts_of_closed_copies(CLOSED_EACH_BATCH)
+                .await?;
+            done += batch;
+            if batch < CLOSED_EACH_BATCH as u64 {
+                return Ok(done);
+            }
+        }
+    }
+}
 
 pub struct Ports {
     pub feedback: Arc<dyn FeedbackCatalog>,
@@ -63,6 +100,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(hearing.inboxed(RememberStandingListener::new(feedback.clone()))),
         ])
         .doing_chores(vec![
+            Arc::new(DropDraftsOfClosedCopies {
+                feedback: feedback.clone(),
+            }),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-feedback-tombstones",
                 chores::tombstones_by(move |before, at_most| {
