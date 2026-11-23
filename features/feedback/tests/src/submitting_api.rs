@@ -866,3 +866,50 @@ async fn drafts_left_in_a_copy_once_it_closes_are_dropped_and_feedback_given_sta
         0
     );
 }
+
+#[tokio::test]
+async fn a_deleted_account_s_drafts_go_and_what_it_gave_stays_naming_nobody() {
+    // given: ada's feedback given, and ada's drafts in two copies
+    let feedback = feedback().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    submitted(&ada).await;
+    drafted(&ada, a_passage(), saying("Still thinking.")).await;
+    drafted(
+        &ada,
+        AboutDTO::ReadingCopy {
+            reading_copy: "copy_weft".to_owned(),
+            place: ReadingCopyPlaceDTO::Whole,
+        },
+        saying("Later."),
+    )
+    .await;
+    let account = AccountId::from("account_ada");
+
+    // when: ada's account is deleted, and its drafts are dropped as its deletion asks
+    feedback
+        .account_gone(None, &account, clock::at(NOW))
+        .await
+        .expect("forgetting the name should succeed");
+    feedback
+        .drop_drafts_of(&account)
+        .await
+        .expect("dropping the drafts should succeed");
+
+    // then: none of ada's drafts is left, in either copy
+    for copy in [READING_COPY, "copy_weft"] {
+        assert!(
+            ada.get(&format!("/feedback/drafts?subjects=reading_copy:{copy}"))
+                .await
+                .json::<Vec<FeedbackDTO>>()
+                .is_empty(),
+            "{copy}"
+        );
+    }
+    // and: what ada gave stays for the authors, naming nobody
+    let given = bea.get("/feedback/on?project=project_loom").await;
+    let given = given.json::<Vec<FeedbackDTO>>();
+    assert_eq!(given.len(), 1);
+    assert_eq!(given[0].written_by, None);
+}

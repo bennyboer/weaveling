@@ -430,7 +430,8 @@ fn giver_picker(by: RwSignal<Option<String>>, givers: LocalResource<Vec<Giver>>)
     ))
 }
 
-/// A giver as the picker names them: you, or by the name the feedback knows, else as a member.
+/// A giver as the picker names them: you, or by the name they signed up with;
+/// one who has none any more deleted their account, and is a former member.
 fn giver_named(giver: &Giver) -> String {
     if giver.by_you {
         return speech::say("feedback-you");
@@ -439,7 +440,7 @@ fn giver_named(giver: &Giver) -> String {
     giver
         .name
         .clone()
-        .unwrap_or_else(|| speech::say("feedback-a-member"))
+        .unwrap_or_else(|| speech::say("feedback-by-a-former-member"))
 }
 
 /// What the view says when it shows nothing: none given at all yet, and how to get some; or nothing left to do; or nothing done yet.

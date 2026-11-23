@@ -780,6 +780,24 @@ impl FeedbackCore {
         Ok(u64::try_from(closed.len()).unwrap_or(u64::MAX))
     }
 
+    /// Drops every draft a deleted account left, in every copy, as the system, each erased in a transaction of its own.
+    /// What it submitted stays, as the authors' to keep, naming nobody. Asked again, it carries on where it was.
+    pub async fn drop_drafts_of(&self, account: &AccountId) -> Result<(), FeedbackError> {
+        let writer = Agent::Account(account.clone());
+        loop {
+            let drafts = self.feedback.drafts_of(&Asked::default(), &writer).await?;
+            if drafts.is_empty() {
+                return Ok(());
+            }
+            for draft in drafts {
+                match self.erased(draft.id, Deleter::System, &Agent::System).await {
+                    Ok(()) | Err(FeedbackError::FeedbackNotThere) => {}
+                    Err(failure) => return Err(failure),
+                }
+            }
+        }
+    }
+
     /// Erases a copy's pieces as the system, a batch at a time, until none of those swept is left.
     async fn erased_in_batches(
         &self,

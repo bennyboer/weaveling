@@ -14,8 +14,9 @@ use feedback_core::{
     AccountNameCatalog, FeedbackCatalog, FeedbackCore, FeedbackEvent, ReadingCopyCatalog,
 };
 use feedback_messaging::{
-    RememberAccountNamesListener, RememberReadingCopiesListener, RememberRolesListener,
-    RememberStandingListener, SweepFeedbackOfDeletedReadingCopyListener,
+    DropDraftsOfDeletedAccountListener, RememberAccountNamesListener,
+    RememberReadingCopiesListener, RememberRolesListener, RememberStandingListener,
+    SweepFeedbackOfDeletedReadingCopyListener,
 };
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
@@ -95,7 +96,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(SweepFeedbackOfDeletedReadingCopyListener::new(
                 feedback.clone(),
             )),
-            Arc::new(hearing.inboxed(RememberAccountNamesListener::new(feedback.clone()))),
+            Arc::new(hearing.inboxed(RememberAccountNamesListener::new(
+                feedback.clone(),
+                ports.outbox.clone(),
+                context.clock.clone(),
+            ))),
+            Arc::new(DropDraftsOfDeletedAccountListener::new(feedback.clone())),
             Arc::new(hearing.inboxed(RememberRolesListener::new(feedback.clone()))),
             Arc::new(hearing.inboxed(RememberStandingListener::new(feedback.clone()))),
         ])

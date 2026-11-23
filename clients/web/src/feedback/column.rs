@@ -547,7 +547,7 @@ fn writer_of(piece: &Feedback) -> String {
     match (&piece.written_by, piece.by_you) {
         (_, true) => speech::say("feedback-you"),
         (Some(name), false) => name.clone(),
-        (None, false) => speech::say("feedback-a-member"),
+        (None, false) => speech::say("feedback-by-a-former-member"),
     }
 }
 
