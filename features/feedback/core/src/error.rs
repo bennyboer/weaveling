@@ -1,3 +1,5 @@
+use access::AccessError;
+use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use thiserror::Error;
 use transacting::{Failure, LostRace};
@@ -22,6 +24,18 @@ pub enum FeedbackError {
     ReadingCopyClosed,
     #[error("the reading copy is not known to the feedback yet")]
     ReadingCopyUnknown,
+    #[error("there is no such project")]
+    ProjectNotThere,
+    #[error(
+        "feedback is asked for in a project or on some reading copies, so it is known whose it is"
+    )]
+    ProjectUnnamed,
+    #[error("only the authors and owners of a project mark its feedback done")]
+    MarkedByAuthorsAlone,
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
+    #[error(transparent)]
+    Access(#[from] AccessError),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
     #[error("the transaction around the change failed")]

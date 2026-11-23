@@ -348,8 +348,9 @@ pub mod refused {
     pub const READING_COPY_CLOSED: &str = "feedback-reading-copy-closed";
     /// The reading copy was made a moment ago, and the feedback has not heard of it yet; asking again shortly succeeds.
     pub const READING_COPY_UNKNOWN: &str = "feedback-reading-copy-unknown";
+    pub const MARKED_BY_AUTHORS: &str = "feedback-marked-by-authors";
 
-    pub const EVERY: [&str; 15] = [
+    pub const EVERY: [&str; 16] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -365,5 +366,6 @@ pub mod refused {
         GIVER_UNKNOWN,
         READING_COPY_CLOSED,
         READING_COPY_UNKNOWN,
+        MARKED_BY_AUTHORS,
     ];
 }

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use access::{InMemoryAccess, KeptAccess};
+use authorizing::Authorizer;
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use feedback_catalog::{
@@ -8,7 +10,10 @@ use feedback_catalog::{
 use feedback_core::{
     AccountNameCatalog, FeedbackCatalog, FeedbackCore, FeedbackEvent, ReadingCopyCatalog,
 };
-use feedback_messaging::{RememberAccountNamesListener, RememberReadingCopiesListener};
+use feedback_messaging::{
+    RememberAccountNamesListener, RememberReadingCopiesListener, RememberRolesListener,
+    RememberStandingListener,
+};
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
 use transacting::Transactions;
@@ -20,18 +25,26 @@ pub struct Ports {
     pub names: Arc<dyn AccountNameCatalog>,
     pub events: Arc<dyn EventStore<FeedbackEvent>>,
     pub transactions: Arc<dyn Transactions>,
+    pub access: KeptAccess,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
+    let authorizer: Arc<dyn Authorizer> = if context.with_accounts {
+        Arc::new(ports.access.clone())
+    } else {
+        Arc::new(ports.access.clone().without_accounts())
+    };
     let feedback = FeedbackCore::new(
         ports.events.clone(),
         ports.feedback.clone(),
         ports.copies.clone(),
         ports.names.clone(),
         ports.transactions.clone(),
+        ports.access.clone(),
+        authorizer,
         context.clock.clone(),
     );
 
@@ -39,6 +52,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![
             Arc::new(hearing.inboxed(RememberReadingCopiesListener::new(feedback.clone()))),
             Arc::new(hearing.inboxed(RememberAccountNamesListener::new(feedback.clone()))),
+            Arc::new(hearing.inboxed(RememberRolesListener::new(feedback.clone()))),
+            Arc::new(hearing.inboxed(RememberStandingListener::new(feedback.clone()))),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldTombstones::new(
@@ -72,6 +87,7 @@ fn kept_in_memory(context: &Context) -> Ports {
         names: Arc::new(InMemoryAccountNameCatalog::new()),
         events,
         transactions,
+        access: KeptAccess::new(Arc::new(InMemoryAccess::new())),
         inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
         outbox,
     }

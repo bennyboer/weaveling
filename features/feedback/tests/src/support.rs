@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use access::{HearsAccess, InMemoryAccess, KeptAccess, Role};
 use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
-use eventsourcing::InMemoryEventStore;
 use eventsourcing::{AccountId, Agent};
+use eventsourcing::{InMemoryEventStore, Version};
 use feedback_catalog::{
     InMemoryAccountNameCatalog, InMemoryFeedbackCatalog, InMemoryReadingCopyCatalog,
 };
@@ -33,16 +34,38 @@ pub async fn feedback() -> FeedbackCore {
 
 /// The feedback feature on a clock a test may move, having heard that the loom, the weft and the closing copy
 /// were made of the loom project, the closing one open for a day, and the shuttle copy of another;
-/// and that ada and bea signed up as Ada and Bea.
+/// that ada and bea signed up as Ada and Bea; that ada owns the loom project, otto and hedy write it,
+/// and bea reads it; and that ada owns the shuttle project, of which bea is no member.
 pub async fn feedback_on(clock: Arc<FixedClock>) -> FeedbackCore {
+    let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let feedback = FeedbackCore::new(
         Arc::new(InMemoryEventStore::new()),
         Arc::new(InMemoryFeedbackCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
         Arc::new(InMemoryTransactions::new()),
+        access.clone(),
+        Arc::new(access),
         clock,
     );
+    for (version, project, account, role) in [
+        (1, "project_loom", "account_ada", Role::Owner),
+        (2, "project_loom", "account_bea", Role::Reader),
+        (3, "project_loom", "account_otto", Role::Author),
+        (4, "project_loom", "account_hedy", Role::Author),
+        (1, "project_shuttle", "account_ada", Role::Owner),
+    ] {
+        feedback
+            .remember_role(
+                None,
+                project,
+                &AccountId::from(account),
+                Version::of(version),
+                Some(role),
+            )
+            .await
+            .expect("hearing a role should succeed");
+    }
     for (account, name) in [("account_ada", "Ada"), ("account_bea", "Bea")] {
         feedback
             .name_heard(None, &AccountId::from(account), name)

@@ -367,8 +367,15 @@ fn problem_of(refusal: FeedbackError) -> Problem {
         FeedbackError::ReadingCopyUnknown => {
             Problem::refused(refused::READING_COPY_UNKNOWN, refusal)
         }
-        FeedbackError::Catalog(_) | FeedbackError::Transaction(_) | FeedbackError::Events(_) => {
-            Problem::unexpected(refusal)
+        FeedbackError::ProjectNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+        FeedbackError::ProjectUnnamed => Problem::rejected(refused::PLACE_UNNAMED, refusal),
+        FeedbackError::MarkedByAuthorsAlone => {
+            Problem::forbidden(refused::MARKED_BY_AUTHORS, refusal)
         }
+        FeedbackError::Catalog(_)
+        | FeedbackError::Transaction(_)
+        | FeedbackError::Events(_)
+        | FeedbackError::Authorizer(_)
+        | FeedbackError::Access(_) => Problem::unexpected(refusal),
     }
 }

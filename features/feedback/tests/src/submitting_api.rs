@@ -263,7 +263,9 @@ async fn a_scene_s_feedback_is_found_in_every_copy_on_it_and_on_passages_in_it_b
     drafted(&ada, a_passage(), saying("Still thinking.")).await;
 
     // when: the scene's feedback is asked for
-    let response = ada.get("/feedback/on?places=scene:scene_harbour").await;
+    let response = ada
+        .get("/feedback/on?project=project_loom&places=scene:scene_harbour")
+        .await;
 
     // then: the passage and the scene are found, from both copies, and nothing else
     response.assert_status_ok();
@@ -313,7 +315,7 @@ async fn a_section_asked_for_with_its_scenes_finds_the_feedback_on_any_of_them()
 
     // when: the section and the scene in it are asked for together
     let found = ada
-        .get("/feedback/on?places=section:section_morning,scene:scene_harbour")
+        .get("/feedback/on?project=project_loom&places=section:section_morning,scene:scene_harbour")
         .await;
 
     // then: the passage in the scene and the section itself are found, and nothing else
@@ -357,7 +359,9 @@ async fn a_section_s_feedback_is_found_on_it_alone_and_what_is_not_done_is_count
     drafted(&ada, the_section(), saying("Still thinking.")).await;
 
     // when: the section's feedback is asked for
-    let found = ada.get("/feedback/on?places=section:section_morning").await;
+    let found = ada
+        .get("/feedback/on?project=project_loom&places=section:section_morning")
+        .await;
 
     // then: what was given on the section itself is found, and no draft
     found.assert_status_ok();
@@ -523,7 +527,7 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
         .await
         .assert_status_ok();
     drafted(&ada, in_the_market, saying("Still thinking.")).await;
-    let on_both = "/feedback/on?places=scene:scene_harbour,scene:scene_market";
+    let on_both = "/feedback/on?project=project_loom&places=scene:scene_harbour,scene:scene_market";
     let ids = |found: Vec<FeedbackDTO>| found.into_iter().map(|piece| piece.id).collect::<Vec<_>>();
 
     // when: what is pending on both scenes is asked for
@@ -551,7 +555,10 @@ async fn the_feedback_pending_on_some_scenes_is_found_at_once_and_no_more_scenes
         .map(|at| format!("scene:scene_{at}"))
         .collect();
     let refused_many = ada
-        .get(&format!("/feedback/on?places={}", many.join(",")))
+        .get(&format!(
+            "/feedback/on?project=project_loom&places={}",
+            many.join(",")
+        ))
         .await;
     refused_many.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&refused_many), refused::TOO_MANY_COUNTED);

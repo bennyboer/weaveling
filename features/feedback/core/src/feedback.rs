@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use ::access::KeptAccess;
+use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventSourcingService, EventStore};
 use time::OffsetDateTime;
@@ -218,17 +220,22 @@ pub struct FeedbackCore {
     feedback: Arc<dyn FeedbackCatalog>,
     copies: Arc<dyn ReadingCopyCatalog>,
     names: Arc<dyn AccountNameCatalog>,
-    transactions: Arc<dyn Transactions>,
-    clock: Arc<dyn Clock>,
+    pub(crate) transactions: Arc<dyn Transactions>,
+    pub(crate) access: KeptAccess,
+    authorizer: Arc<dyn Authorizer>,
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
 impl FeedbackCore {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         events: Arc<dyn EventStore<FeedbackEvent>>,
         feedback: Arc<dyn FeedbackCatalog>,
         copies: Arc<dyn ReadingCopyCatalog>,
         names: Arc<dyn AccountNameCatalog>,
         transactions: Arc<dyn Transactions>,
+        access: KeptAccess,
+        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -237,8 +244,70 @@ impl FeedbackCore {
             copies,
             names,
             transactions,
+            access,
+            authorizer,
             clock,
         }
+    }
+
+    /// Refuses unless the agent may act so in the project; a project they may not even read is not there for them.
+    async fn allowed(
+        &self,
+        agent: &Agent,
+        act: Act,
+        project: &ProjectLink,
+        refused: FeedbackError,
+    ) -> Result<(), FeedbackError> {
+        if !self
+            .authorizer
+            .may(agent, Act::Read, project.as_str())
+            .await?
+        {
+            return Err(FeedbackError::ProjectNotThere);
+        }
+        if act != Act::Read && !self.authorizer.may(agent, act, project.as_str()).await? {
+            return Err(refused);
+        }
+
+        Ok(())
+    }
+
+    /// Refuses unless the agent may read every project the feedback asked for lies in:
+    /// the project named, or those the named reading copies were made of. A copy not heard of yet holds no feedback.
+    /// Feedback asked for in neither could lie in any project, and is refused.
+    async fn readable(&self, asked: &Asked, agent: &Agent) -> Result<(), FeedbackError> {
+        let projects: Vec<ProjectLink> = match (&asked.project, &asked.subjects) {
+            (Some(project), _) => vec![ProjectLink::from(project.as_str())],
+            (None, Some(subjects)) => self.projects_of(subjects).await?,
+            (None, None) => return Err(FeedbackError::ProjectUnnamed),
+        };
+        for project in &projects {
+            self.allowed(agent, Act::Read, project, FeedbackError::ProjectNotThere)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// The projects the subjects lie in, as far as the feedback heard of them.
+    async fn projects_of(&self, subjects: &[Subject]) -> Result<Vec<ProjectLink>, FeedbackError> {
+        let copies: Vec<ReadingCopyLink> = subjects
+            .iter()
+            .map(|subject| match subject {
+                Subject::ReadingCopy(copy) => copy.clone(),
+            })
+            .collect();
+        let mut projects: Vec<ProjectLink> = self
+            .copies
+            .known(&copies)
+            .await?
+            .into_values()
+            .map(|copy| copy.project)
+            .collect();
+        projects.sort();
+        projects.dedup();
+
+        Ok(projects)
     }
 
     /// The names of the accounts among these agents, where they are known.
@@ -337,7 +406,7 @@ impl FeedbackCore {
     }
 
     /// Forgets, in batches, the tombstones laid long enough ago that no message about them can still arrive:
-    /// those of deleted reading copies, and of deleted accounts' names.
+    /// those of deleted reading copies, of deleted accounts' names, and of accounts that left a project.
     pub async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
@@ -352,8 +421,12 @@ impl FeedbackCore {
                 .names
                 .forget_tombstones_laid_before(transaction, before, at_most)
                 .await?;
+            let access = self
+                .access
+                .forget_tombstones_laid_before(transaction, before, at_most)
+                .await?;
 
-            Ok(reading_copies + names)
+            Ok(reading_copies + names + access)
         })
     }
 
@@ -398,7 +471,8 @@ impl FeedbackCore {
 
     /// A piece as the agent may find it: a draft only by whoever wrote it, feedback submitted by anyone.
     /// Someone else's draft is not there for them at all.
-    async fn found(&self, piece: &str, agent: &Agent) -> Result<FeedbackId, FeedbackError> {
+    /// To anyone who may not read its project, it is not there either.
+    async fn found(&self, piece: &str, agent: &Agent) -> Result<CataloguedFeedback, FeedbackError> {
         let id = FeedbackId::from_str(piece).map_err(|_| FeedbackError::FeedbackNotThere)?;
         let found = self
             .feedback
@@ -408,8 +482,16 @@ impl FeedbackCore {
         if found.is_draft() && &found.written_by != agent {
             return Err(FeedbackError::FeedbackNotThere);
         }
+        self.allowed(
+            agent,
+            Act::Read,
+            &found.project,
+            FeedbackError::FeedbackNotThere,
+        )
+        .await
+        .map_err(|_| FeedbackError::FeedbackNotThere)?;
 
-        Ok(id)
+        Ok(found)
     }
 
     /// Carries out a command on a piece and keeps it in the catalog as it then stands, in one transaction.
@@ -443,6 +525,7 @@ impl FeedbackCore {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
+        self.readable(asked, agent).await?;
 
         self.listed(self.feedback.drafts_of(asked, agent).await?)
             .await
@@ -454,9 +537,12 @@ impl FeedbackCore {
         subjects: Vec<Subject>,
         agent: &Agent,
     ) -> Result<Vec<Counted>, FeedbackError> {
-        // TODO: only on subjects whose project the agent may read (5c4)
         if subjects.len() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
+        }
+        for project in self.projects_of(&subjects).await? {
+            self.allowed(agent, Act::Read, &project, FeedbackError::ProjectNotThere)
+                .await?;
         }
 
         Ok(self.feedback.counted_on(&subjects, agent).await?)
@@ -470,14 +556,14 @@ impl FeedbackCore {
         asked: &Asked,
         status: Option<Status>,
         page: &Page,
-        _agent: &Agent,
+        agent: &Agent,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
-        // TODO: only in copies of a project the agent may read (5c4)
         if asked.looked_on() > COUNTED_AT_ONCE
             || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
         {
             return Err(FeedbackError::TooManyCounted);
         }
+        self.readable(asked, agent).await?;
 
         self.listed(self.feedback.submitted(asked, status, page).await?)
             .await
@@ -487,10 +573,12 @@ impl FeedbackCore {
     pub async fn givers_in(
         &self,
         project: &str,
-        _agent: &Agent,
+        agent: &Agent,
     ) -> Result<Vec<Giver>, FeedbackError> {
-        // TODO: for whoever may read the project (5c4)
-        let givers = self.feedback.givers_in(&ProjectLink::from(project)).await?;
+        let project = ProjectLink::from(project);
+        self.allowed(agent, Act::Read, &project, FeedbackError::ProjectNotThere)
+            .await?;
+        let givers = self.feedback.givers_in(&project).await?;
         let names = self.names_of(givers.iter()).await?;
 
         Ok(givers
@@ -503,11 +591,11 @@ impl FeedbackCore {
     }
 
     /// How much feedback given where asked is pending, not done yet: on each scene and section, and in all.
-    pub async fn pending(&self, asked: &Asked, _agent: &Agent) -> Result<Pending, FeedbackError> {
-        // TODO: only in copies of a project the agent may read (5c4)
+    pub async fn pending(&self, asked: &Asked, agent: &Agent) -> Result<Pending, FeedbackError> {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
+        self.readable(asked, agent).await?;
 
         Ok(self.feedback.pending(asked).await?)
     }
@@ -520,10 +608,10 @@ impl FeedbackCore {
         asked: &Asked,
         agent: &Agent,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
-        // TODO: for whoever may read its project (5c4)
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
+        self.readable(asked, agent).await?;
         let drafts = self.feedback.drafts_of(asked, agent).await?;
         let mut copies: Vec<ReadingCopyLink> = drafts
             .iter()
@@ -561,7 +649,6 @@ impl FeedbackCore {
         comment: Vec<CommentBlock>,
         agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
-        // TODO: for whoever may read its project (5c4)
         let comment = Comment::new(comment)?;
         if !about.holds_something() {
             return Err(FeedbackError::PassageEmpty);
@@ -574,6 +661,8 @@ impl FeedbackCore {
             .get(&copy)
             .map(|copy| copy.project.clone())
             .ok_or(FeedbackError::ReadingCopyUnknown)?;
+        self.allowed(agent, Act::Read, &project, FeedbackError::ProjectNotThere)
+            .await?;
         let piece = FeedbackId::generate(self.clock.now());
 
         let drafted = transacting::retrying!(&*self.transactions, |transaction| {
@@ -607,7 +696,7 @@ impl FeedbackCore {
         let comment = Comment::new(comment)?;
         let piece = self.found(feedback, agent).await?;
         let rewritten = self
-            .carried_out(piece, FeedbackCommand::Reword(comment), agent)
+            .carried_out(piece.id, FeedbackCommand::Reword(comment), agent)
             .await?;
 
         self.listed_one(rewritten.ok_or(FeedbackError::FeedbackNotThere)?)
@@ -622,24 +711,36 @@ impl FeedbackCore {
         done: bool,
         agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
-        // TODO: only for whoever may write the subject's project, its authors and owners (5c4)
         let piece = self.found(feedback, agent).await?;
+        self.allowed(
+            agent,
+            Act::Write,
+            &piece.project,
+            FeedbackError::MarkedByAuthorsAlone,
+        )
+        .await?;
         let command = if done {
             FeedbackCommand::MarkDone
         } else {
             FeedbackCommand::MarkNotDone
         };
-        let marked = self.carried_out(piece, command, agent).await?;
+        let marked = self.carried_out(piece.id, command, agent).await?;
 
         self.listed_one(marked.ok_or(FeedbackError::FeedbackNotThere)?)
             .await
     }
 
-    /// Deletes a piece of feedback, for whoever wrote it.
+    /// Deletes a piece of feedback, for whoever wrote it, or for an owner of its project once it is given.
     pub async fn delete(&self, feedback: &str, agent: &Agent) -> Result<(), FeedbackError> {
-        // TODO: an owner of the copy's project deletes any feedback given too, as `Deleter::Owner` (5c4)
         let piece = self.found(feedback, agent).await?;
-        self.carried_out(piece, FeedbackCommand::Delete(Deleter::Writer), agent)
+        let deleter = if &piece.written_by == agent {
+            Deleter::Writer
+        } else {
+            self.allowed(agent, Act::Manage, &piece.project, FeedbackError::NotYours)
+                .await?;
+            Deleter::Owner
+        };
+        self.carried_out(piece.id, FeedbackCommand::Delete(deleter), agent)
             .await?;
 
         Ok(())

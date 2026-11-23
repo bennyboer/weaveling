@@ -5667,6 +5667,8 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
  "tokio",
+ "weaveling-access",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -5681,6 +5683,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "time",
+ "weaveling-access",
  "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-eventpublishing",
@@ -5688,6 +5691,7 @@ dependencies = [
  "weaveling-feedback-contract",
  "weaveling-feedback-core",
  "weaveling-inbox",
+ "weaveling-members-contract",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-readings-contract",
@@ -5716,6 +5720,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-access",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-feedback-catalog",
@@ -5730,6 +5735,8 @@ name = "weaveling-feedback-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "weaveling-access",
+ "weaveling-authorizing",
  "weaveling-chores",
  "weaveling-eventsourcing",
  "weaveling-feedback-catalog",

@@ -1,4 +1,5 @@
 mod about;
+mod access;
 mod block_path;
 mod catalog;
 mod comment;
