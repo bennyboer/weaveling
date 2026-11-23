@@ -15,4 +15,6 @@ This feature keeps what readers say about something in the work. A piece of feed
 
 *For now the routes run on a stub that keeps drafts in the server's memory, so the reading view can be built on them first; who may read the copy, whether it is open, and the `Feedback` aggregate come in step 5.*
 
+**Published:** `feedback.drafted` (with what it is about), `.reworded`, `.submitted`, `.marked.done`, `.marked.not.done` and `.deleted` (`FeedbackEventDTO`), the project in the context; what a piece says is never published.
+
 **Crates:** `core` (`FeedbackCore`, `About`, `Subject`, `ReadingCopyPlace`, `BlockPath`, `Comment`) · `contract` · `adapters/rest` · `adapters/catalog` (`InMemoryReadingCopyCatalog`: the reading copies heard of, their project and until when they are open; `InMemoryAccountNameCatalog`: the givers' names) · `adapters/messaging` (`feedback-remember-reading-copies`, kept in the inbox, hearing `reading-copy.made`, `.extended` and `.deleted`) · `wiring` · `tests`.

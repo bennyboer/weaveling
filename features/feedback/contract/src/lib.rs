@@ -14,6 +14,34 @@ pub enum AboutDTO {
     },
 }
 
+pub const DRAFTED: &str = "feedback.drafted";
+pub const REWORDED: &str = "feedback.reworded";
+pub const SUBMITTED: &str = "feedback.submitted";
+pub const MARKED_DONE: &str = "feedback.marked.done";
+pub const MARKED_NOT_DONE: &str = "feedback.marked.not.done";
+pub const DELETED: &str = "feedback.deleted";
+pub const EVERY_FEEDBACK: &str = "feedback.#";
+
+/// What happened to a piece of feedback, as other features hear it. Its project is in the message's context.
+/// What it is about is told once, when it is drafted. What it says is never told: it stays the feedback feature's,
+/// and only whoever may see it reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "name")]
+pub enum FeedbackEventDTO {
+    #[serde(rename = "DRAFTED")]
+    Drafted { about: AboutDTO },
+    #[serde(rename = "REWORDED")]
+    Reworded,
+    #[serde(rename = "SUBMITTED")]
+    Submitted,
+    #[serde(rename = "MARKED_DONE")]
+    MarkedDone,
+    #[serde(rename = "MARKED_NOT_DONE")]
+    MarkedNotDone,
+    #[serde(rename = "DELETED")]
+    Deleted,
+}
+
 /// Which feedback is asked for, as `GET /feedback/on`, `GET /feedback/drafts` and `POST /feedback/submitted` name it in their query:
 ///
 /// `project=p&subjects=reading_copy:c1,reading_copy:c2&places=scene:a,scene:b,section:s&given_by=account:r`

@@ -5680,10 +5680,12 @@ name = "weaveling-feedback-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "time",
  "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-feedback-contract",
  "weaveling-feedback-core",
  "weaveling-inbox",
  "weaveling-messaging",
@@ -5729,6 +5731,7 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "weaveling-chores",
+ "weaveling-eventsourcing",
  "weaveling-feedback-catalog",
  "weaveling-feedback-core",
  "weaveling-feedback-messaging",

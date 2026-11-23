@@ -13,6 +13,7 @@ inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "we
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
+feedback-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-feedback-contract" }
 feedback-core = { version = "0.1.0", path = "../../core", package = "weaveling-feedback-core" }
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
@@ -20,3 +21,6 @@ feedback-core = { version = "0.1.0", path = "../../core", package = "weaveling-f
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 readings-contract = { version = "0.1.0", path = "../../../readings/contract", package = "weaveling-readings-contract" }
+
+[dev-dependencies]
+time = { workspace = true }

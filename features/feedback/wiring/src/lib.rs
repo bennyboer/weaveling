@@ -1,20 +1,23 @@
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
+use eventsourcing::EventStore;
 use feedback_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
-use feedback_core::{AccountNameCatalog, FeedbackCore, ReadingCopyCatalog};
+use feedback_core::{AccountNameCatalog, FeedbackCore, FeedbackEvent, ReadingCopyCatalog};
 use feedback_messaging::{RememberAccountNamesListener, RememberReadingCopiesListener};
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
-use transacting::{InMemoryTransactions, Transactions};
-use wiring::{Context, Feature, Wired};
+use transacting::Transactions;
+use wiring::{Context, EventSourced, Feature, Wired};
 
-// TODO: the event store and the outbox, once feedback is kept (5c)
 pub struct Ports {
     pub copies: Arc<dyn ReadingCopyCatalog>,
     pub names: Arc<dyn AccountNameCatalog>,
+    // TODO: the pieces kept on them, instead of the stub's list (5c3)
+    pub events: Arc<dyn EventStore<FeedbackEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub inbox: Arc<dyn Inbox>,
+    pub outbox: Arc<dyn Outbox>,
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -51,11 +54,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 /// What the feedback feature keeps, in memory.
 // TODO: kept on PostgreSQL and SQLite too, in the feature's own tables (5d)
 fn kept_in_memory(context: &Context) -> Ports {
+    let EventSourced {
+        events,
+        transactions,
+        outbox,
+    } = EventSourced::in_memory(feedback_messaging::message_for, context);
+
     Ports {
         copies: Arc::new(InMemoryReadingCopyCatalog::new()),
         names: Arc::new(InMemoryAccountNameCatalog::new()),
-        transactions: Arc::new(InMemoryTransactions::new()),
+        events,
+        transactions,
         inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
+        outbox,
     }
 }
 
@@ -80,8 +91,8 @@ impl Feature for FeedbackFeature {
         Ok(kept_in_memory(context))
     }
 
-    fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {
-        None
+    fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        Some(ports.outbox.clone())
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {

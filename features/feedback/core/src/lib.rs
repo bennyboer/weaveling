@@ -21,4 +21,4 @@ pub use feedback::{
 };
 pub use id::FeedbackId;
 pub use link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
-pub use piece::{Deleter, Feedback, FeedbackCommand, FeedbackEvent, FeedbackRefused};
+pub use piece::{Deleter, Feedback, FeedbackCommand, FeedbackEvent, FeedbackRefused, KIND};
