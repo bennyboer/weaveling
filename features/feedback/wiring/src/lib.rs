@@ -2,8 +2,12 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use feedback_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
-use feedback_core::{AccountNameCatalog, FeedbackCore, FeedbackEvent, ReadingCopyCatalog};
+use feedback_catalog::{
+    InMemoryAccountNameCatalog, InMemoryFeedbackCatalog, InMemoryReadingCopyCatalog,
+};
+use feedback_core::{
+    AccountNameCatalog, FeedbackCatalog, FeedbackCore, FeedbackEvent, ReadingCopyCatalog,
+};
 use feedback_messaging::{RememberAccountNamesListener, RememberReadingCopiesListener};
 use inbox::{Hearing, InMemoryInbox, Inbox};
 use outbox::Outbox;
@@ -11,9 +15,9 @@ use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
+    pub feedback: Arc<dyn FeedbackCatalog>,
     pub copies: Arc<dyn ReadingCopyCatalog>,
     pub names: Arc<dyn AccountNameCatalog>,
-    // TODO: the pieces kept on them, instead of the stub's list (5c3)
     pub events: Arc<dyn EventStore<FeedbackEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub inbox: Arc<dyn Inbox>,
@@ -23,6 +27,8 @@ pub struct Ports {
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let hearing = Hearing::new(ports.transactions.clone(), ports.inbox.clone());
     let feedback = FeedbackCore::new(
+        ports.events.clone(),
+        ports.feedback.clone(),
         ports.copies.clone(),
         ports.names.clone(),
         ports.transactions.clone(),
@@ -61,6 +67,7 @@ fn kept_in_memory(context: &Context) -> Ports {
     } = EventSourced::in_memory(feedback_messaging::message_for, context);
 
     Ports {
+        feedback: Arc::new(InMemoryFeedbackCatalog::new()),
         copies: Arc::new(InMemoryReadingCopyCatalog::new()),
         names: Arc::new(InMemoryAccountNameCatalog::new()),
         events,

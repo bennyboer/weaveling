@@ -163,6 +163,7 @@ refused-feedback-subject-unknown = Feedback wird zu Lesekopien gegeben.
 refused-feedback-place-unknown = Eine Stelle im Text ist eine Szene oder ein Abschnitt.
 refused-feedback-giver-unknown = Feedback wird lokal oder von einem Konto gegeben.
 refused-feedback-reading-copy-closed = Diese Lesekopie ist geschlossen, darin kann kein Feedback mehr gegeben werden.
+refused-feedback-reading-copy-unknown = Diese Lesekopie wird noch eingerichtet. Versuche es gleich noch einmal.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.
 refused-idea-not-pinned = Diese Idee hängt nicht an der Pinnwand.

@@ -4,8 +4,11 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use eventsourcing::InMemoryEventStore;
 use eventsourcing::{AccountId, Agent};
-use feedback_catalog::{InMemoryAccountNameCatalog, InMemoryReadingCopyCatalog};
+use feedback_catalog::{
+    InMemoryAccountNameCatalog, InMemoryFeedbackCatalog, InMemoryReadingCopyCatalog,
+};
 use feedback_contract::{
     AboutDTO, CommentBlockDTO, CommentRunDTO, DraftFeedbackRequest, FeedbackDTO,
     ReadingCopyPlaceDTO,
@@ -33,6 +36,8 @@ pub async fn feedback() -> FeedbackCore {
 /// and that ada and bea signed up as Ada and Bea.
 pub async fn feedback_on(clock: Arc<FixedClock>) -> FeedbackCore {
     let feedback = FeedbackCore::new(
+        Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryFeedbackCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
         Arc::new(InMemoryTransactions::new()),

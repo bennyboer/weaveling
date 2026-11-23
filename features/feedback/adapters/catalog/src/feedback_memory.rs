@@ -83,9 +83,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
         let mut drafts: Vec<CataloguedFeedback> = self
             .read()
             .iter()
-            .filter(|piece| {
-                piece.is_draft() && &piece.written_by == writer && asked.holds_catalogued(piece)
-            })
+            .filter(|piece| piece.is_draft() && &piece.written_by == writer && asked.holds(piece))
             .cloned()
             .collect();
         drafts.sort_by_key(|piece| piece.written_at);
@@ -104,8 +102,8 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
             .iter()
             .filter(|piece| {
                 !piece.is_draft()
-                    && asked.holds_catalogued(piece)
-                    && status.is_none_or(|status| status.holds_catalogued(piece))
+                    && asked.holds(piece)
+                    && status.is_none_or(|status| status.holds(piece))
             })
             .cloned()
             .collect();
@@ -135,7 +133,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
         for piece in self
             .read()
             .iter()
-            .filter(|piece| !piece.is_draft() && !piece.done && asked.holds_catalogued(piece))
+            .filter(|piece| !piece.is_draft() && !piece.done && asked.holds(piece))
         {
             if let Some(scene) = piece.about.in_scene() {
                 *pending.scenes.entry(scene.clone()).or_insert(0) += 1;

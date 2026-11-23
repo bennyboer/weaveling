@@ -364,6 +364,11 @@ fn problem_of(refusal: FeedbackError) -> Problem {
         FeedbackError::TooManyCounted => Problem::rejected(refused::TOO_MANY_COUNTED, refusal)
             .with("max", feedback_core::COUNTED_AT_ONCE),
         FeedbackError::ReadingCopyClosed => Problem::refused(refused::READING_COPY_CLOSED, refusal),
-        FeedbackError::Catalog(_) | FeedbackError::Transaction(_) => Problem::unexpected(refusal),
+        FeedbackError::ReadingCopyUnknown => {
+            Problem::refused(refused::READING_COPY_UNKNOWN, refusal)
+        }
+        FeedbackError::Catalog(_) | FeedbackError::Transaction(_) | FeedbackError::Events(_) => {
+            Problem::unexpected(refusal)
+        }
     }
 }

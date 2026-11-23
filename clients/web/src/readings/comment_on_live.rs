@@ -117,7 +117,7 @@ fn making_a_copy(
                     reading_copy: made.id.clone(),
                     place,
                 };
-                if let Err(failure) = feedback::draft(&about, &comment).await {
+                if let Err(failure) = feedback::draft_in_new_copy(&about, &comment).await {
                     _ = failed.try_set(Some(failure));
                     return;
                 }

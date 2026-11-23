@@ -30,8 +30,18 @@ fn no_longer_signed_in() {
     }
 }
 
-fn refused_as(failed: &ApiError, kind: &str) -> bool {
+pub(crate) fn refused_as(failed: &ApiError, kind: &str) -> bool {
     matches!(failed, ApiError::Rejected(refusal) if refusal.kind.as_deref() == Some(kind))
+}
+
+/// Waits a moment before something is asked again.
+pub async fn a_moment(milliseconds: i32) {
+    let waited = js_sys::Promise::new(&mut |resolve, _| {
+        _ = web_sys::window()
+            .expect("the client runs in a window")
+            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, milliseconds);
+    });
+    _ = JsFuture::from(waited).await;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

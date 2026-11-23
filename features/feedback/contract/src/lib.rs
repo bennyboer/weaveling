@@ -346,8 +346,10 @@ pub mod refused {
     pub const PLACE_UNKNOWN: &str = "feedback-place-unknown";
     pub const GIVER_UNKNOWN: &str = "feedback-giver-unknown";
     pub const READING_COPY_CLOSED: &str = "feedback-reading-copy-closed";
+    /// The reading copy was made a moment ago, and the feedback has not heard of it yet; asking again shortly succeeds.
+    pub const READING_COPY_UNKNOWN: &str = "feedback-reading-copy-unknown";
 
-    pub const EVERY: [&str; 14] = [
+    pub const EVERY: [&str; 15] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -362,5 +364,6 @@ pub mod refused {
         PLACE_UNKNOWN,
         GIVER_UNKNOWN,
         READING_COPY_CLOSED,
+        READING_COPY_UNKNOWN,
     ];
 }

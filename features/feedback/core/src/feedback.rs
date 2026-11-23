@@ -1,24 +1,27 @@
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::{AccountId, Agent};
+use eventsourcing::{AccountId, Agent, AggregateId, EventSourcingService, EventStore};
 use time::OffsetDateTime;
 use transacting::{Transaction, Transactions};
 
 use crate::about::{About, Subject};
 use crate::catalog::{
-    AccountNameCatalog, CataloguedFeedback, KnownReadingCopy, ReadingCopyCatalog,
+    AccountNameCatalog, CataloguedFeedback, FeedbackCatalog, KnownReadingCopy, ReadingCopyCatalog,
 };
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
 use crate::id::FeedbackId;
-use crate::link::{ReadingCopyLink, SceneLink, SectionLink};
+use crate::link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
+use crate::piece::{Deleter, Feedback, FeedbackCommand, FeedbackEvent};
 
 /// A piece of feedback, as whoever may see it finds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedFeedback {
     pub id: FeedbackId,
+    pub project: ProjectLink,
     pub about: About,
     pub comment: Comment,
     /// When it was submitted; until then it is a draft, which only whoever wrote it sees.
@@ -33,17 +36,48 @@ pub struct ListedFeedback {
     pub written_at: OffsetDateTime,
 }
 
+impl ListedFeedback {
+    pub fn is_draft(&self) -> bool {
+        self.submitted_at.is_none()
+    }
+
+    fn of(piece: CataloguedFeedback, names: &HashMap<AccountId, String>) -> Self {
+        Self {
+            written_by_name: name_in(names, &piece.written_by),
+            id: piece.id,
+            project: piece.project,
+            about: piece.about,
+            comment: piece.comment,
+            submitted_at: piece.submitted_at,
+            edited: piece.edited,
+            done: piece.done,
+            written_by: piece.written_by,
+            written_at: piece.written_at,
+        }
+    }
+}
+
+impl CataloguedFeedback {
+    fn of(id: FeedbackId, piece: &Feedback) -> Self {
+        Self {
+            id,
+            project: piece.project().clone(),
+            about: piece.about().clone(),
+            comment: piece.comment().clone(),
+            written_by: piece.written_by().clone(),
+            written_at: piece.written_at(),
+            submitted_at: piece.submitted_at(),
+            edited: piece.is_edited(),
+            done: piece.is_done(),
+        }
+    }
+}
+
 /// Whoever gave feedback, and their name where it is known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Giver {
     pub agent: Agent,
     pub name: Option<String>,
-}
-
-impl ListedFeedback {
-    pub fn is_draft(&self) -> bool {
-        self.submitted_at.is_none()
-    }
 }
 
 /// How much feedback a subject holds, as one who may see it counts it.
@@ -127,31 +161,8 @@ impl Asked {
         self.subjects.as_ref().map_or(0, Vec::len) + self.places.as_ref().map_or(0, Places::len)
     }
 
-    fn holds(
-        &self,
-        feedback: &ListedFeedback,
-        copies: &HashMap<ReadingCopyLink, KnownReadingCopy>,
-    ) -> bool {
-        let about = &feedback.about;
-
-        self.project
-            .as_ref()
-            .is_none_or(|project| in_project(about, project, copies))
-            && self
-                .subjects
-                .as_ref()
-                .is_none_or(|subjects| subjects.contains(&about.subject()))
-            && self.places.as_ref().is_none_or(|places| places.hold(about))
-            && self
-                .given_by
-                .as_ref()
-                .is_none_or(|givers| givers.contains(&feedback.written_by))
-    }
-}
-
-impl Asked {
-    /// Whether a piece kept in the catalog is among those asked for: in the project, on a subject, at a place and by a giver named.
-    pub fn holds_catalogued(&self, piece: &CataloguedFeedback) -> bool {
+    /// Whether a piece is among those asked for: in the project, on a subject, at a place and by a giver named.
+    pub fn holds(&self, piece: &CataloguedFeedback) -> bool {
         self.project
             .as_ref()
             .is_none_or(|project| piece.project.as_str() == project)
@@ -170,15 +181,17 @@ impl Asked {
     }
 }
 
-fn in_project(
-    about: &About,
-    project: &str,
-    copies: &HashMap<ReadingCopyLink, KnownReadingCopy>,
-) -> bool {
-    match about.subject() {
-        Subject::ReadingCopy(copy) => copies
-            .get(&copy)
-            .is_some_and(|known| known.project.as_str() == project),
+/// Whether feedback given is still to be worked through, or done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Pending,
+    Done,
+}
+
+impl Status {
+    /// Whether a piece is pending or done as asked.
+    pub fn holds(self, piece: &CataloguedFeedback) -> bool {
+        piece.done == (self == Self::Done)
     }
 }
 
@@ -195,32 +208,14 @@ fn reading_copy_of(about: &About) -> ReadingCopyLink {
     }
 }
 
-/// Whether feedback given is still to be worked through, or done.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    Pending,
-    Done,
-}
-
-impl Status {
-    fn holds(self, feedback: &ListedFeedback) -> bool {
-        feedback.done == (self == Self::Done)
-    }
-
-    /// Whether a piece kept in the catalog is pending or done as asked.
-    pub fn holds_catalogued(self, piece: &CataloguedFeedback) -> bool {
-        piece.done == (self == Self::Done)
-    }
-}
-
 /// The most subjects counted at once, so one question stays small however many subjects there are.
 pub const COUNTED_AT_ONCE: usize = 100;
 
 /// The feedback feature's only way in.
 #[derive(Clone)]
 pub struct FeedbackCore {
-    // TODO: the `Feedback` aggregate in an event store and its catalogs, rather than what this process holds (step 5)
-    kept: Arc<Mutex<Vec<ListedFeedback>>>,
+    events: Arc<EventSourcingService<Feedback>>,
+    feedback: Arc<dyn FeedbackCatalog>,
     copies: Arc<dyn ReadingCopyCatalog>,
     names: Arc<dyn AccountNameCatalog>,
     transactions: Arc<dyn Transactions>,
@@ -229,13 +224,16 @@ pub struct FeedbackCore {
 
 impl FeedbackCore {
     pub fn new(
+        events: Arc<dyn EventStore<FeedbackEvent>>,
+        feedback: Arc<dyn FeedbackCatalog>,
         copies: Arc<dyn ReadingCopyCatalog>,
         names: Arc<dyn AccountNameCatalog>,
         transactions: Arc<dyn Transactions>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            kept: Arc::new(Mutex::new(Vec::new())),
+            events: Arc::new(EventSourcingService::new(events, clock.clone())),
+            feedback,
             copies,
             names,
             transactions,
@@ -260,25 +258,25 @@ impl FeedbackCore {
         Ok(self.names.names_of(&accounts).await?)
     }
 
-    /// The pieces, each with its writer's name where it is known.
-    async fn named(
+    /// The pieces as listed, each with its writer's name where it is known.
+    async fn listed(
         &self,
-        mut pieces: Vec<ListedFeedback>,
+        pieces: Vec<CataloguedFeedback>,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
         let names = self
             .names_of(pieces.iter().map(|piece| &piece.written_by))
             .await?;
-        for piece in &mut pieces {
-            piece.written_by_name = name_in(&names, &piece.written_by);
-        }
 
-        Ok(pieces)
+        Ok(pieces
+            .into_iter()
+            .map(|piece| ListedFeedback::of(piece, &names))
+            .collect())
     }
 
-    async fn named_one(&self, piece: ListedFeedback) -> Result<ListedFeedback, FeedbackError> {
-        let mut named = self.named(vec![piece]).await?;
+    async fn listed_one(&self, piece: CataloguedFeedback) -> Result<ListedFeedback, FeedbackError> {
+        let mut listed = self.listed(vec![piece]).await?;
 
-        Ok(named.remove(0))
+        Ok(listed.remove(0))
     }
 
     /// Keeps the name an account signed up with, so its feedback names it.
@@ -307,37 +305,6 @@ impl FeedbackCore {
 
             Ok(())
         })
-    }
-
-    fn kept(&self) -> MutexGuard<'_, Vec<ListedFeedback>> {
-        self.kept.lock().expect("feedback lock poisoned")
-    }
-
-    /// The copies the feedback kept is given on, as the readings told of them.
-    async fn reading_copies_heard(
-        &self,
-    ) -> Result<HashMap<ReadingCopyLink, KnownReadingCopy>, FeedbackError> {
-        let mut given_on: Vec<ReadingCopyLink> = self
-            .kept()
-            .iter()
-            .map(|feedback| reading_copy_of(&feedback.about))
-            .collect();
-        given_on.sort();
-        given_on.dedup();
-
-        Ok(self.copies.known(&given_on).await?)
-    }
-
-    /// Refuses feedback on a copy the readings told is closed by now.
-    /// A copy not heard of yet is let through, as feedback is drafted right after a copy is made for it.
-    async fn open_for_feedback(&self, copies: &[ReadingCopyLink]) -> Result<(), FeedbackError> {
-        let now = self.clock.now();
-        let known = self.copies.known(copies).await?;
-        if known.values().any(|copy| !copy.is_open_at(now)) {
-            return Err(FeedbackError::ReadingCopyClosed);
-        }
-
-        Ok(())
     }
 
     /// Keeps a reading copy as the readings told it at a version of it: its project, and until when it is open.
@@ -390,6 +357,82 @@ impl FeedbackCore {
         })
     }
 
+    /// The reading copies feedback is given on, as the readings told of them, while they are open for it.
+    /// A copy not heard of yet is not known to be open, nor which project it was made of; it is asked for again shortly.
+    async fn open_reading_copies(
+        &self,
+        copies: &[ReadingCopyLink],
+    ) -> Result<HashMap<ReadingCopyLink, KnownReadingCopy>, FeedbackError> {
+        let now = self.clock.now();
+        let known = self.copies.known(copies).await?;
+        if copies.iter().any(|copy| !known.contains_key(copy)) {
+            return Err(FeedbackError::ReadingCopyUnknown);
+        }
+        if known.values().any(|copy| !copy.is_open_at(now)) {
+            return Err(FeedbackError::ReadingCopyClosed);
+        }
+
+        Ok(known)
+    }
+
+    /// Keeps a piece in the catalog as its events now leave it, or forgets it once it is deleted.
+    async fn catalogue(
+        &self,
+        transaction: &mut Transaction,
+        piece: FeedbackId,
+    ) -> Result<Option<CataloguedFeedback>, FeedbackError> {
+        let standing = self
+            .events
+            .latest_within(transaction, &AggregateId::from(&piece))
+            .await?;
+        if standing.state.is_deleted() {
+            self.feedback.forget(transaction, &piece).await?;
+
+            return Ok(None);
+        }
+        let catalogued = CataloguedFeedback::of(piece, &standing.state);
+        self.feedback.keep(transaction, &catalogued).await?;
+
+        Ok(Some(catalogued))
+    }
+
+    /// A piece as the agent may find it: a draft only by whoever wrote it, feedback submitted by anyone.
+    /// Someone else's draft is not there for them at all.
+    async fn found(&self, piece: &str, agent: &Agent) -> Result<FeedbackId, FeedbackError> {
+        let id = FeedbackId::from_str(piece).map_err(|_| FeedbackError::FeedbackNotThere)?;
+        let found = self
+            .feedback
+            .piece(&id)
+            .await?
+            .ok_or(FeedbackError::FeedbackNotThere)?;
+        if found.is_draft() && &found.written_by != agent {
+            return Err(FeedbackError::FeedbackNotThere);
+        }
+
+        Ok(id)
+    }
+
+    /// Carries out a command on a piece and keeps it in the catalog as it then stands, in one transaction.
+    async fn carried_out(
+        &self,
+        piece: FeedbackId,
+        command: FeedbackCommand,
+        agent: &Agent,
+    ) -> Result<Option<CataloguedFeedback>, FeedbackError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .execute(
+                    transaction,
+                    &AggregateId::from(&piece),
+                    command.clone(),
+                    agent,
+                )
+                .await?;
+
+            self.catalogue(transaction, piece).await
+        })
+    }
+
     /// The agent's own drafts where asked, oldest first, which only they see until they submit them.
     /// At most `COUNTED_AT_ONCE` subjects and places are looked on at once.
     pub async fn drafts(
@@ -400,19 +443,9 @@ impl FeedbackCore {
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.reading_copies_heard().await?;
-        let found: Vec<ListedFeedback> = self
-            .kept()
-            .iter()
-            .filter(|feedback| {
-                feedback.is_draft()
-                    && &feedback.written_by == agent
-                    && asked.holds(feedback, &copies)
-            })
-            .cloned()
-            .collect();
 
-        self.named(found).await
+        self.listed(self.feedback.drafts_of(asked, agent).await?)
+            .await
     }
 
     /// How much feedback each subject holds, in the order asked, at most `COUNTED_AT_ONCE` of them.
@@ -421,33 +454,12 @@ impl FeedbackCore {
         subjects: Vec<Subject>,
         agent: &Agent,
     ) -> Result<Vec<Counted>, FeedbackError> {
-        // TODO: only on subjects whose project the agent may read (step 5)
+        // TODO: only on subjects whose project the agent may read (5c4)
         if subjects.len() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let kept = self.kept();
 
-        Ok(subjects
-            .into_iter()
-            .map(|subject| {
-                let on: Vec<&ListedFeedback> = kept
-                    .iter()
-                    .filter(|feedback| feedback.about.subject() == subject)
-                    .collect();
-
-                Counted {
-                    not_done: on
-                        .iter()
-                        .filter(|feedback| !feedback.is_draft() && !feedback.done)
-                        .count(),
-                    your_drafts: on
-                        .iter()
-                        .filter(|feedback| feedback.is_draft() && &feedback.written_by == agent)
-                        .count(),
-                    subject,
-                }
-            })
-            .collect())
+        Ok(self.feedback.counted_on(&subjects, agent).await?)
     }
 
     /// The feedback submitted where asked, in every copy, oldest first, and if asked only what is pending or done.
@@ -460,44 +472,15 @@ impl FeedbackCore {
         page: &Page,
         _agent: &Agent,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
-        // TODO: only in copies of a project the agent may read (step 5)
+        // TODO: only in copies of a project the agent may read (5c4)
         if asked.looked_on() > COUNTED_AT_ONCE
             || page.at_most.is_some_and(|most| most > COUNTED_AT_ONCE)
         {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.reading_copies_heard().await?;
-        let mut found: Vec<ListedFeedback> = self
-            .kept()
-            .iter()
-            .filter(|feedback| {
-                !feedback.is_draft()
-                    && asked.holds(feedback, &copies)
-                    && status.is_none_or(|status| status.holds(feedback))
-            })
-            .cloned()
-            .collect();
-        found.sort_by_key(|piece| piece.submitted_at);
-        if page.order == Order::Newest {
-            found.reverse();
-        }
-        let from = page
-            .after
-            .as_ref()
-            .and_then(|after| {
-                found
-                    .iter()
-                    .position(|piece| &piece.id.to_string() == after)
-            })
-            .map_or(0, |at| at + 1);
 
-        let paged = found
-            .into_iter()
-            .skip(from)
-            .take(page.at_most.unwrap_or(usize::MAX))
-            .collect();
-
-        self.named(paged).await
+        self.listed(self.feedback.submitted(asked, status, page).await?)
+            .await
     }
 
     /// Whoever gave feedback in a project, in every copy of it, in the order they first submitted any, each with their name where it is known.
@@ -506,26 +489,8 @@ impl FeedbackCore {
         project: &str,
         _agent: &Agent,
     ) -> Result<Vec<Giver>, FeedbackError> {
-        // TODO: for whoever may read the project (step 5)
-        let copies = self.reading_copies_heard().await?;
-        let givers: Vec<Agent> = {
-            let kept = self.kept();
-            let mut given: Vec<&ListedFeedback> = kept
-                .iter()
-                .filter(|feedback| {
-                    !feedback.is_draft() && in_project(&feedback.about, project, &copies)
-                })
-                .collect();
-            given.sort_by_key(|feedback| feedback.submitted_at);
-            let mut givers: Vec<Agent> = Vec::new();
-            for feedback in given {
-                if !givers.contains(&feedback.written_by) {
-                    givers.push(feedback.written_by.clone());
-                }
-            }
-
-            givers
-        };
+        // TODO: for whoever may read the project (5c4)
+        let givers = self.feedback.givers_in(&ProjectLink::from(project)).await?;
         let names = self.names_of(givers.iter()).await?;
 
         Ok(givers
@@ -539,97 +504,97 @@ impl FeedbackCore {
 
     /// How much feedback given where asked is pending, not done yet: on each scene and section, and in all.
     pub async fn pending(&self, asked: &Asked, _agent: &Agent) -> Result<Pending, FeedbackError> {
-        // TODO: only in copies of a project the agent may read (step 5)
+        // TODO: only in copies of a project the agent may read (5c4)
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.reading_copies_heard().await?;
-        let mut pending = Pending::default();
-        for feedback in self.kept().iter().filter(|feedback| {
-            !feedback.is_draft() && !feedback.done && asked.holds(feedback, &copies)
-        }) {
-            if let Some(scene) = feedback.about.in_scene() {
-                *pending.scenes.entry(scene.clone()).or_insert(0) += 1;
-            }
-            if let Some(section) = feedback.about.on_section() {
-                *pending.sections.entry(section.clone()).or_insert(0) += 1;
-            }
-            pending.total += 1;
-        }
 
-        Ok(pending)
+        Ok(self.feedback.pending(asked).await?)
     }
 
     /// Submits the agent's drafts where asked together, so everyone who may see the subject's feedback sees them.
     /// It answers with what was submitted, oldest first; with no drafts, nothing.
+    /// Drafts on a copy closed by now are refused, all of them together.
     pub async fn submit(
         &self,
         asked: &Asked,
         agent: &Agent,
     ) -> Result<Vec<ListedFeedback>, FeedbackError> {
-        // TODO: for whoever may read its project (step 5)
+        // TODO: for whoever may read its project (5c4)
         if asked.looked_on() > COUNTED_AT_ONCE {
             return Err(FeedbackError::TooManyCounted);
         }
-        let copies = self.reading_copies_heard().await?;
-        let submitting: Vec<ReadingCopyLink> = self
-            .kept()
+        let drafts = self.feedback.drafts_of(asked, agent).await?;
+        let mut copies: Vec<ReadingCopyLink> = drafts
             .iter()
-            .filter(|feedback| {
-                feedback.is_draft()
-                    && &feedback.written_by == agent
-                    && asked.holds(feedback, &copies)
-            })
-            .map(|feedback| reading_copy_of(&feedback.about))
+            .map(|draft| reading_copy_of(&draft.about))
             .collect();
-        self.open_for_feedback(&submitting).await?;
-        let now = self.clock.now();
-        let submitted = {
-            let mut kept = self.kept();
+        copies.sort();
+        copies.dedup();
+        self.open_reading_copies(&copies).await?;
+
+        let submitted = transacting::retrying!(&*self.transactions, |transaction| {
             let mut submitted = Vec::new();
-            for feedback in kept.iter_mut().filter(|feedback| {
-                feedback.is_draft()
-                    && &feedback.written_by == agent
-                    && asked.holds(feedback, &copies)
-            }) {
-                feedback.submitted_at = Some(now);
-                submitted.push(feedback.clone());
+            for draft in &drafts {
+                self.events
+                    .execute(
+                        transaction,
+                        &AggregateId::from(&draft.id),
+                        FeedbackCommand::Submit,
+                        agent,
+                    )
+                    .await?;
+                submitted.extend(self.catalogue(transaction, draft.id).await?);
             }
 
-            submitted
-        };
+            Ok::<_, FeedbackError>(submitted)
+        })?;
 
-        self.named(submitted).await
+        self.listed(submitted).await
     }
 
-    /// Starts a draft about something, which only whoever writes it sees until they submit it.
+    /// Starts a draft about something, which only whoever writes it sees until they submit it,
+    /// on a reading copy while it is open.
     pub async fn draft(
         &self,
         about: About,
         comment: Vec<CommentBlock>,
         agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
-        // TODO: for whoever may read its project (step 5)
+        // TODO: for whoever may read its project (5c4)
         let comment = Comment::new(comment)?;
         if !about.holds_something() {
             return Err(FeedbackError::PassageEmpty);
         }
-        self.open_for_feedback(&[reading_copy_of(&about)]).await?;
-        let now = self.clock.now();
-        let drafted = ListedFeedback {
-            id: FeedbackId::generate(now),
-            about,
-            comment,
-            submitted_at: None,
-            edited: false,
-            done: false,
-            written_by: agent.clone(),
-            written_by_name: None,
-            written_at: now,
-        };
-        self.kept().push(drafted.clone());
+        let copy = reading_copy_of(&about);
+        let known = self
+            .open_reading_copies(std::slice::from_ref(&copy))
+            .await?;
+        let project = known
+            .get(&copy)
+            .map(|copy| copy.project.clone())
+            .ok_or(FeedbackError::ReadingCopyUnknown)?;
+        let piece = FeedbackId::generate(self.clock.now());
 
-        self.named_one(drafted).await
+        let drafted = transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .begin(
+                    transaction,
+                    &AggregateId::from(&piece),
+                    FeedbackCommand::Draft {
+                        project: project.clone(),
+                        about: about.clone(),
+                        comment: comment.clone(),
+                    },
+                    agent,
+                )
+                .await?;
+
+            self.catalogue(transaction, piece).await
+        })?;
+
+        self.listed_one(drafted.ok_or(FeedbackError::FeedbackNotThere)?)
+            .await
     }
 
     /// Rewrites what a piece of feedback says, for whoever wrote it; once submitted, it is marked edited.
@@ -640,16 +605,13 @@ impl FeedbackCore {
         agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
         let comment = Comment::new(comment)?;
-        let rewritten = {
-            let mut kept = self.kept();
-            let rewritten = written_by(&mut kept, feedback, agent)?;
-            rewritten.edited |= !rewritten.is_draft();
-            rewritten.comment = comment;
+        let piece = self.found(feedback, agent).await?;
+        let rewritten = self
+            .carried_out(piece, FeedbackCommand::Reword(comment), agent)
+            .await?;
 
-            rewritten.clone()
-        };
-
-        self.named_one(rewritten).await
+        self.listed_one(rewritten.ok_or(FeedbackError::FeedbackNotThere)?)
+            .await
     }
 
     /// Marks a piece of feedback submitted as done, or not done again.
@@ -658,53 +620,28 @@ impl FeedbackCore {
         &self,
         feedback: &str,
         done: bool,
-        _agent: &Agent,
+        agent: &Agent,
     ) -> Result<ListedFeedback, FeedbackError> {
-        // TODO: only for whoever may write the subject's project, its authors and owners (step 5)
-        let marked = {
-            let mut kept = self.kept();
-            let found = kept
-                .iter_mut()
-                .find(|kept| kept.id.to_string() == feedback)
-                .filter(|kept| !kept.is_draft())
-                .ok_or(FeedbackError::FeedbackNotThere)?;
-            found.done = done;
-
-            found.clone()
+        // TODO: only for whoever may write the subject's project, its authors and owners (5c4)
+        let piece = self.found(feedback, agent).await?;
+        let command = if done {
+            FeedbackCommand::MarkDone
+        } else {
+            FeedbackCommand::MarkNotDone
         };
+        let marked = self.carried_out(piece, command, agent).await?;
 
-        self.named_one(marked).await
+        self.listed_one(marked.ok_or(FeedbackError::FeedbackNotThere)?)
+            .await
     }
 
     /// Deletes a piece of feedback, for whoever wrote it.
     pub async fn delete(&self, feedback: &str, agent: &Agent) -> Result<(), FeedbackError> {
-        // TODO: an owner of the copy's project deletes any feedback too (step 5)
-        let mut kept = self.kept();
-        let id = written_by(&mut kept, feedback, agent)?.id;
-        kept.retain(|feedback| feedback.id != id);
+        // TODO: an owner of the copy's project deletes any feedback given too, as `Deleter::Owner` (5c4)
+        let piece = self.found(feedback, agent).await?;
+        self.carried_out(piece, FeedbackCommand::Delete(Deleter::Writer), agent)
+            .await?;
 
         Ok(())
     }
-}
-
-/// The feedback, if the agent wrote it.
-/// Someone else's draft is not there for them at all, and someone else's submitted feedback is not theirs to change.
-fn written_by<'a>(
-    kept: &'a mut [ListedFeedback],
-    feedback: &str,
-    agent: &Agent,
-) -> Result<&'a mut ListedFeedback, FeedbackError> {
-    let found = kept
-        .iter_mut()
-        .find(|kept| kept.id.to_string() == feedback)
-        .ok_or(FeedbackError::FeedbackNotThere)?;
-    if &found.written_by != agent {
-        return Err(if found.is_draft() {
-            FeedbackError::FeedbackNotThere
-        } else {
-            FeedbackError::NotYours
-        });
-    }
-
-    Ok(found)
 }

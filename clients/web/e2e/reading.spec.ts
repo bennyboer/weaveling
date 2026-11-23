@@ -1011,15 +1011,30 @@ const feedbackTab = (page: Page) =>
   page.locator('.drawer-tab[aria-controls="reading-feedback"]');
 
 /// A draft written through the API on the copy being read, saying one plain sentence.
+/// Drafts in the copy being read, asking again while the feedback has not heard of the copy yet, as the client does.
 async function aDraftOn(page: Page, place: object, saying: string) {
   const copy = new URL(page.url()).pathname.split("/").pop()!;
-  const drafted = await page.request.post(`${API}/feedback`, {
-    data: {
-      about: { kind: "reading_copy", reading_copy: copy, place },
-      comment: [{ kind: "paragraph", runs: [{ kind: "text", text: saying }] }],
-    },
-  });
-  expect(drafted.status(), await drafted.text()).toBe(201);
+  let answered = "";
+  await expect
+    .poll(
+      async () => {
+        const drafted = await page.request.post(`${API}/feedback`, {
+          data: {
+            about: { kind: "reading_copy", reading_copy: copy, place },
+            comment: [
+              { kind: "paragraph", runs: [{ kind: "text", text: saying }] },
+            ],
+          },
+        });
+        answered = await drafted.text();
+        return drafted.status() === 409 &&
+          answered.includes("feedback-reading-copy-unknown")
+          ? "not heard of yet"
+          : drafted.status();
+      },
+      { message: answered },
+    )
+    .toBe(201);
 }
 
 /// The first section of the copy being read, as it was frozen.

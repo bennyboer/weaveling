@@ -767,3 +767,25 @@ async fn feedback_names_whoever_gave_it_until_their_account_is_deleted() {
     let givers = bea.get("/feedback/givers?project=project_loom").await;
     assert_eq!(givers.json::<Vec<ListedGiverDTO>>()[0].name, None);
 }
+
+#[tokio::test]
+async fn a_draft_on_a_copy_the_feedback_has_not_heard_of_yet_is_refused_to_be_asked_again() {
+    // given: a copy the readings have not told the feedback of yet
+    let ada = as_(&feedback().await, "account_ada");
+
+    // when: a draft is begun in it
+    let drafting = ada
+        .post("/feedback")
+        .json(&DraftFeedbackRequest {
+            about: AboutDTO::ReadingCopy {
+                reading_copy: "copy_just_made".to_owned(),
+                place: ReadingCopyPlaceDTO::Whole,
+            },
+            comment: saying("Lovely."),
+        })
+        .await;
+
+    // then: it is refused as not known yet, to be asked again shortly
+    drafting.assert_status(StatusCode::CONFLICT);
+    assert_eq!(refusal(&drafting), refused::READING_COPY_UNKNOWN);
+}

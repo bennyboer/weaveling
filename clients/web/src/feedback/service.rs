@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use feedback_contract::{
     AboutDTO, AskedDTO, COUNTED_AT_ONCE, CommentBlockDTO, DraftFeedbackRequest, FeedbackCountDTO,
     FeedbackDTO, GiverDTO, ListedGiverDTO, PendingDTO, PlaceDTO, RewriteFeedbackRequest,
-    SubjectDTO,
+    SubjectDTO, refused,
 };
 use gloo_net::http::Request;
 
@@ -226,6 +226,31 @@ pub async fn givers_in(project: &ProjectId) -> Result<Vec<Giver>, ApiError> {
     let told: Vec<ListedGiverDTO> = http::parsed(response, SUBJECT).await?;
 
     Ok(told.into_iter().map(Giver::from).collect())
+}
+
+/// How often a draft in a copy just made is asked again while the feedback has not heard of the copy yet, and how long between.
+const ASKED_AGAIN_AT_MOST: u32 = 20;
+const ASKED_AGAIN_AFTER_MILLISECONDS: i32 = 150;
+
+/// Starts a draft in a reading copy just made, asking again for a few seconds while the feedback has not heard of the copy yet,
+/// as it hears of each copy a moment after it is made.
+pub async fn draft_in_new_copy(
+    about: &About,
+    comment: &[CommentBlock],
+) -> Result<Feedback, ApiError> {
+    let mut asked = 1;
+    loop {
+        match draft(about, comment).await {
+            Err(failed)
+                if asked < ASKED_AGAIN_AT_MOST
+                    && http::refused_as(&failed, refused::READING_COPY_UNKNOWN) =>
+            {
+                asked += 1;
+                http::a_moment(ASKED_AGAIN_AFTER_MILLISECONDS).await;
+            }
+            drafted => return drafted,
+        }
+    }
 }
 
 /// Starts a draft, which only you see until you submit it.
