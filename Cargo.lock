@@ -5712,6 +5712,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-feedback-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-feedback-core",
+]
+
+[[package]]
 name = "weaveling-feedback-tests"
 version = "0.1.0"
 dependencies = [
