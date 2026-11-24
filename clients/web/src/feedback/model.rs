@@ -184,7 +184,7 @@ impl TryFrom<FeedbackDTO> for Feedback {
     fn try_from(dto: FeedbackDTO) -> Result<Self, ApiError> {
         Ok(Self {
             id: FeedbackId::from(dto.id),
-            about: About::from(dto.about),
+            about: About::try_from(dto.about)?,
             comment: dto.comment.into_iter().map(CommentBlock::from).collect(),
             draft: dto.draft,
             by_you: dto.by_you,
@@ -197,16 +197,20 @@ impl TryFrom<FeedbackDTO> for Feedback {
     }
 }
 
-impl From<AboutDTO> for About {
-    fn from(dto: AboutDTO) -> Self {
+impl TryFrom<AboutDTO> for About {
+    type Error = ApiError;
+
+    /// A comment is about a place in a reading copy; a reply, about another piece, is read as a reply instead.
+    fn try_from(dto: AboutDTO) -> Result<Self, ApiError> {
         match dto {
             AboutDTO::ReadingCopy {
                 reading_copy,
                 place,
-            } => Self::ReadingCopy {
+            } => Ok(Self::ReadingCopy {
                 reading_copy: ReadingCopyId::from(reading_copy),
                 place: ReadingCopyPlace::from(place),
-            },
+            }),
+            AboutDTO::Feedback { .. } => Err(ApiError::Unexpected),
         }
     }
 }

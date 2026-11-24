@@ -203,8 +203,9 @@ async fn a_deleted_reading_copy_takes_its_feedback_with_it_drafts_and_all() {
     let left: Vec<String> = left
         .json::<Vec<FeedbackDTO>>()
         .into_iter()
-        .map(|piece| match piece.about {
-            AboutDTO::ReadingCopy { reading_copy, .. } => reading_copy,
+        .filter_map(|piece| match piece.about {
+            AboutDTO::ReadingCopy { reading_copy, .. } => Some(reading_copy),
+            AboutDTO::Feedback { .. } => None,
         })
         .collect();
     assert_eq!(left, ["copy_weft"]);

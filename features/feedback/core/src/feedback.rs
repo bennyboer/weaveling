@@ -334,6 +334,13 @@ impl FeedbackCore {
         Ok(projects)
     }
 
+    /// The name an agent signed up with, where it is known.
+    pub async fn name_of(&self, agent: &Agent) -> Result<Option<String>, FeedbackError> {
+        let names = self.names_of(std::iter::once(agent)).await?;
+
+        Ok(name_in(&names, agent))
+    }
+
     /// The names of the accounts among these agents, where they are known.
     async fn names_of<'a>(
         &self,

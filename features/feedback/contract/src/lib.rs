@@ -5,12 +5,17 @@ use serde::{Deserialize, Serialize};
 
 /// What a piece of feedback is about: the thing it is given on, and where in it.
 /// Each kind of thing brings its own places, so a place always belongs to the kind it is in.
+/// A reply is feedback on another piece of feedback, sent at once rather than drafted;
+/// on a reading copy threads are flat, so a reply to a reply is one to the piece that began the thread, its root.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AboutDTO {
     ReadingCopy {
         reading_copy: String,
         place: ReadingCopyPlaceDTO,
+    },
+    Feedback {
+        feedback: String,
     },
 }
 
@@ -78,10 +83,11 @@ pub struct AskedDTO {
     pub given_by: Vec<GiverDTO>,
 }
 
-/// A subject named in `subjects=`.
+/// A subject named in `subjects=`: a reading copy, or a piece of feedback, whose thread of replies is asked for alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubjectDTO {
     ReadingCopy(String),
+    Feedback(String),
 }
 
 /// A place named in `places=`.
@@ -116,6 +122,7 @@ impl fmt::Display for SubjectDTO {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ReadingCopy(id) => write!(f, "reading_copy:{id}"),
+            Self::Feedback(id) => write!(f, "feedback:{id}"),
         }
     }
 }
@@ -158,6 +165,7 @@ impl SubjectDTO {
     pub fn listed(named: &str) -> Result<Vec<Self>, UnknownKind> {
         listed(named, |kind, id| match kind {
             "reading_copy" => Some(Self::ReadingCopy(id.to_owned())),
+            "feedback" => Some(Self::Feedback(id.to_owned())),
             _ => None,
         })
     }
@@ -307,6 +315,13 @@ pub struct FeedbackDTO {
     /// Whether the authors marked it done.
     #[serde(default, skip_serializing_if = "is_unset")]
     pub done: bool,
+    /// How many replies it has; a reply has none, as threads are flat.
+    #[serde(default, skip_serializing_if = "is_none_replied")]
+    pub replies: u32,
+}
+
+fn is_none_replied(replies: &u32) -> bool {
+    *replies == 0
 }
 
 /// How much feedback one subject holds, as the asker counts it.

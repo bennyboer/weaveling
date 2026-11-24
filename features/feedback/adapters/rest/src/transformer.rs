@@ -1,12 +1,13 @@
 use eventsourcing::{AccountId, Agent};
 use feedback_contract::{
     AboutDTO, AskedDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, GiverDTO,
-    ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO,
+    ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO, refused,
 };
 use feedback_core::{
-    About, Asked, BlockPath, CommentBlock, CommentRun, Counted, Giver, ListedFeedback, Pending,
-    Places, ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
+    About, Asked, BlockPath, Comment, CommentBlock, CommentRun, Counted, Giver, ListedFeedback,
+    Pending, Places, ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
+use serving::Problem;
 
 pub fn to_pending_dto(pending: &Pending) -> PendingDTO {
     let counted = |count: &usize| u32::try_from(*count).unwrap_or(u32::MAX);
@@ -40,12 +41,7 @@ pub fn to_dto(feedback: &ListedFeedback, asking: &Agent) -> FeedbackDTO {
     FeedbackDTO {
         id: feedback.id.to_string(),
         about: to_about_dto(&feedback.about),
-        comment: feedback
-            .comment
-            .blocks()
-            .iter()
-            .map(to_comment_block_dto)
-            .collect(),
+        comment: to_comment_dto(&feedback.comment),
         draft: feedback.is_draft(),
         by_you: &feedback.written_by == asking,
         written_by: feedback.written_by_name.clone(),
@@ -53,7 +49,12 @@ pub fn to_dto(feedback: &ListedFeedback, asking: &Agent) -> FeedbackDTO {
         submitted_at: feedback.submitted_at.map(clock::text::serialize),
         edited: feedback.edited,
         done: feedback.done,
+        replies: 0,
     }
+}
+
+pub fn to_comment_dto(comment: &Comment) -> Vec<CommentBlockDTO> {
+    comment.blocks().iter().map(to_comment_block_dto).collect()
 }
 
 fn to_about_dto(about: &About) -> AboutDTO {
@@ -93,16 +94,25 @@ fn to_reading_copy_place_dto(place: &ReadingCopyPlace) -> ReadingCopyPlaceDTO {
     }
 }
 
-pub fn about_of(about: AboutDTO) -> About {
+pub fn about_of(about: AboutDTO) -> Result<About, Problem> {
     match about {
         AboutDTO::ReadingCopy {
             reading_copy,
             place,
-        } => About::ReadingCopy {
+        } => Ok(About::ReadingCopy {
             reading_copy: ReadingCopyLink::from(reading_copy),
             place: reading_copy_place_of(place),
-        },
+        }),
+        // TODO: replies are held by a stub until the core knows them (M18 replies, R3 to R5).
+        AboutDTO::Feedback { .. } => Err(replies_apart()),
     }
+}
+
+fn replies_apart() -> Problem {
+    Problem::rejected(
+        refused::SUBJECT_UNKNOWN,
+        "replies are sent and asked for one thread at a time",
+    )
 }
 
 fn reading_copy_place_of(place: ReadingCopyPlaceDTO) -> ReadingCopyPlace {
@@ -196,7 +206,7 @@ fn comment_run_of(run: CommentRunDTO) -> CommentRun {
 }
 
 /// Which feedback is asked for, as the core tells it: a list left empty does not narrow.
-pub fn asked_of(asked: AskedDTO) -> Asked {
+pub fn asked_of(asked: AskedDTO) -> Result<Asked, Problem> {
     let mut scenes = Vec::new();
     let mut sections = Vec::new();
     for place in &asked.places {
@@ -206,14 +216,15 @@ pub fn asked_of(asked: AskedDTO) -> Asked {
         }
     }
 
-    Asked {
+    Ok(Asked {
         project: asked.project,
         subjects: (!asked.subjects.is_empty())
-            .then(|| asked.subjects.into_iter().map(subject_of).collect()),
+            .then(|| asked.subjects.into_iter().map(subject_of).collect())
+            .transpose()?,
         places: (!asked.places.is_empty()).then_some(Places::Text { scenes, sections }),
         given_by: (!asked.given_by.is_empty())
             .then(|| asked.given_by.into_iter().map(agent_of).collect()),
-    }
+    })
 }
 
 fn agent_of(giver: GiverDTO) -> Agent {
@@ -240,8 +251,12 @@ pub fn to_listed_giver_dto(giver: &Giver, asking: &Agent) -> Option<ListedGiverD
     })
 }
 
-pub fn subject_of(subject: SubjectDTO) -> Subject {
+pub fn subject_of(subject: SubjectDTO) -> Result<Subject, Problem> {
     match subject {
-        SubjectDTO::ReadingCopy(copy) => Subject::ReadingCopy(ReadingCopyLink::from(copy.as_str())),
+        SubjectDTO::ReadingCopy(copy) => {
+            Ok(Subject::ReadingCopy(ReadingCopyLink::from(copy.as_str())))
+        }
+        // TODO: replies are held by a stub until the core knows them (M18 replies, R3 to R5).
+        SubjectDTO::Feedback(_) => Err(replies_apart()),
     }
 }
