@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use ::access::KeptAccess;
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventSourcingService, EventStore};
 use time::OffsetDateTime;
@@ -15,6 +15,7 @@ use crate::catalog::{
 };
 use crate::comment::{Comment, CommentBlock};
 use crate::error::FeedbackError;
+use crate::following::FeedbackFollowers;
 use crate::id::FeedbackId;
 use crate::link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
 use crate::piece::{Deleter, Feedback, FeedbackCommand, FeedbackEvent};
@@ -231,6 +232,7 @@ pub struct FeedbackCore {
     feedback: Arc<dyn FeedbackCatalog>,
     copies: Arc<dyn ReadingCopyCatalog>,
     names: Arc<dyn AccountNameCatalog>,
+    followers: Arc<dyn FeedbackFollowers>,
     pub(crate) transactions: Arc<dyn Transactions>,
     pub(crate) access: KeptAccess,
     authorizer: Arc<dyn Authorizer>,
@@ -244,6 +246,7 @@ impl FeedbackCore {
         feedback: Arc<dyn FeedbackCatalog>,
         copies: Arc<dyn ReadingCopyCatalog>,
         names: Arc<dyn AccountNameCatalog>,
+        followers: Arc<dyn FeedbackFollowers>,
         transactions: Arc<dyn Transactions>,
         access: KeptAccess,
         authorizer: Arc<dyn Authorizer>,
@@ -254,11 +257,21 @@ impl FeedbackCore {
             feedback,
             copies,
             names,
+            followers,
             transactions,
             access,
             authorizer,
             clock,
         }
+    }
+
+    /// Whether the agent may follow a project's feedback live: whoever may read the project may.
+    pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, FeedbackError> {
+        Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
     }
 
     /// Refuses unless the agent may act so in the project; a project they may not even read is not there for them.
@@ -460,6 +473,7 @@ impl FeedbackCore {
     }
 
     /// Keeps a piece in the catalog as its events now leave it, or forgets it once it is deleted.
+    /// Whoever follows its project live is told once it is committed, where it was given and not a draft.
     async fn catalogue(
         &self,
         transaction: &mut Transaction,
@@ -473,10 +487,18 @@ impl FeedbackCore {
             CataloguedFeedback::of(piece, &standing.state).filter(|_| !standing.state.is_deleted())
         else {
             self.feedback.forget(transaction, &piece).await?;
+            if !standing.state.is_draft() {
+                self.followers
+                    .given_gone(transaction, standing.state.project(), &piece);
+            }
 
             return Ok(None);
         };
         self.feedback.keep(transaction, &catalogued).await?;
+        if !catalogued.is_draft() {
+            self.followers
+                .given_changed(transaction, &catalogued.project, &catalogued.id);
+        }
 
         Ok(Some(catalogued))
     }

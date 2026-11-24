@@ -19,6 +19,7 @@ use feedback_messaging::{
     SweepFeedbackOfDeletedReadingCopyListener,
 };
 use inbox::{Hearing, InMemoryInbox, Inbox};
+use live::Broadcaster;
 use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -75,11 +76,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     } else {
         Arc::new(ports.access.clone().without_accounts())
     };
+    let broadcaster = Broadcaster::new();
     let feedback = FeedbackCore::new(
         ports.events.clone(),
         ports.feedback.clone(),
         ports.copies.clone(),
         ports.names.clone(),
+        Arc::new(feedback_rest::TellingFollowers::new(broadcaster.clone())),
         ports.transactions.clone(),
         ports.access.clone(),
         authorizer,
@@ -87,6 +90,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(feedback_rest::router(feedback.clone()))
+        .followed_live(vec![feedback_rest::topic(feedback.clone(), broadcaster)])
         .listening(vec![
             Arc::new(hearing.inboxed(RememberReadingCopiesListener::new(
                 feedback.clone(),

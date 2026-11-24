@@ -1,4 +1,13 @@
+mod telling;
 mod transformer;
+
+pub use telling::TellingFollowers;
+
+use std::error::Error;
+use std::fmt::{self, Display, Formatter};
+use std::sync::Arc;
+
+use async_trait::async_trait;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -9,9 +18,58 @@ use feedback_contract::{
     AskedDTO, DraftFeedbackRequest, FeedbackCountDTO, FeedbackDTO, GiverDTO, ListedGiverDTO,
     PendingDTO, PlaceDTO, RewriteFeedbackRequest, SubjectDTO, UnknownKind, order, refused, status,
 };
-use feedback_core::{Asked, FeedbackCore, FeedbackError, InvalidComment, Order, Page, Status};
+use feedback_core::{
+    Asked, FeedbackCore, FeedbackError, InvalidComment, Order, Page, ProjectLink, Status,
+};
+use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use serde::Deserialize;
 use serving::Problem;
+
+struct ReadersGate(FeedbackCore);
+
+#[async_trait]
+impl Gate for ReadersGate {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        project: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(project, agent).await?)
+    }
+
+    async fn watch(&self, project: &str) -> AccessWatch {
+        self.0.watch_access(project)
+    }
+}
+
+/// The changes to the feedback given in one project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GivenFeedbackChanges(pub ProjectLink);
+
+impl Display for GivenFeedbackChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+fn given_feedback_changes_of(about: &About) -> Option<GivenFeedbackChanges> {
+    about
+        .get("project")
+        .map(|project| GivenFeedbackChanges(ProjectLink::from(project.as_str())))
+}
+
+/// Whoever may read a project follows the feedback given in it under `feedback`, about `{ project }`.
+pub fn topic(
+    feedback: FeedbackCore,
+    broadcaster: Broadcaster<GivenFeedbackChanges>,
+) -> Arc<dyn Topic> {
+    Arc::new(GatedTopic::new(
+        "feedback",
+        broadcaster,
+        given_feedback_changes_of,
+        Arc::new(ReadersGate(feedback)),
+    ))
+}
 
 pub fn router(feedback: FeedbackCore) -> Router {
     Router::new()

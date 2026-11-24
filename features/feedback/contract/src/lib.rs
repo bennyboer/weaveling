@@ -42,6 +42,17 @@ pub enum FeedbackEventDTO {
     Deleted,
 }
 
+/// What whoever follows a project's feedback live under `feedback`, about `{ project }`, is told of a piece given there,
+/// the frame being of the piece: that it changed, given, reworded or marked, or that it is gone.
+/// It never says what a piece says or is about, and never tells of a draft;
+/// whoever hears it asks again for the feedback they show.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GivenFeedbackChangeDTO {
+    Changed,
+    Gone,
+}
+
 /// Which feedback is asked for, as `GET /feedback/on`, `GET /feedback/drafts` and `POST /feedback/submitted` name it in their query:
 ///
 /// `project=p&subjects=reading_copy:c1,reading_copy:c2&places=scene:a,scene:b,section:s&given_by=account:r`

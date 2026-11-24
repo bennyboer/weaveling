@@ -5708,13 +5708,16 @@ dependencies = [
 name = "weaveling-feedback-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-feedback-contract",
  "weaveling-feedback-core",
+ "weaveling-live",
  "weaveling-serving",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5745,6 +5748,7 @@ dependencies = [
  "weaveling-feedback-contract",
  "weaveling-feedback-core",
  "weaveling-feedback-rest",
+ "weaveling-live",
  "weaveling-transacting",
 ]
 
@@ -5764,6 +5768,7 @@ dependencies = [
  "weaveling-feedback-rest",
  "weaveling-feedback-store",
  "weaveling-inbox",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-transacting",
  "weaveling-wiring",

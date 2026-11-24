@@ -5,6 +5,7 @@ mod catalog;
 mod comment;
 mod error;
 mod feedback;
+mod following;
 mod id;
 mod link;
 mod piece;
@@ -23,6 +24,7 @@ pub use feedback::{
     Asked, COUNTED_AT_ONCE, Counted, FeedbackCore, Giver, ListedFeedback, Order, Page, Pending,
     Places, Status,
 };
+pub use following::{FeedbackFollowers, NobodyFollows};
 pub use id::FeedbackId;
 pub use link::{ProjectLink, ReadingCopyLink, SceneLink, SectionLink};
 pub use piece::{Deleter, Feedback, FeedbackCommand, FeedbackEvent, FeedbackRefused, KIND};

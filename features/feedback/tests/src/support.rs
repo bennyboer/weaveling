@@ -14,7 +14,12 @@ use feedback_contract::{
     AboutDTO, CommentBlockDTO, CommentRunDTO, DraftFeedbackRequest, FeedbackDTO,
     ReadingCopyPlaceDTO,
 };
-use feedback_core::{FeedbackCore, FeedbackEvent, KnownReadingCopy, ProjectLink, ReadingCopyLink};
+use feedback_core::{
+    FeedbackCore, FeedbackEvent, FeedbackFollowers, KnownReadingCopy, NobodyFollows, ProjectLink,
+    ReadingCopyLink,
+};
+use feedback_rest::{GivenFeedbackChanges, TellingFollowers};
+use live::{Broadcaster, Topics};
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
@@ -66,21 +71,59 @@ pub async fn feedback() -> FeedbackCore {
 /// that ada and bea signed up as Ada and Bea; that ada owns the loom project, otto and hedy write it,
 /// and bea reads it; and that ada owns the shuttle project, of which bea is no member.
 pub async fn feedback_on(clock: Arc<TickingClock>) -> FeedbackCore {
-    feedback_keeping(clock, Arc::new(InMemoryEventStore::new())).await
+    feedback_keeping(
+        clock,
+        Arc::new(InMemoryEventStore::new()),
+        Arc::new(NobodyFollows),
+    )
+    .await
 }
 
 /// The feedback feature at `NOW` with the event store it keeps its pieces in, for a test to look into.
 pub async fn feedback_with_events() -> (FeedbackCore, Arc<InMemoryEventStore<FeedbackEvent>>) {
     let events = Arc::new(InMemoryEventStore::new());
-    let feedback =
-        feedback_keeping(Arc::new(TickingClock::at(clock::at(NOW))), events.clone()).await;
+    let feedback = feedback_keeping(
+        Arc::new(TickingClock::at(clock::at(NOW))),
+        events.clone(),
+        Arc::new(NobodyFollows),
+    )
+    .await;
 
     (feedback, events)
+}
+
+/// The feedback, telling whoever follows its projects live on the broadcaster it answers with.
+pub async fn feedback_followed() -> (FeedbackCore, Broadcaster<GivenFeedbackChanges>) {
+    let broadcaster = Broadcaster::new();
+    let feedback = feedback_keeping(
+        Arc::new(TickingClock::at(clock::at(NOW))),
+        Arc::new(InMemoryEventStore::new()),
+        Arc::new(TellingFollowers::new(broadcaster.clone())),
+    )
+    .await;
+
+    (feedback, broadcaster)
+}
+
+/// The live socket an account follows the feedback on.
+pub fn socket_as(
+    feedback: &FeedbackCore,
+    broadcaster: &Broadcaster<GivenFeedbackChanges>,
+    account: &str,
+) -> TestServer {
+    TestServer::builder().http_transport().build(
+        live::live_socket(Topics::of(vec![feedback_rest::topic(
+            feedback.clone(),
+            broadcaster.clone(),
+        )]))
+        .layer(Extension(Agent::Account(AccountId::from(account)))),
+    )
 }
 
 async fn feedback_keeping(
     clock: Arc<TickingClock>,
     events: Arc<InMemoryEventStore<FeedbackEvent>>,
+    followers: Arc<dyn FeedbackFollowers>,
 ) -> FeedbackCore {
     let access = KeptAccess::new(Arc::new(InMemoryAccess::new()));
     let feedback = FeedbackCore::new(
@@ -88,6 +131,7 @@ async fn feedback_keeping(
         Arc::new(InMemoryFeedbackCatalog::new()),
         Arc::new(InMemoryReadingCopyCatalog::new()),
         Arc::new(InMemoryAccountNameCatalog::new()),
+        followers,
         Arc::new(InMemoryTransactions::new()),
         access.clone(),
         Arc::new(access),
