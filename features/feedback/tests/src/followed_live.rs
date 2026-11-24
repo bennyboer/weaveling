@@ -1,9 +1,14 @@
+use axum::http::StatusCode;
 use axum_test::TestServer;
-use feedback_contract::{AboutDTO, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest};
+use feedback_contract::{
+    AboutDTO, COUNTED_AT_ONCE, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
+};
 use live::testing::Subscriber;
 use serde_json::json;
 
-use crate::support::{READING_COPY, a_passage, as_, drafted, feedback_followed, saying, socket_as};
+use crate::support::{
+    READING_COPY, a_passage, as_, drafted, feedback_followed, refusal, saying, socket_as,
+};
 
 const THE_LOOM: &str = "project_loom";
 
@@ -39,10 +44,13 @@ async fn whoever_may_read_the_project_is_told_of_feedback_given_there_as_it_chan
     // when: ada submits it
     let given = submitted_in(&ada, READING_COPY).await.remove(0);
 
-    // then: bea is told it changed, and nothing of what it says
+    // then: bea is told it changed in the copy, and nothing of what it says
     let frame = bea.frame().await;
     assert_eq!(frame["of"], given.id);
-    assert_eq!(frame["event"], json!({ "kind": "changed" }));
+    assert_eq!(
+        frame["event"],
+        json!({ "kind": "changed", "subject": "reading_copy:copy_loom" })
+    );
 
     // when: ada rewords it, and marks it done
     ada.put(&format!("/feedback/{}/comment", given.id))
@@ -57,7 +65,7 @@ async fn whoever_may_read_the_project_is_told_of_feedback_given_there_as_it_chan
 
     // then: bea is told it changed, each time
     for _ in 0..2 {
-        assert_eq!(bea.frame().await["event"], json!({ "kind": "changed" }));
+        assert_eq!(bea.frame().await["event"]["kind"], "changed");
     }
 
     // when: ada deletes it
@@ -133,4 +141,81 @@ async fn whoever_may_not_read_the_project_cannot_follow_its_feedback_as_if_it_we
 
     // then: she is told it is not there
     assert_eq!(grace.ended().await, "not-there");
+}
+
+async fn pieces(server: &TestServer, ids: &[&str]) -> Vec<FeedbackDTO> {
+    let response = server
+        .get(&format!("/feedback/pieces?ids={}", ids.join(",")))
+        .await;
+    response.assert_status_ok();
+
+    response.json::<Vec<FeedbackDTO>>()
+}
+
+#[tokio::test]
+async fn the_pieces_heard_of_are_asked_for_by_their_ids_in_the_order_asked() {
+    // given: two pieces ada gave in the loom
+    let (feedback, _) = feedback_followed().await;
+    let ada = as_(&feedback, "account_ada");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    drafted(&ada, a_passage(), saying("Lovely.")).await;
+    let given = submitted_in(&ada, READING_COPY).await;
+    let (boats, lovely) = (&given[0].id, &given[1].id);
+
+    // when: bea asks for them, the later first
+    let bea = as_(&feedback, "account_bea");
+    let found = pieces(&bea, &[lovely, boats]).await;
+
+    // then: she finds both, in the order asked, as ada's
+    let ids: Vec<&str> = found.iter().map(|piece| piece.id.as_str()).collect();
+    assert_eq!(ids, vec![lovely.as_str(), boats.as_str()]);
+    assert!(found.iter().all(|piece| !piece.by_you));
+    assert_eq!(found[0].written_by.as_deref(), Some("Ada"));
+}
+
+#[tokio::test]
+async fn a_piece_not_there_for_the_asker_is_left_out_of_the_pieces_asked_for() {
+    // given: a piece ada gave in the loom, her draft there, and a piece she gave in the shuttle, which bea may not read
+    let (feedback, _) = feedback_followed().await;
+    let ada = as_(&feedback, "account_ada");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    let given = submitted_in(&ada, READING_COPY).await.remove(0);
+    let draft = drafted(&ada, a_passage(), saying("Still thinking.")).await;
+    drafted(
+        &ada,
+        AboutDTO::ReadingCopy {
+            reading_copy: "copy_shuttle".to_owned(),
+            place: ReadingCopyPlaceDTO::Whole,
+        },
+        saying("Lovely."),
+    )
+    .await;
+    let elsewhere = submitted_in(&ada, "copy_shuttle").await.remove(0);
+
+    // when: bea asks for all of them, and for a piece that never was
+    let bea = as_(&feedback, "account_bea");
+    let found = pieces(&bea, &[&draft.id, "not-a-piece", &elsewhere.id, &given.id]).await;
+
+    // then: she finds only the piece given where she may read
+    let ids: Vec<&str> = found.iter().map(|piece| piece.id.as_str()).collect();
+    assert_eq!(ids, vec![given.id.as_str()]);
+}
+
+#[tokio::test]
+async fn more_pieces_than_are_counted_at_once_are_refused() {
+    // given: more ids than are counted at once
+    let (feedback, _) = feedback_followed().await;
+    let bea = as_(&feedback, "account_bea");
+    let ids: Vec<String> = (0..=COUNTED_AT_ONCE)
+        .map(|n| format!("piece_{n}"))
+        .collect();
+
+    // when: they are asked for together
+    let response = bea
+        .get(&format!("/feedback/pieces?ids={}", ids.join(",")))
+        .await;
+
+    // then: it is refused
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(refusal(&response), refused::TOO_MANY_COUNTED);
 }

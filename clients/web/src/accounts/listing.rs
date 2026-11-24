@@ -4,7 +4,6 @@ use leptos::{IntoView, ev, html};
 use time::Duration;
 
 use crate::accounts::listed::ListedAccount;
-use crate::accounts::roster;
 use crate::accounts::roster::{Intent, Roster};
 use crate::accounts::{
     CurrentSession, SignInState, deletion_dialog, lock_dialog, role_dialog, ways_in_dialog,
@@ -96,7 +95,7 @@ pub fn accounts_listing() -> impl IntoView {
                             &id,
                             Intent::Lock {
                                 typed,
-                                since: roster::now(),
+                                since: moment::now(),
                             },
                         )
                     },
@@ -113,7 +112,7 @@ pub fn accounts_listing() -> impl IntoView {
             roster.deleting.get().map(|account| {
                 let id = account.id.clone();
                 let marked = id.clone();
-                let until = roster::now() + KEPT_BEFORE_DELETION;
+                let until = moment::now() + KEPT_BEFORE_DELETION;
                 deletion_dialog::deletion_dialog(
                     account,
                     until,

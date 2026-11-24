@@ -493,6 +493,10 @@ feedback-pending-tab = { $count ->
         [one] 1 offener Kommentar
        *[other] { $count } offene Kommentare
     }
+feedback-given-since = { $count ->
+        [one] Ein neuer Kommentar · Anzeigen
+       *[other] { $count } neue Kommentare · Anzeigen
+    }
 feedback-hide-done = Erledigte ausblenden
 feedback-mark-done-title = Als erledigt markieren
 feedback-mark-not-done-title = Als offen markieren

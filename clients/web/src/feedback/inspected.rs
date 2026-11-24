@@ -3,8 +3,9 @@ use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
 use crate::feedback::column::Allowed;
+use crate::feedback::followed;
 use crate::feedback::followed::FollowedFeedback;
-use crate::feedback::model::{About, Feedback, ReadingCopyPlace};
+use crate::feedback::model::{About, Feedback, FeedbackId, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
 use crate::feedback::service::Asked;
@@ -21,6 +22,22 @@ use crate::speech;
 enum Inspected {
     Scene(SceneId),
     Section(SectionId),
+}
+
+impl Inspected {
+    /// Whether a piece is on what is inspected, as the feedback asked for it finds it:
+    /// on the scene or a passage in it, or on the section itself.
+    fn holds(&self, piece: &Feedback) -> bool {
+        let About::ReadingCopy { place, .. } = &piece.about;
+        match (self, place) {
+            (
+                Self::Scene(scene),
+                ReadingCopyPlace::Scene(on) | ReadingCopyPlace::Passage { scene: on, .. },
+            ) => on == scene,
+            (Self::Section(section), ReadingCopyPlace::Section(on)) => on == section,
+            _ => false,
+        }
+    }
 }
 
 /// The feedback given on a scene, in the scene's inspector.
@@ -50,19 +67,31 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
             },
         };
         let followed = expect_context::<FollowedFeedback>();
-        let asked_last = StoredValue::new(0_u64);
-        Effect::new(move |_| {
-            followed.track();
-            let asked = asked.clone();
-            let asking = asked_last.get_value() + 1;
-            asked_last.set_value(asking);
+        let inspected = inspected.clone();
+        Effect::new(move |heard_before: Option<()>| {
+            let heard = followed.heard();
+            if heard_before.is_none() || heard.missed {
+                let asked = asked.clone();
+                leptos::task::spawn_local(async move {
+                    if let Ok(found) = service::submitted(&asked, None).await {
+                        _ = given.try_set(found);
+                    }
+                });
+                return;
+            }
+            given.update(|given| given.retain(|piece| !heard.gone.contains(&piece.id)));
+            let changed: Vec<FeedbackId> = heard.changed.into_keys().collect();
+            if changed.is_empty() {
+                return;
+            }
+            let inspected = inspected.clone();
             leptos::task::spawn_local(async move {
-                let found = service::submitted(&asked, None).await;
-                if asked_last.try_get_value() != Some(asking) {
-                    return;
-                }
-                if let Ok(found) = found {
-                    _ = given.try_set(found);
+                if let Ok(found) = service::pieces(&changed).await {
+                    let on_it = found
+                        .into_iter()
+                        .filter(|piece| inspected.holds(piece))
+                        .collect();
+                    _ = given.try_update(|given| followed::taken_in(given, &changed, on_it, true));
                 }
             });
         });
@@ -326,4 +355,76 @@ fn a_piece(
                 column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use time::OffsetDateTime;
+
+    use super::*;
+
+    fn on(place: ReadingCopyPlace) -> Feedback {
+        Feedback {
+            id: FeedbackId::from("piece".to_owned()),
+            about: About::ReadingCopy {
+                reading_copy: ReadingCopyId::from("copy".to_owned()),
+                place,
+            },
+            comment: Vec::new(),
+            draft: false,
+            by_you: false,
+            written_by: None,
+            written_at: OffsetDateTime::UNIX_EPOCH,
+            submitted_at: Some(OffsetDateTime::UNIX_EPOCH),
+            edited: false,
+            done: false,
+        }
+    }
+
+    fn scene(id: &str) -> SceneId {
+        SceneId::from(id.to_owned())
+    }
+
+    fn section(id: &str) -> SectionId {
+        SectionId::from(id.to_owned())
+    }
+
+    fn passage_in(scene: SceneId) -> ReadingCopyPlace {
+        ReadingCopyPlace::Passage {
+            scene,
+            block_path: vec![0],
+            from: 0,
+            to: 5,
+            quote: "boats".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_scene_holds_what_is_on_it_or_on_a_passage_in_it_and_nothing_else() {
+        // given: a scene inspected
+        let inspected = Inspected::Scene(scene("harbour"));
+
+        // expect: it holds a piece on itself and on a passage in it
+        assert!(inspected.holds(&on(ReadingCopyPlace::Scene(scene("harbour")))));
+        assert!(inspected.holds(&on(passage_in(scene("harbour")))));
+        // and: none on another scene, a passage there, a section or the whole copy
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Scene(scene("market")))));
+        assert!(!inspected.holds(&on(passage_in(scene("market")))));
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Section(section("morning")))));
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Whole)));
+    }
+
+    #[test]
+    fn a_section_holds_only_what_is_on_itself() {
+        // given: a section inspected
+        let inspected = Inspected::Section(section("morning"));
+
+        // expect: it holds a piece on itself
+        assert!(inspected.holds(&on(ReadingCopyPlace::Section(section("morning")))));
+        // and: none on another section, on a scene or a passage, or on the whole copy
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Section(section("evening")))));
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Scene(scene("harbour")))));
+        assert!(!inspected.holds(&on(passage_in(scene("harbour")))));
+        assert!(!inspected.holds(&on(ReadingCopyPlace::Whole)));
+    }
 }

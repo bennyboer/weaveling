@@ -2879,7 +2879,7 @@ test("feedback given is deleted once asked, an owner's of anyone, in the copy an
   await expect(notes).toHaveCount(0);
 });
 
-test("feedback given elsewhere shows without reading again, in the copy's column, the views' count and the feedback view", async ({
+test("feedback given elsewhere shows without reading again in the copy's column and the views' count, and is offered in the feedback view", async ({
   page,
 }) => {
   // given: a copy open with its feedback, the feedback given in its project followed
@@ -2915,7 +2915,40 @@ test("feedback given elsewhere shows without reading again, in the copy's column
 
   // then: it is pending no more there
   await expect(notes).toHaveCount(0);
-  await expect(
-    feedbackView(page).getByRole("button", { name: "Pending", exact: true }),
-  ).toBeVisible();
+
+  // when: more is given elsewhere
+  const drafted = await page.request.post(`${API}/feedback`, {
+    data: {
+      about: {
+        kind: "reading_copy",
+        reading_copy: copy,
+        place: { kind: "whole" },
+      },
+      comment: [
+        {
+          kind: "paragraph",
+          runs: [{ kind: "text", text: "Still thinking." }],
+        },
+      ],
+    },
+  });
+  expect(drafted.ok(), await drafted.text()).toBe(true);
+  const more = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(more.ok(), await more.text()).toBe(true);
+
+  // then: the list stays as it is, and says something new was given
+  const given_since = feedbackView(page).getByRole("button", {
+    name: "One new comment · Show it",
+  });
+  await expect(given_since).toBeVisible();
+  await expect(notes).toHaveCount(0);
+
+  // when: it is shown
+  await given_since.click();
+  // then: it is in the list, and the offer is gone
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Still thinking.");
+  await expect(given_since).toHaveCount(0);
 });

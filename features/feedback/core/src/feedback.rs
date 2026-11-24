@@ -496,8 +496,12 @@ impl FeedbackCore {
         };
         self.feedback.keep(transaction, &catalogued).await?;
         if !catalogued.is_draft() {
-            self.followers
-                .given_changed(transaction, &catalogued.project, &catalogued.id);
+            self.followers.given_changed(
+                transaction,
+                &catalogued.project,
+                &catalogued.id,
+                &catalogued.about.subject(),
+            );
         }
 
         Ok(Some(catalogued))
@@ -601,6 +605,30 @@ impl FeedbackCore {
 
         self.listed(self.feedback.submitted(asked, status, page).await?)
             .await
+    }
+
+    /// The pieces asked for by their ids, in the order asked, as the agent finds them:
+    /// one not there for them, gone, someone else's draft or in a project they may not read, is left out.
+    /// Whoever follows the feedback live asks so for the pieces they heard changed.
+    /// At most `COUNTED_AT_ONCE` are asked for at once.
+    pub async fn pieces(
+        &self,
+        ids: &[String],
+        agent: &Agent,
+    ) -> Result<Vec<ListedFeedback>, FeedbackError> {
+        if ids.len() > COUNTED_AT_ONCE {
+            return Err(FeedbackError::TooManyCounted);
+        }
+        let mut found = Vec::new();
+        for id in ids {
+            match self.found(id, agent).await {
+                Ok(piece) => found.push(piece),
+                Err(FeedbackError::FeedbackNotThere) => {}
+                Err(failure) => return Err(failure),
+            }
+        }
+
+        self.listed(found).await
     }
 
     /// Whoever gave feedback in a project, in every copy of it, in the order they first submitted any, each with their name where it is known.

@@ -160,7 +160,7 @@ impl Views {
         let followed = expect_context::<FollowedFeedback>();
         followed.follow(&id.to_string());
         let pending = LocalResource::new(move || {
-            followed.track();
+            followed.heard();
             let id = id.clone();
 
             async move {

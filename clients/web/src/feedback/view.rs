@@ -1,17 +1,20 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use feedback_contract::{order, status};
+use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
 use crate::feedback::column::Allowed;
+use crate::feedback::followed;
 use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{About, Feedback, FeedbackId, Giver, ReadingCopyPlace};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
 use crate::icons;
 use crate::icons::Icon;
+use crate::moment;
 use crate::outline::model::SectionId;
 use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
@@ -118,6 +121,15 @@ enum Showing {
 }
 
 impl Showing {
+    /// Whether a piece is shown so: one marked done meanwhile goes from what is pending, and back.
+    fn holds(self, piece: &Feedback) -> bool {
+        match self {
+            Self::Pending => !piece.done,
+            Self::Done => piece.done,
+            Self::All => true,
+        }
+    }
+
     fn status(self) -> Option<&'static str> {
         match self {
             Self::Pending => Some(status::PENDING),
@@ -148,6 +160,8 @@ pub fn feedback_view(project: String) -> impl IntoView {
     let pieces = RwSignal::new(Vec::<Feedback>::new());
     let more = RwSignal::new(false);
     let loaded = RwSignal::new(false);
+    let listed_at = StoredValue::new(moment::now());
+    let given_since = RwSignal::new(HashSet::<FeedbackId>::new());
     let none_at_all = RwSignal::new(false);
     let paging = Action::new_local({
         let id = id.clone();
@@ -172,6 +186,8 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 order::OLDEST
             };
 
+            let listed = moment::now();
+
             async move {
                 let Ok(found) =
                     service::page_in(&asked, status, order, after.as_ref(), limit).await
@@ -187,6 +203,10 @@ pub fn feedback_view(project: String) -> impl IntoView {
                             .is_ok_and(|any| any.is_empty()));
                 _ = none_at_all.try_set(none_given);
                 _ = more.try_set(found.len() == limit);
+                if !going_on {
+                    listed_at.set_value(listed);
+                    _ = given_since.try_set(HashSet::new());
+                }
                 _ = pieces.try_update(|pieces| {
                     if !going_on {
                         pieces.clear();
@@ -206,10 +226,38 @@ pub fn feedback_view(project: String) -> impl IntoView {
     });
     let followed = expect_context::<FollowedFeedback>();
     Effect::new(move |heard_before: Option<()>| {
-        followed.track();
-        if heard_before.is_some() {
-            paging.dispatch(Paged::Again);
+        let heard = followed.heard();
+        if heard_before.is_none() {
+            return;
         }
+        if heard.missed {
+            paging.dispatch(Paged::Again);
+            return;
+        }
+        pieces.update(|pieces| pieces.retain(|piece| !heard.gone.contains(&piece.id)));
+        let changed: Vec<FeedbackId> = heard.changed.into_keys().collect();
+        if changed.is_empty() {
+            return;
+        }
+        leptos::task::spawn_local(async move {
+            let Ok(found) = service::pieces(&changed).await else {
+                return;
+            };
+            let listed_at = listed_at.get_value();
+            let (shown, elsewhere): (Vec<_>, Vec<_>) = found.into_iter().partition(|piece| {
+                pieces.with_untracked(|pieces| pieces.iter().any(|one| one.id == piece.id))
+            });
+            let newly_given = elsewhere
+                .iter()
+                .filter(|piece| !piece.done && piece.submitted_at.is_some_and(|at| at > listed_at))
+                .map(|piece| piece.id.clone());
+            _ = given_since.try_update(|given_since| given_since.extend(newly_given));
+            let showing = showing.get_untracked();
+            _ = pieces.try_update(|pieces| {
+                followed::taken_in(pieces, &changed, shown, false);
+                pieces.retain(|piece| showing.holds(piece));
+            });
+        });
     });
     let copies = LocalResource::new({
         let id = id.clone();
@@ -307,6 +355,20 @@ pub fn feedback_view(project: String) -> impl IntoView {
             let nothing = loaded.get() && pieces.with(Vec::is_empty);
 
             nothing.then(|| none_here(showing.get(), none_at_all.get(), &project))
+        },
+        move || {
+            let given = given_since.with(HashSet::len);
+
+            (given > 0).then(|| {
+                let mut args = FluentArgs::new();
+                args.set("count", given);
+
+                html::button()
+                    .r#type("button")
+                    .class("given-since")
+                    .on(ev::click, move |_| _ = paging.dispatch(Paged::Afresh))
+                    .child(speech::say_with("feedback-given-since", &args))
+            })
         },
         html::div()
             .class("feedback-list")

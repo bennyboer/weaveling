@@ -190,13 +190,6 @@ impl working_copy::Intent<ListedAccount> for Intent {
     }
 }
 
-pub(super) fn now() -> OffsetDateTime {
-    let millis = js_sys::Date::now() as i64;
-
-    OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000)
-        .unwrap_or(OffsetDateTime::UNIX_EPOCH)
-}
-
 fn answered(on: ListedAccount, intent: &Intent, read: Option<ListedAccount>) -> ListedAccount {
     match read {
         Some(read) if read.version > on.version => read,

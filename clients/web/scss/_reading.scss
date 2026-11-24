@@ -1829,6 +1829,24 @@ body.focused {
     }
   }
 
+  /* Feedback given since the list was asked for, shown when asked, so the list does not move under whoever works through it. */
+  .given-since {
+    align-self: center;
+    min-height: 2.25rem;
+    padding: 0 1rem;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--ink);
+    font: 500 0.85rem/1 var(--reading);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+  }
+
   .show-more {
     align-self: center;
     min-height: 2.25rem;

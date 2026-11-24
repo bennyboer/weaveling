@@ -43,13 +43,14 @@ pub enum FeedbackEventDTO {
 }
 
 /// What whoever follows a project's feedback live under `feedback`, about `{ project }`, is told of a piece given there,
-/// the frame being of the piece: that it changed, given, reworded or marked, or that it is gone.
-/// It never says what a piece says or is about, and never tells of a draft;
-/// whoever hears it asks again for the feedback they show.
+/// the frame being of the piece: that it changed, given, reworded or marked, on a subject named as `subjects=` names it
+/// (`reading_copy:c1`), or that it is gone.
+/// It never says what a piece says or where in its subject it is, and never tells of a draft;
+/// whoever shows feedback on that subject asks for the pieces changed (`GET /feedback/pieces?ids=`), and lets go of those gone.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GivenFeedbackChangeDTO {
-    Changed,
+    Changed { subject: String },
     Gone,
 }
 

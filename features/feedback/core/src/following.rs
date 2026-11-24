@@ -1,10 +1,11 @@
 use transacting::Transaction;
 
+use crate::about::Subject;
 use crate::id::FeedbackId;
 use crate::link::ProjectLink;
 
-/// Tells whoever follows a project's feedback live that a piece given there changed or is gone,
-/// once the change is committed.
+/// Tells whoever follows a project's feedback live that a piece given there changed, naming what it is given on,
+/// or is gone, once the change is committed.
 /// Drafts are never told of, as only whoever writes them sees them.
 pub trait FeedbackFollowers: Send + Sync {
     fn given_changed(
@@ -12,6 +13,7 @@ pub trait FeedbackFollowers: Send + Sync {
         transaction: &mut Transaction,
         project: &ProjectLink,
         piece: &FeedbackId,
+        subject: &Subject,
     );
 
     fn given_gone(&self, transaction: &mut Transaction, project: &ProjectLink, piece: &FeedbackId);
@@ -26,6 +28,7 @@ impl FeedbackFollowers for NobodyFollows {
         _transaction: &mut Transaction,
         _project: &ProjectLink,
         _piece: &FeedbackId,
+        _subject: &Subject,
     ) {
     }
 

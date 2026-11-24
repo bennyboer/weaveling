@@ -80,6 +80,7 @@ pub fn router(feedback: FeedbackCore) -> Router {
         .route("/feedback/on", routing::get(submitted_on))
         .route("/feedback/pending", routing::get(pending))
         .route("/feedback/givers", routing::get(givers_in))
+        .route("/feedback/pieces", routing::get(pieces))
         .route("/feedback/{feedback}", routing::delete(delete))
         .route("/feedback/{feedback}/comment", routing::put(rewrite))
         .route(
@@ -221,6 +222,33 @@ async fn submitted_on(
         )
         .await
         .map_err(problem_of)?;
+
+    Ok(Json(
+        found
+            .iter()
+            .map(|piece| transformer::to_dto(piece, &agent))
+            .collect(),
+    ))
+}
+
+/// The pieces asked for by their ids, parted by commas.
+#[derive(Deserialize)]
+struct ByIds {
+    ids: String,
+}
+
+async fn pieces(
+    State(feedback): State<FeedbackCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<ByIds>,
+) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
+    let ids: Vec<String> = asked
+        .ids
+        .split(',')
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let found = feedback.pieces(&ids, &agent).await.map_err(problem_of)?;
 
     Ok(Json(
         found

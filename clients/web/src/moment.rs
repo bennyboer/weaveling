@@ -3,6 +3,14 @@ use time::{OffsetDateTime, UtcOffset};
 
 use crate::speech;
 
+/// Now, as the browser's clock tells it.
+pub fn now() -> OffsetDateTime {
+    let millis = js_sys::Date::now() as i64;
+
+    OffsetDateTime::from_unix_timestamp_nanos(i128::from(millis) * 1_000_000)
+        .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+}
+
 pub fn human_time(moment: OffsetDateTime) -> String {
     let here = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 

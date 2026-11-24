@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use feedback_contract::GivenFeedbackChangeDTO;
-use feedback_core::{FeedbackFollowers, FeedbackId, ProjectLink};
+use feedback_contract::{GivenFeedbackChangeDTO, SubjectDTO};
+use feedback_core::{FeedbackFollowers, FeedbackId, ProjectLink, Subject};
 use live::{Broadcaster, Teller};
 use transacting::Transaction;
 
@@ -40,8 +40,19 @@ impl FeedbackFollowers for TellingFollowers {
         transaction: &mut Transaction,
         project: &ProjectLink,
         piece: &FeedbackId,
+        subject: &Subject,
     ) {
-        self.told(transaction, project, piece, GivenFeedbackChangeDTO::Changed);
+        let subject = match subject {
+            Subject::ReadingCopy(copy) => SubjectDTO::ReadingCopy(copy.to_string()),
+        };
+        self.told(
+            transaction,
+            project,
+            piece,
+            GivenFeedbackChangeDTO::Changed {
+                subject: subject.to_string(),
+            },
+        );
     }
 
     fn given_gone(&self, transaction: &mut Transaction, project: &ProjectLink, piece: &FeedbackId) {

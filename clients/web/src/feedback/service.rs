@@ -163,6 +163,26 @@ async fn listed(route: &str, asked: &Asked, only: &str) -> Result<Vec<Feedback>,
     Ok(found)
 }
 
+/// The pieces asked for by their ids, as you find them: those not there for you any more are left out.
+/// They are asked for as many at once as the feedback counts at once.
+pub async fn pieces(ids: &[FeedbackId]) -> Result<Vec<Feedback>, ApiError> {
+    let mut found = Vec::new();
+    for some in ids.chunks(feedback_contract::COUNTED_AT_ONCE) {
+        let named = some
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let response = http::sent(Request::get(&format!("{FEEDBACK}/pieces?ids={named}"))).await?;
+        let told: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+        for piece in told {
+            found.push(Feedback::try_from(piece)?);
+        }
+    }
+
+    Ok(found)
+}
+
 /// Your own drafts where asked, oldest first, which only you see until you submit them.
 pub async fn drafts(asked: &Asked) -> Result<Vec<Feedback>, ApiError> {
     listed("drafts", asked, "").await

@@ -493,6 +493,10 @@ feedback-pending-tab = { $count ->
         [one] 1 commentaire à traiter
        *[other] { $count } commentaires à traiter
     }
+feedback-given-since = { $count ->
+        [one] Un nouveau commentaire · L’afficher
+       *[other] { $count } nouveaux commentaires · Les afficher
+    }
 feedback-hide-done = Masquer les traités
 feedback-mark-done-title = Marquer comme traité
 feedback-mark-not-done-title = Marquer comme à traiter

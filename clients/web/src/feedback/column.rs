@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use feedback_contract::SubjectDTO;
 use fluent_bundle::FluentArgs;
 use leptos::portal::Portal;
 use leptos::prelude::*;
@@ -11,6 +12,7 @@ use crate::dialog;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::composer;
+use crate::feedback::followed;
 use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{
     About, CommentBlock, CommentRun, Feedback, FeedbackId, ReadingCopyPlace,
@@ -220,28 +222,26 @@ pub fn on_reading_copy(
     });
     {
         let copy = copy.clone();
+        let subject = SubjectDTO::ReadingCopy(copy.to_string()).to_string();
         let followed = expect_context::<FollowedFeedback>();
-        let asked_last = StoredValue::new(0_u64);
-        Effect::new(move |_| {
-            followed.track();
-            let copy = copy.clone();
-            let asking = asked_last.get_value() + 1;
-            asked_last.set_value(asking);
+        Effect::new(move |heard_before: Option<()>| {
+            let heard = followed.heard();
+            if heard_before.is_none() || heard.missed {
+                asked_anew(copy.clone(), column);
+                return;
+            }
+            column
+                .feedback
+                .update(|feedback| feedback.retain(|piece| !heard.gone.contains(&piece.id)));
+            let changed = heard.changed_on(&subject);
+            if changed.is_empty() {
+                return;
+            }
             leptos::task::spawn_local(async move {
-                let asked = Asked::in_copy(&copy);
-                let found = match service::submitted(&asked, None).await {
-                    Ok(mut found) => service::drafts(&asked).await.map(|drafts| {
-                        found.extend(drafts);
-                        found
-                    }),
-                    Err(failure) => Err(failure),
-                };
-                if asked_last.try_get_value() != Some(asking) {
-                    return;
-                }
-                match found {
-                    Ok(found) => _ = column.feedback.try_set(found),
-                    Err(failure) => _ = column.failed.try_set(Some(failure)),
+                if let Ok(found) = service::pieces(&changed).await {
+                    _ = column.feedback.try_update(|feedback| {
+                        followed::taken_in(feedback, &changed, found, true);
+                    });
                 }
             });
         });
@@ -364,6 +364,24 @@ pub fn on_reading_copy(
             ),
         },
     )
+}
+
+/// Asks for the copy's feedback anew: everyone's submitted, then your drafts.
+fn asked_anew(copy: ReadingCopyId, column: Column) {
+    leptos::task::spawn_local(async move {
+        let asked = Asked::in_copy(&copy);
+        let found = match service::submitted(&asked, None).await {
+            Ok(mut found) => service::drafts(&asked).await.map(|drafts| {
+                found.extend(drafts);
+                found
+            }),
+            Err(failure) => Err(failure),
+        };
+        match found {
+            Ok(found) => _ = column.feedback.try_set(found),
+            Err(failure) => _ = column.failed.try_set(Some(failure)),
+        }
+    });
 }
 
 /// Where the copy was opened at a piece of its feedback (`?feedback=`), as from the writing view,
