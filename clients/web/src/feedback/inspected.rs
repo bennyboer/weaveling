@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
+use crate::feedback::column::Allowed;
 use crate::feedback::model::{About, Feedback, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
 use crate::feedback::service::Asked;
-use crate::members::roles::Roles;
 use crate::outline::model::SectionId;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
 use crate::readings::service as readings;
@@ -70,12 +70,7 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
             async move { readings::copies(&project).await.unwrap_or_default() }
         }
     });
-    let marking = {
-        let roles = expect_context::<Roles>();
-        let project = project.clone();
-
-        Signal::derive(move || roles.may_write(&project))
-    };
+    let allowed = Allowed::in_project(&project);
     let not_done =
         Memo::new(move |_| given.with(|given| given.iter().filter(|piece| !piece.done).count()));
     let done = Memo::new(move |_| given.with(Vec::len) - not_done.get());
@@ -132,7 +127,7 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
                         copies,
                         project.clone(),
                         on_the_whole,
-                        marking,
+                        allowed,
                     )
                 })
                 .build()),
@@ -168,7 +163,7 @@ fn in_copy(
     copies: LocalResource<Vec<ListedReadingCopy>>,
     project: String,
     on_the_whole: &'static str,
-    marking: Signal<bool>,
+    allowed: Allowed,
 ) -> impl IntoView {
     let listed = {
         let copy = copy.clone();
@@ -213,7 +208,7 @@ fn in_copy(
                 .children(move |piece| {
                     let at = format!("{opened}?feedback={}", piece.id);
 
-                    a_piece(piece, given, showing_done, at, on_the_whole, marking)
+                    a_piece(piece, given, showing_done, at, on_the_whole, allowed)
                 })
                 .build()),
         ))
@@ -226,7 +221,7 @@ fn a_piece(
     showing_done: RwSignal<bool>,
     opened: String,
     on_the_whole: &'static str,
-    marking: Signal<bool>,
+    allowed: Allowed,
 ) -> impl IntoView {
     let id = piece.id.clone();
     let done = piece.done;
@@ -265,6 +260,24 @@ fn a_piece(
             }
         }
     });
+    let deleting = Action::new_local({
+        let id = piece.id.clone();
+
+        move |_: &()| {
+            let id = id.clone();
+
+            async move {
+                if service::delete(&id).await.is_ok() {
+                    if let Some(not_done) = counted_again {
+                        not_done.again();
+                    }
+                    _ = given.try_update(|held| held.retain(|piece| piece.id != id));
+                }
+            }
+        }
+    });
+    let yours = piece.by_you;
+    let asked = column::deleting_asked_of(&piece);
     let About::ReadingCopy { place, .. } = &piece.about;
     let about = match place {
         ReadingCopyPlace::Passage { quote, .. } => html::p()
@@ -296,7 +309,11 @@ fn a_piece(
                     .class("open-in-copy")
                     .href(opened)
                     .child(speech::said("feedback-open-in-copy")),
-                column::done_mark(done, shown_done, marking_done, marking),
+                move || {
+                    (yours || allowed.deleting.get())
+                        .then(|| column::deleting_given(&asked, deleting))
+                },
+                column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
         ))
 }

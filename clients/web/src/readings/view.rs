@@ -12,6 +12,7 @@ use crate::assets::service as assets;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::column as feedback;
+use crate::feedback::column::Allowed;
 use crate::feedback::column::Commenting;
 use crate::feedback::marks as feedback_marks;
 use crate::feedback::model::ReadingCopyPlace;
@@ -19,7 +20,6 @@ use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
 use crate::live::Subscription;
-use crate::members::roles::Roles;
 use crate::outline::model::SectionId;
 use crate::problem;
 use crate::projects::model::ProjectId;
@@ -102,12 +102,7 @@ pub fn reading_view(
     let marks = copy
         .is_some()
         .then(|| feedback_marks::marks_shown(feedback_marks::KEPT_WHILE_READING));
-    let marking = {
-        let roles = expect_context::<Roles>();
-        let slug = slug.clone();
-
-        Signal::derive(move || roles.may_write(&slug))
-    };
+    let allowed = Allowed::in_project(&slug);
     let commenting = match &copy {
         Some(copy) => Commenting::in_copy(copy.clone(), said),
         None => Commenting::on_the_live_work(),
@@ -120,7 +115,7 @@ pub fn reading_view(
             let bar = switcher::reading_bar(slug.clone(), copy.clone(), copies, chosen);
             let feedback = copy.clone().map(|copy| {
                 (
-                    feedback::on_reading_copy(copy, commenting, said, book, marking),
+                    feedback::on_reading_copy(copy, commenting, said, book, allowed),
                     said,
                 )
             });

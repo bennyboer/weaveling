@@ -19,6 +19,7 @@ use crate::feedback::service::Asked;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
+use crate::members::roles::Roles;
 use crate::moment;
 use crate::outline::model::SectionId;
 use crate::problem;
@@ -170,8 +171,28 @@ struct Column {
     failed: RwSignal<Option<ApiError>>,
     book: RwSignal<Option<Book>>,
     drawer: Drawer,
-    /// Whether you may mark feedback done: you may write the project, as its authors and owners may.
-    marking: Signal<bool>,
+    allowed: Allowed,
+}
+
+/// What you may do with the feedback others gave in a project:
+/// mark it done, as its authors and owners may, and delete it, as only its owners may.
+#[derive(Clone, Copy)]
+pub struct Allowed {
+    pub marking: Signal<bool>,
+    pub deleting: Signal<bool>,
+}
+
+impl Allowed {
+    pub fn in_project(project: &str) -> Self {
+        let roles = expect_context::<Roles>();
+        let writing = project.to_owned();
+        let owning = project.to_owned();
+
+        Self {
+            marking: Signal::derive(move || roles.may_write(&writing)),
+            deleting: Signal::derive(move || roles.owns(&owning)),
+        }
+    }
 }
 
 /// The feedback on a reading copy, in a drawer on the right: your drafts, which only you see until you submit them,
@@ -181,7 +202,7 @@ pub fn on_reading_copy(
     commenting: Commenting,
     drawer: Drawer,
     book: RwSignal<Option<Book>>,
-    marking: Signal<bool>,
+    allowed: Allowed,
 ) -> impl IntoView {
     let column = Column {
         feedback: commenting.feedback,
@@ -189,7 +210,7 @@ pub fn on_reading_copy(
         failed: RwSignal::new(None),
         book,
         drawer,
-        marking,
+        allowed,
     };
     Effect::new(move |_| {
         if column.writing.with(Option::is_some) {
@@ -751,6 +772,7 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
     let given = !piece.draft;
     let held = piece.comment.clone();
     let yours = piece.by_you;
+    let asked = deleting_asked_of(&piece);
     let (change, delete) = match piece.draft {
         true => ("feedback-change-draft", "feedback-delete-draft"),
         false => ("feedback-change-comment", "feedback-delete-comment"),
@@ -775,6 +797,7 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
                 .into_any(),
                 false => {
                     let id = id.clone();
+                    let asked = asked.clone();
 
                     (
                         html::div().class("comment").child(comment(&held)),
@@ -788,22 +811,100 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
                                             column.writing.set(Some(Writing::Changed(id.clone())));
                                         })
                                         .child(speech::said("feedback-change")),
-                                    html::button()
-                                        .r#type("button")
-                                        .attr("aria-label", speech::said(delete))
-                                        .disabled(move || deleting.pending().get())
-                                        .on(ev::click, move |_| _ = deleting.dispatch(()))
-                                        .child(speech::said("feedback-delete")),
+                                    match given {
+                                        true => deleting_given(&asked, deleting).into_any(),
+                                        false => html::button()
+                                            .r#type("button")
+                                            .attr("aria-label", speech::said(delete))
+                                            .disabled(move || deleting.pending().get())
+                                            .on(ev::click, move |_| _ = deleting.dispatch(()))
+                                            .child(speech::said("feedback-delete"))
+                                            .into_any(),
+                                    },
                                 ))
                             }),
-                            given
-                                .then(|| done_mark(done, shown_done, marking_done, column.marking)),
+                            (given && !yours).then_some(move || {
+                                column.allowed.deleting.get().then(|| {
+                                    html::div()
+                                        .class("note-actions")
+                                        .child(deleting_given(&asked, deleting))
+                                })
+                            }),
+                            given.then(|| {
+                                done_mark(done, shown_done, marking_done, column.allowed.marking)
+                            }),
                         )),
                     )
                         .into_any()
                 }
             },
         ))
+}
+
+/// What is asked before a piece of feedback given is deleted: whether yours goes for good,
+/// or, as an owner deletes someone else's, whether theirs does, naming them.
+pub(crate) fn deleting_asked_of(piece: &Feedback) -> String {
+    match piece.by_you {
+        true => speech::say("feedback-delete-yours-asked"),
+        false => speech::say_about("feedback-delete-theirs-asked", "who", &writer_of(piece)),
+    }
+}
+
+/// The way to delete feedback given, by whoever wrote it or by an owner of the project: a small trash can.
+/// It asks first, as once deleted it is gone for everyone.
+pub(crate) fn deleting_given(asked: &str, deleting: Action<(), ()>) -> impl IntoView + use<> {
+    let asked = asked.to_owned();
+    let asking = RwSignal::new(false);
+
+    (
+        html::button()
+            .r#type("button")
+            .class("delete-given")
+            .attr("aria-label", speech::said("feedback-delete-comment"))
+            .attr("title", speech::said("feedback-delete-comment"))
+            .disabled(move || deleting.pending().get())
+            .on(ev::click, move |_| asking.set(true))
+            .child(icons::mark(Icon::Trash)),
+        move || {
+            asking.get().then(|| {
+                let asked = asked.clone();
+
+                view! { <Portal>{deleting_asked(asked.clone(), deleting, asking)}</Portal> }
+            })
+        },
+    )
+}
+
+/// Asks before feedback given is deleted.
+fn deleting_asked(
+    asked: String,
+    deleting: Action<(), ()>,
+    asking: RwSignal<bool>,
+) -> impl IntoView {
+    let close = move || asking.set(false);
+
+    dialog::modal(
+        Signal::derive(move || asked.clone()),
+        "delete-feedback",
+        close,
+        (
+            html::p().child(speech::said("feedback-delete-theirs-fate")),
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| close())
+                    .child(speech::said("feedback-delete-keep")),
+                html::button()
+                    .r#type("button")
+                    .class("danger")
+                    .on(ev::click, move |_| {
+                        close();
+                        deleting.dispatch(());
+                    })
+                    .child(speech::said("feedback-delete-for-good")),
+            )),
+        ),
+    )
 }
 
 /// How long a piece marked done or not done stays where it is, so its check is seen drawn in, before it fades out,

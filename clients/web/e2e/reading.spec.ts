@@ -2032,8 +2032,12 @@ test("your drafts are submitted together, then shown as feedback given, not done
   const changed = yours.locator(".note", { hasText: "Lovely. Truly." });
   await expect(changed.locator(".who")).toContainText("edited");
 
-  // when: it is deleted
+  // when: it is deleted, once asked
   await changed.getByRole("button", { name: "Delete this comment" }).click();
+  await page
+    .getByRole("dialog", { name: "Delete your comment for good?" })
+    .getByRole("button", { name: "Delete for good" })
+    .click();
   // then: one is left
   await expect(
     given.getByRole("heading", { name: "Feedback · 1" }),
@@ -2767,4 +2771,110 @@ test("the feedback view narrows to what is about one scene, one section with eve
   // then: both are yours, and counted pending by the same narrowing
   await expect(notes).toHaveCount(2);
   await expect(pending).toHaveText("Pending · 2");
+});
+
+/// Tells the feedback listed as given by Grace wherever it says so, as if she wrote it,
+/// since without accounts all feedback is the one person's own.
+async function givenByGrace(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/api/feedback/on",
+    async (route) => {
+      const listed = await route.fetch();
+      const pieces = (await listed.json()) as {
+        comment: { runs: { text: string }[] }[];
+        by_you: boolean;
+        written_by: string | null;
+      }[];
+      for (const piece of pieces) {
+        if (JSON.stringify(piece.comment).includes("Grace")) {
+          piece.by_you = false;
+          piece.written_by = "Grace";
+        }
+      }
+      await route.fulfill({ response: listed, json: pieces });
+    },
+  );
+}
+
+test("feedback given is deleted once asked, an owner's of anyone, in the copy and in the feedback view", async ({
+  page,
+}) => {
+  // given: a copy with feedback given by Grace and by you, Grace's told as hers
+  await aCopyOfABookWritten(page, "ReadingOwnerDeletes");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submit = async () => {
+    const submitted = await page.request.post(
+      `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+    );
+    expect(submitted.ok(), await submitted.text()).toBe(true);
+  };
+  await aDraftOn(page, { kind: "whole" }, "Grace says: lovely.");
+  await aDraftOn(page, { kind: "whole" }, "Mine.");
+  await submit();
+  await givenByGrace(page);
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  const given = feedback(page).getByRole("region", { name: "Feedback given" });
+  const graces = given.locator(".note", { hasText: "Grace says" });
+  await expect(graces.locator(".who")).toContainText("Grace");
+
+  // when: Grace's is to be deleted, then kept after all
+  await graces.getByRole("button", { name: "Delete this comment" }).click();
+  const asked = page.getByRole("dialog", {
+    name: "Delete this comment by Grace for good?",
+  });
+  await expect(asked).toContainText("gone for everyone");
+  await expect(graces.getByRole("button", { name: "Change" })).toHaveCount(0);
+  await asked.getByRole("button", { name: "Keep it" }).click();
+  // then: it stays
+  await expect(asked).toHaveCount(0);
+  await expect(given.locator(".note")).toHaveCount(2);
+
+  // when: it is deleted for good
+  await graces.getByRole("button", { name: "Delete this comment" }).click();
+  await asked.getByRole("button", { name: "Delete for good" }).click();
+  // then: only yours is left, read again too
+  await expect(graces).toHaveCount(0);
+  await expect(
+    given.getByRole("heading", { name: "Feedback · 1" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(given.locator(".note")).toHaveCount(1);
+
+  // given: Grace gave more
+  await aDraftOn(page, { kind: "whole" }, "Grace again.");
+  await submit();
+
+  // when: it is deleted from the feedback view, once asked
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+  const notes = feedbackView(page).locator(".note");
+  await expect(notes).toHaveCount(2);
+  await notes
+    .filter({ hasText: "Grace again." })
+    .getByRole("button", { name: "Delete this comment" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Delete this comment by Grace for good?" })
+    .getByRole("button", { name: "Delete for good" })
+    .click();
+
+  // then: only yours is left
+  await expect(notes).toHaveCount(1);
+  await expect(notes.nth(0)).toContainText("Mine.");
+
+  // when: yours is deleted there too, once asked
+  await notes
+    .nth(0)
+    .getByRole("button", { name: "Delete this comment" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Delete your comment for good?" })
+    .getByRole("button", { name: "Delete for good" })
+    .click();
+  // then: none is left
+  await expect(notes).toHaveCount(0);
 });

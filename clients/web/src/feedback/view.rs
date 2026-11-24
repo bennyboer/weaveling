@@ -5,12 +5,12 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
+use crate::feedback::column::Allowed;
 use crate::feedback::model::{About, Feedback, FeedbackId, Giver, ReadingCopyPlace};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
 use crate::icons;
 use crate::icons::Icon;
-use crate::members::roles::Roles;
 use crate::outline::model::SectionId;
 use crate::projects::model::ProjectId;
 use crate::readings::model::Book;
@@ -215,12 +215,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
         });
     }
     let slug = project.clone();
-    let marking = {
-        let roles = expect_context::<Roles>();
-        let project = project.clone();
-
-        Signal::derive(move || roles.may_write(&project))
-    };
+    let allowed = Allowed::in_project(&project);
     let pending = LocalResource::new({
         move || {
             pieces.track();
@@ -298,7 +293,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                 .each(move || pieces.get())
                 .key(Clone::clone)
                 .children(move |piece| {
-                    a_piece(piece, pieces, showing, copies, book, marking, slug.clone())
+                    a_piece(piece, pieces, showing, copies, book, allowed, slug.clone())
                 })
                 .build())),
         move || {
@@ -473,7 +468,7 @@ fn a_piece(
     showing: RwSignal<Showing>,
     copies: LocalResource<HashMap<ReadingCopyId, ListedReadingCopy>>,
     book: RwSignal<Option<Book>>,
-    marking: Signal<bool>,
+    allowed: Allowed,
     project: String,
 ) -> impl IntoView {
     let id: FeedbackId = piece.id.clone();
@@ -514,6 +509,21 @@ fn a_piece(
             }
         }
     });
+    let deleting = Action::new_local({
+        let id = piece.id.clone();
+
+        move |_: &()| {
+            let id = id.clone();
+
+            async move {
+                if service::delete(&id).await.is_ok() {
+                    _ = pieces.try_update(|held| held.retain(|piece| piece.id != id));
+                }
+            }
+        }
+    });
+    let yours = piece.by_you;
+    let asked = column::deleting_asked_of(&piece);
     let (about, said_on, opened) = told_of(&piece, &project, copies, book);
 
     html::article()
@@ -529,7 +539,11 @@ fn a_piece(
                 .child(column::comment(&piece.comment)),
             html::div().class("note-foot").child((
                 opened,
-                column::done_mark(done, shown_done, marking_done, marking),
+                move || {
+                    (yours || allowed.deleting.get())
+                        .then(|| column::deleting_given(&asked, deleting))
+                },
+                column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
         ))
 }
