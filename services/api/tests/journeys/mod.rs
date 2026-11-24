@@ -371,6 +371,45 @@ impl<B: Backend> Journey<B> {
             .assert_status(StatusCode::NO_CONTENT);
     }
 
+    /// A reading copy of the whole of a project, open and kept without end.
+    pub async fn reading_copy(&self, project: &str) -> String {
+        id_in(
+            &self
+                .posted(
+                    "/api/readings/copies",
+                    json!({
+                        "project": project,
+                        "name": "For Lena",
+                        "shared": { "kind": "book" },
+                        "open_until": null,
+                        "deleted_on": null,
+                    }),
+                    StatusCode::CREATED,
+                )
+                .await,
+            "id",
+        )
+    }
+
+    /// A draft on the whole of a reading copy, begun once the feedback has heard of the copy, as it does a moment after it is made.
+    pub async fn drafted_in(&self, copy: &str, saying: &str) -> String {
+        let draft = json!({
+            "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
+            "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": saying }] }],
+        });
+        for _ in 0..1_000 {
+            let response = self.server.post("/api/feedback").json(&draft).await;
+            if response.status_code() == StatusCode::CREATED {
+                return id_in(&response.json(), "id");
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        panic!(
+            "the feedback should hear of the copy and of the project it was made of, and take the draft"
+        )
+    }
+
     pub async fn read(&self, path: &str) -> Value {
         self.server.get(path).await.json()
     }
@@ -1371,41 +1410,10 @@ pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_eras
     // given: a reading copy of a project on a relayed server
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Kept feedback").await;
-    let copy = id_in(
-        &journey
-            .posted(
-                "/api/readings/copies",
-                json!({
-                    "project": project,
-                    "name": "For Lena",
-                    "shared": { "kind": "book" },
-                    "open_until": null,
-                    "deleted_on": null,
-                }),
-                StatusCode::CREATED,
-            )
-            .await,
-        "id",
-    );
+    let copy = journey.reading_copy(&project).await;
 
-    // when: a draft is begun in it, once the feedback has heard of the copy
-    let draft = json!({
-        "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
-        "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": "Lovely." }] }],
-    });
-    assert!(
-        until(|| async {
-            journey
-                .server
-                .post("/api/feedback")
-                .json(&draft)
-                .await
-                .status_code()
-                == StatusCode::CREATED
-        })
-        .await,
-        "the feedback should hear of the copy, and of the project it was made of, and take the draft"
-    );
+    // when: a draft is begun in it
+    let piece = journey.drafted_in(&copy, "Lovely.").await;
 
     // then: the feedback database keeps the piece and its event
     assert_eq!(
@@ -1433,15 +1441,6 @@ pub async fn a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_eras
     );
 
     // when: the draft is deleted
-    let drafted = journey
-        .read(&format!(
-            "/api/feedback/drafts?subjects=reading_copy:{copy}"
-        ))
-        .await;
-    let piece = drafted[0]["id"]
-        .as_str()
-        .expect("a draft has an id")
-        .to_owned();
     journey
         .server
         .delete(&format!("/api/feedback/{piece}"))
@@ -1481,41 +1480,8 @@ pub async fn a_deleted_reading_copy_takes_its_feedback_with_it<B: Backend>() {
     // given: a reading copy with feedback given in it and a draft
     let journey = Journey::<B>::relayed().await;
     let project = journey.project("Swept feedback").await;
-    let copy = id_in(
-        &journey
-            .posted(
-                "/api/readings/copies",
-                json!({
-                    "project": project,
-                    "name": "For Lena",
-                    "shared": { "kind": "book" },
-                    "open_until": null,
-                    "deleted_on": null,
-                }),
-                StatusCode::CREATED,
-            )
-            .await,
-        "id",
-    );
-    let saying = |text: &str| {
-        json!({
-            "about": { "kind": "reading_copy", "reading_copy": copy, "place": { "kind": "whole" } },
-            "comment": [{ "kind": "paragraph", "runs": [{ "kind": "text", "text": text }] }],
-        })
-    };
-    assert!(
-        until(|| async {
-            journey
-                .server
-                .post("/api/feedback")
-                .json(&saying("Lovely."))
-                .await
-                .status_code()
-                == StatusCode::CREATED
-        })
-        .await,
-        "the feedback should hear of the copy and take the draft"
-    );
+    let copy = journey.reading_copy(&project).await;
+    journey.drafted_in(&copy, "Lovely.").await;
     journey
         .server
         .post(&format!(
@@ -1523,12 +1489,7 @@ pub async fn a_deleted_reading_copy_takes_its_feedback_with_it<B: Backend>() {
         ))
         .await
         .assert_status_ok();
-    journey
-        .server
-        .post("/api/feedback")
-        .json(&saying("Still thinking."))
-        .await
-        .assert_status(StatusCode::CREATED);
+    journey.drafted_in(&copy, "Still thinking.").await;
 
     // when: the copy is deleted
     journey
@@ -1563,6 +1524,54 @@ pub async fn a_deleted_reading_copy_takes_its_feedback_with_it<B: Backend>() {
     journey.end().await;
 }
 
+pub async fn a_deleted_project_takes_the_feedback_in_its_copies_with_it<B: Backend>() {
+    // given: a project with feedback given in a reading copy of it and a draft
+    let journey = Journey::<B>::relayed().await;
+    let project = journey.project("Doomed feedback").await;
+    let copy = journey.reading_copy(&project).await;
+    journey.drafted_in(&copy, "Lovely.").await;
+    journey
+        .server
+        .post(&format!(
+            "/api/feedback/submitted?subjects=reading_copy:{copy}"
+        ))
+        .await
+        .assert_status_ok();
+    journey.drafted_in(&copy, "Still thinking.").await;
+
+    // when: the project is deleted long ago and the trash purged
+    journey
+        .deleted_long_ago(&format!("/api/projects/{project}"))
+        .await;
+    journey.purge_the_trash().await;
+
+    // then: the readings delete its copy, and the feedback sweeps what was given in it, drafts and all
+    assert!(
+        until(|| async {
+            journey
+                .backend
+                .count("feedback", "SELECT count(*) FROM feedback")
+                .await
+                == 0
+        })
+        .await,
+        "the project's deletion should reach the readings, whose copy's deletion reaches the feedback"
+    );
+    // and: no word of it is kept
+    assert_eq!(
+        journey
+            .backend
+            .count(
+                "feedback",
+                "SELECT count(*) FROM events WHERE CAST(body AS TEXT) LIKE '%Lovely%' OR CAST(body AS TEXT) LIKE '%thinking%'"
+            )
+            .await,
+        0,
+        "the words of a deleted project's feedback are erased with it"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -1592,6 +1601,7 @@ macro_rules! journeys {
             an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into,
             a_draft_in_a_reading_copy_is_kept_in_the_feedback_database_and_erased_once_deleted,
             a_deleted_reading_copy_takes_its_feedback_with_it,
+            a_deleted_project_takes_the_feedback_in_its_copies_with_it,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {
