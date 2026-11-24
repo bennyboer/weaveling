@@ -82,6 +82,22 @@ export function heardOn(page: Page, topic: string, heard: () => void, about: Abo
   );
 }
 
+/** Settles once the server says a subscription on a topic is followed, from when on no change to it is missed. */
+export function followedOn(page: Page, topic: string, about: About = {}): Promise<void> {
+  return new Promise((resolve) =>
+    onLive(
+      page,
+      () => {},
+      (told, topics) => {
+        const subscription = topics.get(told.id);
+        if (told.told === "following" && subscription && matches(subscription, topic, about)) {
+          resolve();
+        }
+      },
+    ),
+  );
+}
+
 export type Told = { version: number; event?: unknown };
 
 /** Every frame told on a topic, in the order heard: a live view is told first where it stands, a frame with no event, and after that each change by its version. */

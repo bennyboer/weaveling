@@ -9,6 +9,7 @@ use crate::accounts;
 use crate::accounts::{CurrentSession, SignInState};
 use crate::avatar;
 use crate::feedback;
+use crate::feedback::followed::FollowedFeedback;
 use crate::icons;
 use crate::icons::Icon;
 use crate::members::listed::Member;
@@ -156,7 +157,10 @@ pub struct Views {
 impl Views {
     fn of(project: &str, here: Option<Viewing>) -> Self {
         let id = route::project_id(project);
+        let followed = expect_context::<FollowedFeedback>();
+        followed.follow(&id.to_string());
         let pending = LocalResource::new(move || {
+            followed.track();
             let id = id.clone();
 
             async move {

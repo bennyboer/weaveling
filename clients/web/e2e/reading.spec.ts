@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookShaped, aBookWithScenes } from "./support/book";
-import { routingLive } from "./support/live";
+import { followedOn, routingLive } from "./support/live";
 import {
   aNewProject,
   API,
@@ -2877,4 +2877,45 @@ test("feedback given is deleted once asked, an owner's of anyone, in the copy an
     .click();
   // then: none is left
   await expect(notes).toHaveCount(0);
+});
+
+test("feedback given elsewhere shows without reading again, in the copy's column, the views' count and the feedback view", async ({
+  page,
+}) => {
+  // given: a copy open with its feedback, the feedback given in its project followed
+  const following = followedOn(page, "feedback");
+  await aCopyOfABookWritten(page, "ReadingFollowed");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await following;
+  const given = feedback(page).getByRole("region", { name: "Feedback given" });
+
+  // when: feedback is given in the copy elsewhere
+  await aDraftOn(page, { kind: "whole" }, "Lovely.");
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  const [lovely] = (await submitted.json()) as { id: string }[];
+
+  // then: it shows in the column, and the views count it pending
+  await expect(given.locator(".note", { hasText: "Lovely." })).toBeVisible();
+  await expect(views(page).locator(".count")).toHaveText("1");
+
+  // when: the feedback view is open, and the piece is marked done elsewhere
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+  const notes = feedbackView(page).locator(".note");
+  await expect(notes).toHaveCount(1);
+  const marked = await page.request.put(`${API}/feedback/${lovely.id}/done`);
+  expect(marked.ok(), await marked.text()).toBe(true);
+
+  // then: it is pending no more there
+  await expect(notes).toHaveCount(0);
+  await expect(
+    feedbackView(page).getByRole("button", { name: "Pending", exact: true }),
+  ).toBeVisible();
 });

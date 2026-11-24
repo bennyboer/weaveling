@@ -4,6 +4,7 @@ use std::time::Duration;
 use feedback_contract::status;
 use leptos::prelude::*;
 
+use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{Pending, PendingPassage};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
@@ -17,7 +18,8 @@ const GATHERED_FOR: Duration = Duration::from_millis(100);
 /// The feedback given and pending, not done yet, in the project being written: how much on each scene and on each section itself,
 /// for the whole book, and the passages it is about in the scenes drawn now alone, so a long book with much feedback
 /// asks only for what is in sight. Each scene drawn is watched until it is let go of; the passages of scenes coming
-/// into sight are asked for together. All of it is asked for again whenever a piece is marked done or not done there.
+/// into sight are asked for together. All of it is asked for again whenever a piece is marked done or not done there,
+/// and whenever the feedback given in the project changes, as it is followed live.
 #[derive(Clone, Copy)]
 pub struct PendingHere {
     project: StoredValue<ProjectId>,
@@ -39,6 +41,13 @@ impl PendingHere {
             gathering: StoredValue::new_local(None),
         };
         here.counted_again();
+        let followed = expect_context::<FollowedFeedback>();
+        Effect::new(move |heard_before: Option<()>| {
+            followed.track();
+            if heard_before.is_some() {
+                here.again();
+            }
+        });
 
         here
     }

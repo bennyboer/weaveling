@@ -11,6 +11,7 @@ use crate::dialog;
 use crate::drawer;
 use crate::drawer::{Drawer, Edge, Inside};
 use crate::feedback::composer;
+use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{
     About, CommentBlock, CommentRun, Feedback, FeedbackId, ReadingCopyPlace,
 };
@@ -219,19 +220,30 @@ pub fn on_reading_copy(
     });
     {
         let copy = copy.clone();
-        leptos::task::spawn_local(async move {
-            let asked = Asked::in_copy(&copy);
-            let found = match service::submitted(&asked, None).await {
-                Ok(mut found) => service::drafts(&asked).await.map(|drafts| {
-                    found.extend(drafts);
-                    found
-                }),
-                Err(failure) => Err(failure),
-            };
-            match found {
-                Ok(found) => _ = column.feedback.try_set(found),
-                Err(failure) => _ = column.failed.try_set(Some(failure)),
-            }
+        let followed = expect_context::<FollowedFeedback>();
+        let asked_last = StoredValue::new(0_u64);
+        Effect::new(move |_| {
+            followed.track();
+            let copy = copy.clone();
+            let asking = asked_last.get_value() + 1;
+            asked_last.set_value(asking);
+            leptos::task::spawn_local(async move {
+                let asked = Asked::in_copy(&copy);
+                let found = match service::submitted(&asked, None).await {
+                    Ok(mut found) => service::drafts(&asked).await.map(|drafts| {
+                        found.extend(drafts);
+                        found
+                    }),
+                    Err(failure) => Err(failure),
+                };
+                if asked_last.try_get_value() != Some(asking) {
+                    return;
+                }
+                match found {
+                    Ok(found) => _ = column.feedback.try_set(found),
+                    Err(failure) => _ = column.failed.try_set(Some(failure)),
+                }
+            });
         });
     }
     pointed_at_when_asked(column);

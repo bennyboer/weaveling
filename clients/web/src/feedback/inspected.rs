@@ -3,6 +3,7 @@ use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
 use crate::feedback::column::Allowed;
+use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{About, Feedback, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
@@ -38,23 +39,32 @@ pub fn on_section(section: SectionId, project: String) -> impl IntoView {
 fn given_in(inspected: Inspected, project: String) -> impl IntoView {
     let given = RwSignal::new(Vec::<Feedback>::new());
     {
-        let inspected = inspected.clone();
-        let in_project = Asked::in_project(&route::project_id(&project));
-        leptos::task::spawn_local(async move {
-            let asked = match &inspected {
-                Inspected::Scene(scene) => Asked {
-                    scenes: vec![scene.clone()],
-                    ..in_project
-                },
-                Inspected::Section(section) => Asked {
-                    sections: vec![section.clone()],
-                    ..in_project
-                },
-            };
-            let found = service::submitted(&asked, None).await;
-            if let Ok(found) = found {
-                _ = given.try_set(found);
-            }
+        let asked = match &inspected {
+            Inspected::Scene(scene) => Asked {
+                scenes: vec![scene.clone()],
+                ..Asked::in_project(&route::project_id(&project))
+            },
+            Inspected::Section(section) => Asked {
+                sections: vec![section.clone()],
+                ..Asked::in_project(&route::project_id(&project))
+            },
+        };
+        let followed = expect_context::<FollowedFeedback>();
+        let asked_last = StoredValue::new(0_u64);
+        Effect::new(move |_| {
+            followed.track();
+            let asked = asked.clone();
+            let asking = asked_last.get_value() + 1;
+            asked_last.set_value(asking);
+            leptos::task::spawn_local(async move {
+                let found = service::submitted(&asked, None).await;
+                if asked_last.try_get_value() != Some(asking) {
+                    return;
+                }
+                if let Ok(found) = found {
+                    _ = given.try_set(found);
+                }
+            });
         });
     }
     let (none_yet, on_the_whole) = match inspected {

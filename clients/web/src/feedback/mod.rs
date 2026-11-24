@@ -1,5 +1,6 @@
 pub mod column;
 pub mod composer;
+pub mod followed;
 pub mod inspected;
 pub mod marks;
 pub mod model;

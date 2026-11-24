@@ -37,6 +37,7 @@ use crate::app::lazy::{
 use crate::app::missing::MissingPage;
 use crate::app::trash::{TrashPage, TrashPageProps};
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
+use crate::feedback::followed::FollowedFeedback;
 use crate::members::roles::Roles;
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
@@ -57,6 +58,7 @@ pub fn App() -> impl IntoView {
     provide_context(QuietNote::none());
     provide_context(session);
     provide_context(Roles::followed());
+    provide_context(FollowedFeedback::none());
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {

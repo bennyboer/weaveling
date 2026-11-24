@@ -6,6 +6,7 @@ use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
 use crate::feedback::column::Allowed;
+use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{About, Feedback, FeedbackId, Giver, ReadingCopyPlace};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
@@ -19,6 +20,15 @@ use crate::readings::service as readings;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::speech;
+
+/// Which pieces are asked for: the first page, as what is shown was asked for anew;
+/// as many as are shown, as the feedback given changed meanwhile; or the next page after them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Paged {
+    Afresh,
+    Again,
+    More,
+}
 
 /// How many pieces a page of the feedback view holds.
 const A_PAGE: usize = 50;
@@ -142,13 +152,18 @@ pub fn feedback_view(project: String) -> impl IntoView {
     let paging = Action::new_local({
         let id = id.clone();
 
-        move |going_on: &bool| {
+        move |paged: &Paged| {
             let id = id.clone();
+            let going_on = *paged == Paged::More;
             let after = going_on
                 .then(|| {
                     pieces.with_untracked(|pieces| pieces.last().map(|piece| piece.id.clone()))
                 })
                 .flatten();
+            let limit = match paged {
+                Paged::Again => pieces.with_untracked(Vec::len).max(A_PAGE),
+                Paged::Afresh | Paged::More => A_PAGE,
+            };
             let status = showing.get_untracked().status();
             let asked = asked.get_untracked();
             let order = if newest_first.get_untracked() {
@@ -156,11 +171,10 @@ pub fn feedback_view(project: String) -> impl IntoView {
             } else {
                 order::OLDEST
             };
-            let going_on = *going_on;
 
             async move {
                 let Ok(found) =
-                    service::page_in(&asked, status, order, after.as_ref(), A_PAGE).await
+                    service::page_in(&asked, status, order, after.as_ref(), limit).await
                 else {
                     return;
                 };
@@ -172,7 +186,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                             .await
                             .is_ok_and(|any| any.is_empty()));
                 _ = none_at_all.try_set(none_given);
-                _ = more.try_set(found.len() == A_PAGE);
+                _ = more.try_set(found.len() == limit);
                 _ = pieces.try_update(|pieces| {
                     if !going_on {
                         pieces.clear();
@@ -188,7 +202,14 @@ pub fn feedback_view(project: String) -> impl IntoView {
         newest_first.track();
         narrowed.track();
         by.track();
-        paging.dispatch(false);
+        paging.dispatch(Paged::Afresh);
+    });
+    let followed = expect_context::<FollowedFeedback>();
+    Effect::new(move |heard_before: Option<()>| {
+        followed.track();
+        if heard_before.is_some() {
+            paging.dispatch(Paged::Again);
+        }
     });
     let copies = LocalResource::new({
         let id = id.clone();
@@ -302,7 +323,7 @@ pub fn feedback_view(project: String) -> impl IntoView {
                     .r#type("button")
                     .class("show-more")
                     .disabled(move || paging.pending().get())
-                    .on(ev::click, move |_| _ = paging.dispatch(true))
+                    .on(ev::click, move |_| _ = paging.dispatch(Paged::More))
                     .child(speech::said("feedback-show-more"))
             })
         },
