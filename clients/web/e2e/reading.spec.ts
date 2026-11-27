@@ -2987,7 +2987,9 @@ test("a comment given is replied to in the copy's column, the reply sent at once
   await reply.getByRole("button", { name: "Reply to this reply" }).click();
   // then: the answer begins quoting it, by whom, and is written after the quote
   const answer = thread.getByRole("textbox", { name: "Your comment" });
-  await expect(answer.locator("blockquote")).toHaveText("You: The fishing boats.");
+  await expect(answer.locator("blockquote")).toHaveText(
+    "You: The fishing boats.",
+  );
   await page.keyboard.type("Thanks!");
   await expect(answer.locator("p").last()).toHaveText("Thanks!");
   await thread.getByRole("button", { name: "Cancel" }).click();
@@ -3030,4 +3032,83 @@ test("a comment given is replied to in the copy's column, the reply sent at once
   await expect(
     thread.getByRole("button", { name: /repl(y|ies)$/ }),
   ).toHaveCount(0);
+});
+
+test("a comment's thread is read and replied to in the feedback view, and read in the scene's inspector", async ({
+  page,
+}) => {
+  // given: a copy of a written book, its first scene commented on and the comment replied to
+  const { placed } = await aBookWritten(page, "ThreadsElsewhere");
+  await aCopyMade(page, {
+    name: "As written",
+    shared: { kind: "book" },
+    open_until: null,
+    deleted_on: null,
+  });
+  await copiesListed(page, ["As written"]);
+  await openTheReadingView(page);
+  await switcher(page).click();
+  await whatToRead(page)
+    .getByRole("link", { name: /As written/ })
+    .click();
+  await expect(switcher(page)).toContainText("As written");
+  await aDraftOn(page, { kind: "scene", scene: placed.harbour }, "Slow start.");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  const [root] = (await submitted.json()) as { id: string }[];
+  const replied = await page.request.post(`${API}/feedback`, {
+    data: {
+      about: { kind: "feedback", feedback: root.id },
+      comment: [
+        {
+          kind: "paragraph",
+          runs: [{ kind: "text", text: "It speeds up later." }],
+        },
+      ],
+    },
+  });
+  expect(replied.ok(), await replied.text()).toBe(true);
+
+  // when: the feedback view is opened, and the comment's thread
+  await views(page)
+    .getByRole("link", { name: /^Feedback/ })
+    .click();
+  const thread = feedbackView(page)
+    .locator(".note", { hasText: "Slow start." })
+    .getByRole("region", { name: "Replies" });
+  await thread.getByRole("button", { name: "1 reply" }).click();
+
+  // then: the reply is there
+  await expect(thread.locator(".reply")).toHaveText(/It speeds up later\./);
+
+  // when: it is replied to from there
+  await thread.getByRole("button", { name: "Reply to this comment" }).click();
+  await thread
+    .getByRole("textbox", { name: "Your comment" })
+    .fill("I'll tighten it.");
+  await thread.getByRole("button", { name: "Send reply" }).click();
+
+  // then: the thread holds both, in the order sent
+  await expect(thread.locator(".reply")).toHaveCount(2);
+  await expect(thread.locator(".reply").last()).toContainText(
+    "I'll tighten it.",
+  );
+
+  // when: the scene's feedback is opened in the writing view
+  await openView(page, "Write");
+  await page
+    .locator(`.scene-row[data-scene-row="${placed.harbour}"]`)
+    .getByRole("button", { name: "1 comment not done on this scene" })
+    .click();
+  const inInspector = page
+    .getByRole("complementary", { name: "This scene" })
+    .getByRole("region", { name: "Feedback" })
+    .getByRole("region", { name: "Replies" });
+
+  // then: the comment counts both replies, and opens them
+  await inInspector.getByRole("button", { name: "2 replies" }).click();
+  await expect(inInspector.locator(".reply")).toHaveCount(2);
 });

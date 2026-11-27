@@ -9,6 +9,7 @@ use crate::feedback::model::{About, Feedback, FeedbackId, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
 use crate::feedback::service::Asked;
+use crate::feedback::thread;
 use crate::outline::model::SectionId;
 use crate::readings::reading_copies::{ListedReadingCopy, ReadingCopyId};
 use crate::readings::service as readings;
@@ -334,6 +335,8 @@ fn a_piece(
             .into_any(),
     };
 
+    let replies = thread::thread(piece.id.clone(), piece.replies);
+
     html::article()
         .class("note")
         .class(("leaving", move || leaving.get()))
@@ -355,6 +358,7 @@ fn a_piece(
                 },
                 column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
+            replies,
         ))
 }
 

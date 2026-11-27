@@ -12,6 +12,7 @@ use crate::feedback::followed::FollowedFeedback;
 use crate::feedback::model::{About, Feedback, FeedbackId, Giver, ReadingCopyPlace};
 use crate::feedback::service;
 use crate::feedback::service::Asked;
+use crate::feedback::thread;
 use crate::icons;
 use crate::icons::Icon;
 use crate::moment;
@@ -609,6 +610,8 @@ fn a_piece(
     let asked = column::deleting_asked_of(&piece);
     let (about, said_on, opened) = told_of(&piece, &project, copies, book);
 
+    let replies = thread::thread(piece.id.clone(), piece.replies);
+
     html::article()
         .class("note")
         .class(("leaving", move || leaving.get()))
@@ -629,6 +632,7 @@ fn a_piece(
                 },
                 column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
+            replies,
         ))
 }
 
