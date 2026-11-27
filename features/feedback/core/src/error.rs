@@ -32,6 +32,8 @@ pub enum FeedbackError {
     ProjectUnnamed,
     #[error("only the authors and owners of a project mark its feedback done")]
     MarkedByAuthorsAlone,
+    #[error("a reply is never marked done, as being done stays with the comment it replies to")]
+    ReplyNotMarked,
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
     #[error(transparent)]
@@ -50,6 +52,7 @@ impl From<ServiceError<FeedbackRefused>> for FeedbackError {
         match failure {
             ServiceError::Refused(FeedbackRefused::NotYours) => FeedbackError::NotYours,
             ServiceError::Refused(FeedbackRefused::PassageEmpty) => FeedbackError::PassageEmpty,
+            ServiceError::Refused(FeedbackRefused::ReplyNotMarked) => FeedbackError::ReplyNotMarked,
             ServiceError::Refused(
                 FeedbackRefused::NotSubmitted
                 | FeedbackRefused::Deleted

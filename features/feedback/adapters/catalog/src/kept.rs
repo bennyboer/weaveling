@@ -1,8 +1,10 @@
 //! What a piece is about and what it says, and who wrote it, as the catalog's tables keep them, in their own form.
 
 use eventsourcing::{AccountId, Agent};
+use std::str::FromStr;
+
 use feedback_core::{
-    About, BlockPath, CatalogError, Comment, CommentBlock, CommentRun, ReadingCopyLink,
+    About, BlockPath, CatalogError, Comment, CommentBlock, CommentRun, FeedbackId, ReadingCopyLink,
     ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
 use serde::{Deserialize, Serialize};
@@ -14,6 +16,15 @@ enum KeptAbout {
         reading_copy: String,
         place: KeptPlace,
     },
+    Feedback {
+        feedback: String,
+        on: KeptSubject,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+enum KeptSubject {
+    ReadingCopy(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -92,6 +103,12 @@ pub(crate) fn about_to_json(about: &About) -> String {
                 ReadingCopyPlace::Whole => KeptPlace::Whole,
             },
         },
+        About::Feedback { feedback, on } => KeptAbout::Feedback {
+            feedback: feedback.to_string(),
+            on: match on {
+                Subject::ReadingCopy(copy) => KeptSubject::ReadingCopy(copy.to_string()),
+            },
+        },
     };
 
     serde_json::to_string(&kept).expect("what a piece is about is plain data")
@@ -125,6 +142,13 @@ pub(crate) fn about_from_json(json: &str) -> Result<About, CatalogError> {
                     ReadingCopyPlace::Section(SectionLink::from(section))
                 }
                 KeptPlace::Whole => ReadingCopyPlace::Whole,
+            },
+        },
+        KeptAbout::Feedback { feedback, on } => About::Feedback {
+            feedback: FeedbackId::from_str(&feedback)
+                .map_err(|_| unreadable(NoLongerReadable("the piece a reply answers")))?,
+            on: match on {
+                KeptSubject::ReadingCopy(copy) => Subject::ReadingCopy(ReadingCopyLink::from(copy)),
             },
         },
     })
@@ -283,5 +307,20 @@ mod tests {
 
         // then: it is the same comment
         assert_eq!(read.ok(), Some(comment));
+    }
+
+    #[test]
+    fn a_reply_is_read_back_on_its_root_in_the_root_s_subject() {
+        // given: a reply's root and subject
+        let about = About::Feedback {
+            feedback: FeedbackId::generate(time::OffsetDateTime::UNIX_EPOCH),
+            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
+        };
+
+        // when: it is kept and read back
+        let read = about_from_json(&about_to_json(&about));
+
+        // then: it is the same
+        assert_eq!(read.ok(), Some(about));
     }
 }

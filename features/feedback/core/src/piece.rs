@@ -6,7 +6,7 @@ use projects_contract::context;
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::about::About;
+use crate::about::{About, Subject};
 use crate::comment::Comment;
 use crate::id::FeedbackId;
 use crate::link::ProjectLink;
@@ -32,6 +32,13 @@ pub enum FeedbackCommand {
     Draft {
         project: ProjectLink,
         about: About,
+        comment: Comment,
+    },
+    /// Replies on a piece given, sent at once: the reply is drafted and submitted together.
+    Reply {
+        project: ProjectLink,
+        to: FeedbackId,
+        on: Subject,
         comment: Comment,
     },
     Reword(Comment),
@@ -123,6 +130,10 @@ pub enum FeedbackRefused {
     NotSubmitted,
     #[error("a deleted piece of feedback accepts no changes")]
     Deleted,
+    #[error("a reply is sent at once, never drafted")]
+    RepliesSentAtOnce,
+    #[error("a reply is never marked done, as being done stays with the comment it replies to")]
+    ReplyNotMarked,
 }
 
 impl Feedback {
@@ -178,6 +189,20 @@ impl Feedback {
         }
     }
 
+    /// Whether it replies to another piece, being on a thread rather than on a subject itself.
+    pub fn is_reply(&self) -> bool {
+        self.about()
+            .is_some_and(|about| about.replying_to().is_some())
+    }
+
+    fn not_a_reply(&self) -> Result<(), FeedbackRefused> {
+        if self.is_reply() {
+            Err(FeedbackRefused::ReplyNotMarked)
+        } else {
+            Ok(())
+        }
+    }
+
     fn submitted(&self) -> Result<(), FeedbackRefused> {
         if self.is_draft() {
             Err(FeedbackRefused::NotSubmitted)
@@ -230,6 +255,9 @@ impl Aggregate for Feedback {
                 about,
                 comment,
             } => {
+                if about.replying_to().is_some() {
+                    return Err(FeedbackRefused::RepliesSentAtOnce);
+                }
                 if !about.holds_something() {
                     return Err(FeedbackRefused::PassageEmpty);
                 }
@@ -240,6 +268,19 @@ impl Aggregate for Feedback {
                     comment,
                 }])
             }
+            FeedbackCommand::Reply {
+                project,
+                to,
+                on,
+                comment,
+            } => Ok(vec![
+                FeedbackEvent::Drafted {
+                    project,
+                    about: About::Feedback { feedback: to, on },
+                    comment,
+                },
+                FeedbackEvent::Submitted,
+            ]),
             _ => Err(FeedbackRefused::NotDraftedYet),
         }
     }
@@ -297,7 +338,9 @@ impl Aggregate for Feedback {
         }
 
         match command {
-            FeedbackCommand::Draft { .. } => Err(FeedbackRefused::AlreadyDrafted),
+            FeedbackCommand::Draft { .. } | FeedbackCommand::Reply { .. } => {
+                Err(FeedbackRefused::AlreadyDrafted)
+            }
             FeedbackCommand::Reword(to) => {
                 self.by_its_writer(agent)?;
                 if self.comment() == Some(&to) {
@@ -315,6 +358,7 @@ impl Aggregate for Feedback {
                 Ok(vec![FeedbackEvent::Submitted])
             }
             FeedbackCommand::MarkDone => {
+                self.not_a_reply()?;
                 self.submitted()?;
                 if self.done {
                     return Ok(vec![]);
@@ -323,6 +367,7 @@ impl Aggregate for Feedback {
                 Ok(vec![FeedbackEvent::MarkedDone])
             }
             FeedbackCommand::MarkNotDone => {
+                self.not_a_reply()?;
                 self.submitted()?;
                 if !self.done {
                     return Ok(vec![]);

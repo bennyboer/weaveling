@@ -1,4 +1,5 @@
 use crate::block_path::BlockPath;
+use crate::id::FeedbackId;
 use crate::link::{ReadingCopyLink, SceneLink, SectionLink};
 
 /// What a piece of feedback is about: the thing it is given on, and where in it.
@@ -9,6 +10,9 @@ pub enum About {
         reading_copy: ReadingCopyLink,
         place: ReadingCopyPlace,
     },
+    /// A reply: the piece that began its thread, its root, and the subject the root is given on,
+    /// so who may see it, and until when it may be given, follows from the root without walking up the thread.
+    Feedback { feedback: FeedbackId, on: Subject },
 }
 
 /// The thing feedback is given on, whatever place in it a piece is about.
@@ -39,6 +43,15 @@ impl About {
     pub fn subject(&self) -> Subject {
         match self {
             Self::ReadingCopy { reading_copy, .. } => Subject::ReadingCopy(reading_copy.clone()),
+            Self::Feedback { on, .. } => on.clone(),
+        }
+    }
+
+    /// The piece it replies to, the root of its thread; none for anything but a reply.
+    pub fn replying_to(&self) -> Option<&FeedbackId> {
+        match self {
+            Self::Feedback { feedback, .. } => Some(feedback),
+            Self::ReadingCopy { .. } => None,
         }
     }
 
@@ -51,6 +64,7 @@ impl About {
                 }
                 ReadingCopyPlace::Section(_) | ReadingCopyPlace::Whole => None,
             },
+            Self::Feedback { .. } => None,
         }
     }
 
@@ -61,7 +75,7 @@ impl About {
                 place: ReadingCopyPlace::Section(section),
                 ..
             } => Some(section),
-            Self::ReadingCopy { .. } => None,
+            Self::ReadingCopy { .. } | Self::Feedback { .. } => None,
         }
     }
 
@@ -69,6 +83,7 @@ impl About {
     pub fn holds_something(&self) -> bool {
         match self {
             Self::ReadingCopy { place, .. } => place.holds_something(),
+            Self::Feedback { .. } => true,
         }
     }
 }

@@ -4,9 +4,12 @@ use eventsourcing::{
 use projects_contract::context::PROJECT;
 use time::{Duration, OffsetDateTime};
 
-use crate::about::{About, ReadingCopyPlace};
+use std::sync::LazyLock;
+
+use crate::about::{About, ReadingCopyPlace, Subject};
 use crate::block_path::BlockPath;
 use crate::comment::{Comment, CommentBlock, CommentRun};
+use crate::id::FeedbackId;
 use crate::link::{ProjectLink, ReadingCopyLink, SceneLink};
 use crate::piece::*;
 
@@ -269,6 +272,101 @@ fn a_draft_is_not_marked_done_nor_not_done() {
             "{command:?}"
         );
     }
+}
+
+/// The piece replied to, one and the same each time it is named.
+static THE_ROOT: LazyLock<FeedbackId> =
+    LazyLock::new(|| FeedbackId::generate(time::OffsetDateTime::UNIX_EPOCH));
+
+fn the_root() -> FeedbackId {
+    *THE_ROOT
+}
+
+/// Bea's reply to the root, given on the copy.
+fn a_reply() -> Feedback {
+    let events = Feedback::begin(
+        FeedbackCommand::Reply {
+            project: ProjectLink::from("project_loom"),
+            to: the_root(),
+            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
+            comment: saying("The fishing boats."),
+        },
+        &bea(),
+    )
+    .expect("replying should succeed");
+    let (first, rest) = events.split_first().expect("at least one event");
+    let by_bea = |version| EventMetadata {
+        agent: bea(),
+        ..stamped(version, 0)
+    };
+    let mut replied = Feedback::from_first(first, &by_bea(1)).expect("the first event makes it");
+    for event in rest {
+        replied.apply(event, &by_bea(2));
+    }
+
+    replied
+}
+
+#[test]
+fn a_reply_is_sent_at_once_on_its_root_in_the_root_s_subject() {
+    // when: bea replies to the root
+    let replied = a_reply();
+
+    // then: it is no draft, sent when it was written
+    assert!(!replied.is_draft());
+    assert_eq!(replied.submitted_at(), Some(DRAFTED_AT));
+    // and: it replies to the root, on the root's copy, and is in no place of its own
+    let about = replied.about().expect("it is about something");
+    assert!(replied.is_reply());
+    assert_eq!(about.replying_to(), Some(&the_root()));
+    assert_eq!(
+        about.subject(),
+        Subject::ReadingCopy(ReadingCopyLink::from("copy_loom"))
+    );
+    assert_eq!(about.in_scene(), None);
+    assert_eq!(about.on_section(), None);
+    // and: a comment given is no reply
+    assert!(!given().is_reply());
+}
+
+#[test]
+fn a_reply_is_never_marked_done_nor_not_done() {
+    // expect: marking a reply is refused, as being done stays with its root
+    for command in [FeedbackCommand::MarkDone, FeedbackCommand::MarkNotDone] {
+        assert_eq!(
+            a_reply().decide(command.clone(), &ada()),
+            Err(FeedbackRefused::ReplyNotMarked),
+            "{command:?}"
+        );
+    }
+}
+
+#[test]
+fn a_reply_is_never_drafted_and_changed_by_its_writer_alone() {
+    // expect: a draft about a piece of feedback is refused, as replies are sent at once
+    assert_eq!(
+        Feedback::begin(
+            a_drafting(About::Feedback {
+                feedback: the_root(),
+                on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
+            }),
+            &bea(),
+        ),
+        Err(FeedbackRefused::RepliesSentAtOnce)
+    );
+    // and: ada may not reword bea's reply
+    assert_eq!(
+        a_reply().decide(FeedbackCommand::Reword(saying("Not mine.")), &ada()),
+        Err(FeedbackRefused::NotYours)
+    );
+    // and: bea rewords it, marked edited, as it was sent
+    let reworded = decided(
+        &a_reply(),
+        FeedbackCommand::Reword(saying("The fishing boats, at dawn.")),
+        &bea(),
+    )
+    .expect("rewording should succeed");
+    assert!(reworded.is_edited());
 }
 
 #[test]

@@ -165,6 +165,7 @@ refused-feedback-giver-unknown = Los comentarios se dan en local o desde una cue
 refused-feedback-reading-copy-closed = Esta copia de lectura está cerrada, ya no se pueden dejar comentarios en ella.
 refused-feedback-reading-copy-unknown = Esta copia de lectura aún se está preparando. Inténtalo de nuevo en un momento.
 refused-feedback-marked-by-authors = Solo quienes escriben o poseen el proyecto marcan los comentarios como hechos.
+refused-feedback-reply-not-marked = Una respuesta nunca se marca como hecha; marca en su lugar el comentario al que responde.
 refused-board-id-invalid = Eso no es un ID de tablero válido.
 refused-idea-already-pinned = Esta idea ya está en el tablero.
 refused-idea-not-pinned = Esta idea no está en el tablero.

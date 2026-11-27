@@ -380,8 +380,10 @@ pub mod refused {
     /// The reading copy was made a moment ago, and the feedback has not heard of it yet; asking again shortly succeeds.
     pub const READING_COPY_UNKNOWN: &str = "feedback-reading-copy-unknown";
     pub const MARKED_BY_AUTHORS: &str = "feedback-marked-by-authors";
+    /// Being done stays with the comment a reply answers; the reply itself is never marked.
+    pub const REPLY_NOT_MARKED: &str = "feedback-reply-not-marked";
 
-    pub const EVERY: [&str; 16] = [
+    pub const EVERY: [&str; 17] = [
         COMMENT_BLANK,
         COMMENT_CONTROL_CHARACTER,
         COMMENT_TOO_LONG,
@@ -398,5 +400,6 @@ pub mod refused {
         READING_COPY_CLOSED,
         READING_COPY_UNKNOWN,
         MARKED_BY_AUTHORS,
+        REPLY_NOT_MARKED,
     ];
 }

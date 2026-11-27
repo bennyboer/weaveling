@@ -1,8 +1,10 @@
 use clock::text;
 use eventsourcing::{AccountId, Agent, Codec};
+use std::str::FromStr;
+
 use feedback_core::{
-    About, BlockPath, Comment, CommentBlock, CommentRun, FeedbackEvent, ProjectLink,
-    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink,
+    About, BlockPath, Comment, CommentBlock, CommentRun, FeedbackEvent, FeedbackId, ProjectLink,
+    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -43,6 +45,15 @@ enum StoredAbout {
         reading_copy: String,
         place: StoredPlace,
     },
+    Feedback {
+        feedback: String,
+        on: StoredSubject,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+enum StoredSubject {
+    ReadingCopy(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -123,13 +134,21 @@ impl From<&About> for StoredAbout {
                 reading_copy: reading_copy.to_string(),
                 place: StoredPlace::from(place),
             },
+            About::Feedback { feedback, on } => Self::Feedback {
+                feedback: feedback.to_string(),
+                on: match on {
+                    Subject::ReadingCopy(copy) => StoredSubject::ReadingCopy(copy.to_string()),
+                },
+            },
         }
     }
 }
 
-impl From<StoredAbout> for About {
-    fn from(stored: StoredAbout) -> Self {
-        match stored {
+impl TryFrom<StoredAbout> for About {
+    type Error = Unreadable;
+
+    fn try_from(stored: StoredAbout) -> Result<Self, Unreadable> {
+        Ok(match stored {
             StoredAbout::ReadingCopy {
                 reading_copy,
                 place,
@@ -137,7 +156,15 @@ impl From<StoredAbout> for About {
                 reading_copy: ReadingCopyLink::from(reading_copy),
                 place: ReadingCopyPlace::from(place),
             },
-        }
+            StoredAbout::Feedback { feedback, on } => Self::Feedback {
+                feedback: FeedbackId::from_str(&feedback).map_err(|_| Unreadable)?,
+                on: match on {
+                    StoredSubject::ReadingCopy(copy) => {
+                        Subject::ReadingCopy(ReadingCopyLink::from(copy))
+                    }
+                },
+            },
+        })
     }
 }
 
@@ -347,7 +374,7 @@ impl TryFrom<StoredFeedbackEvent> for FeedbackEvent {
                 comment,
             } => Self::Drafted {
                 project: ProjectLink::from(project),
-                about: About::from(about),
+                about: About::try_from(about)?,
                 comment: comment_of(comment)?,
             },
             StoredFeedbackEvent::Reworded { comment } => Self::Reworded(comment_of(comment)?),
@@ -367,7 +394,7 @@ impl TryFrom<StoredFeedbackEvent> for FeedbackEvent {
                 deleted,
             } => Self::Snapshotted {
                 project: ProjectLink::from(project),
-                about: about.map(About::from),
+                about: about.map(About::try_from).transpose()?,
                 comment: comment.map(comment_of).transpose()?,
                 written_by: Agent::from(written_by),
                 written_at: moment(&written_at)?,
@@ -478,6 +505,28 @@ mod tests {
                 deleted: false,
             });
         }
+
+        // and: a reply, drafted on its root and in a snapshot
+        let reply = About::Feedback {
+            feedback: FeedbackId::generate(time::OffsetDateTime::UNIX_EPOCH),
+            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
+        };
+        every.push(FeedbackEvent::Drafted {
+            project: ProjectLink::from("project_loom"),
+            about: reply.clone(),
+            comment: a_comment(),
+        });
+        every.push(FeedbackEvent::Snapshotted {
+            project: ProjectLink::from("project_loom"),
+            about: Some(reply),
+            comment: Some(a_comment()),
+            written_by: Agent::Account(AccountId::from("account_bea")),
+            written_at: AT,
+            submitted_at: Some(AT),
+            edited: false,
+            done: false,
+            deleted: false,
+        });
 
         // and: a deleted piece's snapshot, which holds no words
         every.push(FeedbackEvent::Snapshotted {

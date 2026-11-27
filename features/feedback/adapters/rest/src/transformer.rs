@@ -66,6 +66,9 @@ fn to_about_dto(about: &About) -> AboutDTO {
             reading_copy: reading_copy.to_string(),
             place: to_reading_copy_place_dto(place),
         },
+        About::Feedback { feedback, .. } => AboutDTO::Feedback {
+            feedback: feedback.to_string(),
+        },
     }
 }
 

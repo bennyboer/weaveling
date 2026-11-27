@@ -165,6 +165,7 @@ refused-feedback-giver-unknown = Feedback is given locally or by an account.
 refused-feedback-reading-copy-closed = This reading copy is closed, so no more feedback can be given in it.
 refused-feedback-reading-copy-unknown = This reading copy is still being set up. Try again in a moment.
 refused-feedback-marked-by-authors = Only the authors and owners of the project mark feedback done.
+refused-feedback-reply-not-marked = A reply is never marked done; mark the comment it answers instead.
 refused-board-id-invalid = That is not a valid board ID.
 refused-idea-already-pinned = This idea is already on the board.
 refused-idea-not-pinned = This idea is not on the board.

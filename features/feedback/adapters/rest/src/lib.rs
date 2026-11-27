@@ -499,6 +499,7 @@ pub(crate) fn problem_of(refusal: FeedbackError) -> Problem {
         FeedbackError::TooManyCounted => Problem::rejected(refused::TOO_MANY_COUNTED, refusal)
             .with("max", feedback_core::COUNTED_AT_ONCE),
         FeedbackError::ReadingCopyClosed => Problem::refused(refused::READING_COPY_CLOSED, refusal),
+        FeedbackError::ReplyNotMarked => Problem::refused(refused::REPLY_NOT_MARKED, refusal),
         FeedbackError::ReadingCopyUnknown => {
             Problem::refused(refused::READING_COPY_UNKNOWN, refusal)
         }
