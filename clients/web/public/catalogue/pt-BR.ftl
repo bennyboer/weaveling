@@ -503,6 +503,20 @@ feedback-mark-not-done-title = Marcar como pendente
 feedback-change-comment = Alterar este comentário
 feedback-delete-comment = Apagar este comentário
 feedback-delete-yours-asked = Apagar para sempre seu comentário?
+feedback-replies-named = Respostas
+feedback-replies = { $count ->
+        [one] 1 resposta
+       *[other] { $count } respostas
+    }
+feedback-hide-replies = Ocultar respostas
+feedback-reply = Responder
+feedback-reply-to-comment = Responder a este comentário
+feedback-reply-to-reply = Responder a esta resposta
+feedback-send-reply = Enviar resposta
+feedback-save-reply = Salvar a resposta
+feedback-change-reply = Alterar esta resposta
+feedback-delete-reply = Apagar esta resposta
+feedback-delete-reply-asked = Apagar para sempre sua resposta?
 feedback-delete-theirs-asked = Apagar para sempre este comentário de { $who }?
 feedback-delete-theirs-fate = Ele some para todos e não pode ser recuperado.
 feedback-delete-keep = Manter

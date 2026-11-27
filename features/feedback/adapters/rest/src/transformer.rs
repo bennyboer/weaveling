@@ -150,6 +150,9 @@ fn to_comment_block_dto(block: &CommentBlock) -> CommentBlockDTO {
                 .map(|item| item.iter().map(to_comment_run_dto).collect())
                 .collect(),
         },
+        CommentBlock::Quote(runs) => CommentBlockDTO::Quote {
+            runs: runs.iter().map(to_comment_run_dto).collect(),
+        },
     }
 }
 
@@ -184,6 +187,9 @@ pub fn comment_of(blocks: Vec<CommentBlockDTO>) -> Vec<CommentBlock> {
                     .map(|item| item.into_iter().map(comment_run_of).collect())
                     .collect(),
             },
+            CommentBlockDTO::Quote { runs } => {
+                CommentBlock::Quote(runs.into_iter().map(comment_run_of).collect())
+            }
         })
         .collect()
 }

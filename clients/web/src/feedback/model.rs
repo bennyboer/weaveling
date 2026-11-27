@@ -60,6 +60,8 @@ pub enum CommentBlock {
         ordered: bool,
         items: Vec<Vec<CommentRun>>,
     },
+    /// A line quoted, as a reply quotes what it answers.
+    Quote(Vec<CommentRun>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -172,6 +174,43 @@ pub struct Feedback {
     pub edited: bool,
     /// Whether the authors marked it done.
     pub done: bool,
+    /// How many replies it has.
+    pub replies: u32,
+}
+
+/// A reply on a piece of feedback given, its root, sent at once; threads on a reading copy are flat.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Reply {
+    pub id: FeedbackId,
+    pub root: FeedbackId,
+    pub comment: Vec<CommentBlock>,
+    pub by_you: bool,
+    /// Who wrote it, by name, where that is known.
+    pub written_by: Option<String>,
+    pub written_at: OffsetDateTime,
+    /// Whether what it says was changed after it was sent.
+    pub edited: bool,
+}
+
+impl TryFrom<FeedbackDTO> for Reply {
+    type Error = ApiError;
+
+    /// A reply is about the piece it replies to; anything else is no reply.
+    fn try_from(dto: FeedbackDTO) -> Result<Self, ApiError> {
+        let AboutDTO::Feedback { feedback: root } = dto.about else {
+            return Err(ApiError::Unexpected);
+        };
+
+        Ok(Self {
+            id: FeedbackId::from(dto.id),
+            root: FeedbackId::from(root),
+            comment: dto.comment.into_iter().map(CommentBlock::from).collect(),
+            by_you: dto.by_you,
+            written_by: dto.written_by,
+            written_at: moment(&dto.written_at)?,
+            edited: dto.edited,
+        })
+    }
 }
 
 fn moment(written: &str) -> Result<OffsetDateTime, ApiError> {
@@ -193,6 +232,7 @@ impl TryFrom<FeedbackDTO> for Feedback {
             submitted_at: dto.submitted_at.as_deref().map(moment).transpose()?,
             edited: dto.edited,
             done: dto.done,
+            replies: dto.replies,
         })
     }
 }
@@ -286,6 +326,9 @@ impl From<CommentBlockDTO> for CommentBlock {
                     .map(|item| item.into_iter().map(CommentRun::from).collect())
                     .collect(),
             },
+            CommentBlockDTO::Quote { runs } => {
+                Self::Quote(runs.into_iter().map(CommentRun::from).collect())
+            }
         }
     }
 }
@@ -321,6 +364,9 @@ impl From<&CommentBlock> for CommentBlockDTO {
                     .iter()
                     .map(|item| item.iter().map(CommentRunDTO::from).collect())
                     .collect(),
+            },
+            CommentBlock::Quote(runs) => Self::Quote {
+                runs: runs.iter().map(CommentRunDTO::from).collect(),
             },
         }
     }

@@ -8,7 +8,7 @@ use feedback_contract::{
 use gloo_net::http::Request;
 
 use crate::feedback::model::{
-    About, CommentBlock, Feedback, FeedbackCount, FeedbackId, Giver, Pending,
+    About, CommentBlock, Feedback, FeedbackCount, FeedbackId, Giver, Pending, Reply,
 };
 use crate::http;
 use crate::http::ApiError;
@@ -315,6 +315,47 @@ pub async fn mark_done(feedback: &FeedbackId, done: bool) -> Result<Feedback, Ap
     let marked: FeedbackDTO = http::parsed(response, SUBJECT).await?;
 
     Feedback::try_from(marked)
+}
+
+/// The replies on a piece given, oldest first.
+pub async fn thread(root: &FeedbackId) -> Result<Vec<Reply>, ApiError> {
+    let on = SubjectDTO::Feedback(root.to_string());
+    let response = http::sent(Request::get(&format!("{FEEDBACK}/on?subjects={on}"))).await?;
+    let told: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    told.into_iter().map(Reply::try_from).collect()
+}
+
+/// Replies on a piece given, sent at once.
+pub async fn reply(root: &FeedbackId, comment: &[CommentBlock]) -> Result<Reply, ApiError> {
+    let payload = DraftFeedbackRequest {
+        about: AboutDTO::Feedback {
+            feedback: root.to_string(),
+        },
+        comment: comment.iter().map(CommentBlockDTO::from).collect(),
+    };
+    let response = http::sent_with(Request::post(FEEDBACK), &payload).await?;
+    let replied: FeedbackDTO = http::parsed(response, SUBJECT).await?;
+
+    Reply::try_from(replied)
+}
+
+/// Rewrites what a reply of yours says.
+pub async fn rewrite_reply(
+    reply: &FeedbackId,
+    comment: &[CommentBlock],
+) -> Result<Reply, ApiError> {
+    let payload = RewriteFeedbackRequest {
+        comment: comment.iter().map(CommentBlockDTO::from).collect(),
+    };
+    let response = http::sent_with(
+        Request::put(&format!("{FEEDBACK}/{reply}/comment")),
+        &payload,
+    )
+    .await?;
+    let rewritten: FeedbackDTO = http::parsed(response, SUBJECT).await?;
+
+    Reply::try_from(rewritten)
 }
 
 /// Deletes a piece of your feedback.

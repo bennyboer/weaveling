@@ -503,6 +503,20 @@ feedback-mark-not-done-title = Marquer comme à traiter
 feedback-change-comment = Modifier ce commentaire
 feedback-delete-comment = Supprimer ce commentaire
 feedback-delete-yours-asked = Supprimer définitivement votre commentaire ?
+feedback-replies-named = Réponses
+feedback-replies = { $count ->
+        [one] 1 réponse
+       *[other] { $count } réponses
+    }
+feedback-hide-replies = Masquer les réponses
+feedback-reply = Répondre
+feedback-reply-to-comment = Répondre à ce commentaire
+feedback-reply-to-reply = Répondre à cette réponse
+feedback-send-reply = Envoyer la réponse
+feedback-save-reply = Enregistrer la réponse
+feedback-change-reply = Modifier cette réponse
+feedback-delete-reply = Supprimer cette réponse
+feedback-delete-reply-asked = Supprimer définitivement votre réponse ?
 feedback-delete-theirs-asked = Supprimer définitivement ce commentaire de { $who } ?
 feedback-delete-theirs-fate = Il disparaît pour tout le monde et ne peut pas être récupéré.
 feedback-delete-keep = Le garder

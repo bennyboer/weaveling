@@ -503,6 +503,20 @@ feedback-mark-not-done-title = Mark as not done
 feedback-change-comment = Change this comment
 feedback-delete-comment = Delete this comment
 feedback-delete-yours-asked = Delete your comment for good?
+feedback-replies-named = Replies
+feedback-replies = { $count ->
+        [one] 1 reply
+       *[other] { $count } replies
+    }
+feedback-hide-replies = Hide replies
+feedback-reply = Reply
+feedback-reply-to-comment = Reply to this comment
+feedback-reply-to-reply = Reply to this reply
+feedback-send-reply = Send reply
+feedback-save-reply = Save the reply
+feedback-change-reply = Change this reply
+feedback-delete-reply = Delete this reply
+feedback-delete-reply-asked = Delete your reply for good?
 feedback-delete-theirs-asked = Delete this comment by { $who } for good?
 feedback-delete-theirs-fate = It is gone for everyone, and cannot be brought back.
 feedback-delete-keep = Keep it

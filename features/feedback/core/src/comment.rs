@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-/// What someone says in a piece of feedback: paragraphs and lists of text,
+/// What someone says in a piece of feedback: paragraphs, lists and quotes of text,
 /// in italics, in bold or linked, drawn as a reading copy's text is.
+/// What is quoted says nothing of its own, so a comment must say something besides.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment(Vec<CommentBlock>);
 
@@ -14,6 +15,8 @@ pub enum CommentBlock {
         ordered: bool,
         items: Vec<Vec<CommentRun>>,
     },
+    /// A line quoted, as a reply quotes what it answers.
+    Quote(Vec<CommentRun>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,15 +50,21 @@ impl Comment {
     pub const MAX_CHARS: usize = 10_000;
 
     pub fn new(blocks: Vec<CommentBlock>) -> Result<Self, InvalidComment> {
-        let runs: Vec<&CommentRun> = blocks.iter().flat_map(CommentBlock::runs).collect();
-        let texts = runs.iter().filter_map(|run| match run {
-            CommentRun::Text { text, link, .. } => Some((text, link)),
+        let runs: Vec<(&CommentRun, bool)> = blocks
+            .iter()
+            .flat_map(|block| {
+                let own = !matches!(block, CommentBlock::Quote(_));
+                block.runs().map(move |run| (run, own))
+            })
+            .collect();
+        let texts = runs.iter().filter_map(|(run, own)| match run {
+            CommentRun::Text { text, link, .. } => Some((text, link, *own)),
             CommentRun::Break => None,
         });
 
         let mut said = 0;
         let mut anything = false;
-        for (text, link) in texts {
+        for (text, link, own) in texts {
             if text.chars().any(char::is_control) {
                 return Err(InvalidComment::ControlCharacter);
             }
@@ -66,7 +75,7 @@ impl Comment {
                 return Err(InvalidComment::LinkUnsafe);
             }
             said += text.chars().count();
-            anything |= !text.trim().is_empty();
+            anything |= own && !text.trim().is_empty();
         }
         if !anything {
             return Err(InvalidComment::Blank);
@@ -89,7 +98,7 @@ impl Comment {
 impl CommentBlock {
     fn runs(&self) -> Box<dyn Iterator<Item = &CommentRun> + '_> {
         match self {
-            Self::Paragraph(runs) => Box::new(runs.iter()),
+            Self::Paragraph(runs) | Self::Quote(runs) => Box::new(runs.iter()),
             Self::List { items, .. } => Box::new(items.iter().flatten()),
         }
     }
@@ -194,6 +203,14 @@ mod tests {
                 ordered: false,
                 items: vec![vec![]],
             }]),
+            Err(InvalidComment::Blank)
+        );
+        // and: a quote alone says nothing of its own
+        assert_eq!(
+            Comment::new(vec![
+                CommentBlock::Quote(vec![plain("Which boats?")]),
+                CommentBlock::Paragraph(vec![plain(" ")]),
+            ]),
             Err(InvalidComment::Blank)
         );
         // and: more than ten thousand characters, counted over every run, are too many

@@ -7,6 +7,7 @@ use leptos::portal::Portal;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html, view};
 use leptos_router::hooks;
+use time::OffsetDateTime;
 
 use crate::dialog;
 use crate::drawer;
@@ -19,6 +20,7 @@ use crate::feedback::model::{
 };
 use crate::feedback::service;
 use crate::feedback::service::Asked;
+use crate::feedback::thread;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
@@ -595,7 +597,12 @@ fn notes(shown: Memo<Vec<Feedback>>, column: Column) -> impl IntoView {
 
 /// Who wrote a piece of feedback, as the column names them: you, their name, or a member where it is not known.
 fn writer_of(piece: &Feedback) -> String {
-    match (&piece.written_by, piece.by_you) {
+    named(piece.by_you, piece.written_by.as_ref())
+}
+
+/// Whoever wrote something, as feedback names them: you, their name, or a former member where it is not known any more.
+pub(crate) fn named(by_you: bool, written_by: Option<&String>) -> String {
+    match (written_by, by_you) {
         (_, true) => speech::say("feedback-you"),
         (Some(name), false) => name.clone(),
         (None, false) => speech::say("feedback-by-a-former-member"),
@@ -800,6 +807,8 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
         }
     });
     let given = !piece.draft;
+    let root = piece.id.clone();
+    let replies = piece.replies;
     let held = piece.comment.clone();
     let yours = piece.by_you;
     let asked = deleting_asked_of(&piece);
@@ -842,7 +851,12 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
                                         })
                                         .child(speech::said("feedback-change")),
                                     match given {
-                                        true => deleting_given(&asked, deleting).into_any(),
+                                        true => deleting_given(
+                                            &asked,
+                                            "feedback-delete-comment",
+                                            deleting,
+                                        )
+                                        .into_any(),
                                         false => html::button()
                                             .r#type("button")
                                             .attr("aria-label", speech::said(delete))
@@ -855,9 +869,11 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
                             }),
                             (given && !yours).then_some(move || {
                                 column.allowed.deleting.get().then(|| {
-                                    html::div()
-                                        .class("note-actions")
-                                        .child(deleting_given(&asked, deleting))
+                                    html::div().class("note-actions").child(deleting_given(
+                                        &asked,
+                                        "feedback-delete-comment",
+                                        deleting,
+                                    ))
                                 })
                             }),
                             given.then(|| {
@@ -868,6 +884,7 @@ fn a_note(piece: Feedback, column: Column) -> impl IntoView {
                         .into_any()
                 }
             },
+            given.then(|| thread::thread(root.clone(), replies)),
         ))
 }
 
@@ -882,7 +899,11 @@ pub(crate) fn deleting_asked_of(piece: &Feedback) -> String {
 
 /// The way to delete feedback given, by whoever wrote it or by an owner of the project: a small trash can.
 /// It asks first, as once deleted it is gone for everyone.
-pub(crate) fn deleting_given(asked: &str, deleting: Action<(), ()>) -> impl IntoView + use<> {
+pub(crate) fn deleting_given(
+    asked: &str,
+    labelled: &'static str,
+    deleting: Action<(), ()>,
+) -> impl IntoView + use<> {
     let asked = asked.to_owned();
     let asking = RwSignal::new(false);
 
@@ -890,8 +911,8 @@ pub(crate) fn deleting_given(asked: &str, deleting: Action<(), ()>) -> impl Into
         html::button()
             .r#type("button")
             .class("delete-given")
-            .attr("aria-label", speech::said("feedback-delete-comment"))
-            .attr("title", speech::said("feedback-delete-comment"))
+            .attr("aria-label", speech::said(labelled))
+            .attr("title", speech::said(labelled))
             .disabled(move || deleting.pending().get())
             .on(ev::click, move |_| asking.set(true))
             .child(icons::mark(Icon::Trash)),
@@ -997,10 +1018,17 @@ fn check() -> impl IntoView {
 
 /// Who gave a piece of feedback and when it was submitted, and whether it was edited since.
 pub(crate) fn who(piece: &Feedback) -> impl IntoView + use<> {
-    let writer = writer_of(piece);
+    who_wrote(
+        writer_of(piece),
+        piece.submitted_at.unwrap_or(piece.written_at),
+        piece.edited,
+    )
+}
+
+/// Who wrote something and when, and whether it was edited since.
+pub(crate) fn who_wrote(writer: String, at: OffsetDateTime, edited: bool) -> impl IntoView + use<> {
     let initial = writer.chars().next().map(String::from).unwrap_or_default();
-    let when = moment::human_time(piece.submitted_at.unwrap_or(piece.written_at));
-    let edited = piece.edited;
+    let when = moment::human_time(at);
 
     html::div().class("who").child((
         html::span()
@@ -1133,6 +1161,7 @@ pub fn comment(blocks: &[CommentBlock]) -> Vec<AnyView> {
                     html::ul().child(items).into_any()
                 }
             }
+            CommentBlock::Quote(runs) => html::blockquote().child(runs_of(runs)).into_any(),
         })
         .collect()
 }

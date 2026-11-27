@@ -9,7 +9,7 @@ import { history, redo, undo } from "prosemirror-history";
 import { InputRule, inputRules } from "prosemirror-inputrules";
 import { keymap } from "prosemirror-keymap";
 import { Schema } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorState, Selection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
 import { linkTyped, safeLink } from "../editor/schema.js";
@@ -42,6 +42,13 @@ export const schema = new Schema({
       defining: true,
       parseDOM: [{ tag: "li" }],
       toDOM: () => ["li", 0],
+    },
+    quote: {
+      content: "inline*",
+      group: "block",
+      defining: true,
+      parseDOM: [{ tag: "blockquote" }],
+      toDOM: () => ["blockquote", 0],
     },
     text: { group: "inline" },
     hard_break: {
@@ -111,12 +118,14 @@ function runsOf(line) {
   return runs;
 }
 
-/// The comment written, as blocks: each paragraph, and each list with one line of runs for each item.
+/// The comment written, as blocks: each paragraph and quote, and each list with one line of runs for each item.
 export function blocksOf(doc) {
   const blocks = [];
   doc.forEach((block) => {
     if (block.type === schema.nodes.paragraph) {
       blocks.push({ kind: "paragraph", runs: runsOf(block) });
+    } else if (block.type === schema.nodes.quote) {
+      blocks.push({ kind: "quote", runs: runsOf(block) });
     } else {
       const items = [];
       block.forEach((item) => items.push(runsOf(item)));
@@ -157,16 +166,21 @@ function lineOf(runs) {
 
 /// The document a comment is written into again, from its blocks.
 export function docOf(blocks) {
-  const made = (blocks ?? []).map((block) =>
-    block.kind === "list"
-      ? (block.ordered ? schema.nodes.ordered_list : schema.nodes.bullet_list).create(
-          null,
-          (block.items.length ? block.items : [[]]).map((item) =>
-            schema.nodes.list_item.create(null, lineOf(item)),
-          ),
-        )
-      : schema.nodes.paragraph.create(null, lineOf(block.runs)),
-  );
+  const made = (blocks ?? []).map((block) => {
+    if (block.kind === "list") {
+      return (block.ordered ? schema.nodes.ordered_list : schema.nodes.bullet_list).create(
+        null,
+        (block.items.length ? block.items : [[]]).map((item) =>
+          schema.nodes.list_item.create(null, lineOf(item)),
+        ),
+      );
+    }
+
+    return (block.kind === "quote" ? schema.nodes.quote : schema.nodes.paragraph).create(
+      null,
+      lineOf(block.runs),
+    );
+  });
 
   return schema.nodes.doc.create(
     null,
@@ -195,6 +209,43 @@ function listing(pattern, list) {
       list.create(null, schema.nodes.list_item.create(null, rest)),
     ).scrollIntoView();
   });
+}
+
+/// A line typed as "> " at the start of a paragraph becomes a quote.
+const quoting = new InputRule(/^>\s$/, (state, match, start, end) => {
+  const $start = state.doc.resolve(start);
+  if ($start.parent.type !== schema.nodes.paragraph || $start.depth !== 1) {
+    return null;
+  }
+  const paragraph = $start.parent;
+  const rest = paragraph.content.cut(end - $start.start());
+  const before = $start.before();
+
+  return state.tr
+    .replaceWith(
+      before,
+      before + paragraph.nodeSize,
+      schema.nodes.quote.create(null, rest),
+    )
+    .scrollIntoView();
+});
+
+/// Enter at the end of a quote leaves it for a new paragraph after it;
+/// elsewhere in it, it breaks the quote in two.
+function leavingTheQuote(state, dispatch) {
+  const { $from, empty } = state.selection;
+  const inQuote = $from.parent.type === schema.nodes.quote;
+  if (!empty || !inQuote || $from.parentOffset < $from.parent.content.size) {
+    return false;
+  }
+  if (dispatch) {
+    const after = $from.after();
+    const tr = state.tr.insert(after, schema.nodes.paragraph.create());
+    tr.setSelection(TextSelection.create(tr.doc, after + 1));
+    dispatch(tr.scrollIntoView());
+  }
+
+  return true;
 }
 
 /// Enter on an empty last item leaves the list for a new paragraph after it.
@@ -242,15 +293,18 @@ const hardBreak = chainCommands(exitCode, (state, dispatch) => {
 export class CommentEditor {
   constructor(host, held, changed, save) {
     this.changed = changed;
+    const doc = docOf(JSON.parse(held || "[]"));
     this.view = new EditorView(host, {
       state: EditorState.create({
-        doc: docOf(JSON.parse(held || "[]")),
+        doc,
+        selection: Selection.atEnd(doc),
         plugins: [
           history(),
           inputRules({
             rules: [
               listing(/^\s*([-*])\s$/, schema.nodes.bullet_list),
               listing(/^\s*(\d+)\.\s$/, schema.nodes.ordered_list),
+              quoting,
             ],
           }),
           keymap({
@@ -264,7 +318,7 @@ export class CommentEditor {
               return true;
             },
             "Shift-Enter": hardBreak,
-            Enter: chainCommands(leavingTheList, splitBlock),
+            Enter: chainCommands(leavingTheQuote, leavingTheList, splitBlock),
           }),
           keymap(baseKeymap),
         ],

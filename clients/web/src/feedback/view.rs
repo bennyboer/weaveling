@@ -623,8 +623,9 @@ fn a_piece(
             html::div().class("note-foot").child((
                 opened,
                 move || {
-                    (yours || allowed.deleting.get())
-                        .then(|| column::deleting_given(&asked, deleting))
+                    (yours || allowed.deleting.get()).then(|| {
+                        column::deleting_given(&asked, "feedback-delete-comment", deleting)
+                    })
                 },
                 column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),

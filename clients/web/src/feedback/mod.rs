@@ -6,4 +6,5 @@ pub mod marks;
 pub mod model;
 pub mod pending;
 pub mod service;
+pub mod thread;
 pub mod view;

@@ -37,6 +37,7 @@ enum KeptBlock {
         ordered: bool,
         items: Vec<Vec<KeptRun>>,
     },
+    Quote(Vec<KeptRun>),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -178,6 +179,7 @@ pub(crate) fn comment_to_json(comment: &Comment) -> String {
                     .map(|item| item.iter().map(kept_run).collect())
                     .collect(),
             },
+            CommentBlock::Quote(runs) => KeptBlock::Quote(runs.iter().map(kept_run).collect()),
         })
         .collect();
 
@@ -199,6 +201,7 @@ pub(crate) fn comment_from_json(json: &str) -> Result<Comment, CatalogError> {
                     .map(|item| item.into_iter().map(run_of).collect())
                     .collect(),
             },
+            KeptBlock::Quote(runs) => CommentBlock::Quote(runs.into_iter().map(run_of).collect()),
         })
         .collect();
 
@@ -247,4 +250,38 @@ pub(crate) fn in_microseconds(at: OffsetDateTime) -> i64 {
 
 pub(crate) fn from_microseconds(micros: i64) -> Result<OffsetDateTime, CatalogError> {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(micros) * 1_000).map_err(unreadable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn said(text: &str, strong: bool) -> CommentRun {
+        CommentRun::Text {
+            text: text.to_owned(),
+            emphasis: false,
+            strong,
+            link: None,
+        }
+    }
+
+    #[test]
+    fn a_comment_is_read_back_as_it_was_kept_its_quotes_and_lists_with_it() {
+        // given: a comment quoting a reply, then saying something and listing two things
+        let comment = Comment::new(vec![
+            CommentBlock::Quote(vec![said("Bea", true), said(": Lovely.", false)]),
+            CommentBlock::Paragraph(vec![said("Thanks!", false), CommentRun::Break]),
+            CommentBlock::List {
+                ordered: true,
+                items: vec![vec![said("one", false)], vec![said("two", true)]],
+            },
+        ])
+        .expect("a comment saying something is fine");
+
+        // when: it is kept and read back
+        let read = comment_from_json(&comment_to_json(&comment));
+
+        // then: it is the same comment
+        assert_eq!(read.ok(), Some(comment));
+    }
 }

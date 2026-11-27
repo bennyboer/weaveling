@@ -2952,3 +2952,82 @@ test("feedback given elsewhere shows without reading again in the copy's column 
   await expect(notes.nth(0)).toContainText("Still thinking.");
   await expect(given_since).toHaveCount(0);
 });
+
+test("a comment given is replied to in the copy's column, the reply sent at once, changed and deleted once asked", async ({
+  page,
+}) => {
+  // given: a copy with a comment given, its feedback open
+  await aCopyOfABookWritten(page, "ReadingReplies");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  await aDraftOn(page, { kind: "whole" }, "Which boats?");
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  const note = feedback(page)
+    .getByRole("region", { name: "Feedback given" })
+    .locator(".note", { hasText: "Which boats?" });
+  const thread = note.getByRole("region", { name: "Replies" });
+
+  // when: a reply is written and sent
+  await thread.getByRole("button", { name: "Reply to this comment" }).click();
+  await thread
+    .getByRole("textbox", { name: "Your comment" })
+    .fill("The fishing boats.");
+  await thread.getByRole("button", { name: "Send reply" }).click();
+
+  // then: it is in the thread at once, by you
+  const reply = thread.locator(".reply", { hasText: "The fishing boats." });
+  await expect(reply.locator(".who")).toContainText("You");
+  // when: it is replied to in turn
+  await reply.getByRole("button", { name: "Reply to this reply" }).click();
+  // then: the answer begins quoting it, by whom, and is written after the quote
+  const answer = thread.getByRole("textbox", { name: "Your comment" });
+  await expect(answer.locator("blockquote")).toHaveText("You: The fishing boats.");
+  await page.keyboard.type("Thanks!");
+  await expect(answer.locator("p").last()).toHaveText("Thanks!");
+  await thread.getByRole("button", { name: "Cancel" }).click();
+
+  // and: the thread counts it once put away
+  await thread.getByRole("button", { name: "Hide replies" }).click();
+  await expect(thread.getByRole("button", { name: "1 reply" })).toBeVisible();
+
+  // when: the copy is read again, and the thread opened
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await thread.getByRole("button", { name: "1 reply" }).click();
+
+  // then: the reply is kept
+  await expect(reply).toBeVisible();
+
+  // when: it is changed
+  await reply.getByRole("button", { name: "Change this reply" }).click();
+  const field = thread.getByRole("textbox", { name: "Your comment" });
+  await expect(field).toHaveText("The fishing boats.");
+  await field.press("End");
+  await page.keyboard.type(" At dawn.");
+  await page.keyboard.press("ControlOrMeta+Enter");
+
+  // then: it says so, marked edited
+  const changed = thread.locator(".reply", { hasText: "At dawn." });
+  await expect(changed.locator(".who")).toContainText("edited");
+
+  // when: it is deleted, once asked
+  await changed.getByRole("button", { name: "Delete this reply" }).click();
+  await page
+    .getByRole("dialog", { name: "Delete your reply for good?" })
+    .getByRole("button", { name: "Delete for good" })
+    .click();
+
+  // then: the thread is empty, with nothing to open
+  await expect(thread.locator(".reply")).toHaveCount(0);
+  await expect(
+    thread.getByRole("button", { name: /repl(y|ies)$/ }),
+  ).toHaveCount(0);
+});

@@ -349,8 +349,9 @@ fn a_piece(
                     .href(opened)
                     .child(speech::said("feedback-open-in-copy")),
                 move || {
-                    (yours || allowed.deleting.get())
-                        .then(|| column::deleting_given(&asked, deleting))
+                    (yours || allowed.deleting.get()).then(|| {
+                        column::deleting_given(&asked, "feedback-delete-comment", deleting)
+                    })
                 },
                 column::done_mark(done, shown_done, marking_done, allowed.marking),
             )),
@@ -378,6 +379,7 @@ mod tests {
             submitted_at: Some(OffsetDateTime::UNIX_EPOCH),
             edited: false,
             done: false,
+            replies: 0,
         }
     }
 

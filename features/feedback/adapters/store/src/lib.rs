@@ -66,6 +66,7 @@ enum StoredBlock {
         ordered: bool,
         items: Vec<Vec<StoredRun>>,
     },
+    Quote(Vec<StoredRun>),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -208,6 +209,7 @@ impl From<&CommentBlock> for StoredBlock {
                     .map(|item| item.iter().map(StoredRun::from).collect())
                     .collect(),
             },
+            CommentBlock::Quote(runs) => Self::Quote(runs.iter().map(StoredRun::from).collect()),
         }
     }
 }
@@ -225,6 +227,9 @@ impl From<StoredBlock> for CommentBlock {
                     .map(|item| item.into_iter().map(CommentRun::from).collect())
                     .collect(),
             },
+            StoredBlock::Quote(runs) => {
+                Self::Quote(runs.into_iter().map(CommentRun::from).collect())
+            }
         }
     }
 }
@@ -394,6 +399,10 @@ mod tests {
             };
 
         Comment::new(vec![
+            CommentBlock::Quote(vec![
+                said("Bea: ", false, true, None),
+                said("Lovely.", true, false, None),
+            ]),
             CommentBlock::Paragraph(vec![
                 said("Which ", false, false, None),
                 said("boats", true, true, Some("https://example.org/boats")),

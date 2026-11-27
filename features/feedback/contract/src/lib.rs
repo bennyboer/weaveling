@@ -260,7 +260,7 @@ pub enum ReadingCopyPlaceDTO {
     Whole,
 }
 
-/// What someone says in a piece of feedback: paragraphs and lists of text, in italics, in bold or linked.
+/// What someone says in a piece of feedback: paragraphs, lists and quotes of text, in italics, in bold or linked.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CommentBlockDTO {
@@ -271,6 +271,10 @@ pub enum CommentBlockDTO {
     List {
         ordered: bool,
         items: Vec<Vec<CommentRunDTO>>,
+    },
+    /// A line quoted, as a reply quotes what it answers.
+    Quote {
+        runs: Vec<CommentRunDTO>,
     },
 }
 
