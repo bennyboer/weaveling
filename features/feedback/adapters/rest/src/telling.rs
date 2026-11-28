@@ -42,21 +42,39 @@ impl FeedbackFollowers for TellingFollowers {
         piece: &FeedbackId,
         subject: &Subject,
     ) {
-        let subject = match subject {
-            Subject::ReadingCopy(copy) => SubjectDTO::ReadingCopy(copy.to_string()),
-            Subject::Feedback(piece) => SubjectDTO::Feedback(piece.to_string()),
-        };
         self.told(
             transaction,
             project,
             piece,
             GivenFeedbackChangeDTO::Changed {
-                subject: subject.to_string(),
+                subject: named(subject),
             },
         );
     }
 
-    fn given_gone(&self, transaction: &mut Transaction, project: &ProjectLink, piece: &FeedbackId) {
-        self.told(transaction, project, piece, GivenFeedbackChangeDTO::Gone);
+    fn given_gone(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        piece: &FeedbackId,
+        subject: &Subject,
+    ) {
+        self.told(
+            transaction,
+            project,
+            piece,
+            GivenFeedbackChangeDTO::Gone {
+                subject: named(subject),
+            },
+        );
     }
+}
+
+/// A subject as `subjects=` names it.
+fn named(subject: &Subject) -> String {
+    match subject {
+        Subject::ReadingCopy(copy) => SubjectDTO::ReadingCopy(copy.to_string()),
+        Subject::Feedback(piece) => SubjectDTO::Feedback(piece.to_string()),
+    }
+    .to_string()
 }

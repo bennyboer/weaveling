@@ -63,11 +63,15 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
         &self,
         transaction: &mut Transaction,
         piece: &FeedbackId,
-    ) -> Result<(), CatalogError> {
+    ) -> Result<Option<Subject>, CatalogError> {
         self.undo_on_rollback(transaction)?;
-        self.write().retain(|kept| &kept.id != piece);
+        let mut pieces = self.write();
+        let forgotten = pieces
+            .iter()
+            .position(|kept| &kept.id == piece)
+            .map(|at| pieces.remove(at).about.subject());
 
-        Ok(())
+        Ok(forgotten)
     }
 
     async fn piece(&self, piece: &FeedbackId) -> Result<Option<CataloguedFeedback>, CatalogError> {
@@ -211,7 +215,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
                     .collect();
 
                 Counted {
-                    given: on.iter().filter(|piece| !piece.is_draft()).count(),
+                    submitted: on.iter().filter(|piece| !piece.is_draft()).count(),
                     not_done: on
                         .iter()
                         .filter(|piece| !piece.is_draft() && !piece.done)

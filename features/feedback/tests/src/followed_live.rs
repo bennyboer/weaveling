@@ -1,7 +1,8 @@
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use feedback_contract::{
-    AboutDTO, COUNTED_AT_ONCE, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest, refused,
+    AboutDTO, COUNTED_AT_ONCE, DraftFeedbackRequest, FeedbackDTO, ReadingCopyPlaceDTO,
+    RewriteFeedbackRequest, refused,
 };
 use live::testing::Subscriber;
 use serde_json::json;
@@ -76,7 +77,56 @@ async fn whoever_may_read_the_project_is_told_of_feedback_given_there_as_it_chan
     // then: bea is told it is gone
     let frame = bea.frame().await;
     assert_eq!(frame["of"], given.id);
-    assert_eq!(frame["event"], json!({ "kind": "gone" }));
+    assert_eq!(
+        frame["event"],
+        json!({ "kind": "gone", "subject": "reading_copy:copy_loom" })
+    );
+}
+
+#[tokio::test]
+async fn a_reply_is_told_of_as_given_on_the_comment_it_replies_to() {
+    // given: bea following the loom's feedback, and ada's comment given there
+    let (feedback, broadcaster) = feedback_followed().await;
+    let ada = as_(&feedback, "account_ada");
+    drafted(&ada, a_passage(), saying("Which boats?")).await;
+    let root = submitted_in(&ada, READING_COPY).await.remove(0);
+    let socket = socket_as(&feedback, &broadcaster, "account_bea");
+    let mut bea = following_the_loom(&socket).await;
+
+    // when: otto replies to it
+    let otto = as_(&feedback, "account_otto");
+    let response = otto
+        .post("/feedback")
+        .json(&DraftFeedbackRequest {
+            about: AboutDTO::Feedback {
+                feedback: root.id.clone(),
+            },
+            comment: saying("The fishing boats."),
+        })
+        .await;
+    let reply = response.json::<FeedbackDTO>();
+
+    // then: bea is told it changed, given on the comment
+    let on_the_comment = format!("feedback:{}", root.id);
+    let frame = bea.frame().await;
+    assert_eq!(frame["of"], reply.id);
+    assert_eq!(
+        frame["event"],
+        json!({ "kind": "changed", "subject": on_the_comment })
+    );
+
+    // when: otto deletes it
+    otto.delete(&format!("/feedback/{}", reply.id))
+        .await
+        .assert_status_no_content();
+
+    // then: bea is told it is gone from the comment
+    let frame = bea.frame().await;
+    assert_eq!(frame["of"], reply.id);
+    assert_eq!(
+        frame["event"],
+        json!({ "kind": "gone", "subject": on_the_comment })
+    );
 }
 
 #[tokio::test]

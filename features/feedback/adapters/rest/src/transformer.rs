@@ -36,6 +36,7 @@ pub fn to_count_dto(counted: &Counted) -> FeedbackCountDTO {
             Subject::ReadingCopy(copy) => copy.to_string(),
             Subject::Feedback(piece) => piece.to_string(),
         },
+        submitted: u32::try_from(counted.submitted).unwrap_or(u32::MAX),
         not_done: u32::try_from(counted.not_done).unwrap_or(u32::MAX),
         your_drafts: u32::try_from(counted.your_drafts).unwrap_or(u32::MAX),
     }

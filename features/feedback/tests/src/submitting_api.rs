@@ -144,11 +144,13 @@ async fn each_copy_counts_what_is_not_done_and_your_drafts_on_it_in_the_order_as
         vec![
             FeedbackCountDTO {
                 id: "copy_weft".to_owned(),
+                submitted: 0,
                 not_done: 0,
                 your_drafts: 0,
             },
             FeedbackCountDTO {
                 id: "copy_loom".to_owned(),
+                submitted: 2,
                 not_done: 2,
                 your_drafts: 1,
             },

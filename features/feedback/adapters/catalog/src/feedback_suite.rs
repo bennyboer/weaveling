@@ -22,14 +22,12 @@ impl<C: FeedbackCatalog> Committing<'_, C> {
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
 
-    pub async fn forget_piece(&self, piece: &FeedbackId) -> Result<(), CatalogError> {
+    pub async fn forget_piece(&self, piece: &FeedbackId) -> Result<Option<Subject>, CatalogError> {
         transacting::retrying!(self.transactions, |transaction| {
             self.catalog
                 .forget(transaction, piece)
                 .await
-                .map_err(Tried::Refused)?;
-
-            Ok(())
+                .map_err(Tried::Refused)
         })
         .map_err(|tried: Tried<_>| tried.answered(unreachable))
     }
@@ -200,18 +198,30 @@ pub async fn a_piece_kept_again_stands_as_kept_last_and_a_forgotten_one_is_gone(
     );
 
     // when: the other is forgotten
-    catalog
+    let forgotten = catalog
         .forget_piece(&other.id)
         .await
         .expect("forgetting should succeed");
 
-    // then: it is not found
+    // then: it tells what it was given on, and is not found
+    assert_eq!(
+        forgotten,
+        Some(Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")))
+    );
     assert_eq!(
         catalog
             .uncommitted()
             .piece(&other.id)
             .await
             .expect("asking should succeed"),
+        None
+    );
+    // and: forgotten again, it tells nothing, as it was not kept
+    assert_eq!(
+        catalog
+            .forget_piece(&other.id)
+            .await
+            .expect("forgetting should succeed"),
         None
     );
 }
@@ -622,7 +632,7 @@ pub async fn a_subject_s_drafts_by_anyone_are_found_and_nothing_given(
     );
 }
 
-pub async fn each_subject_counts_what_is_given_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
+pub async fn each_subject_counts_what_is_submitted_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
     // given: in the loom copy two pieces not done, one done, a draft of ada and one of bea; in the weft copy one draft of ada
@@ -666,19 +676,19 @@ pub async fn each_subject_counts_what_is_given_what_is_not_done_and_the_asker_s_
         [
             Counted {
                 subject: copy("copy_weft"),
-                given: 0,
+                submitted: 0,
                 not_done: 0,
                 your_drafts: 1,
             },
             Counted {
                 subject: copy("copy_loom"),
-                given: 3,
+                submitted: 3,
                 not_done: 2,
                 your_drafts: 1,
             },
             Counted {
                 subject: copy("copy_shuttle"),
-                given: 0,
+                submitted: 0,
                 not_done: 0,
                 your_drafts: 0,
             },
@@ -795,7 +805,7 @@ pub async fn a_piece_s_replies_are_asked_for_on_it_in_the_order_sent_paged_and_c
     assert_eq!(
         counted
             .iter()
-            .map(|counted| counted.given)
+            .map(|counted| counted.submitted)
             .collect::<Vec<_>>(),
         vec![3, 1, 0]
     );
@@ -841,7 +851,7 @@ pub async fn replies_are_left_out_where_no_subject_is_named_and_of_whoever_gave_
         .counted_on(std::slice::from_ref(&loom), &ada())
         .await
         .expect("counting should succeed");
-    assert_eq!((counted[0].given, counted[0].not_done), (1, 1));
+    assert_eq!((counted[0].submitted, counted[0].not_done), (1, 1));
     // and: whoever only replied gave no feedback
     assert_eq!(
         catalog
@@ -920,7 +930,7 @@ macro_rules! feedback_conformance_tests {
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
-            each_subject_counts_what_is_given_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked
+            each_subject_counts_what_is_submitted_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,

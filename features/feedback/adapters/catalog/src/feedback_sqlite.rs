@@ -31,7 +31,7 @@ const KEEP: &str = "
         submitted_at = excluded.submitted_at, edited = excluded.edited, done = excluded.done
 ";
 
-const FORGET: &str = "DELETE FROM feedback WHERE feedback = ?1 RETURNING project, written_by";
+const FORGET: &str = "DELETE FROM feedback WHERE feedback = ?1 RETURNING project, written_by, subject_kind, subject_id";
 
 /// Which pieces are asked for, as the first four parameters name them, each list as JSON:
 /// the project; the subjects as `[kind, id]`, none if not asked by; the places likewise; and the givers.
@@ -67,7 +67,7 @@ const PIECES_ON: &str = "SELECT feedback FROM feedback WHERE subject_kind = ?1 A
 
 const COUNTED_ON: &str = "
     SELECT subject_kind, subject_id,
-           COUNT(*) FILTER (WHERE submitted_at IS NOT NULL) AS given,
+           COUNT(*) FILTER (WHERE submitted_at IS NOT NULL) AS submitted,
            COUNT(*) FILTER (WHERE submitted_at IS NOT NULL AND NOT done) AS not_done,
            COUNT(*) FILTER (WHERE submitted_at IS NULL AND written_by = ?2) AS your_drafts
     FROM feedback
@@ -214,19 +214,28 @@ impl FeedbackCatalog for SqliteFeedbackCatalog {
         &self,
         transaction: &mut Transaction,
         piece: &FeedbackId,
-    ) -> Result<(), CatalogError> {
+    ) -> Result<Option<Subject>, CatalogError> {
         let forgotten = sqlx::query(FORGET)
             .bind(piece.to_string())
             .fetch_optional(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         let Some(forgotten) = forgotten else {
-            return Ok(());
+            return Ok(None);
         };
         let project: String = forgotten.try_get("project").map_err(unreachable)?;
         let giver: String = forgotten.try_get("written_by").map_err(unreachable)?;
+        let subject = kept::subject_from_columns(
+            &forgotten
+                .try_get::<String, _>("subject_kind")
+                .map_err(unreachable)?,
+            &forgotten
+                .try_get::<String, _>("subject_id")
+                .map_err(unreachable)?,
+        )?;
+        giver_found_again(transaction, &project, &giver).await?;
 
-        giver_found_again(transaction, &project, &giver).await
+        Ok(Some(subject))
     }
 
     async fn piece(&self, piece: &FeedbackId) -> Result<Option<CataloguedFeedback>, CatalogError> {
@@ -409,13 +418,13 @@ impl FeedbackCatalog for SqliteFeedbackCatalog {
         {
             let kind: String = row.try_get("subject_kind").map_err(unreachable)?;
             let id: String = row.try_get("subject_id").map_err(unreachable)?;
-            let given: i64 = row.try_get("given").map_err(unreachable)?;
+            let submitted: i64 = row.try_get("submitted").map_err(unreachable)?;
             let not_done: i64 = row.try_get("not_done").map_err(unreachable)?;
             let your_drafts: i64 = row.try_get("your_drafts").map_err(unreachable)?;
             counts.insert(
                 (kind, id),
                 (
-                    usize::try_from(given).map_err(unreachable)?,
+                    usize::try_from(submitted).map_err(unreachable)?,
                     usize::try_from(not_done).map_err(unreachable)?,
                     usize::try_from(your_drafts).map_err(unreachable)?,
                 ),
@@ -425,14 +434,14 @@ impl FeedbackCatalog for SqliteFeedbackCatalog {
         Ok(subjects
             .iter()
             .map(|subject| {
-                let (given, not_done, your_drafts) = counts
+                let (submitted, not_done, your_drafts) = counts
                     .get(&kept::subject_columns(subject))
                     .copied()
                     .unwrap_or_default();
 
                 Counted {
                     subject: subject.clone(),
-                    given,
+                    submitted,
                     not_done,
                     your_drafts,
                 }

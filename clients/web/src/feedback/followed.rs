@@ -42,7 +42,7 @@ impl Heard {
             Ok(GivenFeedbackChangeDTO::Changed { subject }) => {
                 self.changed.insert(piece, subject);
             }
-            Ok(GivenFeedbackChangeDTO::Gone) => {
+            Ok(GivenFeedbackChangeDTO::Gone { .. }) => {
                 self.changed.remove(&piece);
                 self.gone.insert(piece);
             }

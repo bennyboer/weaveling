@@ -228,6 +228,17 @@ pub(crate) fn subject_columns(subject: &Subject) -> (String, String) {
     }
 }
 
+/// A subject read back from its two columns.
+pub(crate) fn subject_from_columns(kind: &str, id: &str) -> Result<Subject, CatalogError> {
+    match kind {
+        "reading_copy" => Ok(Subject::ReadingCopy(ReadingCopyLink::from(id))),
+        "feedback" => FeedbackId::from_str(id)
+            .map(Subject::Feedback)
+            .map_err(|_| unreadable(NoLongerReadable("the piece feedback is given on"))),
+        _ => Err(unreadable(NoLongerReadable("what feedback is given on"))),
+    }
+}
+
 /// Where in its subject a piece lies, as two columns keep it to be asked by: in a reading copy's text the scene,
 /// on it or a passage in it, or the section itself; none for a whole copy. The exact place is kept with what it is about.
 pub(crate) fn place_columns(about: &About) -> (Option<String>, Option<String>) {

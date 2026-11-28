@@ -48,15 +48,15 @@ pub enum FeedbackEventDTO {
 }
 
 /// What whoever follows a project's feedback live under `feedback`, about `{ project }`, is told of a piece given there,
-/// the frame being of the piece: that it changed, given, reworded or marked, on a subject named as `subjects=` names it
-/// (`reading_copy:c1`), or that it is gone.
+/// the frame being of the piece: that it changed, given, reworded or marked, or that it is gone,
+/// on a subject named as `subjects=` names it (`reading_copy:c1`, or `feedback:<id>` for a reply).
 /// It never says what a piece says or where in its subject it is, and never tells of a draft;
 /// whoever shows feedback on that subject asks for the pieces changed (`GET /feedback/pieces?ids=`), and lets go of those gone.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum GivenFeedbackChangeDTO {
     Changed { subject: String },
-    Gone,
+    Gone { subject: String },
 }
 
 /// Which feedback is asked for, as `GET /feedback/on`, `GET /feedback/drafts` and `POST /feedback/submitted` name it in their query:
@@ -332,6 +332,9 @@ fn is_none_replied(replies: &u32) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FeedbackCountDTO {
     pub id: String,
+    /// The feedback submitted, done or not; on a piece of feedback, its replies.
+    #[serde(default)]
+    pub submitted: u32,
     /// The feedback submitted and not done yet.
     pub not_done: u32,
     /// The asker's own drafts on it.

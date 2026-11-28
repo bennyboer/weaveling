@@ -95,8 +95,8 @@ pub struct Giver {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Counted {
     pub subject: Subject,
-    /// The feedback submitted, done or not.
-    pub given: usize,
+    /// The feedback submitted, done or not; on a piece of feedback, its replies.
+    pub submitted: usize,
     /// The feedback submitted and not done yet.
     pub not_done: usize,
     /// The asker's own drafts.
@@ -403,7 +403,7 @@ impl FeedbackCore {
                 .await?
                 .into_iter()
                 .filter_map(|counted| match counted.subject {
-                    Subject::Feedback(piece) => Some((piece, counted.given)),
+                    Subject::Feedback(piece) => Some((piece, counted.submitted)),
                     Subject::ReadingCopy(_) => None,
                 })
                 .collect(),
@@ -535,10 +535,12 @@ impl FeedbackCore {
         let Some(catalogued) =
             CataloguedFeedback::of(piece, &standing.state).filter(|_| !standing.state.is_deleted())
         else {
-            self.feedback.forget(transaction, &piece).await?;
-            if !standing.state.is_draft() {
+            let forgotten = self.feedback.forget(transaction, &piece).await?;
+            if !standing.state.is_draft()
+                && let Some(subject) = forgotten
+            {
                 self.followers
-                    .given_gone(transaction, standing.state.project(), &piece);
+                    .given_gone(transaction, standing.state.project(), &piece, &subject);
             }
 
             return Ok(None);

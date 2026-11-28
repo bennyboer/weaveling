@@ -158,12 +158,12 @@ pub trait FeedbackCatalog: Send + Sync {
         piece: &CataloguedFeedback,
     ) -> Result<(), CatalogError>;
 
-    /// Forgets a deleted piece.
+    /// Forgets a deleted piece, answering what it was given on; none if it was not kept.
     async fn forget(
         &self,
         transaction: &mut Transaction,
         piece: &FeedbackId,
-    ) -> Result<(), CatalogError>;
+    ) -> Result<Option<Subject>, CatalogError>;
 
     /// One piece, drafted or submitted, if it is kept.
     async fn piece(&self, piece: &FeedbackId) -> Result<Option<CataloguedFeedback>, CatalogError>;
