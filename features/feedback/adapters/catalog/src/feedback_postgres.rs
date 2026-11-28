@@ -35,9 +35,10 @@ const FORGET: &str = "DELETE FROM feedback WHERE feedback = $1 RETURNING project
 
 /// Which pieces are asked for, as the first seven parameters name them: the project;
 /// the subjects' kinds and ids, none if not asked by; whether places are named, and their kinds and ids; and the givers.
+/// With no subjects named it is feedback on the work alone, as replies are asked for by the piece they are given on.
 const ASKED: &str = "
     ($1::TEXT IS NULL OR project = $1)
-    AND ($2::TEXT[] IS NULL
+    AND (($2::TEXT[] IS NULL AND subject_kind <> 'feedback')
          OR (subject_kind, subject_id) IN (SELECT * FROM UNNEST($2::TEXT[], $3::TEXT[])))
     AND (NOT $4::BOOLEAN
          OR (place_kind, place_id) IN (SELECT * FROM UNNEST($5::TEXT[], $6::TEXT[])))
@@ -55,6 +56,7 @@ const FIND_GIVER: &str = "
     SELECT project, written_by, submitted_at, written_at, feedback
     FROM feedback
     WHERE project = $1 AND written_by = $2 AND submitted_at IS NOT NULL
+      AND subject_kind <> 'feedback'
     ORDER BY submitted_at, written_at, feedback
     LIMIT 1
 ";
@@ -65,6 +67,7 @@ const PIECES_ON: &str = "SELECT feedback FROM feedback WHERE subject_kind = $1 A
 
 const COUNTED_ON: &str = "
     SELECT subject_kind, subject_id,
+           COUNT(*) FILTER (WHERE submitted_at IS NOT NULL) AS given,
            COUNT(*) FILTER (WHERE submitted_at IS NOT NULL AND NOT done) AS not_done,
            COUNT(*) FILTER (WHERE submitted_at IS NULL AND written_by = $3) AS your_drafts
     FROM feedback
@@ -382,7 +385,7 @@ impl FeedbackCatalog for PostgresFeedbackCatalog {
     ) -> Result<Vec<Counted>, CatalogError> {
         let (kinds, ids): (Vec<String>, Vec<String>) =
             subjects.iter().map(kept::subject_columns).unzip();
-        let mut counts: HashMap<(String, String), (usize, usize)> = HashMap::new();
+        let mut counts: HashMap<(String, String), (usize, usize, usize)> = HashMap::new();
         for row in sqlx::query(COUNTED_ON)
             .bind(&kinds)
             .bind(&ids)
@@ -393,11 +396,13 @@ impl FeedbackCatalog for PostgresFeedbackCatalog {
         {
             let kind: String = row.try_get("subject_kind").map_err(unreachable)?;
             let id: String = row.try_get("subject_id").map_err(unreachable)?;
+            let given: i64 = row.try_get("given").map_err(unreachable)?;
             let not_done: i64 = row.try_get("not_done").map_err(unreachable)?;
             let your_drafts: i64 = row.try_get("your_drafts").map_err(unreachable)?;
             counts.insert(
                 (kind, id),
                 (
+                    usize::try_from(given).map_err(unreachable)?,
                     usize::try_from(not_done).map_err(unreachable)?,
                     usize::try_from(your_drafts).map_err(unreachable)?,
                 ),
@@ -407,13 +412,14 @@ impl FeedbackCatalog for PostgresFeedbackCatalog {
         Ok(subjects
             .iter()
             .map(|subject| {
-                let (not_done, your_drafts) = counts
+                let (given, not_done, your_drafts) = counts
                     .get(&kept::subject_columns(subject))
                     .copied()
                     .unwrap_or_default();
 
                 Counted {
                     subject: subject.clone(),
+                    given,
                     not_done,
                     your_drafts,
                 }

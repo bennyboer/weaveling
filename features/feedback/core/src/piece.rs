@@ -6,7 +6,7 @@ use projects_contract::context;
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::about::{About, Subject};
+use crate::about::About;
 use crate::comment::Comment;
 use crate::id::FeedbackId;
 use crate::link::ProjectLink;
@@ -38,7 +38,6 @@ pub enum FeedbackCommand {
     Reply {
         project: ProjectLink,
         to: FeedbackId,
-        on: Subject,
         comment: Comment,
     },
     Reword(Comment),
@@ -271,12 +270,11 @@ impl Aggregate for Feedback {
             FeedbackCommand::Reply {
                 project,
                 to,
-                on,
                 comment,
             } => Ok(vec![
                 FeedbackEvent::Drafted {
                     project,
-                    about: About::Feedback { feedback: to, on },
+                    about: About::Feedback { feedback: to },
                     comment,
                 },
                 FeedbackEvent::Submitted,

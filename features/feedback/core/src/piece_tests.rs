@@ -282,13 +282,12 @@ fn the_root() -> FeedbackId {
     *THE_ROOT
 }
 
-/// Bea's reply to the root, given on the copy.
+/// Bea's reply to the root, given on it.
 fn a_reply() -> Feedback {
     let events = Feedback::begin(
         FeedbackCommand::Reply {
             project: ProjectLink::from("project_loom"),
             to: the_root(),
-            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
             comment: saying("The fishing boats."),
         },
         &bea(),
@@ -308,21 +307,19 @@ fn a_reply() -> Feedback {
 }
 
 #[test]
-fn a_reply_is_sent_at_once_on_its_root_in_the_root_s_subject() {
+fn a_reply_is_sent_at_once_given_on_the_piece_it_replies_to() {
     // when: bea replies to the root
     let replied = a_reply();
 
     // then: it is no draft, sent when it was written
     assert!(!replied.is_draft());
     assert_eq!(replied.submitted_at(), Some(DRAFTED_AT));
-    // and: it replies to the root, on the root's copy, and is in no place of its own
+    // and: it replies to the root, given on it, and is in no place of its own
     let about = replied.about().expect("it is about something");
     assert!(replied.is_reply());
     assert_eq!(about.replying_to(), Some(&the_root()));
-    assert_eq!(
-        about.subject(),
-        Subject::ReadingCopy(ReadingCopyLink::from("copy_loom"))
-    );
+    assert_eq!(about.subject(), Subject::Feedback(the_root()));
+    assert!(about.subject().is_feedback());
     assert_eq!(about.in_scene(), None);
     assert_eq!(about.on_section(), None);
     // and: a comment given is no reply
@@ -347,8 +344,7 @@ fn a_reply_is_never_drafted_and_changed_by_its_writer_alone() {
     assert_eq!(
         Feedback::begin(
             a_drafting(About::Feedback {
-                feedback: the_root(),
-                on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
+                feedback: the_root()
             }),
             &bea(),
         ),

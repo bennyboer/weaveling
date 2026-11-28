@@ -20,13 +20,13 @@ CREATE INDEX feedback_by_subject ON feedback (subject_kind, subject_id, submitte
 CREATE INDEX feedback_by_place ON feedback (place_kind, place_id, submitted_at, written_at, feedback);
 CREATE INDEX feedback_by_writer ON feedback (written_by, written_at, feedback);
 
--- Each giver's first piece submitted in a project, found without reading their others.
+-- Each giver's first piece submitted on the work in a project, found without reading their others nor their replies.
 CREATE INDEX feedback_firsts_by_giver ON feedback (project, written_by, submitted_at, written_at, feedback)
-    WHERE submitted_at IS NOT NULL;
+    WHERE submitted_at IS NOT NULL AND subject_kind <> 'feedback';
 
--- What is pending, counted without reading what is done.
+-- What is pending, counted without reading what is done, nor the replies, which are never pending.
 CREATE INDEX feedback_pending_by_place ON feedback (project, place_kind, place_id)
-    WHERE submitted_at IS NOT NULL AND NOT done;
+    WHERE submitted_at IS NOT NULL AND NOT done AND subject_kind <> 'feedback';
 CREATE INDEX feedback_pending_by_subject ON feedback (subject_kind, subject_id)
     WHERE submitted_at IS NOT NULL AND NOT done;
 

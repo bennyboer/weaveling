@@ -10,16 +10,24 @@ pub enum About {
         reading_copy: ReadingCopyLink,
         place: ReadingCopyPlace,
     },
-    /// A reply: the piece that began its thread, its root, and the subject the root is given on,
-    /// so who may see it, and until when it may be given, follows from the root without walking up the thread.
-    Feedback { feedback: FeedbackId, on: Subject },
+    /// A reply: given on another piece of feedback, whose thread it is in.
+    Feedback { feedback: FeedbackId },
 }
 
 /// The thing feedback is given on, whatever place in it a piece is about.
 /// Who may see feedback, and until when it may be given, follows from its subject.
+/// A piece of feedback is a subject too: the replies to it are given on it, its thread.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Subject {
     ReadingCopy(ReadingCopyLink),
+    Feedback(FeedbackId),
+}
+
+impl Subject {
+    /// Whether it is a piece of feedback, holding the replies to it, rather than something of the work.
+    pub fn is_feedback(&self) -> bool {
+        matches!(self, Self::Feedback(_))
+    }
 }
 
 /// Where in a reading copy a piece of feedback is.
@@ -43,7 +51,7 @@ impl About {
     pub fn subject(&self) -> Subject {
         match self {
             Self::ReadingCopy { reading_copy, .. } => Subject::ReadingCopy(reading_copy.clone()),
-            Self::Feedback { on, .. } => on.clone(),
+            Self::Feedback { feedback } => Subject::Feedback(*feedback),
         }
     }
 

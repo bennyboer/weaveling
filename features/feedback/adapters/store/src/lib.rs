@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use feedback_core::{
     About, BlockPath, Comment, CommentBlock, CommentRun, FeedbackEvent, FeedbackId, ProjectLink,
-    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
+    ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -47,13 +47,7 @@ enum StoredAbout {
     },
     Feedback {
         feedback: String,
-        on: StoredSubject,
     },
-}
-
-#[derive(Serialize, Deserialize)]
-enum StoredSubject {
-    ReadingCopy(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -134,11 +128,8 @@ impl From<&About> for StoredAbout {
                 reading_copy: reading_copy.to_string(),
                 place: StoredPlace::from(place),
             },
-            About::Feedback { feedback, on } => Self::Feedback {
+            About::Feedback { feedback } => Self::Feedback {
                 feedback: feedback.to_string(),
-                on: match on {
-                    Subject::ReadingCopy(copy) => StoredSubject::ReadingCopy(copy.to_string()),
-                },
             },
         }
     }
@@ -156,13 +147,8 @@ impl TryFrom<StoredAbout> for About {
                 reading_copy: ReadingCopyLink::from(reading_copy),
                 place: ReadingCopyPlace::from(place),
             },
-            StoredAbout::Feedback { feedback, on } => Self::Feedback {
+            StoredAbout::Feedback { feedback } => Self::Feedback {
                 feedback: FeedbackId::from_str(&feedback).map_err(|_| Unreadable)?,
-                on: match on {
-                    StoredSubject::ReadingCopy(copy) => {
-                        Subject::ReadingCopy(ReadingCopyLink::from(copy))
-                    }
-                },
             },
         })
     }
@@ -509,7 +495,6 @@ mod tests {
         // and: a reply, drafted on its root and in a snapshot
         let reply = About::Feedback {
             feedback: FeedbackId::generate(time::OffsetDateTime::UNIX_EPOCH),
-            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
         };
         every.push(FeedbackEvent::Drafted {
             project: ProjectLink::from("project_loom"),

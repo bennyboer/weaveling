@@ -88,6 +88,8 @@ pub struct Giver {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Counted {
     pub subject: Subject,
+    /// The feedback submitted, done or not.
+    pub given: usize,
     /// The feedback submitted and not done yet.
     pub not_done: usize,
     /// The asker's own drafts.
@@ -166,14 +168,19 @@ impl Asked {
     }
 
     /// Whether a piece is among those asked for: in the project, on a subject, at a place and by a giver named.
+    /// With no subjects named it is feedback on the work alone, as replies are asked for by the piece they are given on.
     pub fn holds(&self, piece: &CataloguedFeedback) -> bool {
+        let subject = piece.about.subject();
+
         self.project
             .as_ref()
             .is_none_or(|project| piece.project.as_str() == project)
             && self
                 .subjects
                 .as_ref()
-                .is_none_or(|subjects| subjects.contains(&piece.about.subject()))
+                .map_or(!subject.is_feedback(), |subjects| {
+                    subjects.contains(&subject)
+                })
             && self
                 .places
                 .as_ref()
@@ -206,9 +213,11 @@ fn name_in(names: &HashMap<AccountId, String>, agent: &Agent) -> Option<String> 
     }
 }
 
-fn reading_copy_of(about: &About) -> ReadingCopyLink {
+/// The reading copy a piece is given in; none for a reply, given on another piece.
+fn reading_copy_of(about: &About) -> Option<ReadingCopyLink> {
     match about.subject() {
-        Subject::ReadingCopy(copy) => copy,
+        Subject::ReadingCopy(copy) => Some(copy),
+        Subject::Feedback(_) => None,
     }
 }
 
@@ -317,8 +326,9 @@ impl FeedbackCore {
     async fn projects_of(&self, subjects: &[Subject]) -> Result<Vec<ProjectLink>, FeedbackError> {
         let copies: Vec<ReadingCopyLink> = subjects
             .iter()
-            .map(|subject| match subject {
-                Subject::ReadingCopy(copy) => copy.clone(),
+            .filter_map(|subject| match subject {
+                Subject::ReadingCopy(copy) => Some(copy.clone()),
+                Subject::Feedback(_) => None,
             })
             .collect();
         let mut projects: Vec<ProjectLink> = self
@@ -328,6 +338,13 @@ impl FeedbackCore {
             .into_values()
             .map(|copy| copy.project)
             .collect();
+        for subject in subjects {
+            if let Subject::Feedback(piece) = subject
+                && let Some(piece) = self.feedback.piece(piece).await?
+            {
+                projects.push(piece.project);
+            }
+        }
         projects.sort();
         projects.dedup();
 
@@ -684,7 +701,7 @@ impl FeedbackCore {
         let drafts = self.feedback.drafts_of(asked, agent).await?;
         let mut copies: Vec<ReadingCopyLink> = drafts
             .iter()
-            .map(|draft| reading_copy_of(&draft.about))
+            .filter_map(|draft| reading_copy_of(&draft.about))
             .collect();
         copies.sort();
         copies.dedup();
@@ -722,7 +739,7 @@ impl FeedbackCore {
         if !about.holds_something() {
             return Err(FeedbackError::PassageEmpty);
         }
-        let copy = reading_copy_of(&about);
+        let copy = reading_copy_of(&about).ok_or(FeedbackError::RepliesSentAtOnce)?;
         let known = self
             .open_reading_copies(std::slice::from_ref(&copy))
             .await?;

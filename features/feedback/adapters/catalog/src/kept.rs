@@ -18,13 +18,7 @@ enum KeptAbout {
     },
     Feedback {
         feedback: String,
-        on: KeptSubject,
     },
-}
-
-#[derive(Serialize, Deserialize)]
-enum KeptSubject {
-    ReadingCopy(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -103,11 +97,8 @@ pub(crate) fn about_to_json(about: &About) -> String {
                 ReadingCopyPlace::Whole => KeptPlace::Whole,
             },
         },
-        About::Feedback { feedback, on } => KeptAbout::Feedback {
+        About::Feedback { feedback } => KeptAbout::Feedback {
             feedback: feedback.to_string(),
-            on: match on {
-                Subject::ReadingCopy(copy) => KeptSubject::ReadingCopy(copy.to_string()),
-            },
         },
     };
 
@@ -144,12 +135,9 @@ pub(crate) fn about_from_json(json: &str) -> Result<About, CatalogError> {
                 KeptPlace::Whole => ReadingCopyPlace::Whole,
             },
         },
-        KeptAbout::Feedback { feedback, on } => About::Feedback {
+        KeptAbout::Feedback { feedback } => About::Feedback {
             feedback: FeedbackId::from_str(&feedback)
                 .map_err(|_| unreadable(NoLongerReadable("the piece a reply answers")))?,
-            on: match on {
-                KeptSubject::ReadingCopy(copy) => Subject::ReadingCopy(ReadingCopyLink::from(copy)),
-            },
         },
     })
 }
@@ -236,6 +224,7 @@ pub(crate) fn comment_from_json(json: &str) -> Result<Comment, CatalogError> {
 pub(crate) fn subject_columns(subject: &Subject) -> (String, String) {
     match subject {
         Subject::ReadingCopy(copy) => ("reading_copy".to_owned(), copy.to_string()),
+        Subject::Feedback(piece) => ("feedback".to_owned(), piece.to_string()),
     }
 }
 
@@ -310,11 +299,10 @@ mod tests {
     }
 
     #[test]
-    fn a_reply_is_read_back_on_its_root_in_the_root_s_subject() {
-        // given: a reply's root and subject
+    fn a_reply_is_read_back_on_the_piece_it_replies_to() {
+        // given: a reply, given on a piece
         let about = About::Feedback {
             feedback: FeedbackId::generate(time::OffsetDateTime::UNIX_EPOCH),
-            on: Subject::ReadingCopy(ReadingCopyLink::from("copy_loom")),
         };
 
         // when: it is kept and read back

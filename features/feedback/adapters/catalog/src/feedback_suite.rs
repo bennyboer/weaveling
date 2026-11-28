@@ -622,7 +622,7 @@ pub async fn a_subject_s_drafts_by_anyone_are_found_and_nothing_given(
     );
 }
 
-pub async fn each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
+pub async fn each_subject_counts_what_is_given_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked(
     catalog: &Committing<'_, impl FeedbackCatalog>,
 ) {
     // given: in the loom copy two pieces not done, one done, a draft of ada and one of bea; in the weft copy one draft of ada
@@ -666,21 +666,201 @@ pub async fn each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_
         [
             Counted {
                 subject: copy("copy_weft"),
+                given: 0,
                 not_done: 0,
                 your_drafts: 1,
             },
             Counted {
                 subject: copy("copy_loom"),
+                given: 3,
                 not_done: 2,
                 your_drafts: 1,
             },
             Counted {
                 subject: copy("copy_shuttle"),
+                given: 0,
                 not_done: 0,
                 your_drafts: 0,
             },
         ]
     );
+}
+
+/// Bea's reply to a piece, given on it in the same project, sent at a time.
+fn a_reply(to: &CataloguedFeedback, sent_at: i64) -> CataloguedFeedback {
+    CataloguedFeedback {
+        id: FeedbackId::generate(at(sent_at)),
+        project: to.project.clone(),
+        about: About::Feedback { feedback: to.id },
+        comment: saying("Agreed."),
+        written_by: bea(),
+        written_at: at(sent_at),
+        submitted_at: Some(at(sent_at)),
+        edited: false,
+        done: false,
+    }
+}
+
+fn a_page(order: Order, after: Option<&CataloguedFeedback>, at_most: Option<usize>) -> Page {
+    Page {
+        order,
+        after: after.map(|piece| piece.id.to_string()),
+        at_most,
+    }
+}
+
+fn on_the_piece(piece: &CataloguedFeedback) -> Subject {
+    Subject::Feedback(piece.id)
+}
+
+pub async fn a_piece_s_replies_are_asked_for_on_it_in_the_order_sent_paged_and_counted(
+    catalog: &Committing<'_, impl FeedbackCatalog>,
+) {
+    // given: three comments given, three replies on the first and one on the second
+    let root = submitted_at(
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 1),
+        10,
+    );
+    let other = submitted_at(
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 2),
+        11,
+    );
+    let lonely = submitted_at(
+        a_draft(in_copy("copy_loom", ReadingCopyPlace::Whole), 3),
+        12,
+    );
+    let replies = [a_reply(&root, 20), a_reply(&root, 30), a_reply(&root, 40)];
+    let on_the_other = a_reply(&other, 25);
+    kept(
+        catalog,
+        &[&root, &other, &lonely, &on_the_other]
+            .into_iter()
+            .chain(replies.iter())
+            .collect::<Vec<_>>(),
+    )
+    .await;
+    let on_the_root = Asked {
+        subjects: Some(vec![on_the_piece(&root)]),
+        ..Asked::default()
+    };
+
+    // expect: what is given on the first is its replies, in the order sent, and nothing else
+    assert_eq!(
+        submitted(
+            catalog,
+            &on_the_root,
+            None,
+            &a_page(Order::Oldest, None, None)
+        )
+        .await,
+        ids(&replies)
+    );
+    // and: newest first, the other way round
+    let mut newest = ids(&replies);
+    newest.reverse();
+    assert_eq!(
+        submitted(
+            catalog,
+            &on_the_root,
+            None,
+            &a_page(Order::Newest, None, None)
+        )
+        .await,
+        newest
+    );
+    // and: a page at a time, after the reply named
+    assert_eq!(
+        submitted(
+            catalog,
+            &on_the_root,
+            None,
+            &a_page(Order::Oldest, Some(&replies[0]), Some(1))
+        )
+        .await,
+        vec![replies[1].id]
+    );
+    // and: each piece counts what is given on it
+    let counted = catalog
+        .uncommitted()
+        .counted_on(
+            &[
+                on_the_piece(&root),
+                on_the_piece(&other),
+                on_the_piece(&lonely),
+            ],
+            &ada(),
+        )
+        .await
+        .expect("counting should succeed");
+    assert_eq!(
+        counted
+            .iter()
+            .map(|counted| counted.given)
+            .collect::<Vec<_>>(),
+        vec![3, 1, 0]
+    );
+}
+
+pub async fn replies_are_left_out_where_no_subject_is_named_and_of_whoever_gave_feedback(
+    catalog: &Committing<'_, impl FeedbackCatalog>,
+) {
+    // given: ada's comment on a scene, pending, and bea's reply to it, bea having given nothing else
+    let root = submitted_at(
+        a_draft(in_copy("copy_loom", on_scene("scene_harbour")), 1),
+        10,
+    );
+    let reply = a_reply(&root, 20);
+    kept(catalog, &[&root, &reply]).await;
+    let loom = Subject::ReadingCopy(ReadingCopyLink::from("copy_loom"));
+
+    // expect: the feedback asked for in the project is the comment alone
+    assert_eq!(
+        submitted(
+            catalog,
+            &in_the_loom(),
+            None,
+            &a_page(Order::Oldest, None, None)
+        )
+        .await,
+        vec![root.id]
+    );
+    // and: only the comment is pending, on its scene and in all
+    let pending = catalog
+        .uncommitted()
+        .pending(&in_the_loom())
+        .await
+        .expect("counting should succeed");
+    assert_eq!(pending.total, 1);
+    assert_eq!(
+        pending.scenes.get(&SceneLink::from("scene_harbour")),
+        Some(&1)
+    );
+    // and: the copy holds the comment alone
+    let counted = catalog
+        .uncommitted()
+        .counted_on(std::slice::from_ref(&loom), &ada())
+        .await
+        .expect("counting should succeed");
+    assert_eq!((counted[0].given, counted[0].not_done), (1, 1));
+    // and: whoever only replied gave no feedback
+    assert_eq!(
+        catalog
+            .uncommitted()
+            .givers_in(&ProjectLink::from("project_loom"))
+            .await
+            .expect("asking should succeed"),
+        vec![ada()]
+    );
+    // and: the copy's pieces to be swept are the comment, and the comment's are its reply
+    let pieces_on = |subject: Subject| async move {
+        catalog
+            .uncommitted()
+            .pieces_on(&subject, 10)
+            .await
+            .expect("asking should succeed")
+    };
+    assert_eq!(pieces_on(loom).await, vec![root.id]);
+    assert_eq!(pieces_on(on_the_piece(&root)).await, vec![reply.id]);
 }
 
 macro_rules! feedback_conformance_case {
@@ -740,7 +920,15 @@ macro_rules! feedback_conformance_tests {
         );
         $crate::feedback_suite::feedback_conformance_case!(
             $workbench,
-            each_subject_counts_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked
+            each_subject_counts_what_is_given_what_is_not_done_and_the_asker_s_drafts_in_the_order_asked
+        );
+        $crate::feedback_suite::feedback_conformance_case!(
+            $workbench,
+            a_piece_s_replies_are_asked_for_on_it_in_the_order_sent_paged_and_counted
+        );
+        $crate::feedback_suite::feedback_conformance_case!(
+            $workbench,
+            replies_are_left_out_where_no_subject_is_named_and_of_whoever_gave_feedback
         );
     };
 }

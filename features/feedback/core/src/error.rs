@@ -34,6 +34,8 @@ pub enum FeedbackError {
     MarkedByAuthorsAlone,
     #[error("a reply is never marked done, as being done stays with the comment it replies to")]
     ReplyNotMarked,
+    #[error("a reply is sent at once, never drafted")]
+    RepliesSentAtOnce,
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
     #[error(transparent)]
@@ -53,6 +55,9 @@ impl From<ServiceError<FeedbackRefused>> for FeedbackError {
             ServiceError::Refused(FeedbackRefused::NotYours) => FeedbackError::NotYours,
             ServiceError::Refused(FeedbackRefused::PassageEmpty) => FeedbackError::PassageEmpty,
             ServiceError::Refused(FeedbackRefused::ReplyNotMarked) => FeedbackError::ReplyNotMarked,
+            ServiceError::Refused(FeedbackRefused::RepliesSentAtOnce) => {
+                FeedbackError::RepliesSentAtOnce
+            }
             ServiceError::Refused(
                 FeedbackRefused::NotSubmitted
                 | FeedbackRefused::Deleted

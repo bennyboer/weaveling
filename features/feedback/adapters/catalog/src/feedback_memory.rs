@@ -178,7 +178,11 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
         let pieces = self.read();
         let mut given: Vec<&CataloguedFeedback> = pieces
             .iter()
-            .filter(|piece| !piece.is_draft() && &piece.project == project)
+            .filter(|piece| {
+                !piece.is_draft()
+                    && !piece.about.subject().is_feedback()
+                    && &piece.project == project
+            })
             .collect();
         given.sort_by_key(|piece| (piece.submitted_at, piece.written_at, piece.id.to_string()));
         let mut givers: Vec<Agent> = Vec::new();
@@ -207,6 +211,7 @@ impl FeedbackCatalog for InMemoryFeedbackCatalog {
                     .collect();
 
                 Counted {
+                    given: on.iter().filter(|piece| !piece.is_draft()).count(),
                     not_done: on
                         .iter()
                         .filter(|piece| !piece.is_draft() && !piece.done)

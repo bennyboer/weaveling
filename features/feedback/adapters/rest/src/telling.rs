@@ -44,6 +44,7 @@ impl FeedbackFollowers for TellingFollowers {
     ) {
         let subject = match subject {
             Subject::ReadingCopy(copy) => SubjectDTO::ReadingCopy(copy.to_string()),
+            Subject::Feedback(piece) => SubjectDTO::Feedback(piece.to_string()),
         };
         self.told(
             transaction,

@@ -147,6 +147,8 @@ impl CataloguedFeedback {
 /// The feedback as it now stands, kept for finding and counting it.
 /// Each piece is kept in the transaction its events are stored in, so what was just written is found at once.
 /// Pieces submitted at the same time are listed in the order they were written, and those written at the same time by their ids.
+/// A reply is given on another piece, its subject: it is found by naming that piece among the subjects,
+/// and never where no subjects are named, nor among whoever gave feedback in a project.
 #[async_trait]
 pub trait FeedbackCatalog: Send + Sync {
     /// Keeps a piece as it now stands, in place of what was kept of it before.
@@ -202,7 +204,8 @@ pub trait FeedbackCatalog: Send + Sync {
     /// Whoever submitted feedback in a project, in the order they first submitted any.
     async fn givers_in(&self, project: &ProjectLink) -> Result<Vec<Agent>, CatalogError>;
 
-    /// How much feedback each subject holds, in the order asked: what is submitted and not done, and the asker's own drafts.
+    /// How much feedback each subject holds, in the order asked: what is submitted, done or not, what is not done yet,
+    /// and the asker's own drafts.
     async fn counted_on(
         &self,
         subjects: &[Subject],
