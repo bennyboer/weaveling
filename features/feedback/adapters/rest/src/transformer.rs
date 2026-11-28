@@ -1,11 +1,14 @@
+use std::str::FromStr;
+
 use eventsourcing::{AccountId, Agent};
 use feedback_contract::{
     AboutDTO, AskedDTO, CommentBlockDTO, CommentRunDTO, FeedbackCountDTO, FeedbackDTO, GiverDTO,
     ListedGiverDTO, PendingDTO, PlaceDTO, ReadingCopyPlaceDTO, SubjectDTO, refused,
 };
 use feedback_core::{
-    About, Asked, BlockPath, Comment, CommentBlock, CommentRun, Counted, Giver, ListedFeedback,
-    Pending, Places, ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink, Subject,
+    About, Asked, BlockPath, Comment, CommentBlock, CommentRun, Counted, FeedbackId, Giver,
+    ListedFeedback, Pending, Places, ReadingCopyLink, ReadingCopyPlace, SceneLink, SectionLink,
+    Subject,
 };
 use serving::Problem;
 
@@ -50,7 +53,7 @@ pub fn to_dto(feedback: &ListedFeedback, asking: &Agent) -> FeedbackDTO {
         submitted_at: feedback.submitted_at.map(clock::text::serialize),
         edited: feedback.edited,
         done: feedback.done,
-        replies: 0,
+        replies: u32::try_from(feedback.replies).unwrap_or(u32::MAX),
     }
 }
 
@@ -107,16 +110,11 @@ pub fn about_of(about: AboutDTO) -> Result<About, Problem> {
             reading_copy: ReadingCopyLink::from(reading_copy),
             place: reading_copy_place_of(place),
         }),
-        // TODO: replies are held by a stub until the core knows them (M18 replies, R3 to R5).
-        AboutDTO::Feedback { .. } => Err(replies_apart()),
+        AboutDTO::Feedback { .. } => Err(Problem::rejected(
+            refused::SUBJECT_UNKNOWN,
+            "a reply is sent at once, never drafted",
+        )),
     }
-}
-
-fn replies_apart() -> Problem {
-    Problem::rejected(
-        refused::SUBJECT_UNKNOWN,
-        "replies are sent and asked for one thread at a time",
-    )
 }
 
 fn reading_copy_place_of(place: ReadingCopyPlaceDTO) -> ReadingCopyPlace {
@@ -266,7 +264,15 @@ pub fn subject_of(subject: SubjectDTO) -> Result<Subject, Problem> {
         SubjectDTO::ReadingCopy(copy) => {
             Ok(Subject::ReadingCopy(ReadingCopyLink::from(copy.as_str())))
         }
-        // TODO: replies are held by a stub until the core knows them (M18 replies, R3 to R5).
-        SubjectDTO::Feedback(_) => Err(replies_apart()),
+        SubjectDTO::Feedback(piece) => {
+            FeedbackId::from_str(&piece)
+                .map(Subject::Feedback)
+                .map_err(|_| {
+                    Problem::rejected(
+                        refused::SUBJECT_UNKNOWN,
+                        format!("no piece of feedback is named {piece}"),
+                    )
+                })
+        }
     }
 }

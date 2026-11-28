@@ -1,10 +1,17 @@
+use std::sync::Arc;
+
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use feedback_contract::{
-    AboutDTO, DraftFeedbackRequest, FeedbackDTO, RewriteFeedbackRequest, refused,
+    AboutDTO, DraftFeedbackRequest, FeedbackDTO, ReadingCopyPlaceDTO, RewriteFeedbackRequest,
+    refused,
 };
+use feedback_core::ReadingCopyLink;
 
-use crate::support::{READING_COPY, a_passage, as_, drafted, feedback, refusal, saying};
+use crate::support::{
+    CLOSING_COPY, NOW, READING_COPY, TickingClock, a_passage, as_, drafted, feedback, feedback_on,
+    refusal, saying,
+};
 
 async fn given(server: &TestServer, comment: &str) -> FeedbackDTO {
     drafted(server, a_passage(), saying(comment)).await;
@@ -190,4 +197,135 @@ async fn a_blank_reply_is_refused() {
     // then: it is refused as blank
     response.assert_status(StatusCode::BAD_REQUEST);
     assert_eq!(refusal(&response), refused::COMMENT_BLANK);
+}
+
+/// The pieces named, as whoever asks finds them: those gone are left out.
+async fn still_there(server: &TestServer, pieces: &[&str]) -> Vec<String> {
+    let response = server
+        .get(&format!("/feedback/pieces?ids={}", pieces.join(",")))
+        .await;
+    response.assert_status_ok();
+
+    response
+        .json::<Vec<FeedbackDTO>>()
+        .into_iter()
+        .map(|piece| piece.id)
+        .collect()
+}
+
+#[tokio::test]
+async fn an_owner_deletes_someone_else_s_reply_and_an_author_may_not() {
+    // given: bea's reply to otto's comment
+    let feedback = feedback().await;
+    let otto = as_(&feedback, "account_otto");
+    let bea = as_(&feedback, "account_bea");
+    let ada = as_(&feedback, "account_ada");
+    let hedy = as_(&feedback, "account_hedy");
+    let root = given(&otto, "Which boats?").await;
+    let reply = replied(&bea, &root.id, "The fishing boats.").await;
+
+    // when: hedy, an author, deletes it
+    let by_hedy = hedy.delete(&format!("/feedback/{}", reply.id)).await;
+    // then: it is not hers to delete
+    by_hedy.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(refusal(&by_hedy), refused::NOT_YOURS);
+
+    // when: ada, an owner, deletes it
+    ada.delete(&format!("/feedback/{}", reply.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    // then: the thread is empty
+    assert!(thread_of(&otto, &root.id).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_reply_is_never_marked_done_as_being_done_stays_with_its_comment() {
+    // given: bea's reply to ada's comment
+    let feedback = feedback().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    let root = given(&ada, "Which boats?").await;
+    let reply = replied(&bea, &root.id, "The fishing boats.").await;
+
+    // when: ada, an owner, marks it done
+    let marked = ada.put(&format!("/feedback/{}/done", reply.id)).await;
+
+    // then: it is refused
+    marked.assert_status(StatusCode::CONFLICT);
+    assert_eq!(refusal(&marked), refused::REPLY_NOT_MARKED);
+}
+
+#[tokio::test]
+async fn a_comment_deleted_takes_its_replies_with_it() {
+    // given: ada's comment, with two replies
+    let feedback = feedback().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    let root = given(&ada, "Which boats?").await;
+    let first = replied(&bea, &root.id, "The fishing boats.").await;
+    let second = replied(&ada, &root.id, "Thanks!").await;
+
+    // when: ada deletes her comment
+    ada.delete(&format!("/feedback/{}", root.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    // then: its replies are gone with it
+    assert!(
+        still_there(&bea, &[&root.id, &first.id, &second.id])
+            .await
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_swept_reading_copy_takes_the_replies_given_in_it_with_it() {
+    // given: a comment in the copy, with a reply
+    let feedback = feedback().await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    let root = given(&ada, "Which boats?").await;
+    let reply = replied(&bea, &root.id, "The fishing boats.").await;
+
+    // when: the copy is deleted and swept
+    feedback
+        .sweep_reading_copy(&ReadingCopyLink::from(READING_COPY))
+        .await
+        .expect("sweeping should succeed");
+
+    // then: the comment and its reply are gone
+    assert!(still_there(&bea, &[&root.id, &reply.id]).await.is_empty());
+}
+
+#[tokio::test]
+async fn nobody_replies_once_the_copy_the_comment_was_given_in_closed() {
+    // given: ada's comment given in a copy that closes a day from now
+    let clock = Arc::new(TickingClock::at(clock::at(NOW)));
+    let feedback = feedback_on(clock.clone()).await;
+    let ada = as_(&feedback, "account_ada");
+    let bea = as_(&feedback, "account_bea");
+    drafted(
+        &ada,
+        AboutDTO::ReadingCopy {
+            reading_copy: CLOSING_COPY.to_owned(),
+            place: ReadingCopyPlaceDTO::Whole,
+        },
+        saying("Lovely."),
+    )
+    .await;
+    let root = ada
+        .post(&format!(
+            "/feedback/submitted?subjects=reading_copy:{CLOSING_COPY}"
+        ))
+        .await
+        .json::<Vec<FeedbackDTO>>()
+        .remove(0);
+
+    // when: two days pass, and bea replies to it
+    clock.set(clock::at(NOW + 2 * 24 * 60 * 60));
+    let replying_late = replying(&bea, &root.id, "Agreed.").await;
+
+    // then: the copy is closed for it
+    replying_late.assert_status(StatusCode::CONFLICT);
+    assert_eq!(refusal(&replying_late), refused::READING_COPY_CLOSED);
 }

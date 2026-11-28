@@ -1,4 +1,3 @@
-mod replies_stub;
 mod telling;
 mod transformer;
 
@@ -9,7 +8,6 @@ use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use replies_stub::RepliesStub;
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -91,25 +89,6 @@ pub fn router(feedback: FeedbackCore) -> Router {
             routing::put(marked_done).delete(marked_not_done),
         )
         .with_state(feedback)
-        .layer(Extension(replies_stub::kept()))
-}
-
-/// The pieces as listed, each with how many replies it has.
-fn with_replies(mut listed: Vec<FeedbackDTO>, replies: &RepliesStub) -> Vec<FeedbackDTO> {
-    for piece in &mut listed {
-        piece.replies = replies.count(&piece.id);
-    }
-
-    listed
-}
-
-/// The thread asked for, where `subjects=` names a piece of feedback, whose replies are asked for alone.
-fn thread_asked(asked_for: &AskedFor) -> Result<Option<String>, Problem> {
-    let subjects = subjects_named(asked_for.subjects.as_deref().unwrap_or_default())?;
-    match subjects.as_slice() {
-        [SubjectDTO::Feedback(root)] => Ok(Some(root.clone())),
-        _ => Ok(None),
-    }
 }
 
 /// Which feedback is asked for, as `AskedDTO` tells it: `project=`, `subjects=`, `places=` and `given_by=`, each narrowing the others;
@@ -233,16 +212,8 @@ fn subjects_named(named: &str) -> Result<Vec<SubjectDTO>, Problem> {
 async fn submitted_on(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Extension(replies): Extension<Arc<RepliesStub>>,
     Query(asked_for): Query<AskedFor>,
 ) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
-    if let Some(root) = thread_asked(&asked_for)? {
-        return Ok(Json(
-            replies
-                .on(&feedback, &root, &asked_for.page()?, &agent)
-                .await?,
-        ));
-    }
     let found = feedback
         .submitted(
             &asked_for.asked()?,
@@ -253,13 +224,12 @@ async fn submitted_on(
         .await
         .map_err(problem_of)?;
 
-    Ok(Json(with_replies(
+    Ok(Json(
         found
             .iter()
             .map(|piece| transformer::to_dto(piece, &agent))
             .collect(),
-        &replies,
-    )))
+    ))
 }
 
 /// The pieces asked for by their ids, parted by commas.
@@ -271,7 +241,6 @@ struct ByIds {
 async fn pieces(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Extension(replies): Extension<Arc<RepliesStub>>,
     Query(asked): Query<ByIds>,
 ) -> Result<Json<Vec<FeedbackDTO>>, Problem> {
     let ids: Vec<String> = asked
@@ -282,13 +251,12 @@ async fn pieces(
         .collect();
     let found = feedback.pieces(&ids, &agent).await.map_err(problem_of)?;
 
-    Ok(Json(with_replies(
+    Ok(Json(
         found
             .iter()
             .map(|piece| transformer::to_dto(piece, &agent))
             .collect(),
-        &replies,
-    )))
+    ))
 }
 
 /// The project whose givers are listed.
@@ -392,13 +360,18 @@ async fn submit_on(
 async fn draft(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Extension(replies): Extension<Arc<RepliesStub>>,
     Json(asked): Json<DraftFeedbackRequest>,
 ) -> Result<(StatusCode, Json<FeedbackDTO>), Problem> {
     if let AboutDTO::Feedback { feedback: to } = &asked.about {
-        let replied = replies.reply(&feedback, to, asked.comment, &agent).await?;
+        let replied = feedback
+            .reply(to, transformer::comment_of(asked.comment), &agent)
+            .await
+            .map_err(problem_of)?;
 
-        return Ok((StatusCode::CREATED, Json(replied)));
+        return Ok((
+            StatusCode::CREATED,
+            Json(transformer::to_dto(&replied, &agent)),
+        ));
     }
     let drafted = feedback
         .draft(
@@ -418,13 +391,9 @@ async fn draft(
 async fn rewrite(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Extension(replies): Extension<Arc<RepliesStub>>,
     Path(id): Path<String>,
     Json(asked): Json<RewriteFeedbackRequest>,
 ) -> Result<Json<FeedbackDTO>, Problem> {
-    if replies.holds(&id) {
-        return Ok(Json(replies.rewrite(&id, asked.comment, &agent)?));
-    }
     let rewritten = feedback
         .rewrite(&id, transformer::comment_of(asked.comment), &agent)
         .await
@@ -466,14 +435,8 @@ async fn marked(
 async fn delete(
     State(feedback): State<FeedbackCore>,
     Extension(agent): Extension<Agent>,
-    Extension(replies): Extension<Arc<RepliesStub>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    if replies.holds(&id) {
-        replies.delete(&id, &agent)?;
-
-        return Ok(StatusCode::NO_CONTENT);
-    }
     feedback.delete(&id, &agent).await.map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)

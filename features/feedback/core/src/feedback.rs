@@ -37,6 +37,8 @@ pub struct ListedFeedback {
     /// The name its writer signed up with, where it is known; none once their account is deleted.
     pub written_by_name: Option<String>,
     pub written_at: OffsetDateTime,
+    /// How many replies are given on it.
+    pub replies: usize,
 }
 
 impl ListedFeedback {
@@ -44,9 +46,14 @@ impl ListedFeedback {
         self.submitted_at.is_none()
     }
 
-    fn of(piece: CataloguedFeedback, names: &HashMap<AccountId, String>) -> Self {
+    fn of(
+        piece: CataloguedFeedback,
+        names: &HashMap<AccountId, String>,
+        replies: &HashMap<FeedbackId, usize>,
+    ) -> Self {
         Self {
             written_by_name: name_in(names, &piece.written_by),
+            replies: replies.get(&piece.id).copied().unwrap_or(0),
             id: piece.id,
             project: piece.project,
             about: piece.about,
@@ -375,7 +382,7 @@ impl FeedbackCore {
         Ok(self.names.names_of(&accounts).await?)
     }
 
-    /// The pieces as listed, each with its writer's name where it is known.
+    /// The pieces as listed, each with its writer's name where it is known, and the comments given with how many replies they have.
     async fn listed(
         &self,
         pieces: Vec<CataloguedFeedback>,
@@ -383,10 +390,28 @@ impl FeedbackCore {
         let names = self
             .names_of(pieces.iter().map(|piece| &piece.written_by))
             .await?;
+        let given_on: Vec<Subject> = pieces
+            .iter()
+            .filter(|piece| !piece.is_draft() && piece.about.replying_to().is_none())
+            .map(|piece| Subject::Feedback(piece.id))
+            .collect();
+        let replies: HashMap<FeedbackId, usize> = match given_on.is_empty() {
+            true => HashMap::new(),
+            false => self
+                .feedback
+                .counted_on(&given_on, &Agent::System)
+                .await?
+                .into_iter()
+                .filter_map(|counted| match counted.subject {
+                    Subject::Feedback(piece) => Some((piece, counted.given)),
+                    Subject::ReadingCopy(_) => None,
+                })
+                .collect(),
+        };
 
         Ok(pieces
             .into_iter()
-            .map(|piece| ListedFeedback::of(piece, &names))
+            .map(|piece| ListedFeedback::of(piece, &names, &replies))
             .collect())
     }
 
@@ -554,6 +579,36 @@ impl FeedbackCore {
         .map_err(|_| FeedbackError::FeedbackNotThere)?;
 
         Ok(found)
+    }
+
+    /// The piece given a reply goes to, as the replier finds it: the piece named,
+    /// or, where that is a reply, the piece its thread began with. A draft is not there, as nobody replies to it.
+    async fn thread_root(
+        &self,
+        to: &str,
+        agent: &Agent,
+    ) -> Result<CataloguedFeedback, FeedbackError> {
+        let named = self.found(to, agent).await?;
+        let root = match named.about.replying_to() {
+            Some(root) => self.found(&root.to_string(), agent).await?,
+            None => named,
+        };
+        if root.is_draft() {
+            return Err(FeedbackError::FeedbackNotThere);
+        }
+
+        Ok(root)
+    }
+
+    /// Refuses once the reading copy a piece lies in is closed, or not heard of; a piece on anything else is always open.
+    async fn still_open_for_feedback(&self, about: &About) -> Result<(), FeedbackError> {
+        match reading_copy_of(about) {
+            Some(copy) => self
+                .open_reading_copies(std::slice::from_ref(&copy))
+                .await
+                .map(|_| ()),
+            None => Ok(()),
+        }
     }
 
     /// Carries out a command on a piece and keeps it in the catalog as it then stands, in one transaction.
@@ -772,6 +827,40 @@ impl FeedbackCore {
             .await
     }
 
+    /// Replies on a piece given, sent at once, by whoever may read its project, while the copy it was given in is open.
+    /// A reply to a reply is one to the piece that began the thread, as threads on a reading copy are flat.
+    pub async fn reply(
+        &self,
+        to: &str,
+        comment: Vec<CommentBlock>,
+        agent: &Agent,
+    ) -> Result<ListedFeedback, FeedbackError> {
+        let comment = Comment::new(comment)?;
+        let root = self.thread_root(to, agent).await?;
+        self.still_open_for_feedback(&root.about).await?;
+        let piece = FeedbackId::generate(self.clock.now());
+
+        let replied = transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .begin(
+                    transaction,
+                    &AggregateId::from(&piece),
+                    FeedbackCommand::Reply {
+                        project: root.project.clone(),
+                        to: root.id,
+                        comment: comment.clone(),
+                    },
+                    agent,
+                )
+                .await?;
+
+            self.catalogue(transaction, piece).await
+        })?;
+
+        self.listed_one(replied.ok_or(FeedbackError::FeedbackNotThere)?)
+            .await
+    }
+
     /// Rewrites what a piece of feedback says, for whoever wrote it; once submitted, it is marked edited.
     pub async fn rewrite(
         &self,
@@ -832,7 +921,8 @@ impl FeedbackCore {
     /// Deletes every piece given or drafted in a deleted reading copy, as the system, a batch at a time,
     /// each erased in a transaction of its own; once none is left, it is done. Asked again, it carries on where it was.
     pub async fn sweep_reading_copy(&self, copy: &ReadingCopyLink) -> Result<(), FeedbackError> {
-        self.erased_in_batches(copy, Swept::Everything).await
+        self.erased_in_batches(&Subject::ReadingCopy(copy.clone()), Swept::Everything)
+            .await
     }
 
     /// Drops the drafts left unsubmitted in reading copies closed by now, as the system, no more copies than asked;
@@ -843,7 +933,8 @@ impl FeedbackCore {
             .closed_with_drafts_left(self.clock.now(), at_most)
             .await?;
         for copy in &closed {
-            self.erased_in_batches(copy, Swept::Drafts).await?;
+            self.erased_in_batches(&Subject::ReadingCopy(copy.clone()), Swept::Drafts)
+                .await?;
             transacting::retrying!(&*self.transactions, |transaction| {
                 self.copies.drafts_dropped(transaction, copy).await?;
 
@@ -875,14 +966,13 @@ impl FeedbackCore {
     /// Erases a copy's pieces as the system, a batch at a time, until none of those swept is left.
     async fn erased_in_batches(
         &self,
-        copy: &ReadingCopyLink,
+        subject: &Subject,
         swept: Swept,
     ) -> Result<(), FeedbackError> {
-        let subject = Subject::ReadingCopy(copy.clone());
         loop {
             let batch = match swept {
-                Swept::Everything => self.feedback.pieces_on(&subject, SWEPT_AT_ONCE).await?,
-                Swept::Drafts => self.feedback.drafts_on(&subject, SWEPT_AT_ONCE).await?,
+                Swept::Everything => self.feedback.pieces_on(subject, SWEPT_AT_ONCE).await?,
+                Swept::Drafts => self.feedback.drafts_on(subject, SWEPT_AT_ONCE).await?,
             };
             if batch.is_empty() {
                 return Ok(());
@@ -898,12 +988,15 @@ impl FeedbackCore {
 
     /// Deletes a piece and erases its words: its events collapse into a snapshot that holds neither what it was about
     /// nor what it said, and the messages already sent about it are forgotten, all in one transaction.
+    /// What is given on it, its replies, goes first, by the system, so a piece left behind by a failure still leads to them.
     async fn erased(
         &self,
         piece: FeedbackId,
         deleter: Deleter,
         agent: &Agent,
     ) -> Result<(), FeedbackError> {
+        Box::pin(self.erased_in_batches(&Subject::Feedback(piece), Swept::Everything)).await?;
+
         let aggregate = AggregateId::from(&piece);
 
         transacting::retrying!(&*self.transactions, |transaction| {

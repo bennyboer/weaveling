@@ -5711,7 +5711,6 @@ dependencies = [
  "async-trait",
  "axum",
  "serde",
- "time",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-feedback-contract",
