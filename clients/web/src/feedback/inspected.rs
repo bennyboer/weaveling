@@ -5,7 +5,7 @@ use crate::feedback::column;
 use crate::feedback::column::Allowed;
 use crate::feedback::followed;
 use crate::feedback::followed::FollowedFeedback;
-use crate::feedback::model::{About, Feedback, FeedbackId, ReadingCopyPlace};
+use crate::feedback::model::{About, Feedback, ReadingCopyPlace};
 use crate::feedback::pending::PendingHere;
 use crate::feedback::service;
 use crate::feedback::service::Asked;
@@ -55,6 +55,7 @@ pub fn on_section(section: SectionId, project: String) -> impl IntoView {
 /// each piece shown as it was given, marked done there by whoever may write, and opened in its copy.
 /// Only what is not done yet is counted and shown; what is done is put away, and shown again when asked for.
 fn given_in(inspected: Inspected, project: String) -> impl IntoView {
+    provide_context(thread::Threads::here());
     let given = RwSignal::new(Vec::<Feedback>::new());
     {
         let asked = match &inspected {
@@ -80,8 +81,8 @@ fn given_in(inspected: Inspected, project: String) -> impl IntoView {
                 });
                 return;
             }
-            given.update(|given| given.retain(|piece| !heard.gone.contains(&piece.id)));
-            let changed: Vec<FeedbackId> = heard.changed.into_keys().collect();
+            given.update(|given| given.retain(|piece| !heard.is_gone(&piece.id)));
+            let changed = heard.changed_on_the_work();
             if changed.is_empty() {
                 return;
             }
@@ -367,6 +368,7 @@ mod tests {
     use time::OffsetDateTime;
 
     use super::*;
+    use crate::feedback::model::FeedbackId;
 
     fn on(place: ReadingCopyPlace) -> Feedback {
         Feedback {

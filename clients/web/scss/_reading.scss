@@ -1002,8 +1002,11 @@
   }
 }
 
+/* Where a comment is written: the copy's column and the dialog on the live work, and, for replies, the feedback view and the inspector. */
 .drawer.reading-feedback,
-.dialog.comment-on-live {
+.dialog.comment-on-live,
+.feedback-on-scene,
+.feedback-view {
   .comment-on {
     display: flex;
     align-items: center;
@@ -1146,6 +1149,18 @@
     a {
       color: var(--accent);
     }
+  }
+
+  /* A reply is written smaller, as it answers what stands above it. */
+  .reply .composer-toolbar button {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .reply .composer-actions button {
+    min-height: 1.875rem;
+    padding: 0 0.75rem;
+    font-size: 0.75rem;
   }
 
   .composer-actions {

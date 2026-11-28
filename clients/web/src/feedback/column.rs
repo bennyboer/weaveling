@@ -209,6 +209,7 @@ pub fn on_reading_copy(
     book: RwSignal<Option<Book>>,
     allowed: Allowed,
 ) -> impl IntoView {
+    provide_context(thread::Threads::here());
     let column = Column {
         feedback: commenting.feedback,
         writing: commenting.writing,
@@ -234,7 +235,7 @@ pub fn on_reading_copy(
             }
             column
                 .feedback
-                .update(|feedback| feedback.retain(|piece| !heard.gone.contains(&piece.id)));
+                .update(|feedback| feedback.retain(|piece| !heard.is_gone(&piece.id)));
             let changed = heard.changed_on(&subject);
             if changed.is_empty() {
                 return;

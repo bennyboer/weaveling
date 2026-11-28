@@ -326,6 +326,28 @@ pub async fn thread(root: &FeedbackId) -> Result<Vec<Reply>, ApiError> {
     told.into_iter().map(Reply::try_from).collect()
 }
 
+/// The replies asked for by their ids, as you find them: those not there for you any more are left out.
+pub async fn replies(ids: &[FeedbackId]) -> Result<Vec<Reply>, ApiError> {
+    let named = ids
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let response = http::sent(Request::get(&format!("{FEEDBACK}/pieces?ids={named}"))).await?;
+    let told: Vec<FeedbackDTO> = http::parsed(response, SUBJECT).await?;
+
+    told.into_iter().map(Reply::try_from).collect()
+}
+
+/// How many replies a piece given has.
+pub async fn replies_counted(root: &FeedbackId) -> Result<u32, ApiError> {
+    let on = SubjectDTO::Feedback(root.to_string());
+    let response = http::sent(Request::get(&format!("{FEEDBACK}/counts?subjects={on}"))).await?;
+    let told: Vec<FeedbackCountDTO> = http::parsed(response, SUBJECT).await?;
+
+    Ok(told.first().map_or(0, |counted| counted.submitted))
+}
+
 /// Replies on a piece given, sent at once.
 pub async fn reply(root: &FeedbackId, comment: &[CommentBlock]) -> Result<Reply, ApiError> {
     let payload = DraftFeedbackRequest {

@@ -144,6 +144,7 @@ impl Showing {
 /// what is pending unless asked, a page at a time; each with who gave it, when, in which copy and on what,
 /// marked done there by whoever may write, and opened at its place in its copy.
 pub fn feedback_view(project: String) -> impl IntoView {
+    provide_context(thread::Threads::here());
     let id = route::project_id(&project);
     let showing = RwSignal::new(Showing::Pending);
     let newest_first = RwSignal::new(true);
@@ -235,8 +236,8 @@ pub fn feedback_view(project: String) -> impl IntoView {
             paging.dispatch(Paged::Again);
             return;
         }
-        pieces.update(|pieces| pieces.retain(|piece| !heard.gone.contains(&piece.id)));
-        let changed: Vec<FeedbackId> = heard.changed.into_keys().collect();
+        pieces.update(|pieces| pieces.retain(|piece| !heard.is_gone(&piece.id)));
+        let changed = heard.changed_on_the_work();
         if changed.is_empty() {
             return;
         }

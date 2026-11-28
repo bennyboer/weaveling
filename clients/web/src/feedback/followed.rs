@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Duration;
 
-use feedback_contract::GivenFeedbackChangeDTO;
+use feedback_contract::{GivenFeedbackChangeDTO, SubjectDTO};
 use leptos::prelude::*;
 use live_contract::FrameDTO;
 
@@ -18,7 +18,8 @@ const SETTLING: Duration = Duration::from_millis(1200);
 pub struct Heard {
     /// The pieces given that changed, each with what it is given on, named as `subjects=` names it.
     pub changed: HashMap<FeedbackId, String>,
-    pub gone: HashSet<FeedbackId>,
+    /// The pieces given that went, each with what it was given on.
+    pub gone: HashMap<FeedbackId, String>,
     /// Whether changes may have been missed, as the following was taken up again after a break,
     /// so what is shown is asked for anew.
     pub missed: bool,
@@ -27,11 +28,29 @@ pub struct Heard {
 impl Heard {
     /// The pieces that changed on one subject.
     pub fn changed_on(&self, subject: &str) -> Vec<FeedbackId> {
-        self.changed
-            .iter()
-            .filter(|(_, on)| on.as_str() == subject)
-            .map(|(piece, _)| piece.clone())
-            .collect()
+        on(&self.changed, |on| on == subject)
+    }
+
+    /// The pieces that went from one subject.
+    pub fn gone_on(&self, subject: &str) -> Vec<FeedbackId> {
+        on(&self.gone, |on| on == subject)
+    }
+
+    /// The pieces given on the work that changed, its comments, leaving out the replies to them.
+    pub fn changed_on_the_work(&self) -> Vec<FeedbackId> {
+        on(&self.changed, on_the_work)
+    }
+
+    /// Whether a piece went.
+    pub fn is_gone(&self, piece: &FeedbackId) -> bool {
+        self.gone.contains_key(piece)
+    }
+
+    /// Whether anything given on the work changed or went, or may have been missed: replies alone do not.
+    pub fn touches_the_work(&self) -> bool {
+        self.missed
+            || self.changed.values().any(|on| on_the_work(on))
+            || self.gone.values().any(|on| on_the_work(on))
     }
 
     fn told(&mut self, frame: FrameDTO) {
@@ -42,13 +61,29 @@ impl Heard {
             Ok(GivenFeedbackChangeDTO::Changed { subject }) => {
                 self.changed.insert(piece, subject);
             }
-            Ok(GivenFeedbackChangeDTO::Gone { .. }) => {
+            Ok(GivenFeedbackChangeDTO::Gone { subject }) => {
                 self.changed.remove(&piece);
-                self.gone.insert(piece);
+                self.gone.insert(piece, subject);
             }
             Err(_) => {}
         }
     }
+}
+
+/// The pieces held whose subject is as asked.
+fn on(held: &HashMap<FeedbackId, String>, asked: impl Fn(&str) -> bool) -> Vec<FeedbackId> {
+    held.iter()
+        .filter(|(_, on)| asked(on))
+        .map(|(piece, _)| piece.clone())
+        .collect()
+}
+
+/// Whether a subject is something of the work, not a piece of feedback whose replies are given on it.
+fn on_the_work(subject: &str) -> bool {
+    !matches!(
+        SubjectDTO::listed(subject).as_deref(),
+        Ok([SubjectDTO::Feedback(_)])
+    )
 }
 
 /// The feedback given in the project open now, followed live.
@@ -59,6 +94,8 @@ pub struct FollowedFeedback {
     project: StoredValue<Option<String>>,
     gathered: StoredValue<Heard>,
     heard: RwSignal<Heard>,
+    /// Moves on with what is heard where it touches the work, so what counts it asks again only then.
+    work_changed: RwSignal<u64>,
     settling: StoredValue<Option<TimeoutHandle>, LocalStorage>,
     following: StoredValue<Option<Subscription>, LocalStorage>,
 }
@@ -69,6 +106,7 @@ impl FollowedFeedback {
             project: StoredValue::new(None),
             gathered: StoredValue::new(Heard::default()),
             heard: RwSignal::new(Heard::default()),
+            work_changed: RwSignal::new(0),
             settling: StoredValue::new_local(None),
             following: StoredValue::new_local(None),
         }
@@ -104,6 +142,11 @@ impl FollowedFeedback {
         self.heard.get()
     }
 
+    /// Tracks what is heard where it touches the work, for what counts the work's feedback.
+    pub fn track_the_work(self) {
+        self.work_changed.track();
+    }
+
     fn gathering(self, told: impl FnOnce(&mut Heard)) {
         self.gathered.update_value(told);
         if self.settling.with_value(Option::is_some) {
@@ -112,6 +155,9 @@ impl FollowedFeedback {
         let settled = move || {
             _ = self.settling.try_set_value(None);
             if let Some(heard) = self.gathered.try_update_value(std::mem::take) {
+                if heard.touches_the_work() {
+                    _ = self.work_changed.try_update(|changed| *changed += 1);
+                }
                 _ = self.heard.try_set(heard);
             }
         };

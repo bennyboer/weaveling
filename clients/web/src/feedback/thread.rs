@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
+use feedback_contract::SubjectDTO;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::feedback::column;
 use crate::feedback::composer;
+use crate::feedback::followed::{FollowedFeedback, Heard};
 use crate::feedback::model::{CommentBlock, CommentRun, FeedbackId, Reply};
 use crate::feedback::service;
 use crate::http::ApiError;
@@ -12,11 +16,53 @@ use crate::icons::Icon;
 use crate::problem;
 use crate::speech;
 
+/// The threads shown in one place, the column, the feedback view or an inspector, each kept by the piece it is on.
+/// So a thread stays as it was, open and with its replies, while the note it is under is drawn again as its piece changes.
+#[derive(Clone, Copy)]
+pub struct Threads {
+    kept: StoredValue<HashMap<FeedbackId, Thread>>,
+    owner: StoredValue<Owner>,
+}
+
+impl Threads {
+    /// Threads kept for as long as the place they are shown in.
+    pub fn here() -> Self {
+        Self {
+            kept: StoredValue::new(HashMap::new()),
+            owner: StoredValue::new(
+                Owner::current().expect("threads are kept where something is shown"),
+            ),
+        }
+    }
+
+    /// The thread on a piece, as it was if it was shown before; until its replies are asked for,
+    /// it takes the count the piece was listed with.
+    fn of(self, root: FeedbackId, counted: u32) -> Thread {
+        if let Some(thread) = self.kept.with_value(|kept| kept.get(&root).copied()) {
+            if !thread.asked.get_untracked() {
+                thread.counted.set(counted);
+            }
+            return thread;
+        }
+        let thread = self
+            .owner
+            .get_value()
+            .with(|| Thread::on(root.clone(), counted));
+        self.kept.update_value(|kept| {
+            kept.insert(root, thread);
+        });
+
+        thread
+    }
+}
+
 /// A thread under a piece given, its root, and what is going on in it:
 /// its replies once asked for, how many there are, whether it is open, and which of yours is being changed.
 #[derive(Clone, Copy)]
 struct Thread {
     root: StoredValue<FeedbackId>,
+    /// Whether its replies were asked for, so it holds them all and takes in what changes.
+    asked: RwSignal<bool>,
     replies: RwSignal<Vec<Reply>>,
     counted: RwSignal<u32>,
     open: RwSignal<bool>,
@@ -27,37 +73,106 @@ struct Thread {
     failed: RwSignal<Option<ApiError>>,
 }
 
-/// The replies on a piece given, under it: how many there are, opened to read them, and a reply written there.
-/// A reply is sent at once; yours may be changed, and deleted once asked.
-pub fn thread(root: FeedbackId, counted: u32) -> impl IntoView {
-    let thread = Thread {
-        root: StoredValue::new(root),
-        replies: RwSignal::new(Vec::new()),
-        counted: RwSignal::new(counted),
-        open: RwSignal::new(false),
-        writing: RwSignal::new(false),
-        quoting: RwSignal::new(Vec::new()),
-        changing: RwSignal::new(None),
-        failed: RwSignal::new(None),
-    };
-    let asked = StoredValue::new(false);
-    Effect::new(move |_| {
-        if !thread.open.get() || asked.get_value() {
-            return;
+impl Thread {
+    fn on(root: FeedbackId, counted: u32) -> Self {
+        Self {
+            root: StoredValue::new(root),
+            asked: RwSignal::new(false),
+            replies: RwSignal::new(Vec::new()),
+            counted: RwSignal::new(counted),
+            open: RwSignal::new(false),
+            writing: RwSignal::new(false),
+            quoting: RwSignal::new(Vec::new()),
+            changing: RwSignal::new(None),
+            failed: RwSignal::new(None),
         }
-        asked.set_value(true);
-        let root = thread.root.get_value();
+    }
+
+    /// Asks for its replies, all of them, in the order sent.
+    fn asked_anew(self) {
+        self.asked.set(true);
+        let root = self.root.get_value();
         leptos::task::spawn_local(async move {
             match service::thread(&root).await {
                 Ok(replies) => {
-                    _ = thread
-                        .counted
-                        .try_set(u32::try_from(replies.len()).unwrap_or(u32::MAX));
-                    _ = thread.replies.try_set(replies);
+                    _ = self.replies.try_set(replies);
+                    self.recounted();
                 }
-                Err(failure) => _ = thread.failed.try_set(Some(failure)),
+                Err(failure) => _ = self.failed.try_set(Some(failure)),
             }
         });
+    }
+
+    /// Its count, as many replies as it holds.
+    fn recounted(self) {
+        let held = self.replies.with_untracked(Vec::len);
+        _ = self
+            .counted
+            .try_set(u32::try_from(held).unwrap_or(u32::MAX));
+    }
+
+    /// Takes in what was heard on it: once its replies were asked for, those changed are asked for again
+    /// and those gone let go of, or all of them again after a break; until then only its count is asked for.
+    fn heard(self, heard: &Heard) {
+        let on_it = SubjectDTO::Feedback(self.root.get_value().to_string()).to_string();
+        let changed = heard.changed_on(&on_it);
+        let gone = heard.gone_on(&on_it);
+        if changed.is_empty() && gone.is_empty() && !heard.missed {
+            return;
+        }
+        if !self.asked.get_untracked() {
+            let root = self.root.get_value();
+            leptos::task::spawn_local(async move {
+                if let Ok(counted) = service::replies_counted(&root).await {
+                    _ = self.counted.try_set(counted);
+                }
+            });
+            return;
+        }
+        if heard.missed {
+            self.asked_anew();
+            return;
+        }
+        self.replies
+            .update(|replies| replies.retain(|reply| !gone.contains(&reply.id)));
+        self.recounted();
+        if changed.is_empty() {
+            return;
+        }
+        leptos::task::spawn_local(async move {
+            if let Ok(found) = service::replies(&changed).await {
+                _ = self.replies.try_update(|replies| {
+                    replies.retain(|reply| {
+                        !changed.contains(&reply.id) || found.iter().any(|one| one.id == reply.id)
+                    });
+                    for reply in found {
+                        match replies.iter_mut().find(|one| one.id == reply.id) {
+                            Some(held) => *held = reply,
+                            None => replies.push(reply),
+                        }
+                    }
+                });
+                self.recounted();
+            }
+        });
+    }
+}
+
+/// The replies on a piece given, under it: how many there are, opened to read them, and a reply written there.
+/// A reply is sent at once; yours may be changed, and deleted once asked. What others reply is taken in as it is heard.
+pub fn thread(root: FeedbackId, counted: u32) -> impl IntoView {
+    let thread = expect_context::<Threads>().of(root, counted);
+    Effect::new(move |_| {
+        if thread.open.get() && !thread.asked.get_untracked() {
+            thread.asked_anew();
+        }
+    });
+    let followed = expect_context::<FollowedFeedback>();
+    Effect::new(move |heard_before: Option<()>| {
+        let heard = followed.heard();
+        if heard_before.is_some() {
+            thread.heard(&heard);
+        }
     });
     let sending = Action::new_local(move |comment: &Vec<CommentBlock>| {
         let root = thread.root.get_value();
@@ -68,7 +183,7 @@ pub fn thread(root: FeedbackId, counted: u32) -> impl IntoView {
                 Ok(sent) => {
                     thread.failed.set(None);
                     thread.replies.update(|replies| replies.push(sent));
-                    thread.counted.update(|counted| *counted += 1);
+                    thread.recounted();
                     thread.writing.set(false);
                 }
                 Err(failure) => thread.failed.set(Some(failure)),
@@ -208,9 +323,7 @@ fn a_reply(reply: Reply, thread: Thread) -> impl IntoView {
                         thread
                             .replies
                             .update(|replies| replies.retain(|reply| reply.id != id));
-                        thread
-                            .counted
-                            .update(|counted| *counted = counted.saturating_sub(1));
+                        thread.recounted();
                     }
                     Err(failure) => thread.failed.set(Some(failure)),
                 }

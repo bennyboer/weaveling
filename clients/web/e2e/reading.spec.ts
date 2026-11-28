@@ -3112,3 +3112,68 @@ test("a comment's thread is read and replied to in the feedback view, and read i
   await inInspector.getByRole("button", { name: "2 replies" }).click();
   await expect(inInspector.locator(".reply")).toHaveCount(2);
 });
+
+test("replies given elsewhere show in a comment's thread as they come, open or not, and it stays open as the comment changes", async ({
+  page,
+}) => {
+  // given: a copy with a comment given, its feedback open and followed
+  const following = followedOn(page, "feedback");
+  await aCopyOfABookWritten(page, "ThreadsLive");
+  const copy = new URL(page.url()).pathname.split("/").pop()!;
+  await aDraftOn(page, { kind: "whole" }, "Which boats?");
+  const submitted = await page.request.post(
+    `${API}/feedback/submitted?subjects=reading_copy:${copy}`,
+  );
+  expect(submitted.ok(), await submitted.text()).toBe(true);
+  const [root] = (await submitted.json()) as { id: string }[];
+  await page.reload();
+  if ((await feedbackTab(page).getAttribute("aria-expanded")) === "false") {
+    await feedbackTab(page).click();
+  }
+  await following;
+  const note = feedback(page)
+    .getByRole("region", { name: "Feedback given" })
+    .locator(".note", { hasText: "Which boats?" });
+  const thread = note.getByRole("region", { name: "Replies" });
+  const replyElsewhere = async (saying: string) => {
+    const replied = await page.request.post(`${API}/feedback`, {
+      data: {
+        about: { kind: "feedback", feedback: root.id },
+        comment: [
+          { kind: "paragraph", runs: [{ kind: "text", text: saying }] },
+        ],
+      },
+    });
+    expect(replied.ok(), await replied.text()).toBe(true);
+
+    return ((await replied.json()) as { id: string }).id;
+  };
+
+  // when: a reply is given elsewhere while the thread is closed
+  await replyElsewhere("The fishing boats.");
+  // then: the thread counts it
+  await expect(thread.getByRole("button", { name: "1 reply" })).toBeVisible();
+
+  // when: it is opened, and another reply is given elsewhere
+  await thread.getByRole("button", { name: "1 reply" }).click();
+  const later = await replyElsewhere("At dawn.");
+  // then: both are in the open thread
+  await expect(thread.locator(".reply")).toHaveCount(2);
+  await expect(thread.locator(".reply").last()).toContainText("At dawn.");
+
+  // when: the comment is marked done elsewhere
+  const marked = await page.request.put(`${API}/feedback/${root.id}/done`);
+  expect(marked.ok(), await marked.text()).toBe(true);
+  // then: it is among what is done, its thread still open with both replies
+  await feedback(page)
+    .getByRole("region", { name: "Feedback given" })
+    .getByRole("button", { name: "Done · 1", exact: true })
+    .click();
+  await expect(thread.locator(".reply")).toHaveCount(2);
+
+  // when: a reply is deleted elsewhere
+  const deleted = await page.request.delete(`${API}/feedback/${later}`);
+  expect(deleted.ok(), await deleted.text()).toBe(true);
+  // then: it goes from the thread
+  await expect(thread.locator(".reply")).toHaveCount(1);
+});

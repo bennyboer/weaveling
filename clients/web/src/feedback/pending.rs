@@ -43,8 +43,8 @@ impl PendingHere {
         here.counted_again();
         let followed = expect_context::<FollowedFeedback>();
         Effect::new(move |heard_before: Option<()>| {
-            followed.heard();
-            if heard_before.is_some() {
+            let heard = followed.heard();
+            if heard_before.is_some() && heard.touches_the_work() {
                 here.again();
             }
         });
